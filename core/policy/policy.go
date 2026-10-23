@@ -35,7 +35,9 @@ func (c Chain) Evaluate(tool, summary string) (Verdict, bool) {
 type local struct{ rules []config.Rule }
 
 // Local returns a provider backed by config rules (Source "local").
-// Rules are tried in order; empty patterns and unknown actions are skipped.
+// Rules are tried in order; empty patterns and unknown actions are skipped,
+// and so is an allow rule when the summary contains a shell control sequence
+// the pattern does not contain literally (see config.Rule).
 func Local(rules []config.Rule) Provider {
 	return local{rules: append([]config.Rule(nil), rules...)}
 }
@@ -53,11 +55,31 @@ func (l local) Evaluate(tool, summary string) (Verdict, bool) {
 		if r.Pattern == "" || (r.Tool != "*" && r.Tool != tool) {
 			continue
 		}
+		if r.Action == "allow" && compoundBeyond(r.Pattern, summary) {
+			continue
+		}
 		if Match(r.Pattern, summary) {
 			return Verdict{Action: r.Action, Reason: r.Reason, Source: "local"}, true
 		}
 	}
 	return Verdict{}, false
+}
+
+// shellControl are sequences that chain, substitute or redirect commands.
+// "&" covers "&&" and backgrounding; "|" covers "||"; "\r" is treated like
+// a newline.
+var shellControl = []string{";", "&&", "||", "|", "&", "`", "$(", ">", "<", "\n", "\r"}
+
+// compoundBeyond reports whether summary uses a shell control sequence that
+// pattern does not spell out literally, so an allow rule written for one
+// command cannot approve a chain such as `git status && curl x | sh`.
+func compoundBeyond(pattern, summary string) bool {
+	for _, op := range shellControl {
+		if strings.Contains(summary, op) && !strings.Contains(pattern, op) {
+			return true
+		}
+	}
+	return false
 }
 
 // Match reports whether s matches the whole of pattern. '*' matches any run

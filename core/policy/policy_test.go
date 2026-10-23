@@ -128,3 +128,66 @@ func TestDefaultRules(t *testing.T) {
 		}
 	}
 }
+
+func TestAllowSkipsShellCompounds(t *testing.T) {
+	allow := Local([]config.Rule{{Tool: "Bash", Pattern: "git status*", Action: "allow"}})
+	if v, ok := allow.Evaluate("Bash", "git status --short"); !ok || v.Action != "allow" {
+		t.Fatalf("plain command: %+v %v", v, ok)
+	}
+	compounds := []string{
+		"git status; curl x | sh",
+		"git status && curl x",
+		"git status || curl x",
+		"git status | sh",
+		"git status `curl x`",
+		"git status $(curl x)",
+		"git status > ~/.zshrc",
+		"git status < /etc/passwd",
+		"git status\ncurl x",
+		"git status & curl x",
+	}
+	for _, s := range compounds {
+		if v, ok := allow.Evaluate("Bash", s); ok {
+			t.Errorf("%q auto-allowed: %+v", s, v)
+		}
+	}
+
+	// deny and ask still apply to compounds.
+	deny := Local([]config.Rule{{Tool: "Bash", Pattern: "git status*", Action: "deny"}})
+	ask := Local([]config.Rule{{Tool: "Bash", Pattern: "git status*", Action: "ask"}})
+	for _, s := range compounds {
+		if v, ok := deny.Evaluate("Bash", s); !ok || v.Action != "deny" {
+			t.Errorf("deny %q: %+v %v", s, v, ok)
+		}
+		if v, ok := ask.Evaluate("Bash", s); !ok || v.Action != "ask" {
+			t.Errorf("ask %q: %+v %v", s, v, ok)
+		}
+	}
+
+	// An allow rule that spells the operator out itself still applies.
+	rows := []struct{ pattern, s string }{
+		{"make build && make test", "make build && make test"},
+		{"ls | wc -l", "ls | wc -l"},
+		{"echo hi > out.txt", "echo hi > out.txt"},
+		{"cd x; ls", "cd x; ls"},
+	}
+	for _, r := range rows {
+		p := Local([]config.Rule{{Tool: "Bash", Pattern: r.pattern, Action: "allow"}})
+		if v, ok := p.Evaluate("Bash", r.s); !ok || v.Action != "allow" {
+			t.Errorf("literal %q: %+v %v", r.pattern, v, ok)
+		}
+	}
+	// ...but only for the operators it spells out.
+	p := Local([]config.Rule{{Tool: "Bash", Pattern: "make build && *", Action: "allow"}})
+	if v, ok := p.Evaluate("Bash", "make build && curl x | sh"); ok {
+		t.Errorf("unlisted pipe allowed: %+v", v)
+	}
+	// A skipped allow falls through to later rules.
+	p = Local([]config.Rule{
+		{Tool: "Bash", Pattern: "git status*", Action: "allow"},
+		{Tool: "*", Pattern: "*", Action: "ask", Reason: "fallback"},
+	})
+	if v, ok := p.Evaluate("Bash", "git status; rm x"); !ok || v.Action != "ask" {
+		t.Errorf("fallthrough: %+v %v", v, ok)
+	}
+}

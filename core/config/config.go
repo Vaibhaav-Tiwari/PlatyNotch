@@ -45,6 +45,13 @@ type Policy struct {
 // Rule matches a tool call. Tool is an exact tool name ("Bash", "Write") or "*".
 // Pattern is a glob ("*" any run incl. "/" and spaces, "?" one char) against the
 // approval summary (the command or file path).
+//
+// An "allow" rule never approves a compound command: it is skipped when the
+// summary contains any of ; && || | & ` $( > < or a newline, unless that
+// exact sequence also appears literally in Pattern. So "git status*" allows
+// "git status --short" but not "git status && curl x | sh", while
+// "make build && make test" allows exactly that chain. "deny" and "ask"
+// rules match compounds as usual.
 type Rule struct {
 	Tool    string `json:"tool"`
 	Pattern string `json:"pattern"`
