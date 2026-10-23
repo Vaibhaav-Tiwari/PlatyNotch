@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"sort"
+	"net/url"
 	"strings"
 
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
@@ -31,6 +31,19 @@ func newOpenAI(p config.Provider) (openAI, error) {
 	base := strings.TrimRight(p.BaseURL, "/")
 	if base == "" {
 		base = openAIBase
+	}
+	if key != "" {
+		u, err := url.Parse(base)
+		if err != nil {
+			return openAI{}, fmt.Errorf("invalid base URL: %w", err)
+		}
+		if u.Scheme == "http" {
+			switch u.Hostname() {
+			case "localhost", "127.0.0.1", "::1":
+			default:
+				return openAI{}, fmt.Errorf("use https for remote providers")
+			}
+		}
 	}
 	return openAI{base, p.Model, key, newClient()}, nil
 }
@@ -66,10 +79,23 @@ func (o *openAIEmbedder) Embed(ctx context.Context, texts []string) ([][]float32
 		if err != nil {
 			return nil, err
 		}
-		sort.SliceStable(out.Data, func(i, j int) bool { return out.Data[i].Index < out.Data[j].Index })
-		v := make([][]float32, len(out.Data))
-		for i, d := range out.Data {
-			v[i] = d.Embedding
+		if len(out.Data) != len(b) {
+			return nil, fmt.Errorf("provider returned %d embeddings for %d texts", len(out.Data), len(b))
+		}
+		v := make([][]float32, len(b))
+		for _, d := range out.Data {
+			if d.Index < 0 || d.Index >= len(b) {
+				return nil, fmt.Errorf("provider returned out-of-range embedding index %d", d.Index)
+			}
+			if v[d.Index] != nil {
+				return nil, fmt.Errorf("provider returned duplicate embedding index %d", d.Index)
+			}
+			v[d.Index] = d.Embedding
+		}
+		for i := range v {
+			if v[i] == nil {
+				return nil, fmt.Errorf("provider omitted embedding index %d", i)
+			}
 		}
 		return v, nil
 	})
@@ -97,5 +123,5 @@ func (o *openAIExtractor) Extract(ctx context.Context, r ExtractRequest) (Extrac
 	if len(out.Choices) == 0 {
 		return ExtractResult{}, fmt.Errorf("provider returned no choices")
 	}
-	return parseExtract(out.Choices[0].Message.Content, r.Now)
+	return parseExtract(out.Choices[0].Message.Content, r)
 }

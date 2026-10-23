@@ -73,5 +73,5 @@ func (o *ollamaExtractor) Extract(ctx context.Context, r ExtractRequest) (Extrac
 	if err != nil {
 		return ExtractResult{}, err
 	}
-	return parseExtract(out.Message.Content, r.Now)
+	return parseExtract(out.Message.Content, r)
 }
