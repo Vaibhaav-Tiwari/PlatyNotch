@@ -101,7 +101,9 @@ func open(path string, cfg config.Memory, now func() time.Time, tick <-chan time
 	}
 	e.setup = strings.Join(setup, "; ")
 
-	// Chunks skipped while a provider was off are processed now that it is on.
+	// Chunks skipped while a provider was off, or failed during an outage,
+	// are processed now that it is on; a changed embedding model re-embeds
+	// everything it has no vector for.
 	for kind, on := range map[string]bool{"embed": e.emb != nil, "extract": e.ext != nil} {
 		if !on {
 			continue
@@ -109,6 +111,16 @@ func open(path string, cfg config.Memory, now func() time.Time, tick <-chan time
 		if _, err := s.ResetSkipped(kind); err != nil {
 			s.Close()
 			return nil, fmt.Errorf("reset skipped %s: %w", kind, err)
+		}
+		if _, err := s.RequeueFailed(kind); err != nil {
+			s.Close()
+			return nil, fmt.Errorf("requeue failed %s: %w", kind, err)
+		}
+	}
+	if e.emb != nil {
+		if _, err := s.RequeueOtherModel(e.emb.Model()); err != nil {
+			s.Close()
+			return nil, fmt.Errorf("requeue for model: %w", err)
 		}
 	}
 	lastPurge := now()

@@ -12,6 +12,7 @@ import (
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory/provider"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory/store"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
 
@@ -321,5 +322,58 @@ func TestCloseTwice(t *testing.T) {
 	}
 	if err := e.Ingest(context.Background(), capture(t0)); err == nil {
 		t.Fatal("Ingest after Close succeeded")
+	}
+}
+
+// TestOpenRequeuesFailedAndStaleModel: on Open with providers, chunks that
+// failed (e.g. during a provider outage) and chunks embedded by a different
+// model go back to pending and are processed again.
+func TestOpenRequeuesFailedAndStaleModel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "m.db")
+	s, err := store.Open(path, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	th, _ := s.UpsertThread(store.Thread{AppBundle: "a", Key: "k"})
+	if _, err := s.PutVersion(store.Version{ID: "v", ThreadID: th.ID, HourBucket: t0.Unix() / 3600, Content: "x", CreatedAt: t0}); err != nil {
+		t.Fatal(err)
+	}
+	ids, err := s.AddChunks([]store.Chunk{
+		{VersionID: "v", ThreadID: th.ID, Idx: 0, Text: "staleModelChunk alpha", CapturedAt: t0},
+		{VersionID: "v", ThreadID: th.ID, Idx: 1, Text: "failedEmbedChunk beta", CapturedAt: t0},
+		{VersionID: "v", ThreadID: th.ID, Idx: 2, Text: "failedExtractChunk I will call Dana", CapturedAt: t0},
+		{VersionID: "v", ThreadID: th.ID, Idx: 3, Text: "currentModelChunk gamma", CapturedAt: t0},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetVector(ids[0], "old-model", []float32{1, 0, 0}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetVector(ids[2], "m1", []float32{1, 0, 0}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetVector(ids[3], "m1", []float32{1, 0, 0}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetChunkStatus("embed", ids[1:2], "failed"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetChunkStatus("extract", []int64{ids[0], ids[1], ids[3]}, "done"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetChunkStatus("extract", ids[2:3], "failed"); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	before := ext.n()
+	e, _ := openTest(t, path, memCfg("enginetest-emb", "enginetest-ext"), newClock(t0.Add(time.Hour)))
+	eventually(t, "stale-model chunk re-embedded", func() bool { return emb.saw("staleModelChunk") })
+	eventually(t, "failed chunk re-embedded", func() bool { return emb.saw("failedEmbedChunk") })
+	eventually(t, "failed extract retried", func() bool { return ext.n() > before })
+	eventually(t, "nothing pending", func() bool { return e.Status().Pending == 0 })
+	if emb.saw("currentModelChunk") {
+		t.Fatal("chunk already embedded by the current model was re-embedded")
 	}
 }

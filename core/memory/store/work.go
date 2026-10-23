@@ -230,3 +230,32 @@ func (s *Store) ResetSkipped(kind string) (int, error) {
 	n, err := res.RowsAffected()
 	return int(n), err
 }
+
+// RequeueFailed sets every chunk whose kind status is "failed" (retries
+// exhausted, e.g. during a provider outage) back to "pending" with a fresh
+// retry budget and returns how many changed.
+func (s *Store) RequeueFailed(kind string) (int, error) {
+	col, err := statusCol(kind)
+	if err != nil {
+		return 0, err
+	}
+	res, err := s.db.Exec(`UPDATE chunks SET ` + col + `='pending' WHERE ` + col + `='failed'`)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return int(n), err
+}
+
+// RequeueOtherModel marks chunks that are embedded ("done") or gave up
+// ("failed") but have no vector from model as pending, so a changed
+// embedding model re-embeds everything. It returns how many changed.
+func (s *Store) RequeueOtherModel(model string) (int, error) {
+	res, err := s.db.Exec(`UPDATE chunks SET embed_status='pending'
+		WHERE embed_status IN ('done','failed') AND id NOT IN (SELECT chunk_id FROM chunk_vectors WHERE model=?)`, model)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return int(n), err
+}

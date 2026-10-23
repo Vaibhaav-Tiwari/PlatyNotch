@@ -335,3 +335,34 @@ func TestPurgeScrubsFTSAndFile(t *testing.T) {
 		}
 	}
 }
+
+func TestRequeueFailedAndOtherModel(t *testing.T) {
+	s, _ := open(t)
+	th, ids := seed(t, s, "one", time.Now())
+	more, _ := s.AddChunks([]Chunk{
+		{VersionID: "v1", ThreadID: th.ID, Idx: 1, Text: "two", CapturedAt: time.Now()},
+		{VersionID: "v1", ThreadID: th.ID, Idx: 2, Text: "three", CapturedAt: time.Now()},
+	})
+	ids = append(ids, more...)
+	s.SetVector(ids[0], "old", []float32{1})
+	s.SetVector(ids[1], "new", []float32{1})
+	s.SetChunkStatus("embed", ids[2:], "failed")
+	s.SetChunkStatus("extract", ids[:1], "failed")
+	if n, err := s.RequeueOtherModel("new"); err != nil || n != 2 {
+		t.Fatalf("RequeueOtherModel = %d, %v", n, err)
+	}
+	for i, want := range []string{"pending", "done", "pending"} {
+		if e, _, _ := s.ChunkStatus(ids[i]); e != want {
+			t.Errorf("chunk %d embed=%q want %q", i, e, want)
+		}
+	}
+	if n, err := s.RequeueFailed("extract"); err != nil || n != 1 {
+		t.Fatalf("RequeueFailed = %d, %v", n, err)
+	}
+	if _, x, _ := s.ChunkStatus(ids[0]); x != "pending" {
+		t.Fatalf("extract=%q", x)
+	}
+	if _, err := s.RequeueFailed("bogus"); err == nil {
+		t.Fatal("want error")
+	}
+}
