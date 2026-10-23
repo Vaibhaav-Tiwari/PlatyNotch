@@ -35,7 +35,7 @@ public final class AppStore {
         case .snapshot:
             guard let s: Snapshot = try? env.decode() else { return }
             sessions = s.sessions.sorted(by: Self.newestFirst)
-            approvals = s.approvals.sorted { $0.createdAt < $1.createdAt }
+            approvals = s.approvals.sorted(by: Self.oldestFirst)
             usage = s.usage
             loops = s.loops
             memory = s.memory
@@ -50,7 +50,7 @@ public final class AppStore {
         case .approvalAdded:
             guard let a: Approval = try? env.decode() else { return }
             if let i = approvals.firstIndex(where: { $0.id == a.id }) { approvals[i] = a } else { approvals.append(a) }
-            approvals.sort { $0.createdAt < $1.createdAt }
+            approvals.sort(by: Self.oldestFirst)
         case .approvalResolved:
             guard let r: ApprovalResolved = try? env.decode() else { return }
             approvals.removeAll { $0.id == r.id }
@@ -69,5 +69,14 @@ public final class AppStore {
         }
     }
 
-    private static func newestFirst(_ a: Session, _ b: Session) -> Bool { a.updatedAt > b.updatedAt }
+    private static func oldestFirst(_ a: Approval, _ b: Approval) -> Bool {
+        a.createdAt != b.createdAt ? a.createdAt < b.createdAt : a.id < b.id
+    }
+
+    /// Approvals stay visible while reconnecting, but cannot be answered.
+    public var canAnswerApprovals: Bool { connection == .connected }
+
+    private static func newestFirst(_ a: Session, _ b: Session) -> Bool {
+        a.updatedAt != b.updatedAt ? a.updatedAt > b.updatedAt : a.key < b.key
+    }
 }

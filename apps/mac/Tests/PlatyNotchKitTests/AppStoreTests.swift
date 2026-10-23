@@ -72,4 +72,26 @@ final class AppStoreTests: XCTestCase {
         store.apply(try .make(.usageUpdated, Usage()))
         XCTAssertNil(store.usage.claude)
     }
+
+    func testTieOrderingIsDeterministic() throws {
+        let store = AppStore()
+        store.apply(try .make(.snapshot, Snapshot(
+            sessions: [session("b", at: 5), session("a", at: 5), session("c", at: 9)],
+            approvals: [approval("y", at: 1), approval("x", at: 1)])))
+        XCTAssertEqual(store.sessions.map(\.key), ["c", "a", "b"])
+        XCTAssertEqual(store.approvals.map(\.id), ["x", "y"])
+        store.apply(try .make(.approvalAdded, approval("w", at: 1)))
+        XCTAssertEqual(store.approvals.map(\.id), ["w", "x", "y"])
+    }
+
+    func testCanAnswerApprovalsOnlyWhenConnected() throws {
+        let store = AppStore()
+        XCTAssertFalse(store.canAnswerApprovals)
+        store.apply(.connected)
+        XCTAssertTrue(store.canAnswerApprovals)
+        store.apply(try .make(.approvalAdded, approval("1", at: 1)))
+        store.apply(.disconnected)
+        XCTAssertFalse(store.canAnswerApprovals)
+        XCTAssertEqual(store.approvals.count, 1)
+    }
 }

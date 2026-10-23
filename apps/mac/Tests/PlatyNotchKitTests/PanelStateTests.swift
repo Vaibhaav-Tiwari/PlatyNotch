@@ -56,4 +56,37 @@ final class PanelStateTests: XCTestCase {
         m.handle(.escape)
         XCTAssertEqual(m.mode, .hidden)
     }
+
+    func testEscapeFromExpandedWithApprovalSettlesToPeek() {
+        var m = PanelStateMachine(minimal: true)
+        m.handle(.click)
+        m.handle(.approvalsChanged(count: 1))
+        m.handle(.escape)
+        XCTAssertEqual(m.mode, .peek(.approval))
+        m.handle(.escape)
+        XCTAssertEqual(m.mode, .peek(.approval))
+    }
+
+    func testEscapeFromExpandedWithoutApprovalIsIdle() {
+        var m = PanelStateMachine()
+        m.handle(.click)
+        m.handle(.escape)
+        XCTAssertEqual(m.mode, .compact)
+    }
+
+    func testEscapeFromNoticePeekIsIdle() {
+        var m = PanelStateMachine(minimal: true)
+        m.handle(.notice)
+        m.handle(.escape)
+        XCTAssertEqual(m.mode, .hidden)
+    }
+
+    func testHoverExitFromExpandedWithApprovalsPeeks() {
+        var m = PanelStateMachine()
+        m.handle(.hoverEnter)
+        m.handle(.approvalsChanged(count: 1))
+        XCTAssertEqual(m.mode, .expanded)
+        m.handle(.hoverExit)
+        XCTAssertEqual(m.mode, .peek(.approval))
+    }
 }

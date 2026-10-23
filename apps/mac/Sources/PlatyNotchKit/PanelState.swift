@@ -52,7 +52,12 @@ public struct PanelStateMachine: Sendable {
         case .click:
             mode = mode == .expanded ? settled : .expanded
         case .escape:
-            mode = idle
+            switch mode {
+            case .expanded: mode = settled
+            case .peek(.notice): mode = settled
+            case .peek(.approval): break  // stays until answered or expired
+            case .hidden, .compact: break
+            }
         case .notice:
             if isIdle { mode = .peek(.notice) }
         case .noticeTimeout:
