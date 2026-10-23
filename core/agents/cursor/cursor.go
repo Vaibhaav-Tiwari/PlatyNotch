@@ -137,9 +137,7 @@ func (Adapter) ParseCommon(event string, payload []byte) agents.Common {
 	}
 	switch event {
 	case "before-shell-execution", "after-shell-execution":
-		if c.Tool == "" {
-			c.Tool = "Shell"
-		}
+		c.Tool = "Shell" // whatever tool_name the payload claims
 		// The top-level command is what Cursor runs; prefer it.
 		if p.Command != "" {
 			c.ToolInput, _ = json.Marshal(map[string]string{"command": p.Command})

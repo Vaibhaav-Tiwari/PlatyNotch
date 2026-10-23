@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/url"
 	"path"
+	"strings"
 
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/policy"
 )
@@ -63,7 +64,8 @@ func keySet(ks ...string) map[string]bool {
 // and its kind. Bash gives its "command" (KindCommand); Write, Edit,
 // MultiEdit and Read their "file_path" and NotebookEdit its "notebook_path"
 // (KindPath); WebFetch its "url" (KindURL) when the URL is http(s), has no
-// userinfo and a clean path. The input must be a JSON object with only the
+// userinfo, backslash or encoded separator and a clean path; a path or URL
+// with leading or trailing whitespace is KindOther. The input must be a JSON object with only the
 // keys that tool kind expects (with an unexpected key the summary is the
 // whole compacted input, so a human sees every argument). Anything else (unknown and MCP tools,
 // unexpected keys, a missing field, string, non-object or invalid input) is
@@ -90,6 +92,11 @@ func SummarizeFull(tool string, input json.RawMessage) (string, SummaryKind) {
 					// Show every argument: the extra one may matter.
 					return compact(input), policy.KindOther
 				}
+				// Policy trims summaries before matching, but the agent does
+				// not: " /proj/a" is a relative path to Claude Code.
+				if kind != policy.KindCommand && strings.TrimSpace(s) != s {
+					kind = policy.KindOther
+				}
 				if kind == policy.KindURL && !cleanURL(s) {
 					kind = policy.KindOther
 				}
@@ -110,10 +117,20 @@ func onlyKeys(m map[string]any, allowed map[string]bool) bool {
 	return true
 }
 
-// cleanURL accepts http(s) URLs with a host, no userinfo and a canonical path.
+// cleanURL accepts http(s) URLs with a host, no userinfo and a canonical
+// path. A backslash anywhere is refused (WHATWG parsers, Claude Code's
+// included, read it as "/", so "/docs/..\x" escapes "/docs/"), and so are
+// percent-encoded '\', '/' and '.' in the path.
 func cleanURL(s string) bool {
+	if strings.Contains(s, `\`) {
+		return false
+	}
 	u, err := url.Parse(s)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.Host == "" || u.Opaque != "" {
+		return false
+	}
+	ep := strings.ToLower(u.EscapedPath())
+	if strings.Contains(ep, "%5c") || strings.Contains(ep, "%2f") || strings.Contains(ep, "%2e") {
 		return false
 	}
 	return u.Path == "" || path.Clean(u.Path) == u.Path

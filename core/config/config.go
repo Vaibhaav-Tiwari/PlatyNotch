@@ -54,6 +54,10 @@ type Policy struct {
 // Cursor shell commands. MCP tools, unknown tools, other agents and
 // unexpected inputs always go to a person (or a deny/ask rule).
 //
+// A path rule approves the whole call, including what is written: Write's
+// content, Edit's new_string, NotebookEdit's new_source. Allow file tools only
+// on paths you would let the agent write anything to.
+//
 // An "allow" rule never approves a compound command: it is skipped when the
 // summary contains any of ; && || | & ` $( > < or a newline, unless that
 // exact sequence also appears literally in Pattern. So "git status*" allows

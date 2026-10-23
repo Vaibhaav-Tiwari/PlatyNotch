@@ -1003,6 +1003,8 @@ func TestSummaryKindByAdapterAndEvent(t *testing.T) {
 		"claude Bash+extra key": claude("s3", "Bash", map[string]string{"command": "git status", "script": "rm -rf ~"}),
 		"claude url userinfo":   claude("s4", "WebFetch", map[string]string{"url": "https://u:p@x.dev/a"}),
 		"claude url dotdot":     claude("s5", "WebFetch", map[string]string{"url": "https://x.dev/a/../b"}),
+		"claude url backslash":  claude("s6", "WebFetch", map[string]string{"url": "https://x.dev/docs/\\..\\..\\private"}),
+		"claude padded path":    claude("s7", "Read", map[string]string{"file_path": " /proj/a"}),
 		"cursor shell mismatch": cursor("before-shell-execution", "c3", map[string]any{"command": "git status",
 			"tool_input": map[string]string{"command": "rm -rf ~"}}),
 	}

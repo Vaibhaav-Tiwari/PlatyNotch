@@ -246,3 +246,14 @@ func TestShellAllowRuleNotBypassed(t *testing.T) {
 		t.Fatalf("display %q", got)
 	}
 }
+
+// TestShellEventToolIsShell: a shell event's policy tool name is always
+// "Shell", whatever tool_name the payload claims.
+func TestShellEventToolIsShell(t *testing.T) {
+	for _, ev := range []string{"before-shell-execution", "after-shell-execution"} {
+		c := Adapter{}.ParseCommon(ev, []byte(`{"conversation_id":"c","tool_name":"Read","command":"/proj/a"}`))
+		if c.Tool != "Shell" {
+			t.Errorf("%s: tool %q", ev, c.Tool)
+		}
+	}
+}
