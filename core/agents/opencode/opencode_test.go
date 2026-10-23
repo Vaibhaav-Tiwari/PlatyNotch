@@ -109,10 +109,43 @@ func TestUninstallRemovesOnlyOurFile(t *testing.T) {
 }
 
 func TestPluginWiresEveryEvent(t *testing.T) {
-	for _, ev := range []string{"session-start", "user-prompt-submit", "active", "stop", "permission-blocked"} {
-		if !strings.Contains(pluginTemplate, `"`+ev+`"`) {
-			t.Errorf("template does not report %s", ev)
+	// Each opencode event handled by the plugin must call the expected hook.
+	cases := []struct{ marker, hook string }{
+		{`case "session.created"`, "session-start"},
+		{`case "message.updated"`, "session-start"},
+		{`reportUserPrompt(sessionID, msg.id, "")`, ""},
+		{`case "session.status"`, "stop"},
+		{`case "permission.asked"`, "permission-blocked"},
+		{`case "permission.replied"`, "active"},
+		{`"tool.execute.before"`, "active"},
+		{`"tool.execute.after"`, "active"},
+	}
+	for _, c := range cases {
+		i := strings.Index(pluginTemplate, c.marker)
+		if i < 0 {
+			t.Errorf("marker %q missing", c.marker)
+			continue
 		}
+		if c.hook == "" {
+			continue
+		}
+		rest := pluginTemplate[i+len(c.marker):]
+		// Only look up to the next handler so a neighbour cannot satisfy it.
+		end := len(rest)
+		for _, sep := range []string{"\n          }\n", `"tool.execute.`} {
+			if j := strings.Index(rest, sep); j >= 0 && j < end {
+				end = j
+			}
+		}
+		if !strings.Contains(rest[:end], `callHook("`+c.hook+`"`) {
+			t.Errorf("%s does not call hook %q", c.marker, c.hook)
+		}
+	}
+	if !strings.Contains(pluginTemplate, `callHook("user-prompt-submit"`) {
+		t.Error("user-prompt-submit never reported")
+	}
+	if !strings.Contains(pluginTemplate, `Bun.spawnSync([NOTCH_BIN, "hook", "opencode", hookName]`) {
+		t.Error("hook command shape changed or not synchronous")
 	}
 	if strings.Contains(pluginTemplate, "AO_") {
 		t.Error("AO-specific env left in template")

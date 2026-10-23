@@ -33,7 +33,7 @@
 import type { Plugin } from "@opencode-ai/plugin"
 
 const NOTCH_BIN: string = __NOTCH_BIN__
-const HOOK_TIMEOUT_MS = 3_000
+const HOOK_TIMEOUT_MS = 2_000
 
 export const platynotch: Plugin = async ({ directory }) => {
   const promptReports = new Map<string, boolean>()
@@ -43,19 +43,21 @@ export const platynotch: Plugin = async ({ directory }) => {
   const assistantMessages = new Set<string>()
   let lastAssistantText = ""
 
-  // Fire-and-forget: spawn without awaiting, swallow every failure.
+  // Synchronous on purpose (as in AO): spawnSync keeps events strictly in
+  // dispatch order (an async session-start could otherwise land after the
+  // prompt), and `opencode run` exits on the idle event, so an async stop
+  // would be killed before it is delivered. The hook never waits for a
+  // decision and the timeout is short, so this is cheap. Never throws.
   function callHook(hookName: string, payload: Record<string, unknown>) {
     try {
       const body = JSON.stringify({ ...payload, cwd: directory }) + "\n"
-      const proc = Bun.spawn([NOTCH_BIN, "hook", "opencode", hookName], {
+      Bun.spawnSync([NOTCH_BIN, "hook", "opencode", hookName], {
         cwd: directory,
-        stdin: new Blob([body]),
+        stdin: new TextEncoder().encode(body),
         stdout: "ignore",
         stderr: "ignore",
         timeout: HOOK_TIMEOUT_MS,
       })
-      proc.exited.catch(() => {})
-      proc.unref?.()
     } catch {
       // Missing binary or spawn failure: never propagate.
     }
