@@ -31,6 +31,13 @@ public enum CorePaths {
         home(env: env, userHome: userHome).appendingPathComponent("memory.db")
     }
 
+    /// The stable hook binary path written into agent configs (Go `paths.HookBinary`):
+    /// a symlink the app keeps pointed at its bundled `notch` (see `HookBinaryLink`).
+    public static func hookBinary(env: [String: String] = ProcessInfo.processInfo.environment,
+                                  userHome: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+        home(env: env, userHome: userHome).appendingPathComponent("bin/notch")
+    }
+
     /// `PLATYNOTCH_CORE_BIN`, else `name` next to the running executable
     /// (`Contents/MacOS/notch` in the bundle, `.build/debug/notch` under `swift run`).
     public static func coreBinary(name: String,

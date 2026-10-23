@@ -1,4 +1,5 @@
 import AppKit
+import os
 import PlatyNotchKit
 
 /// UserDefaults keys for panel settings (Settings › Appearance).
@@ -23,6 +24,7 @@ public enum NotchApp {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private static let log = Logger(subsystem: "dev.platynotch.app", category: "app")
     private let coreBinary: String
     private let plugins: [NotchPlugin]
     private let options: LaunchOptions
@@ -41,8 +43,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// On-screen text capture (runs only while memory is on) and the Memory tab's search.
     private lazy var capture = CaptureService(client: client)
     private lazy var memory = MemoryServices(client: client, capture: capture)
+    /// Sparkle, when this build has an update key; not started during smoke runs.
+    private lazy var updater = AppUpdater(start: !options.smoke && !options.smokeSettings)
     private lazy var settingsServices = SettingsServices(config: config, runner: runner, store: store,
-                                                         capture: capture, calendar: today.calendar)
+                                                         capture: capture, calendar: today.calendar,
+                                                         updater: updater)
     private lazy var settings = SettingsWindowController(services: settingsServices,
                                                          pluginSections: plugins.flatMap { $0.settingsSections() })
     private lazy var onboarding = OnboardingWindowController(services: settingsServices)
@@ -56,6 +61,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var defaultsObserver: NSObjectProtocol?
     private var appearance = AppearanceState.current
     private var signalSources: [DispatchSourceSignal] = []
+    /// What launch did to `<home>/bin/notch` (reported by smoke runs).
+    private var hookLink: HookBinaryLink.Outcome?
 
     init(coreBinary: String, plugins: [NotchPlugin], options: LaunchOptions) {
         self.coreBinary = coreBinary
@@ -75,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         handleTerminationSignals()
         TerminalFocus.startTracking()
+        repointHookBinary()
         if !options.externalCore {
             // Each launch gets the Keychain secrets config.json refers to, so the core
             // never runs /usr/bin/security (whose access prompt is not ours).
@@ -110,7 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { self?.appearanceMayHaveChanged() }
         }
 
-        menuBar = MenuBarController(capture: capture,
+        menuBar = MenuBarController(capture: capture, updater: updater,
                                     onOpen: { [weak self] in self?.openPanel() },
                                     onSettings: { [weak self] in self?.openSettings(section: nil) })
 
@@ -142,6 +150,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .plugin(let u): _ = plugins.first { $0.handle(url: u) }
             case nil: break
             }
+        }
+    }
+
+    /// Points `<home>/bin/notch` (what agent hooks call) at this bundle's `notch`, so hooks
+    /// follow the app when it is moved or updated. Only from an installed .app bundle.
+    private func repointHookBinary() {
+        let outcome = HookBinaryLink.ensureForApp(bundleURL: Bundle.main.bundleURL)
+        hookLink = outcome
+        switch outcome {
+        case .failed(let reason): Self.log.error("hook binary link: \(reason, privacy: .public)")
+        case .created, .repointed: Self.log.notice("hook binary link now points at this app")
+        default: break
         }
     }
 
@@ -277,7 +297,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             fflush(stdout)
             exit(1)
         }
-        print("SMOKE OK panels=\(controllers.count) mode=\(mode) menubar=\(menuBar != nil)")
+        print("SMOKE OK panels=\(controllers.count) mode=\(mode) menubar=\(menuBar != nil)"
+              + " updates=\(updater.isEnabled ? "on" : "off") hooklink=\(Self.describe(hookLink))")
         fflush(stdout)
         exit(0)
     }
@@ -327,8 +348,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             fflush(stdout)
             exit(1)
         }
-        print("SMOKE SETTINGS OK sections=\(sections) onboarding=\(pages) menubar=\(menuBar != nil)")
+        print("SMOKE SETTINGS OK sections=\(sections) onboarding=\(pages) menubar=\(menuBar != nil)"
+              + " updates=\(updater.isEnabled ? "on" : "off")")
         fflush(stdout)
         exit(0)
+    }
+
+    private static func describe(_ outcome: HookBinaryLink.Outcome?) -> String {
+        switch outcome {
+        case nil: return "none"
+        case .created: return "created"
+        case .repointed: return "repointed"
+        case .unchanged: return "unchanged"
+        case .keptRegularFile: return "kept-file"
+        case .skipped: return "skipped"
+        case .failed: return "failed"
+        }
     }
 }

@@ -3,18 +3,23 @@ import Observation
 import PlatyNotchKit
 
 /// The menu bar item: a template icon (placeholder until the Platy icon) with a dot
-/// while capture is running. Menu: Open PlatyNotch, Settings…, Pause/Resume capture, Quit.
+/// while capture is running. Menu: Open PlatyNotch, Settings…, Check for Updates… (or the
+/// GitHub Releases page when updates are off), Pause/Resume capture, Quit.
 @MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
     private let item: NSStatusItem
     private let capture: CaptureService?
     private let onOpen: () -> Void
     private let onSettings: () -> Void
+    private let updater: AppUpdater?
+    private let updatesItem = NSMenuItem(title: "Check for Updates…", action: nil, keyEquivalent: "")
     private let pauseItem = NSMenuItem(title: "Pause capture for 1 hour", action: nil, keyEquivalent: "")
     private var observing = false
 
-    init(capture: CaptureService?, onOpen: @escaping () -> Void, onSettings: @escaping () -> Void) {
+    init(capture: CaptureService?, updater: AppUpdater? = nil,
+         onOpen: @escaping () -> Void, onSettings: @escaping () -> Void) {
         self.capture = capture
+        self.updater = updater
         self.onOpen = onOpen
         self.onSettings = onSettings
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -32,6 +37,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         menu.delegate = self
         menu.addItem(withTitle: "Open PlatyNotch", action: #selector(open), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Settings…", action: #selector(settings), keyEquivalent: ",").target = self
+        if let updater {
+            updatesItem.title = updater.isEnabled ? "Check for Updates…" : "Download Updates from GitHub Releases…"
+            updatesItem.action = #selector(checkForUpdates)
+            updatesItem.target = self
+            menu.addItem(updatesItem)
+        }
         menu.addItem(.separator())
         pauseItem.action = #selector(togglePause)
         pauseItem.target = self
@@ -42,6 +53,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        if let updater, updater.isEnabled { updatesItem.isEnabled = updater.canCheckForUpdates }
         guard let capture else { pauseItem.isHidden = true; return }
         switch capture.status {
         case .paused(let until):
@@ -60,6 +72,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     @objc private func open() { onOpen() }
     @objc private func settings() { onSettings() }
+    @objc private func checkForUpdates() { updater?.checkForUpdates() }
     @objc private func quit() { NSApp.terminate(nil) }
 
     @objc private func togglePause() {

@@ -12,10 +12,13 @@ final class SettingsServices {
     let capture: CaptureService?
     let permissions: Permissions
     let agents: AgentsModel
+    let updater: AppUpdater
     var showOnboarding: () -> Void = {}
 
-    init(config: ConfigFileStore, runner: CoreRunner, store: AppStore, capture: CaptureService?, calendar: CalendarService) {
+    init(config: ConfigFileStore, runner: CoreRunner, store: AppStore, capture: CaptureService?, calendar: CalendarService,
+         updater: AppUpdater) {
         self.config = config
+        self.updater = updater
         self.runner = runner
         self.store = store
         self.capture = capture
@@ -86,6 +89,7 @@ final class SettingsModel {
         ("memory", "Memory", "brain"),
         ("permissions", "Permissions", "hand.raised"),
         ("appearance", "Appearance", "macwindow"),
+        ("about", "About", "info.circle"),
     ]
 
     var selection: String = "agents"
@@ -187,6 +191,7 @@ struct SettingsRootView: View {
         case "memory": MemorySection(services: services)
         case "permissions": PermissionsSection(services: services)
         case "appearance": AppearanceSection()
+        case "about": AboutSection(updater: services.updater)
         default:
             if let s = pluginSections.first(where: { $0.id == model.selection }) {
                 s.view

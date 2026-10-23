@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Info.plist for PlatyNotch.app. scripts/build-app.sh copies it into the bundle and sets
+  CFBundleShortVersionString / CFBundleVersion (scripts/version.sh) and SUPublicEDKey
+  (env SPARKLE_ED_PUBLIC_KEY; empty means Sparkle updates are off).
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>PlatyNotch</string>
+	<key>CFBundleExecutable</key>
+	<string>PlatyNotch</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>dev.platynotch.app</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>PlatyNotch</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>dev.platynotch.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>platynotch</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>15.0</string>
+	<key>LSUIElement</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Apache-2.0. See LICENSE and NOTICE.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>PlatyNotch asks your terminal app to bring an agent's tab to the front, and asks Spotify or Music what is playing.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>PlatyNotch shows your next meetings in the notch. Calendar data stays on your Mac.</string>
+	<key>SUFeedURL</key>
+	<string>https://vaibhaav-tiwari.github.io/PlatyNotch/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string></string>
+</dict>
+</plist>

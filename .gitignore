@@ -5,3 +5,4 @@
 .build/
 .worktrees/
 /apps/mac/Resources/mediaremote-adapter/
+/build/

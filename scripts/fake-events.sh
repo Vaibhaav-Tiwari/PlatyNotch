@@ -153,6 +153,7 @@ step "3/5 permission requests from fake-2 and fake-3 (three approvals, oldest fi
 start_session fake-2 "Fix the flaky test"
 permission fake-2 "git status"
 start_session fake-3 "Tidy the café exports"
+# shellcheck disable=SC2016  # a literal command line, shown as is
 LONG_CMD='cd "/tmp/données/日本語 フォルダ/café ☕" && \
   for f in *.csv; do
     printf "%s\n" "$f"
