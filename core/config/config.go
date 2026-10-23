@@ -74,6 +74,9 @@ type Provider struct {
 type Statusline struct {
 	// Previous is the user's own statusLine command, run after ours.
 	Previous string `json:"previous,omitempty"`
+	// PreviousRaw is the user's whole statusLine value as it was before
+	// install (padding and any other fields), restored verbatim on uninstall.
+	PreviousRaw json.RawMessage `json:"previous_raw,omitempty"`
 }
 
 // Default is the configuration used when no file exists.

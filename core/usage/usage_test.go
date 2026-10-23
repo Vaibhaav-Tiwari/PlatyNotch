@@ -159,7 +159,19 @@ func TestInstallRestoresPrevious(t *testing.T) {
 	_, user := env(t)
 	settings := filepath.Join(user, ".claude", "settings.json")
 	os.MkdirAll(filepath.Dir(settings), 0o755)
-	orig := `{"model":"opus","statusLine":{"type":"command","command":"~/bin/my-status.sh"},"env":{"A":"1"}}`
+	// 2-space canonical form, so a faithful restore is byte-identical.
+	orig := `{
+  "model": "opus",
+  "statusLine": {
+    "type": "command",
+    "command": "~/bin/my-status.sh",
+    "padding": 0
+  },
+  "env": {
+    "A": "1"
+  }
+}
+`
 	os.WriteFile(settings, []byte(orig), 0o644)
 	bin := "/Users/x/Library/Application Support/PlatyNotch/bin/notch"
 
@@ -179,29 +191,46 @@ func TestInstallRestoresPrevious(t *testing.T) {
 	if err := UninstallStatusline(); err != nil {
 		t.Fatal(err)
 	}
-	b, _ := os.ReadFile(settings)
-	var got, want any
-	json.Unmarshal(b, &got)
-	json.Unmarshal([]byte(orig), &want)
-	g, _ := json.Marshal(got)
-	w, _ := json.Marshal(want)
-	if string(g) != string(w) {
-		t.Fatalf("not restored:\n%s", b)
+	if b, _ := os.ReadFile(settings); string(b) != orig {
+		t.Fatalf("not restored byte-for-byte:\n%s", b)
 	}
 	cfg, _ = config.Load()
-	if cfg.Statusline.Previous != "" {
-		t.Fatal("previous not cleared")
+	if cfg.Statusline.Previous != "" || len(cfg.Statusline.PreviousRaw) != 0 {
+		t.Fatalf("previous not cleared: %+v", cfg.Statusline)
 	}
 }
 
 func TestInstallWithoutPreviousThenUninstallRemoves(t *testing.T) {
 	_, user := env(t)
 	settings := filepath.Join(user, ".claude", "settings.json")
+	os.MkdirAll(filepath.Dir(settings), 0o755)
+	orig := `{
+  "model": "opus",
+  "env": {
+    "A": "1"
+  }
+}
+`
+	os.WriteFile(settings, []byte(orig), 0o644)
 	if err := InstallStatusline("/x/notch"); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok, _ := hookjson.GetTopLevel(settings, "statusLine"); !ok {
 		t.Fatal("not installed")
+	}
+	if err := UninstallStatusline(); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(settings); string(b) != orig {
+		t.Fatalf("rest of file changed:\n%s", b)
+	}
+}
+
+func TestInstallWithoutSettingsThenUninstallRemoves(t *testing.T) {
+	_, user := env(t)
+	settings := filepath.Join(user, ".claude", "settings.json")
+	if err := InstallStatusline("/x/notch"); err != nil {
+		t.Fatal(err)
 	}
 	if err := UninstallStatusline(); err != nil {
 		t.Fatal(err)

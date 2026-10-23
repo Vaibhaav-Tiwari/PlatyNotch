@@ -36,8 +36,9 @@ type statusLineObj struct {
 }
 
 // InstallStatusline points Claude Code's statusLine at `notch statusline`,
-// remembering the user's own command in config.Statusline.Previous. If our
-// wrapper is already installed, Previous is left alone.
+// remembering the user's own statusLine: its command in
+// config.Statusline.Previous and the whole value in PreviousRaw. If our
+// wrapper is already installed, both are left alone.
 func InstallStatusline(hookBin string) error {
 	path := claudeSettings()
 	raw, ok, err := hookjson.GetTopLevel(path, statusLineKey)
@@ -46,12 +47,13 @@ func InstallStatusline(hookBin string) error {
 	}
 	if ok {
 		var cur statusLineObj
-		if json.Unmarshal(raw, &cur) == nil && cur.Command != "" && !hookjson.IsOursStatusline(cur.Command) {
+		if json.Unmarshal(raw, &cur) != nil || !hookjson.IsOursStatusline(cur.Command) {
 			cfg, err := config.Load()
 			if err != nil {
 				return err
 			}
 			cfg.Statusline.Previous = cur.Command
+			cfg.Statusline.PreviousRaw = append(json.RawMessage(nil), raw...)
 			if err := config.Save(cfg); err != nil {
 				return err
 			}
@@ -65,8 +67,8 @@ func InstallStatusline(hookBin string) error {
 	return err
 }
 
-// UninstallStatusline restores the user's previous statusLine (or removes ours
-// when there was none). A statusLine that is not ours is left untouched.
+// UninstallStatusline restores the user's previous statusLine verbatim (or
+// removes ours when there was none). A statusLine that is not ours is left untouched.
 func UninstallStatusline() error {
 	path := claudeSettings()
 	raw, ok, err := hookjson.GetTopLevel(path, statusLineKey)
@@ -81,7 +83,10 @@ func UninstallStatusline() error {
 		var cur statusLineObj
 		if json.Unmarshal(raw, &cur) == nil && hookjson.IsOursStatusline(cur.Command) {
 			var val json.RawMessage
-			if cfg.Statusline.Previous != "" {
+			switch {
+			case len(cfg.Statusline.PreviousRaw) > 0 && json.Valid(cfg.Statusline.PreviousRaw):
+				val = cfg.Statusline.PreviousRaw
+			case cfg.Statusline.Previous != "": // config written before PreviousRaw existed
 				if val, err = json.Marshal(statusLineObj{Type: "command", Command: cfg.Statusline.Previous}); err != nil {
 					return err
 				}
@@ -91,8 +96,8 @@ func UninstallStatusline() error {
 			}
 		}
 	}
-	if cfg.Statusline.Previous != "" {
-		cfg.Statusline.Previous = ""
+	if cfg.Statusline.Previous != "" || len(cfg.Statusline.PreviousRaw) > 0 {
+		cfg.Statusline.Previous, cfg.Statusline.PreviousRaw = "", nil
 		if err := config.Save(cfg); err != nil {
 			return fmt.Errorf("clear previous statusline: %w", err)
 		}
