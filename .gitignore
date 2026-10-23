@@ -3,3 +3,4 @@
 /core/notch
 *.test
 .build/
+.worktrees/
