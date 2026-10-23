@@ -37,7 +37,10 @@ type local struct{ rules []config.Rule }
 // Local returns a provider backed by config rules (Source "local").
 // Rules are tried in order; empty patterns and unknown actions are skipped,
 // and so is an allow rule when the summary contains a shell control sequence
-// the pattern does not contain literally (see config.Rule).
+// the pattern does not contain literally (see config.Rule), or when the
+// summary looks truncated (ends in TruncationMark). Callers pass the
+// untruncated summary (agents.SummarizeFull); the truncation check is a
+// defensive backstop.
 func Local(rules []config.Rule) Provider {
 	return local{rules: append([]config.Rule(nil), rules...)}
 }
@@ -46,6 +49,7 @@ func (local) Name() string { return "local" }
 
 func (l local) Evaluate(tool, summary string) (Verdict, bool) {
 	summary = strings.TrimSpace(summary)
+	truncated := strings.HasSuffix(summary, TruncationMark)
 	for _, r := range l.rules {
 		switch r.Action {
 		case "allow", "deny", "ask":
@@ -55,7 +59,7 @@ func (l local) Evaluate(tool, summary string) (Verdict, bool) {
 		if r.Pattern == "" || (r.Tool != "*" && r.Tool != tool) {
 			continue
 		}
-		if r.Action == "allow" && compoundBeyond(r.Pattern, summary) {
+		if r.Action == "allow" && (truncated || compoundBeyond(r.Pattern, summary)) {
 			continue
 		}
 		if Match(r.Pattern, summary) {
@@ -64,6 +68,10 @@ func (l local) Evaluate(tool, summary string) (Verdict, bool) {
 	}
 	return Verdict{}, false
 }
+
+// TruncationMark ends a summary that agents.Summarize cut short. What was cut
+// may hold a chained command, so no allow rule applies to such a summary.
+const TruncationMark = "…"
 
 // shellControl are sequences that chain, substitute or redirect commands.
 // "&" covers "&&" and backgrounding; "|" covers "||"; "\r" is treated like

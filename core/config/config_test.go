@@ -1,6 +1,8 @@
 package config
 
 import (
+	"encoding/json"
+	"flag"
 	"os"
 
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/paths"
@@ -77,5 +79,34 @@ func TestTimeoutClamped(t *testing.T) {
 		if cfg.Approvals.TimeoutSeconds != tc.want {
 			t.Errorf("timeout %d: got %d, want %d", tc.in, cfg.Approvals.TimeoutSeconds, tc.want)
 		}
+	}
+}
+
+var update = flag.Bool("update", false, "rewrite testdata/default.json")
+
+// TestDefaultConfigFixture keeps testdata/default.json (decoded by the Swift
+// app's ConfigFile tests) equal to Default(). Regenerate with
+// `go test ./config -run TestDefaultConfigFixture -update`.
+func TestDefaultConfigFixture(t *testing.T) {
+	want, err := json.MarshalIndent(Default(), "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = append(want, '\n')
+	p := filepath.Join("testdata", "default.json")
+	if *update {
+		if err := os.MkdirAll("testdata", 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, want, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatalf("%v (run with -update to create it)", err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("%s is stale; run go test ./config -run TestDefaultConfigFixture -update", p)
 	}
 }

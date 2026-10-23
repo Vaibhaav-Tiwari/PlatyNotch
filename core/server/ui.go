@@ -16,7 +16,8 @@ const (
 )
 
 // handleUI serves every non-hook message. Requests that may be slow (memory
-// search, extension requests) run on their own goroutine and reply by ID.
+// search, loop status, extension requests) run on their own goroutine
+// (goRequest) and reply by ID.
 func (s *Server) handleUI(ctx context.Context, c *conn, env protocol.Envelope) {
 	id := env.ID
 	switch env.Type {
@@ -67,7 +68,7 @@ func (s *Server) handleUI(ctx context.Context, c *conn, env protocol.Envelope) {
 			c.replyErr(id, memoryOff)
 			return
 		}
-		go func() {
+		s.goRequest(func() {
 			rctx, cancel := context.WithTimeout(ctx, requestTimeout)
 			defer cancel()
 			if err := s.mem.SetLoopStatus(rctx, ls); err != nil {
@@ -75,7 +76,7 @@ func (s *Server) handleUI(ctx context.Context, c *conn, env protocol.Envelope) {
 				return
 			}
 			c.reply(protocol.TypeLoopSetStatus, id, nil)
-		}()
+		})
 
 	case protocol.TypeMemorySearch:
 		var q protocol.MemorySearch
@@ -87,7 +88,7 @@ func (s *Server) handleUI(ctx context.Context, c *conn, env protocol.Envelope) {
 			c.replyErr(id, memoryOff)
 			return
 		}
-		go func() {
+		s.goRequest(func() {
 			rctx, cancel := context.WithTimeout(ctx, requestTimeout)
 			defer cancel()
 			hits, err := s.mem.Search(rctx, q)
@@ -99,7 +100,7 @@ func (s *Server) handleUI(ctx context.Context, c *conn, env protocol.Envelope) {
 				hits = []protocol.MemoryHit{}
 			}
 			c.reply(protocol.TypeMemoryResults, id, protocol.MemoryResults{Hits: hits})
-		}()
+		})
 
 	case protocol.TypeCaptureText:
 		if s.mem == nil {
@@ -139,7 +140,7 @@ func (s *Server) handleUI(ctx context.Context, c *conn, env protocol.Envelope) {
 			c.replyErr(id, "no extension handles "+m.Ext)
 			return
 		}
-		go func() {
+		s.goRequest(func() {
 			rctx, cancel := context.WithTimeout(ctx, requestTimeout)
 			defer cancel()
 			out, err := h.HandleRequest(rctx, m.Kind, m.Data)
@@ -153,11 +154,24 @@ func (s *Server) handleUI(ctx context.Context, c *conn, env protocol.Envelope) {
 				return
 			}
 			c.reply(protocol.TypeExtRequest, id, protocol.ExtMessage{Ext: m.Ext, Kind: m.Kind, Data: raw})
-		}()
+		})
 
 	default:
 		c.replyErr(id, "unknown message type "+env.Type)
 	}
+}
+
+// goRequest runs a slow request on its own goroutine tracked by the server's
+// WaitGroup, so Serve returns only after it finishes and the memory service
+// (closed by the caller after Serve) is never used by a straggler. It is
+// called from a connection goroutine, itself counted in wg, so the Add never
+// races Serve's Wait.
+func (s *Server) goRequest(f func()) {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		f()
+	}()
 }
 
 func (s *Server) requestHandler(name string) ext.RequestHandler {

