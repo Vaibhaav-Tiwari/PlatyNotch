@@ -11,7 +11,17 @@ public protocol Notifier: AnyObject {
     func requestAuthorization() async -> Bool
     /// Shows now when `date` is nil, else at `date` (also when the app is not running).
     func schedule(id: String, title: String, body: String, at date: Date?)
+    /// At a wall-clock time (`UNCalendarNotificationTrigger`; alarms), also when the app is
+    /// not running. The components are read in the user's current calendar and time zone.
+    func schedule(id: String, title: String, body: String, matching components: DateComponents)
     func cancel(id: String)
+}
+
+extension Notifier {
+    /// Notifiers without calendar triggers use the date the components name.
+    public func schedule(id: String, title: String, body: String, matching components: DateComponents) {
+        schedule(id: id, title: title, body: body, at: Calendar.current.date(from: components))
+    }
 }
 
 public enum Notifiers {
@@ -28,6 +38,7 @@ public final class NoopNotifier: Notifier {
     public var isAvailable: Bool { false }
     public func requestAuthorization() async -> Bool { false }
     public func schedule(id: String, title: String, body: String, at date: Date?) {}
+    public func schedule(id: String, title: String, body: String, matching components: DateComponents) {}
     public func cancel(id: String) {}
 }
 
@@ -44,24 +55,39 @@ final class SystemNotifier: NSObject, Notifier, UNUserNotificationCenterDelegate
 
     var isAvailable: Bool { true }
 
+    // Every call is guarded by `Permissions.canUseNotifications` (Notification Center
+    // traps without a bundle), although only a bundled app creates this notifier.
+
     func requestAuthorization() async -> Bool {
-        (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+        guard Permissions.canUseNotifications else { return false }
+        return (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
     }
 
     func schedule(id: String, title: String, body: String, at date: Date?) {
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        content.sound = .default
         var trigger: UNNotificationTrigger?
         if let date {
             let interval = date.timeIntervalSinceNow
             if interval > 0 { trigger = UNTimeIntervalNotificationTrigger(timeInterval: interval, repeats: false) }
         }
+        add(id: id, title: title, body: body, trigger: trigger)
+    }
+
+    func schedule(id: String, title: String, body: String, matching components: DateComponents) {
+        add(id: id, title: title, body: body,
+            trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false))
+    }
+
+    private func add(id: String, title: String, body: String, trigger: UNNotificationTrigger?) {
+        guard Permissions.canUseNotifications else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
         center.add(UNNotificationRequest(identifier: Self.prefix + id, content: content, trigger: trigger))
     }
 
     func cancel(id: String) {
+        guard Permissions.canUseNotifications else { return }
         center.removePendingNotificationRequests(withIdentifiers: [Self.prefix + id])
         center.removeDeliveredNotifications(withIdentifiers: [Self.prefix + id])
     }

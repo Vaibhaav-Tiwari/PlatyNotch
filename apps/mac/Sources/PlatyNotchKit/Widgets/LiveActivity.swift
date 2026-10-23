@@ -42,12 +42,15 @@ public struct LiveActivity: Identifiable, Equatable, Sendable {
     /// When set, the pill shows a live countdown to this date (m:ss) instead of `trailing`,
     /// updating once a second only while it is shown.
     public let countdownTo: Date?
+    /// When set (and `countdownTo` is not), the pill shows the time since this date
+    /// (m:ss, a running stopwatch), updating like `countdownTo`.
+    public let countUpFrom: Date?
     /// What VoiceOver says for it in the pill, e.g. "Music playing".
     public let accessibilityLabel: String?
 
     public init(id: String, widgetID: String, priority: Int, glyph: LiveGlyph, trailing: String? = nil,
                 tint: LiveTint = .neutral, expiresAt: Date? = nil, countdownTo: Date? = nil,
-                accessibilityLabel: String? = nil) {
+                countUpFrom: Date? = nil, accessibilityLabel: String? = nil) {
         self.id = id
         self.widgetID = widgetID
         self.priority = priority
@@ -56,6 +59,7 @@ public struct LiveActivity: Identifiable, Equatable, Sendable {
         self.tint = tint
         self.expiresAt = expiresAt
         self.countdownTo = countdownTo
+        self.countUpFrom = countUpFrom
         self.accessibilityLabel = accessibilityLabel
     }
 

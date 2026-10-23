@@ -176,8 +176,8 @@ final class WidgetRegistryTests: XCTestCase {
     func testBuiltInsHaveThePlanIDs() {
         let registry = WidgetRegistry(defaults: defaults())
         let today = TodayServices(client: CoreClient(socketPath: "/nonexistent"))
-        BuiltInWidgets.register(in: registry, store: AppStore(), today: today)
-        XCTAssertEqual(registry.orderedWidgets.map(\.id), ["music", "meeting", "focus", "loops"])
-        XCTAssertEqual(registry.visibleWidgets.count, 4)
+        BuiltInWidgets.register(in: registry, store: AppStore(), today: today, persist: false)
+        XCTAssertEqual(registry.orderedWidgets.map(\.id), ["music", "meeting", "focus", "loops", "time"])
+        XCTAssertEqual(registry.visibleWidgets.count, 5)
     }
 }

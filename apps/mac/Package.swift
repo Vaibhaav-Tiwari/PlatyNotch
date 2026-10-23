@@ -19,7 +19,11 @@ let package = Package(
             dependencies: [
                 "PlatyNotchKit",
                 .product(name: "Sparkle", package: "Sparkle"),
-            ]
+            ],
+            // Sounds (Resources/Sounds, made by scripts/make-sounds.py). Built as
+            // PlatyNotch_PlatyNotchUI.bundle; scripts/build-app.sh copies it into
+            // Contents/Resources. Read through `UIResources`, never `Bundle.module`.
+            resources: [.process("Resources")]
         ),
         .executableTarget(
             name: "PlatyNotch",

@@ -118,3 +118,49 @@ rules being checked are `PanelPrecedence` in `PlatyNotchKit/PanelState.swift`.
   ringing card) with the cursor resting on the pill: moving slightly on the pill opens
   the panel as usual. Release a drag elsewhere, then hover the notch without the button
   down: no drop zone.
+
+## Task 2: timers, stopwatch, alarms, world clocks
+
+Automated: `TimeTests` (parser, countdown, alarms incl. weekday repeats and DST, clocks,
+laps, persistence, relaunch, backups) and `TimeWidgetTests` (backups through a fake
+notifier, ringing, Stop from the menu bar, relaunch, focus sessions). `--smoke` prints
+`sounds=2` when both bundled sounds are found. Time state lives in `UserDefaults.standard`
+under `time.v1`: reset with `defaults delete PlatyNotch time.v1` (`swift run`) or
+`defaults delete dev.platynotch.app time.v1` (bundled app). Checks 23–25 and 31 need the
+bundled app (`scripts/build-app.sh`), since notifications need a bundle.
+
+- [ ] **21. Quick add.** Today › Time › Timers: type `10`, `1h30`, `90s`, `25:00` (Return
+  or Start): each starts a timer with that length; `abc` or `25h` shows the hint and adds
+  nothing. Several run at once; the pill shows the soonest one's `m:ss`. Pomodoro starts a
+  25-minute timer; when it ends a 5-minute "Break" starts by itself.
+- [ ] **22. A timer finishes in the app.** With a `1m` timer: at zero the ringing card grows
+  out of the notch (pulsing ring, "Stop", no Snooze) and the chime loops. After about 30 s
+  the card goes by itself and the pill shows a "Done" check for 10 minutes; the tile says
+  Done. No system banner appears as well (the backup is cancelled before it fires).
+- [ ] **23. Quit with a timer running (review focus).** Bundled app: start a `2m` timer,
+  quit PlatyNotch from the menu bar. About two minutes later a "2 min timer is done" system
+  notification shows. Relaunch: the timer shows Done, nothing rings, and no second banner
+  appears. Repeat with a restart of the Mac instead of quitting (the notification shows
+  after login if the time passed while off, or on time if the Mac is up).
+- [ ] **24. Quit with an alarm set.** Bundled app: add an alarm two minutes ahead (no
+  weekdays), quit. At that minute (+3 s) a system notification shows. Relaunch: the alarm
+  is switched off (a once alarm) and nothing rings. A weekday alarm stays on.
+- [ ] **25. Alarm rings until stopped.** An alarm going off with the app running: ringing
+  card with Snooze and Stop, alarm sound loops for at most 60 s, the card stays until
+  Stop or Snooze. Snooze: it rings again 9 minutes later (the tile shows `zzz`).
+  The menu bar's "Stop <label>" and the header chip (panel open) also stop it and the sound.
+- [ ] **26. Focus.** Start a focus session, then let a timer finish: no card, no sound, the
+  pill and tile show Done. An alarm during the session still rings.
+- [ ] **27. Stopwatch.** Start: the pill shows the stopwatch glyph counting up (`m:ss`).
+  Lap records laps (newest first, five shown); Stop, then Reset clears. Relaunch while it
+  runs: it keeps counting from where it was.
+- [ ] **28. World clocks.** Clocks: type `tok`, pick Tokyo; type `kolk`, pick Kolkata. Late
+  evening in Europe/India, Tokyo shows "+1 day" and a moon; a daytime city shows a sun.
+- [ ] **29. Permission only on use.** Fresh install (`tccutil reset All dev.platynotch.app`
+  and delete `time.notificationsAsked`): launching and turning the Time widget off and on
+  ask nothing; the first timer or alarm you add shows the notification prompt, once.
+- [ ] **30. Disabled mid-ring.** While an alarm rings, turn Time off in Settings › Widgets:
+  the sound stops at once and no ringing card or chip is left behind.
+- [ ] **31. Packaged sounds.** `scripts/build-app.sh` ends without error (it checks the
+  sounds in `Contents/Resources/PlatyNotch_PlatyNotchUI.bundle` and verifies its
+  signature); the alarm and chime are audible in the bundled app (not the system "Glass").

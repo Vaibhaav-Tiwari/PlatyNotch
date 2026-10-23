@@ -111,7 +111,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         watchConfig()
         wireSettingsEntryPoints()
-        BuiltInWidgets.register(in: widgets, store: store, today: today)
+        BuiltInWidgets.register(in: widgets, store: store, today: today,
+                                persist: !options.smoke && !options.smokeSettings)
         startPlugins()
         startWidgets()
 
@@ -323,6 +324,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             failure = "surfaces: \(problem)"
         }
         if failure == nil { buildSurfaceViews() }
+        let sounds = TimeSound.allCases.filter { $0.url != nil }.count
+        if failure == nil, sounds != TimeSound.allCases.count {
+            failure = "bundled sounds missing (\(UIResources.bundleName))"
+        }
         widgets.stopAll()
         await client.stop()
         supervisor?.stop()
@@ -333,7 +338,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         print("SMOKE OK panels=\(controllers.count) mode=\(mode) menubar=\(menuBar != nil)"
               + " updates=\(updater.isEnabled ? "on" : "off") hooklink=\(Self.describe(hookLink))"
-              + " widgets=\(built.count) surfaces=ok")
+              + " widgets=\(built.count) surfaces=ok sounds=\(sounds)")
         fflush(stdout)
         exit(0)
     }
@@ -359,7 +364,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func buildSurfaceViews() {
         let views: [AnyView] = HUDKind.allCases.map { AnyView(HUDBar(state: HUDState(kind: $0, level: 0.5, until: Date()))) }
             + [AnyView(HUDIndicator(state: HUDState(kind: .volume, level: 0.5, until: Date()))),
-               AnyView(DropZonePlaceholder()), AnyView(RingingFallback(id: "smoke", onStop: {}))]
+               AnyView(DropZonePlaceholder()), AnyView(RingingFallback(id: "smoke", onStop: {})),
+               AnyView(RingingOverlay(title: "Alarm", subtitle: "Alarm · 7:00", isAlarm: true, onSnooze: {}, onStop: {}))]
         for v in views {
             NSHostingView(rootView: v.frame(width: 380).environment(\.colorScheme, .dark)).layoutSubtreeIfNeeded()
         }

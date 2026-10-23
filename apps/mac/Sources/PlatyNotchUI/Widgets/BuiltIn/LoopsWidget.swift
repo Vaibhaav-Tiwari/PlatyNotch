@@ -32,13 +32,15 @@ private struct LoopsTile: View {
     }
 }
 
-/// The four Plan 3 Today features as widgets, in their old order.
+/// The Plan 3 Today features as widgets, in their old order, then Plan 3b's.
+/// `persist: false` (smoke runs) reads saved widget state but never writes it.
 @MainActor
 enum BuiltInWidgets {
-    static func register(in registry: WidgetRegistry, store: AppStore, today: TodayServices) {
+    static func register(in registry: WidgetRegistry, store: AppStore, today: TodayServices, persist: Bool = true) {
         registry.register(MusicWidget(nowPlaying: today.nowPlaying))
         registry.register(MeetingWidget(calendar: today.calendar))
         registry.register(FocusWidget(focus: today.focus))
         registry.register(LoopsWidget(store: store, actions: today.loops))
+        registry.register(TimeWidget(persist: persist))
     }
 }

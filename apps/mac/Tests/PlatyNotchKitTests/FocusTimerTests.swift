@@ -58,6 +58,24 @@ final class FocusTimerTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(FocusTimer.self, from: data), timer)
     }
 
+    /// Sessions saved by Plan 3 (before FocusTimer wrapped CountdownTimer) still load.
+    func testDecodesPlan3Format() throws {
+        let since = t0.timeIntervalSinceReferenceDate
+        let running = Data(#"{"duration":1500,"elapsedBefore":300,"runningSince":\#(since),"phase":"running"}"#.utf8)
+        let r = try JSONDecoder().decode(FocusTimer.self, from: running)
+        XCTAssertEqual(r.phase, .running)
+        XCTAssertEqual(r.remaining(at: t0 + 60), 1500 - 300 - 60)
+        XCTAssertEqual(r.endsAt, t0 + 1200)
+        let paused = Data(#"{"duration":1500,"elapsedBefore":300,"phase":"paused"}"#.utf8)
+        let p = try JSONDecoder().decode(FocusTimer.self, from: paused)
+        XCTAssertEqual(p.phase, .paused)
+        XCTAssertEqual(p.remaining(at: t0), 1200)
+        let idle = Data(#"{"duration":3000,"elapsedBefore":0,"phase":"idle"}"#.utf8)
+        let i = try JSONDecoder().decode(FocusTimer.self, from: idle)
+        XCTAssertEqual(i.phase, .idle)
+        XCTAssertEqual(i.minutes, 50)
+    }
+
     func testPresets() {
         XCTAssertEqual(FocusTimer.presets, [25, 50, 90])
         XCTAssertEqual(FocusTimer(minutes: 0).duration, 60)   // at least a minute
