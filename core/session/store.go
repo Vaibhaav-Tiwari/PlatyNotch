@@ -180,6 +180,17 @@ func firstNonEmpty(v ...string) string {
 	return ""
 }
 
+// Get returns one session by key.
+func (s *Store) Get(key string) (protocol.Session, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sess, ok := s.s[key]
+	if !ok {
+		return protocol.Session{}, false
+	}
+	return *sess, true
+}
+
 // Resolve marks a blocked session active again after its approval was answered.
 func (s *Store) Resolve(key string) (protocol.Session, bool) {
 	s.mu.Lock()

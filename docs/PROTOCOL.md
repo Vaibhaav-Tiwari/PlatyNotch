@@ -38,7 +38,7 @@ The first message on every connection is `hello`. Roles: `hook`, `ui`,
 | `subscribe` | ui → core | none; core replies with `snapshot`, then streams updates |
 | `snapshot` | core → ui | `Snapshot` |
 | `session.updated` | core → ui | `Session` |
-| `session.removed` | core → ui | `Session` (or its key) |
+| `session.removed` | core → ui | `SessionRemoved` |
 | `approval.added` | core → ui | `Approval` |
 | `approval.resolved` | core → ui | `ApprovalResolved` |
 | `approval.decide` | ui → core | `ApprovalDecide` |
@@ -65,6 +65,7 @@ Session states: `active`, `idle`, `waiting_input`, `blocked`, `exited`.
 - `HookAck`: `wait`, `approval_id?`, `timeout_ms?`
 - `HookDecision`: `behavior`, `message?`, `source?` (`notch`, `phone`, `policy`, `slack`, ...)
 - `Session`: `key` (agent:session id), `agent`, `agent_name`, `session_id`, `cwd?`, `project?`, `state`, `title?`, `tool?`, `message?`, `pid?`, `tty?`, `term_program?`, `subagents?`, `started_at`, `updated_at`
+- `SessionRemoved`: `key`
 - `Approval`: `id`, `session_key`, `agent`, `agent_name`, `project?`, `cwd?`, `tool`, `summary` (exact command or path, never paraphrased), `input?`, `created_at`, `expires_at`
 - `ApprovalDecide`: `id`, `behavior`, `message?`, `source?`
 - `ApprovalResolved`: `id`, `behavior`, `source?`
@@ -81,3 +82,31 @@ Session states: `active`, `idle`, `waiting_input`, `blocked`, `exited`.
 - `Notice`: `kind` (`session-done|session-failed|approval-timeout|info`), `title`, `body?`, `session_key?`
 - `Snapshot`: `sessions`, `approvals`, `usage`, `loops`, `memory`, `edition` (`free|pro`)
 - `ExtMessage`: `ext` (extension id), `kind` (extension-defined), `data?` (extension-defined). The core routes by `ext` and never interprets `kind` or `data`.
+
+## Server behavior
+
+- The socket is created with mode `0600`; on macOS the core also rejects peers
+  whose uid (`LOCAL_PEERCRED`) differs from its own. A leftover socket is
+  replaced only when nothing answers on it; otherwise `notch serve` exits with
+  "already running".
+- A hook connection carries exactly one `hook.event`. The core always replies
+  `hook.ack` (same `id`). With `wait: true` it then sends one `hook.decision`
+  (same `id`) and closes the connection. Closing the hook connection while
+  waiting expires the approval (`approval.resolved` with behavior `none`).
+- Approvals reach deciders only when the event wants a decision, the adapter
+  treats the event as a permission request and supports approvals, and
+  approvals are enabled for that agent. A policy `allow`/`deny` verdict
+  answers immediately (`source` is the policy's, e.g. `local`); `ask` or no
+  verdict shows the approval to deciders (subscribed `ui` clients and
+  extension deciders). With no decider the hook gets `wait: false`. When the
+  last decider disconnects, pending approvals expire.
+- `approval.decide` accepts behavior `allow` or `deny` only; anything else, an
+  unknown id or an already-resolved approval gets an `error` with the same `id`.
+- `memory.search` and `loop.set_status` reply `error` "memory is off" when
+  memory is disabled; `capture.text` is then dropped silently.
+- `config.reload` replies with a `notice` of kind `info` (same `id`) on success.
+- `ext.request` is answered with an `ext.request` envelope carrying the same
+  `id`, whose `ExtMessage.data` is the extension's result; an unknown
+  extension or a handler error yields `error` with the same `id`.
+- Each subscriber has a bounded outbound queue (256 messages); a client that
+  falls further behind is disconnected.

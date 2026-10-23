@@ -95,11 +95,13 @@ func TestGoldenFixtures(t *testing.T) {
 	}
 	decision := HookDecision{Behavior: BehaviorDeny, Message: "Blocked by policy", Source: "policy"}
 	ext := ExtMessage{Ext: "example-ext", Kind: "ping", Data: json.RawMessage(`{"n":1}`)}
+	removed := SessionRemoved{Key: "claude-code:abc123"}
 
 	fixtures := map[string]any{
 		"snapshot": snapshot, "session": session, "approval": approval,
 		"hook_event": hookEvent, "hook_decision": decision, "usage": usage,
 		"loop": loop, "memory_hit": hit, "ext_message": ext,
+		"session_removed": removed,
 	}
 	for name, v := range fixtures {
 		t.Run(name, func(t *testing.T) {

@@ -140,6 +140,11 @@ type Session struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+// SessionRemoved is the payload of session.removed.
+type SessionRemoved struct {
+	Key string `json:"key"`
+}
+
 // Approval is a pending permission request waiting for a human decision.
 type Approval struct {
 	ID         string          `json:"id"`

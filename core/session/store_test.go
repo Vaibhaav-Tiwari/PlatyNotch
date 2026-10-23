@@ -254,3 +254,16 @@ func TestListNewestFirst(t *testing.T) {
 		t.Fatalf("%+v", l)
 	}
 }
+
+func TestGet(t *testing.T) {
+	c := &clock{t: time.Unix(1000, 0)}
+	s := NewStore(c.now, func(int) bool { return false })
+	if _, ok := s.Get("fake:s1"); ok {
+		t.Fatal("Get on empty store reported a session")
+	}
+	s.Apply(ev("user-prompt-submit", 0, `{"sid":"s1"}`), fakeAdapter{})
+	got, ok := s.Get("fake:s1")
+	if !ok || got.State != protocol.StateActive || got.Key != "fake:s1" {
+		t.Fatalf("Get = %+v, %v", got, ok)
+	}
+}
