@@ -36,22 +36,27 @@ import (
 const (
 	agentID        = "cursor"
 	defaultDenyMsg = "Denied from PlatyNotch."
+	// permissionTimeout (seconds) gives the user time to answer in the notch.
+	permissionTimeout = 120
 )
 
 func init() { agents.Register(Adapter{}) }
 
 // managedEvents: Cursor's native camelCase event and its kebab-case hook
 // sub-command (AO cursorManagedHooks, minus failClosed).
-var managedEvents = []struct{ event, kebab string }{
-	{"sessionStart", "session-start"},
-	{"beforeSubmitPrompt", "user-prompt-submit"},
-	{"stop", "stop"},
-	{"beforeShellExecution", "before-shell-execution"},
-	{"beforeMCPExecution", "before-mcp-execution"},
-	{"afterShellExecution", "after-shell-execution"},
-	{"afterMCPExecution", "after-mcp-execution"},
-	{"postToolUse", "post-tool-use"},
-	{"postToolUseFailure", "post-tool-use-failure"},
+var managedEvents = []struct {
+	event, kebab string
+	timeout      int
+}{
+	{"sessionStart", "session-start", 0},
+	{"beforeSubmitPrompt", "user-prompt-submit", 0},
+	{"stop", "stop", 0},
+	{"beforeShellExecution", "before-shell-execution", permissionTimeout},
+	{"beforeMCPExecution", "before-mcp-execution", permissionTimeout},
+	{"afterShellExecution", "after-shell-execution", 0},
+	{"afterMCPExecution", "after-mcp-execution", 0},
+	{"postToolUse", "post-tool-use", 0},
+	{"postToolUseFailure", "post-tool-use-failure", 0},
 }
 
 // Adapter implements agents.Adapter for Cursor.
@@ -75,7 +80,7 @@ func (Adapter) ConfigPath() string {
 func (a Adapter) spec(hookBin string) hookjson.Spec {
 	s := hookjson.Spec{Path: a.ConfigPath(), Format: hookjson.FormatCursor}
 	for _, e := range managedEvents {
-		s.Entries = append(s.Entries, hookjson.Entry{Event: e.event, Command: hookjson.Command(hookBin, agentID, e.kebab)})
+		s.Entries = append(s.Entries, hookjson.Entry{Event: e.event, Command: hookjson.Command(hookBin, agentID, e.kebab), TimeoutSec: e.timeout})
 	}
 	return s
 }

@@ -42,8 +42,8 @@ func TestApprovals(t *testing.T) {
 	if a.IsPermissionEvent("stop") {
 		t.Fatal("stop is not a permission event")
 	}
-	if got := a.IsPermissionEvent("permission-request"); got != ("permission-request" != "") {
-		t.Fatalf("IsPermissionEvent(permission-request) = %v", got)
+	if !a.IsPermissionEvent("permission-request") {
+		t.Fatal("permission-request should be a permission event")
 	}
 }
 
@@ -114,11 +114,6 @@ func TestInstallUserLevel(t *testing.T) {
 
 func TestFormatDecisionNil(t *testing.T) {
 	a := Adapter{}
-	if false {
-		if b := a.FormatDecision("permission-request", protocol.HookDecision{Behavior: protocol.BehaviorAllow}); b != nil {
-			t.Fatalf("got %s", b)
-		}
-	}
 	if b := a.FormatDecision("stop", protocol.HookDecision{Behavior: protocol.BehaviorAllow}); b != nil {
 		t.Fatalf("non-permission event got %s", b)
 	}

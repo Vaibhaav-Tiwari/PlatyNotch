@@ -53,9 +53,12 @@ func (f Format) flat() bool { return f == FormatCursor }
 
 // Entry is one hook to install.
 type Entry struct {
-	Event      string
-	Matcher    *string
-	Command    string
+	Event   string
+	Matcher *string
+	Command string
+	// TimeoutSec is written verbatim to the agent's `timeout` field, in the
+	// agent's own unit: seconds for Claude/Codex/Cursor, milliseconds for
+	// Gemini/Qwen. 0 omits the field.
 	TimeoutSec int
 }
 

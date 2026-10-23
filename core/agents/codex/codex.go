@@ -57,7 +57,7 @@ func (Adapter) ConfigPath() string {
 func (a Adapter) spec(hookBin string) hookjson.Spec {
 	s := hookjson.Spec{Path: a.ConfigPath(), Format: hookjson.FormatCodex}
 	for _, e := range managedEvents {
-		ent := hookjson.Entry{Event: e.event, Command: hookjson.Command(hookBin, agentID, e.kebab), Matcher: e.matcher, TimeoutSec: e.timeoutSec}
+		ent := hookjson.Entry{Event: e.event, Command: hookjson.Command(hookBin, agentID, e.kebab), Matcher: e.matcher, TimeoutSec: e.timeout}
 		s.Entries = append(s.Entries, ent)
 	}
 	return s
@@ -119,7 +119,7 @@ var spawnMatcher = "^(spawn_agent|collaborationspawn_agent)$"
 var managedEvents = []struct {
 	event, kebab string
 	matcher      *string
-	timeoutSec   int
+	timeout      int
 }{
 	{"SessionStart", "session-start", nil, hookTimeoutSec},
 	{"UserPromptSubmit", "user-prompt-submit", nil, hookTimeoutSec},

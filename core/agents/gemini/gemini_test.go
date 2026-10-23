@@ -43,8 +43,10 @@ func TestApprovals(t *testing.T) {
 	if a.IsPermissionEvent("stop") {
 		t.Fatal("stop is not a permission event")
 	}
-	if got := a.IsPermissionEvent(""); got != ("" != "") {
-		t.Fatalf("IsPermissionEvent() = %v", got)
+	for _, ev := range []string{"notification", "after-tool", "permission-request"} {
+		if a.IsPermissionEvent(ev) {
+			t.Fatalf("%s should not be a permission event", ev)
+		}
 	}
 }
 
@@ -115,11 +117,6 @@ func TestInstallUserLevel(t *testing.T) {
 
 func TestFormatDecisionNil(t *testing.T) {
 	a := Adapter{}
-	if false {
-		if b := a.FormatDecision("", protocol.HookDecision{Behavior: protocol.BehaviorAllow}); b != nil {
-			t.Fatalf("got %s", b)
-		}
-	}
 	if b := a.FormatDecision("stop", protocol.HookDecision{Behavior: protocol.BehaviorAllow}); b != nil {
 		t.Fatalf("non-permission event got %s", b)
 	}
@@ -151,5 +148,17 @@ func TestParseCommon(t *testing.T) {
 	}
 	if string(c.ToolInput) != `{"command":"ls"}` {
 		t.Fatalf("input %s", c.ToolInput)
+	}
+}
+
+func TestTimeoutMillisecondsOnDisk(t *testing.T) {
+	t.Setenv("PLATYNOTCH_USER_HOME", t.TempDir())
+	a := Adapter{}
+	if _, err := a.InstallHooks("notch"); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(a.ConfigPath())
+	if n := strings.Count(string(data), `"timeout": 30000`); n != strings.Count(string(data), `"command": "`) || n == 0 {
+		t.Fatalf("every hook should carry timeout 30000 (ms), got %d:\n%s", n, data)
 	}
 }

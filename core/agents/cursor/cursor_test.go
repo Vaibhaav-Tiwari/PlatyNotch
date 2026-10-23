@@ -45,8 +45,8 @@ func TestApprovals(t *testing.T) {
 	if a.IsPermissionEvent("stop") {
 		t.Fatal("stop is not a permission event")
 	}
-	if got := a.IsPermissionEvent("before-shell-execution"); got != ("before-shell-execution" != "") {
-		t.Fatalf("IsPermissionEvent(before-shell-execution) = %v", got)
+	if !a.IsPermissionEvent("before-shell-execution") {
+		t.Fatal("before-shell-execution should be a permission event")
 	}
 }
 
@@ -117,11 +117,6 @@ func TestInstallUserLevel(t *testing.T) {
 
 func TestFormatDecisionNil(t *testing.T) {
 	a := Adapter{}
-	if false {
-		if b := a.FormatDecision("before-shell-execution", protocol.HookDecision{Behavior: protocol.BehaviorAllow}); b != nil {
-			t.Fatalf("got %s", b)
-		}
-	}
 	if b := a.FormatDecision("stop", protocol.HookDecision{Behavior: protocol.BehaviorAllow}); b != nil {
 		t.Fatalf("non-permission event got %s", b)
 	}
@@ -171,5 +166,38 @@ func TestPermissionEvents(t *testing.T) {
 	a := Adapter{}
 	if !a.IsPermissionEvent("before-mcp-execution") || a.IsPermissionEvent("after-shell-execution") {
 		t.Fatal("IsPermissionEvent")
+	}
+}
+
+func TestPermissionTimeoutOnDisk(t *testing.T) {
+	t.Setenv("PLATYNOTCH_USER_HOME", t.TempDir())
+	a := Adapter{}
+	if _, err := a.InstallHooks("notch"); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(a.ConfigPath())
+	var doc struct {
+		Hooks map[string][]struct {
+			Command string `json:"command"`
+			Timeout int    `json:"timeout"`
+		} `json:"hooks"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for ev, entries := range doc.Hooks {
+		for _, e := range entries {
+			perm := ev == "beforeShellExecution" || ev == "beforeMCPExecution"
+			if (e.Timeout == 120) != perm {
+				t.Errorf("%s timeout %d", ev, e.Timeout)
+			}
+			if e.Timeout == 120 {
+				n++
+			}
+		}
+	}
+	if n != 2 || strings.Count(string(data), `"timeout": 120`) != 2 {
+		t.Fatalf("want exactly 2 timeout 120 entries, got %d\n%s", n, data)
 	}
 }
