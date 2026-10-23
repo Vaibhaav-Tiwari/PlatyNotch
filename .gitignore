@@ -4,3 +4,4 @@
 *.test
 .build/
 .worktrees/
+/apps/mac/Resources/mediaremote-adapter/
