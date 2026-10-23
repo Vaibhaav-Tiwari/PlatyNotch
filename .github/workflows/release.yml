@@ -32,16 +32,16 @@ jobs:
     env:
       TAG: ${{ github.ref_name }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0   # tags and the commit count (CFBundleVersion)
           persist-credentials: false   # only the appcast step gets a token, for its push
 
-      - uses: maxim-lobanov/setup-xcode@v1
+      - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: latest-stable
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: core/go.mod
           cache-dependency-path: core/go.sum
@@ -170,6 +170,11 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
+          # Neither secret stays in the environment: make-appcast.sh and every other
+          # command run here inherit neither. The token lives on only in an unexported
+          # shell variable and reaches git alone (see gitauth).
+          token="$GITHUB_TOKEN"
+          unset GITHUB_TOKEN
           if [[ -z "$SPARKLE_ED_PRIVATE_KEY" ]]; then
             echo "Appcast: skipped (no SPARKLE_ED_PRIVATE_KEY secret)."
             exit 0
@@ -178,18 +183,31 @@ jobs:
           key="$RUNNER_TEMP/sparkle_ed_key"
           trap 'rm -f "$key"' EXIT
           printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$key"
+          unset SPARKLE_ED_PRIVATE_KEY
           pages="$RUNNER_TEMP/gh-pages"
-          # checkout ran with persist-credentials: false; authenticate this step's fetch and
-          # push with a header (masked by Actions, never on a command line or in a URL).
-          auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
+          # checkout ran with persist-credentials: false. Only the git calls that talk to
+          # GitHub get the token, as an http.extraheader passed through GIT_CONFIG_*
+          # environment variables on that one command: never in argv (ps), a URL or
+          # .git/config. Actions masks it in the log.
+          auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$token" | base64 | tr -d '\n')"
           echo "::add-mask::${auth#AUTHORIZATION: basic }"
-          gitauth() { git -c "http.https://github.com/.extraheader=$auth" "$@"; }
-          if gitauth fetch --depth 1 origin gh-pages 2>/dev/null; then
+          gitauth() {
+            GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
+              GIT_CONFIG_VALUE_0="$auth" git "$@"
+          }
+          # Exit 2 means no gh-pages branch yet; any other failure (auth, network) stops here.
+          found=0
+          gitauth ls-remote --exit-code --heads origin gh-pages > /dev/null || found=$?
+          if [[ "$found" -eq 0 ]]; then
+            gitauth fetch --depth 1 origin gh-pages
             git worktree add --detach "$pages" FETCH_HEAD
-          else
+          elif [[ "$found" -eq 2 ]]; then
             echo "No gh-pages branch yet; creating it."
             git worktree add --detach "$pages"
             git -C "$pages" switch --orphan "appcast-$TAG"
+          else
+            echo "::error::git ls-remote origin gh-pages failed (exit $found)"
+            exit "$found"
           fi
           touch "$pages/.nojekyll"
           scripts/make-appcast.sh --dmg "$DMG" --key-file "$key" --appcast "$pages/appcast.xml" \

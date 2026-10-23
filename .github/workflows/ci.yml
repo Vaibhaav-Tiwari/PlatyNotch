@@ -23,8 +23,8 @@ jobs:
       run:
         working-directory: core
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: core/go.mod
           cache-dependency-path: core/go.sum
@@ -37,8 +37,8 @@ jobs:
     name: Mac app (macos-15)
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v5
-      - uses: maxim-lobanov/setup-xcode@v1
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: latest-stable
       - name: swift test
@@ -53,6 +53,6 @@ jobs:
     name: shellcheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: shellcheck scripts
         run: shellcheck scripts/*.sh scripts/tests/*.sh
