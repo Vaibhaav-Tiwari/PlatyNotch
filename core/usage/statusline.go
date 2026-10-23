@@ -19,6 +19,7 @@ package usage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -27,6 +28,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/platynotch/platynotch/core/config"
@@ -37,7 +39,10 @@ import (
 // now is the package clock; tests replace it.
 var now = time.Now
 
-const previousTimeout = 2 * time.Second
+const (
+	previousTimeout = 2 * time.Second
+	maxPreviousOut  = 64 << 10
+)
 
 // percentKeys are tried in order. Fractions (0-1) are only scaled for the keys
 // that are ambiguous by nature; used_percentage/used_percent are already percent.
@@ -169,21 +174,49 @@ func RunStatusline(stdin io.Reader, stdout io.Writer, cfg config.Config) int {
 	return 0
 }
 
+// runPrevious runs the user's own statusLine command with our stdin, keeping
+// at most maxPreviousOut bytes of its stdout. A command that exits but leaves
+// a background child holding stdout (exec.ErrWaitDelay) still counts when it
+// printed something.
 func runPrevious(command string, stdin []byte) (string, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), previousTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "/bin/sh", "-c", command)
 	cmd.Stdin = strings.NewReader(string(stdin))
-	var buf strings.Builder
-	cmd.Stdout = &buf // stderr stays nil: discarded
+	buf := &capWriter{max: maxPreviousOut}
+	cmd.Stdout = buf // stderr stays nil: discarded
 	cmd.WaitDelay = 200 * time.Millisecond
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Run(); err != nil && !errors.Is(err, exec.ErrWaitDelay) {
 		return "", false
 	}
-	if strings.TrimSpace(buf.String()) == "" {
+	out := buf.String()
+	if strings.TrimSpace(out) == "" {
 		return "", false
 	}
-	return buf.String(), true
+	return out, true
+}
+
+// capWriter keeps the first max bytes and silently discards the rest, so a
+// flooding command never blocks on a full pipe or grows memory.
+type capWriter struct {
+	mu  sync.Mutex
+	b   []byte
+	max int
+}
+
+func (w *capWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if room := w.max - len(w.b); room > 0 {
+		w.b = append(w.b, p[:min(room, len(p))]...)
+	}
+	return len(p), nil
+}
+
+func (w *capWriter) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return string(w.b)
 }
 
 func defaultLine(in []byte, l *protocol.Limits) string {

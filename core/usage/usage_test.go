@@ -327,3 +327,32 @@ func TestReadTail(t *testing.T) {
 		t.Fatalf("%+v %v", l, ok)
 	}
 }
+
+// A previous command that leaves a background child holding stdout still has
+// its output shown, promptly.
+func TestRunPreviousBackgroundChild(t *testing.T) {
+	start := time.Now()
+	out, ok := runPrevious("echo hi; sleep 5 &", nil)
+	if el := time.Since(start); el > 2500*time.Millisecond {
+		t.Fatalf("took %v", el)
+	}
+	if !ok || out != "hi\n" {
+		t.Fatalf("out=%q ok=%v", out, ok)
+	}
+}
+
+// Output is capped at 64 KB and a flood returns within the timeout.
+func TestRunPreviousCapped(t *testing.T) {
+	out, ok := runPrevious("head -c 200000 /dev/zero | tr '\\0' a", nil)
+	if !ok || len(out) != maxPreviousOut || strings.Trim(out, "a") != "" {
+		t.Fatalf("len=%d ok=%v", len(out), ok)
+	}
+	start := time.Now()
+	out, _ = runPrevious("yes", nil)
+	if el := time.Since(start); el > 2500*time.Millisecond {
+		t.Fatalf("flood took %v", el)
+	}
+	if len(out) > maxPreviousOut {
+		t.Fatalf("flood output %d bytes", len(out))
+	}
+}
