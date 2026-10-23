@@ -13,6 +13,12 @@ final class PanelViewModel {
     var arming = ApprovalArming()
     /// Toggles expanded / collapsed (the state machine's `.click`).
     var onClick: () -> Void = {}
+    /// The current HUD (drawn as its own surface in `.peek(.hud)`).
+    var hud: HUDState?
+    /// A HUD drawn as a thin line inside the approval peek or the open panel.
+    var hudIndicator: HUDState?
+    /// Stops a ringing card that no running widget draws any more (fallback Stop button).
+    var onStopRinging: (String) -> Void = { _ in }
 }
 
 /// Places the mode's content inside the fixed-size panel window.
@@ -42,6 +48,9 @@ struct PanelRootView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .environment(\.colorScheme, .dark)
+        // Pill timelines (countdown, music bars) tick only while the panel is really shown,
+        // not while hidden or suppressed over full screen.
+        .environment(\.panelTicking, model.visible)
         .animation(.spring(duration: 0.25), value: model.mode)
         .animation(.easeOut(duration: 0.15), value: model.visible)
     }
@@ -65,6 +74,7 @@ struct PanelRootView: View {
             ApprovalPeek(store: store, responder: responder, arming: model.arming, onExpand: model.onClick,
                          onDecide: decide, onOpenTerminal: onOpenTerminal)
                 .padding(EdgeInsets(top: top, leading: 12, bottom: 10, trailing: 12))
+                .overlay(alignment: .bottom) { hudIndicator }
         case .peek(.notice):
             Group {
                 if let notice = store.notices.last { NoticeToast(notice: notice) } else { Color.clear }
@@ -79,6 +89,32 @@ struct PanelRootView: View {
                           selectedTab: Binding(get: { model.selectedTab }, set: { model.selectedTab = $0 }),
                           onCollapse: model.onClick, onDecide: decide, onOpenTerminal: onOpenTerminal)
                 .padding(EdgeInsets(top: top, leading: 12, bottom: 10, trailing: 12))
+                .overlay(alignment: .bottom) { hudIndicator }
+        case .peek(.widget(let id)):
+            // A widget's peek (nudge, plug-in, AirPods). Never takes keyboard focus.
+            (widgets.peekView(id: id) ?? AnyView(Color.clear))
+                .padding(EdgeInsets(top: top, leading: 14, bottom: 10, trailing: 14))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        case .peek(.ringing(let id)):
+            (widgets.peekView(id: id) ?? AnyView(RingingFallback(id: id, onStop: { model.onStopRinging(id) })))
+                .padding(EdgeInsets(top: top, leading: 14, bottom: 10, trailing: 14))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        case .peek(.hud(let kind)):
+            let state = model.hud ?? HUDState(kind: kind, level: 0, until: .distantPast)
+            (widgets.hudView(kind: kind, level: state.level) ?? AnyView(HUDBar(state: state)))
+                .padding(EdgeInsets(top: layout.hasNotch ? layout.anchor.height + 2 : 4, leading: 14,
+                                    bottom: 6, trailing: 14))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .allowsHitTesting(false)
+        case .peek(.drop):
+            (widgets.dropZoneView() ?? AnyView(DropZonePlaceholder()))
+                .padding(EdgeInsets(top: top, leading: 12, bottom: 10, trailing: 12))
+        }
+    }
+
+    @ViewBuilder private var hudIndicator: some View {
+        if let h = model.hudIndicator {
+            HUDIndicator(state: h).padding(.bottom, 3).allowsHitTesting(false)
         }
     }
 }

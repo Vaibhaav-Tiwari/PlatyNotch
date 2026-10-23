@@ -13,6 +13,18 @@ public struct PanelLayout: Equatable, Sendable {
     /// Height of a notice peek below the notch (or the menu bar).
     public static let noticeHeight: CGFloat = 64
     public static let expandedSize = CGSize(width: 560, height: 380)
+    /// Width of widget peeks and the ringing card.
+    public static let surfaceWidth: CGFloat = 380
+    /// A widget peek below the notch: icon, a line or two and one or two buttons (nudge, plug-in, AirPods).
+    public static let widgetPeekHeight: CGFloat = 92
+    /// A ringing alarm or timer: pulsing ring, label, Snooze and Stop.
+    public static let ringingHeight: CGFloat = 128
+    /// A slim level HUD that grows out of the pill.
+    public static let hudHeight: CGFloat = 34
+    /// The HUD is at least this wide (wider when the compact pill is).
+    public static let hudMinWidth: CGFloat = 300
+    /// How near the notch (or pill) a drag must come to open the drop zone.
+    public static let dragReach: CGFloat = 60
     /// Height of the top-edge strip that reveals a hidden panel on screens without a notch.
     public static let revealDepth: CGFloat = 3
 
@@ -35,6 +47,8 @@ public struct PanelLayout: Equatable, Sendable {
 
     /// The screen area panels may use: everything up to the anchor's top
     /// (the screen top on a notch, just below the menu bar otherwise).
+    public var usableFrame: CGRect { usable }
+
     private var usable: CGRect {
         CGRect(x: screenFrame.minX, y: screenFrame.minY,
                width: screenFrame.width, height: anchor.maxY - screenFrame.minY)
@@ -60,15 +74,40 @@ public struct PanelLayout: Equatable, Sendable {
             NotchGeometry.panelFrame(anchor: anchor, size: CGSize(width: Self.peekSize.width,
                                                                   height: (hasNotch ? anchor.height : 0) + Self.noticeHeight),
                                      screenFrame: usable)
-        case .expanded: NotchGeometry.panelFrame(anchor: anchor, size: Self.expandedSize, screenFrame: usable)
+        case .expanded, .peek(.drop):
+            NotchGeometry.panelFrame(anchor: anchor, size: Self.expandedSize, screenFrame: usable)
+        case .peek(.widget): below(width: Self.surfaceWidth, height: Self.widgetPeekHeight)
+        case .peek(.ringing): below(width: Self.surfaceWidth, height: Self.ringingHeight)
+        case .peek(.hud): below(width: max(Self.hudMinWidth, compactRect.width), height: Self.hudHeight)
         }
+    }
+
+    /// A surface `height` tall below the notch (its rect includes the notch) or below the pill.
+    private func below(width: CGFloat, height: CGFloat) -> CGRect {
+        NotchGeometry.panelFrame(anchor: anchor, size: CGSize(width: width, height: (hasNotch ? anchor.height : 0) + height),
+                                 screenFrame: usable)
     }
 
     /// Where the cursor counts as "on the panel" for `mode`.
     /// Hidden: the notch itself, or a strip at the screen's top edge above the pill.
+    /// A HUD is click-through except for the pill it grows from.
     public func hitRect(for mode: PanelMode) -> CGRect {
-        guard mode == .hidden else { return contentRect(for: mode) }
-        return hasNotch ? anchor : revealRect
+        switch mode {
+        case .hidden: hasNotch ? anchor : revealRect
+        case .peek(.hud): compactRect
+        default: contentRect(for: mode)
+        }
+    }
+
+    /// Where a drag counts as "near the notch": `dragReach` around the anchor.
+    public var dragZone: CGRect {
+        anchor.insetBy(dx: -Self.dragReach, dy: -Self.dragReach)
+    }
+
+    /// Whether a drag at `p` should show the drop zone: near the notch, or anywhere on
+    /// the drop zone once it is `showing`.
+    public func dragHover(_ p: CGPoint, showing: Bool) -> Bool {
+        Self.contains(dragZone, p) || (showing && Self.contains(contentRect(for: .peek(.drop)), p))
     }
 
     /// The top-edge strip above the compact content (reveals a hidden or full-screen-suppressed panel).
@@ -99,6 +138,12 @@ public struct PanelLayout: Equatable, Sendable {
     /// is on the hit rect. Depends only on the current cursor, never on earlier state.
     public static func ignoresMouse(visible: Bool, hitRect: CGRect, cursor: CGPoint) -> Bool {
         !(visible && contains(hitRect, cursor))
+    }
+
+    /// `ignoresMouse` for a mode: the drop zone takes the whole window while visible (C20).
+    public static func ignoresMouse(mode: PanelMode, visible: Bool, layout: PanelLayout, cursor: CGPoint) -> Bool {
+        if mode.acceptsDrops { return !visible }
+        return ignoresMouse(visible: visible, hitRect: layout.hitRect(for: mode), cursor: cursor)
     }
 
     /// AppKit global coordinates (bottom-left of the primary display) → Quartz (top-left).

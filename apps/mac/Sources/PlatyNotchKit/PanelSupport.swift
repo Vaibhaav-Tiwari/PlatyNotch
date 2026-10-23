@@ -7,6 +7,10 @@ extension PanelMode: CustomStringConvertible {
         case .compact: "compact"
         case .peek(.approval): "peek(approval)"
         case .peek(.notice): "peek(notice)"
+        case .peek(.widget(let id)): "peek(widget:\(id))"
+        case .peek(.hud(let kind)): "peek(hud:\(kind.rawValue))"
+        case .peek(.ringing(let id)): "peek(ringing:\(id))"
+        case .peek(.drop): "peek(drop)"
         case .expanded: "expanded"
         }
     }
@@ -14,8 +18,16 @@ extension PanelMode: CustomStringConvertible {
 
 extension PanelMode {
     /// The panel takes keyboard focus only when open for the user or showing an approval.
+    /// Widget peeks, HUDs, ringing and the drop zone never take focus (their buttons work
+    /// with a click on the non-activating panel).
     public var canBecomeKey: Bool {
         self == .expanded || self == .peek(.approval)
+    }
+
+    /// The drop zone: the whole window accepts mouse events (C20), so a drag gets its
+    /// first drag-enter without waiting for the cursor sample to catch up.
+    public var acceptsDrops: Bool {
+        self == .peek(.drop)
     }
 
     /// No shadow while hidden or compact (it would outline the notch).

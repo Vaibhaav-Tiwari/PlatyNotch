@@ -56,7 +56,7 @@ public final class NowPlaying {
         pollTask?.cancel()
         pollTask = nil
         source = .none
-        update(nil)   // a stopped reader shows nothing (and the pill drops the music bars)
+        apply(nil)   // a stopped reader shows nothing (and the pill drops the music bars)
     }
 
     /// The music tile reports when it is on screen; the AppleScript fallback polls every 2 s
@@ -106,7 +106,14 @@ public final class NowPlaying {
         }
     }
 
-    private func update(_ new: NowPlayingInfo?) {
+    /// Results from the adapter or a poll. Ignored once stopped: an adapter line or an
+    /// AppleScript poll still in flight at `stop` must not bring the music back.
+    func update(_ new: NowPlayingInfo?) {
+        guard started else { return }
+        apply(new)
+    }
+
+    private func apply(_ new: NowPlayingInfo?) {
         guard new != info else { return }
         if new?.artwork != info?.artwork {
             artwork = new?.artwork.flatMap { NSImage(data: $0) }

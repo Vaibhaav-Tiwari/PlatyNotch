@@ -1,29 +1,132 @@
+import Foundation
+
 public enum PanelMode: Equatable, Sendable {
     case hidden, compact, peek(PeekReason), expanded
 }
 
 public enum PeekReason: Equatable, Sendable {
     case approval, notice
+    /// A widget's short peek (wellbeing nudge, plug-in, AirPods); the id is the widget's own.
+    case widget(id: String)
+    /// A brief level HUD (volume, brightness, keyboard backlight).
+    case hud(HUDKind)
+    /// A ringing alarm or timer: sticky until the widget stops it.
+    case ringing(id: String)
+    /// The drop zone while a drag is near the notch.
+    case drop
+}
+
+public enum HUDKind: String, Equatable, Sendable, CaseIterable {
+    case volume, brightness, keyboardBacklight
+}
+
+/// A HUD on screen until `until`. `level` is 0…1.
+public struct HUDState: Equatable, Sendable {
+    public var kind: HUDKind
+    public var level: Double
+    public var until: Date
+
+    public init(kind: HUDKind, level: Double, until: Date) {
+        self.kind = kind
+        self.level = min(max(level, 0), 1)
+        self.until = until
+    }
+}
+
+/// A widget peek on screen until `until`.
+public struct WidgetPeek: Equatable, Sendable {
+    public var id: String
+    public var until: Date
+
+    public init(id: String, until: Date) {
+        self.id = id
+        self.until = until
+    }
 }
 
 public enum PanelEvent: Equatable, Sendable {
     case hoverEnter, hoverExit, click, escape
     case approvalsChanged(count: Int)
     case notice, noticeTimeout
+    /// Shows widget peek `id` until `until` (replaces any other widget peek).
+    case widgetPeek(id: String, until: Date)
+    /// The widget closes its peek early (no-op unless `id` is the current peek).
+    case widgetPeekEnded(id: String)
+    /// Shows (or updates and extends) the HUD.
+    case hud(HUDKind, level: Double, until: Date)
+    /// Ends HUDs and widget peeks whose `until` is at or before `now`.
+    case expire(now: Date)
+    case ringStarted(id: String), ringStopped(id: String)
+    /// The cursor carrying a drag came near the notch / left the drop zone or the drag ended.
+    case dragBegan, dragEnded
+}
+
+/// Everything the panel's mode is derived from (the inputs of `PanelPrecedence.resolve`).
+public struct PanelSurfaceState: Equatable, Sendable {
+    public var approvals = 0
+    /// The user opened the panel (hover, click, menu).
+    public var open = false
+    /// Ringing ids, oldest first.
+    public var ringing: [String] = []
+    public var dragging = false
+    public var hud: HUDState?
+    public var notice = false
+    public var widgetPeek: WidgetPeek?
+    public var fullScreen = false
+    /// `.hidden` or `.compact`: where the panel rests with nothing to show.
+    public var idle: PanelMode
+
+    public init(idle: PanelMode) { self.idle = idle }
+}
+
+/// The precedence between panel surfaces, highest first:
+///
+/// 1. A pending approval: the approval peek, or the open panel (which lists approvals on top).
+///    Nothing covers it; Escape never hides it.
+/// 2. Ringing (alarm, timer): beats the open panel, the drop zone, HUDs and peeks. Shows over full screen.
+/// 3. The drop zone while a drag is near the notch. Not shown while an approval is pending.
+/// 4. The open panel.
+/// 5. A HUD (dropped over full screen; a tiny indicator under an approval or the open panel).
+/// 6. An agent notice.
+/// 7. A widget peek such as a nudge (held, not shown, over full screen).
+/// 8. Idle: compact, or hidden in Minimal mode.
+public enum PanelPrecedence {
+    public static func resolve(_ s: PanelSurfaceState) -> PanelMode {
+        if s.approvals > 0 { return s.open ? .expanded : .peek(.approval) }
+        if let ring = s.ringing.first { return .peek(.ringing(id: ring)) }
+        if s.dragging { return .peek(.drop) }
+        if s.open { return .expanded }
+        if let hud = s.hud, !s.fullScreen { return .peek(.hud(hud.kind)) }
+        if s.notice { return .peek(.notice) }
+        if let peek = s.widgetPeek, !s.fullScreen { return .peek(.widget(id: peek.id)) }
+        return s.idle
+    }
+
+    /// A HUD that cannot show as its own surface because an approval peek or the open
+    /// panel is up is drawn as a thin level line inside it. Under ringing or the drop zone it is dropped.
+    public static func hudIndicator(_ s: PanelSurfaceState) -> HUDState? {
+        guard let hud = s.hud, !s.fullScreen else { return nil }
+        switch resolve(s) {
+        case .peek(.approval), .expanded: return hud
+        default: return nil
+        }
+    }
 }
 
 /// Pure state machine for the notch panel; no AppKit.
 public struct PanelStateMachine: Sendable {
     public var minimal: Bool {
-        didSet { if minimal != oldValue, isIdle { mode = idleMode(hasLive: hasLive) } }
+        didSet { if minimal != oldValue { refresh() } }
     }
     public private(set) var mode: PanelMode
     private var hasLive = false
-    private var approvalCount = 0
+    private var state: PanelSurfaceState
 
     public init(minimal: Bool = false) {
         self.minimal = minimal
-        self.mode = minimal ? .hidden : .compact
+        let idle: PanelMode = minimal ? .hidden : .compact
+        self.state = PanelSurfaceState(idle: idle)
+        self.mode = idle
     }
 
     /// `.hidden` when `minimal` and nothing is live (active/blocked session, music); else `.compact`.
@@ -33,40 +136,100 @@ public struct PanelStateMachine: Sendable {
 
     public mutating func setLive(_ hasLive: Bool) {
         self.hasLive = hasLive
-        if isIdle { mode = idleMode(hasLive: hasLive) }
+        refresh()
+    }
+
+    /// Over a full-screen app HUDs are dropped and widget peeks held (approvals and ringing still show).
+    public mutating func setFullScreen(_ fullScreen: Bool) {
+        state.fullScreen = fullScreen
+        if fullScreen { state.hud = nil }
+        refresh()
+    }
+
+    /// Ringing ids, oldest first (games pause while any rings).
+    public var ringing: [String] { state.ringing }
+    public var hud: HUDState? { state.hud }
+    public var widgetPeek: WidgetPeek? { state.widgetPeek }
+    public var isDragging: Bool { state.dragging }
+    /// See `PanelPrecedence.hudIndicator`.
+    public var hudIndicator: HUDState? { PanelPrecedence.hudIndicator(state) }
+    /// When the next HUD or widget peek ends (send `.expire` then).
+    public var nextExpiry: Date? {
+        [state.hud?.until, state.widgetPeek?.until].compactMap { $0 }.min()
     }
 
     public mutating func handle(_ e: PanelEvent) {
         switch e {
         case .approvalsChanged(let n):
-            approvalCount = max(n, 0)
-            if n > 0 {
-                if mode != .expanded { mode = .peek(.approval) }
-            } else if mode == .peek(.approval) {
-                mode = idle
-            }
+            state.approvals = max(n, 0)
+            if n > 0 { state.notice = false }   // a notice under an approval is dropped
         case .hoverEnter:
-            if isIdle { mode = .expanded }
+            if isIdle || mode.isHUD { open() }
         case .hoverExit:
-            if mode == .expanded { mode = settled }
+            state.open = false   // also when ringing covers the open panel
         case .click:
-            mode = mode == .expanded ? settled : .expanded
+            switch mode {
+            case .expanded: state.open = false
+            case .peek(.ringing), .peek(.drop): break   // never opens the panel behind them
+            default: open()
+            }
         case .escape:
             switch mode {
-            case .expanded: mode = settled
-            case .peek(.notice): mode = settled
+            case .expanded: state.open = false
+            case .peek(.notice): state.notice = false
+            case .peek(.hud): state.hud = nil
+            case .peek(.widget): state.widgetPeek = nil
             case .peek(.approval): break  // stays until answered or expired
+            case .peek(.ringing), .peek(.drop): break   // the widget / the drag ends them
             case .hidden, .compact: break
             }
         case .notice:
-            if isIdle { mode = .peek(.notice) }
+            // Shown unless something above a notice is up (else dropped, as before).
+            switch mode {
+            case .hidden, .compact, .peek(.hud), .peek(.widget), .peek(.notice): state.notice = true
+            default: break
+            }
         case .noticeTimeout:
-            if mode == .peek(.notice) { mode = settled }
+            state.notice = false
+        case .widgetPeek(let id, let until):
+            state.widgetPeek = WidgetPeek(id: id, until: until)
+        case .widgetPeekEnded(let id):
+            if state.widgetPeek?.id == id { state.widgetPeek = nil }
+        case .hud(let kind, let level, let until):
+            if !state.fullScreen { state.hud = HUDState(kind: kind, level: level, until: until) }
+        case .expire(let now):
+            if let h = state.hud, h.until <= now { state.hud = nil }
+            if let p = state.widgetPeek, p.until <= now { state.widgetPeek = nil }
+        case .ringStarted(let id):
+            if !state.ringing.contains(id) { state.ringing.append(id) }
+        case .ringStopped(let id):
+            state.ringing.removeAll { $0 == id }
+        case .dragBegan:
+            state.dragging = true
+        case .dragEnded:
+            state.dragging = false
         }
+        refresh()
     }
 
-    private var idle: PanelMode { idleMode(hasLive: hasLive) }
-    /// Where the panel rests after a transient state ends: pending approvals keep it peeking.
-    private var settled: PanelMode { approvalCount > 0 ? .peek(.approval) : idle }
+    /// Opening the panel consumes the notice and widget peek it covers; a HUD stays (as an indicator).
+    private mutating func open() {
+        state.open = true
+        state.notice = false
+        state.widgetPeek = nil
+    }
+
+    private mutating func refresh() {
+        state.idle = idleMode(hasLive: hasLive)
+        mode = PanelPrecedence.resolve(state)
+    }
+
     private var isIdle: Bool { mode == .hidden || mode == .compact }
+}
+
+extension PanelMode {
+    public var isHUD: Bool {
+        if case .peek(.hud) = self { return true }
+        return false
+    }
 }

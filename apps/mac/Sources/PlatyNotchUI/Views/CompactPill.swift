@@ -118,14 +118,20 @@ struct LiveGlyphView: View {
     }
 }
 
-/// The text after the glyph: a live m:ss countdown (once a second, only while shown) or `trailing`.
+/// The text after the glyph: a live m:ss countdown (once a second, only while the panel
+/// is really shown: not while hidden or suppressed over full screen) or `trailing`.
 private struct LiveTrailing: View {
     let activity: LiveActivity
+    @Environment(\.panelTicking) private var ticking
 
     var body: some View {
         if let end = activity.countdownTo {
-            TimelineView(.periodic(from: .now, by: 1)) { ctx in
-                label(TodayFormat.clock(end.timeIntervalSince(ctx.date)))
+            if ticking {
+                TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                    label(TodayFormat.clock(end.timeIntervalSince(ctx.date)))
+                }
+            } else {
+                label(TodayFormat.clock(end.timeIntervalSinceNow))
             }
         } else if let text = activity.trailing {
             label(text)

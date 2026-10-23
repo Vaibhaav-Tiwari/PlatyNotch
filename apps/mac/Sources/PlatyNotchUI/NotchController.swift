@@ -20,6 +20,7 @@ public final class NotchController {
     private let responder: ApprovalResponder
     private let today: TodayServices
     private let widgets: WidgetRegistry
+    private let surfaces: PanelSurfaces
     private let memory: MemoryServices
 
     private var machine: PanelStateMachine
@@ -37,6 +38,10 @@ public final class NotchController {
     private var deadlineTask: Task<Void, Never>?
     private var noticeTask: Task<Void, Never>?
     private var recheckTask: Task<Void, Never>?
+    private var expiryTask: Task<Void, Never>?
+    /// A drag session is in progress (`PanelSurfaces`): the cursor is polled and the drop
+    /// zone opens near the notch.
+    private var dragSession = false
     private var workspaceObservers: [NSObjectProtocol] = []
 
     /// `carryOver` restores the panel state of the controller this one replaces (display change).
@@ -48,6 +53,7 @@ public final class NotchController {
                 responder: ApprovalResponder? = nil,
                 today: TodayServices? = nil,
                 widgets: WidgetRegistry? = nil,
+                surfaces: PanelSurfaces? = nil,
                 memory: MemoryServices? = nil,
                 extraTabs: [PanelTab] = [],
                 onOpenTerminal: @escaping (Session) -> Void = { _ in },
@@ -61,6 +67,7 @@ public final class NotchController {
         self.responder = responder ?? ApprovalResponder(client: client)
         self.today = today ?? TodayServices(client: client)
         self.widgets = widgets ?? WidgetRegistry(persist: false)
+        self.surfaces = surfaces ?? PanelSurfaces(registry: self.widgets)
         self.memory = memory ?? MemoryServices(client: client)
         if let carryOver {
             machine = carryOver.machine
@@ -73,10 +80,14 @@ public final class NotchController {
         // An open panel must still close when the cursor is away after a rebuild.
         debouncer.reset(hovering: machine.mode == .expanded)
         model.onClick = { [weak self] in self?.handle(.click) }
+        model.onStopRinging = { [weak self] id in self?.surfaces.stopRinging(id: id) }
         tracker.onMove = { [weak self] _ in self?.sampleCursor() }
+        self.surfaces.attach(self)   // replays rings, a current peek / HUD and the drag session
     }
 
     public var mode: PanelMode { machine.mode }
+    /// A HUD drawn as a thin line inside the approval peek or open panel.
+    public var hudIndicator: HUDState? { machine.hudIndicator }
     /// State to hand to a replacement controller.
     public var carryOver: PanelCarryOver { PanelCarryOver(machine: machine, feed: feed) }
     /// The display this controller's panel is on.
@@ -124,10 +135,11 @@ public final class NotchController {
 
     /// Removes the panel and stops all monitoring.
     public func detach() {
+        surfaces.detach(self)
         tracker.stop()
         for o in workspaceObservers { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         workspaceObservers = []
-        for t in [deadlineTask, noticeTask, recheckTask] { t?.cancel() }
+        for t in [deadlineTask, noticeTask, recheckTask, expiryTask] { t?.cancel() }
         panel?.orderOut(nil)
         panel?.close()
         panel = nil
@@ -139,7 +151,8 @@ public final class NotchController {
     private func makePanel(frame: CGRect) -> NotchPanel {
         let p = NotchPanel(frame: frame)
         let host = NotchHostingView(rootView: PanelRootView(model: model, store: store, responder: responder,
-                                                            today: today, widgets: widgets, memory: memory, extraTabs: extraTabs, onOpenTerminal: onOpenTerminal))
+                                                            today: today, widgets: widgets, memory: memory,
+                                                            extraTabs: extraTabs, onOpenTerminal: onOpenTerminal))
         host.sizingOptions = []
         host.frame = CGRect(origin: .zero, size: frame.size)
         host.autoresizingMask = [.width, .height]
@@ -159,6 +172,8 @@ public final class NotchController {
         let visible = mode != .hidden && !suppressed
         model.mode = mode
         model.visible = visible
+        model.hud = machine.hud
+        model.hudIndicator = machine.hudIndicator
         noteVisibleApprovals(mode: mode, visible: visible)
         panel.hasShadow = mode.hasShadow && visible
         panel.allowsKey = mode.canBecomeKey
@@ -167,8 +182,8 @@ public final class NotchController {
             panel.orderOut(nil)
             panel.orderFrontRegardless()
         }
-        panel.ignoresMouseEvents = PanelLayout.ignoresMouse(visible: visible, hitRect: layout.hitRect(for: mode),
-                                                            cursor: cursor)
+        // The drop zone takes the whole window as soon as it shows (C20).
+        panel.ignoresMouseEvents = PanelLayout.ignoresMouse(mode: mode, visible: visible, layout: layout, cursor: cursor)
         updateEngaged()
     }
 
@@ -192,11 +207,26 @@ public final class NotchController {
     private func updateEngaged() {
         tracker.engaged = debouncer.isHovering || debouncer.deadline != nil
             || (fullScreen && !suppressed) || panel?.ignoresMouseEvents == false
+            || dragSession   // drag polling only while a drag is in progress
     }
 
     private func handle(_ event: PanelEvent) {
         machine.handle(event)
         apply()
+        scheduleExpiry()
+    }
+
+    /// Ends a HUD or widget peek at its `until`, even if nothing else happens.
+    private func scheduleExpiry() {
+        expiryTask?.cancel()
+        expiryTask = nil
+        guard let due = machine.nextExpiry else { return }
+        let delay = max(0, due.timeIntervalSinceNow) + 0.01
+        expiryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self else { return }
+            self.handle(.expire(now: Date()))
+        }
     }
 
     // MARK: - Hover
@@ -206,6 +236,7 @@ public final class NotchController {
         apply()
         let p = cursor
         guard let layout else { return }
+        if dragSession { dragMoved(to: p) }
         let inside: Bool
         if suppressed {
             inside = false
@@ -232,6 +263,16 @@ public final class NotchController {
             guard !Task.isCancelled else { return }
             self?.sampleCursor()
         }
+    }
+
+    // MARK: - Drag
+
+    /// While a drag session is active: the drop zone opens when the cursor comes within
+    /// `PanelLayout.dragReach` of the notch and closes when it leaves the drop zone.
+    func dragMoved(to p: CGPoint) {
+        guard dragSession, let layout else { return }
+        let near = layout.dragHover(p, showing: machine.isDragging)
+        if near != machine.isDragging { handle(near ? .dragBegan : .dragEnded) }
     }
 
     // MARK: - Store
@@ -320,7 +361,96 @@ public final class NotchController {
         }
         fullScreen = FullScreenPolicy.isFullScreen(windowBounds: bounds, displayBounds: display,
                                                    topInset: topInset, menuBarVisible: menuBarVisible)
+        machine.setFullScreen(fullScreen)
         apply()
+    }
+}
+
+// MARK: - Transient surfaces
+
+extension NotchController: PanelSurfaceSink {
+    public func receive(_ signal: PanelSurfaceSignal) {
+        switch signal {
+        case .peek(let id, let until): handle(.widgetPeek(id: id, until: until))
+        case .endPeek(let id): handle(.widgetPeekEnded(id: id))
+        case .ring(let id): handle(.ringStarted(id: id))
+        case .stopRinging(let id): handle(.ringStopped(id: id))
+        case .hud(let kind, let level, let until): handle(.hud(kind, level: level, until: until))
+        case .dragSession(let active):
+            dragSession = active
+            if active {
+                if panel != nil { sampleCursor() }
+            } else if machine.isDragging {
+                handle(.dragEnded)
+            }
+            updateEngaged()
+        }
+    }
+
+    public var showsHUD: Bool {
+        !suppressed && (machine.mode.isHUD || machine.hudIndicator != nil)
+    }
+
+    /// What tests and `--smoke` feed the controller directly.
+    enum DebugInput {
+        case event(PanelEvent)
+        case setFullScreen(Bool)
+        case layout(PanelLayout)
+    }
+
+    func debugHandle(_ input: DebugInput) {
+        switch input {
+        case .event(let e): handle(e)
+        case .setFullScreen(let on):
+            fullScreen = on
+            machine.setFullScreen(on)
+            apply()
+        case .layout(let l):
+            layout = l
+            model.layout = l
+        }
+    }
+
+    /// Drives the panel through every transient surface and the precedence pairs that
+    /// matter, then restores it. Returns the first failure, nil when all held.
+    /// Used by `--smoke` (on the real panel, for a moment) and by unit tests (no window).
+    func runSurfaceSmoke() -> String? {
+        let saved = machine
+        defer {
+            machine = saved
+            apply()
+            scheduleExpiry()
+        }
+        let until = Date().addingTimeInterval(30)
+        var step = machine
+        step.setFullScreen(false)
+        step.handle(.approvalsChanged(count: 0))
+        step.handle(.hoverExit)
+        step.handle(.noticeTimeout)
+        let checks: [(PanelEvent, PanelMode)] = [
+            (.widgetPeek(id: "smoke.peek", until: until), .peek(.widget(id: "smoke.peek"))),
+            (.hud(.volume, level: 0.5, until: until), .peek(.hud(.volume))),
+            (.ringStarted(id: "smoke.ring"), .peek(.ringing(id: "smoke.ring"))),
+            (.approvalsChanged(count: 1), .peek(.approval)),
+            (.escape, .peek(.approval)),
+            (.dragBegan, .peek(.approval)),
+            (.approvalsChanged(count: 0), .peek(.ringing(id: "smoke.ring"))),
+            (.ringStopped(id: "smoke.ring"), .peek(.drop)),
+            (.dragEnded, .peek(.hud(.volume))),
+            (.expire(now: until), .compact),   // .hidden in Minimal mode with nothing live
+        ]
+        for (event, expected) in checks {
+            step.handle(event)
+            machine = step
+            apply()
+            let ok = step.mode == expected || (expected == .compact && step.mode == .hidden && step.minimal)
+            if !ok { return "after \(event) mode \(step.mode), expected \(expected)" }
+            guard let layout else { continue }
+            if !layout.windowFrame.contains(layout.contentRect(for: step.mode)) {
+                return "\(step.mode) does not fit the window"
+            }
+        }
+        return nil
     }
 }
 

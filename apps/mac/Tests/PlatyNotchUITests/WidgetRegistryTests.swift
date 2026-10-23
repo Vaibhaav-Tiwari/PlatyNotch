@@ -28,8 +28,19 @@ private final class FakeWidget: NotchWidget {
 
 @MainActor
 final class WidgetRegistryTests: XCTestCase {
+    nonisolated(unsafe) private var suites: [String] = []
+
+    /// Each test's suites are removed so runs leave no plist behind.
+    override func tearDown() {
+        for name in suites { UserDefaults.standard.removePersistentDomain(forName: name) }
+        suites = []
+        super.tearDown()
+    }
+
     private func defaults() -> UserDefaults {
-        UserDefaults(suiteName: "WidgetRegistryTests-\(UUID().uuidString)")!
+        let name = "WidgetRegistryTests-\(UUID().uuidString)"
+        suites.append(name)
+        return UserDefaults(suiteName: name)!
     }
 
     private func context() -> WidgetContext {

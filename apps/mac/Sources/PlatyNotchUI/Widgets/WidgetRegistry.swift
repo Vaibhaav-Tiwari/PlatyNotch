@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import os
 import PlatyNotchKit
+import SwiftUI
 
 /// Every widget (built-in and plugin), the user's order and on/off choices, and which
 /// widgets are running. One instance, shared by every display's panel and Settings.
@@ -91,6 +92,22 @@ public final class WidgetRegistry {
     public var liveActivities: [LiveActivity] {
         visibleWidgets.filter { running.contains($0.id) }.flatMap(\.liveActivities)
     }
+
+    // MARK: - Surface views (first running widget that supplies one)
+
+    public func peekView(id: String) -> AnyView? {
+        runningWidgets.lazy.compactMap { $0.peekView(id: id) }.first
+    }
+
+    public func hudView(kind: HUDKind, level: Double) -> AnyView? {
+        runningWidgets.lazy.compactMap { $0.hudView(kind: kind, level: level) }.first
+    }
+
+    public func dropZoneView() -> AnyView? {
+        runningWidgets.lazy.compactMap { $0.dropZoneView() }.first
+    }
+
+    private var runningWidgets: [any NotchWidget] { widgets.filter { running.contains($0.id) } }
 
     private func start(_ w: any NotchWidget) {
         guard let context, !running.contains(w.id) else { return }

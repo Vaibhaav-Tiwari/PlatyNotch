@@ -45,6 +45,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var today = TodayServices(client: client)
     /// Built-in and plugin widgets. Smoke runs read the saved layout but never write it.
     private lazy var widgets = WidgetRegistry(persist: !options.smoke && !options.smokeSettings)
+    /// Widget peeks, ringing, HUDs and the drag session, shown on every display's panel.
+    private lazy var surfaces = PanelSurfaces(registry: widgets)
     /// On-screen text capture (runs only while memory is on) and the Memory tab's search.
     private lazy var capture = CaptureService(client: client)
     private lazy var memory = MemoryServices(client: client, capture: capture)
@@ -231,7 +233,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// activities such as music feed the pill from launch.
     private func startWidgets() {
         let context = WidgetContext(store: store, client: client, config: config, events: events,
-                                    defaults: .standard, notify: Notifiers.make(),
+                                    defaults: .standard, notify: Notifiers.make(), surfaces: surfaces,
                                     openPanel: { [weak self] in self?.openPanel(tab: $0) })
         widgets.start(context: context)
     }
@@ -288,7 +290,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controllers = screens.enumerated().map { index, screen in
             let state = screen.displayID.flatMap { carry[$0] } ?? (index == 0 ? fallback : nil)
             let c = NotchController(store: store, client: client, plugins: plugins, responder: responder,
-                                    today: today, widgets: widgets, memory: memory, extraTabs: pluginTabs,
+                                    today: today, widgets: widgets, surfaces: surfaces, memory: memory,
+                                    extraTabs: pluginTabs,
                                     onOpenTerminal: { TerminalFocus.focus(session: $0) },
                                     minimal: appearance.minimal,
                                     carryOver: state)
@@ -314,6 +317,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if failure == nil, built.failed.first != nil {
             failure = "widget \(built.failed[0]) did not build"
         }
+        // Every transient surface through the real controller (a moment on screen), and
+        // the built-in surface views laid out off screen.
+        if failure == nil, let c = controllers.first, let problem = c.runSurfaceSmoke() {
+            failure = "surfaces: \(problem)"
+        }
+        if failure == nil { buildSurfaceViews() }
         widgets.stopAll()
         await client.stop()
         supervisor?.stop()
@@ -324,7 +333,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         print("SMOKE OK panels=\(controllers.count) mode=\(mode) menubar=\(menuBar != nil)"
               + " updates=\(updater.isEnabled ? "on" : "off") hooklink=\(Self.describe(hookLink))"
-              + " widgets=\(built.count)")
+              + " widgets=\(built.count) surfaces=ok")
         fflush(stdout)
         exit(0)
     }
@@ -344,6 +353,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             count += 1
         }
         return (count, failed)
+    }
+
+    /// Lays out the built-in HUD, indicator, drop zone and ringing fallback off screen.
+    private func buildSurfaceViews() {
+        let views: [AnyView] = HUDKind.allCases.map { AnyView(HUDBar(state: HUDState(kind: $0, level: 0.5, until: Date()))) }
+            + [AnyView(HUDIndicator(state: HUDState(kind: .volume, level: 0.5, until: Date()))),
+               AnyView(DropZonePlaceholder()), AnyView(RingingFallback(id: "smoke", onStop: {}))]
+        for v in views {
+            NSHostingView(rootView: v.frame(width: 380).environment(\.colorScheme, .dark)).layoutSubtreeIfNeeded()
+        }
     }
 
     /// `--smoke-settings`: builds the Settings window (every section) and the onboarding

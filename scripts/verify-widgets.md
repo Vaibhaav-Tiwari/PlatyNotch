@@ -62,3 +62,46 @@ Note the Mac model and macOS version next to each tick.
   start time it goes away (within a second or so).
 - [ ] **10. VoiceOver.** On the compact pill VoiceOver reads the session count, then
   e.g. "Focus session running, Music playing".
+
+## Task 1b: transient surfaces (peeks, HUD, ringing, drop zone)
+
+No widget uses these surfaces yet (Tasks 2, 4, 5, 8 and 9 do), so most checks run once
+those land; until then `--smoke` drives every surface through the real panel for a moment
+(`surfaces=ok`) and `PanelSurfaceTests` / `PanelSurfacesTests` cover the precedence. The
+rules being checked are `PanelPrecedence` in `PlatyNotchKit/PanelState.swift`.
+
+- [ ] **11. Pill timelines stop while hidden.** Start a focus session (pill shows the
+  `m:ss` countdown) and play music. Open a full-screen app (e.g. a video in Safari, ⌃⌘F)
+  so the pill is suppressed. In Instruments › Time Profiler (or Activity Monitor › CPU)
+  PlatyNotch drops to idle: neither the 1 s countdown nor the 12 fps music bars render.
+  Move to the top edge: the pill reveals and both tick again.
+- [ ] **12. Reduce Motion stills the music bars.** System Settings › Accessibility › Display
+  › Reduce motion on: with music playing the pill and the Music tile show three still
+  bars. Off: they bounce again.
+- [ ] **13. Ringing (Task 2).** An alarm rings while the panel is compact: the ringing card
+  grows out of the notch and stays until Stop or Snooze. Escape does nothing to it and the
+  frontmost app keeps keyboard focus (type in it while it rings). With the panel open, the
+  ringing card replaces it; Stop returns to the open panel if the cursor is still on it.
+  Over a full-screen video it still shows.
+- [ ] **14. Approval beats ringing.** While an alarm rings, trigger an approval
+  (`fake-events.sh`): the approval peek replaces the ringing card (the sound keeps
+  playing); answer it and the ringing card comes back. Escape never hides the approval.
+- [ ] **15. HUD (Task 4).** Press volume up: a slim bar grows out of the notch for about
+  1.5 s, no keyboard focus is taken, and clicks just below the pill go to the app
+  underneath. With an approval peek showing, volume keys draw only a thin line at the
+  bottom of the approval card, which never moves. Over a full-screen app our HUD does not
+  show (the system HUD does).
+- [ ] **16. Drop zone (Task 5).** Drag a file from Finder towards the notch: within about
+  60 pt of it the panel opens into the drop zone before the cursor reaches it, and the
+  first hover over the zone already highlights it (the drop is accepted on the first try).
+  Drag away: it closes. Release elsewhere: it closes. With an approval pending, dragging to
+  the notch leaves the approval peek as it is (no drop zone) and its buttons still work
+  after the drag.
+- [ ] **17. Peeks (Tasks 8, 9).** A nudge or plug-in peek appears below the notch for its
+  time and goes away by itself; its buttons work with one click without activating
+  PlatyNotch; hovering it does not open the panel. During a full-screen app a nudge waits
+  and shows after leaving full screen if it has not expired. An agent notice shows on top
+  of a nudge and the nudge returns after it.
+- [ ] **18. Two displays.** With "Show on all displays" on, a ringing card shows on both
+  panels and Stop on one clears both. The drop zone opens only on the display whose notch
+  the drag approaches.

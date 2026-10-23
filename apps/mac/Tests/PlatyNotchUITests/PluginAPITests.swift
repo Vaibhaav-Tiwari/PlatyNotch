@@ -26,6 +26,20 @@ private final class RecordingPlugin: NotchPlugin {
 
 @MainActor
 final class PluginAPITests: XCTestCase {
+    nonisolated(unsafe) private var suites: [String] = []
+
+    override func tearDown() {
+        for name in suites { UserDefaults.standard.removePersistentDomain(forName: name) }
+        suites = []
+        super.tearDown()
+    }
+
+    private func defaults() -> UserDefaults {
+        let name = "PluginAPITests-\(UUID().uuidString)"
+        suites.append(name)
+        return UserDefaults(suiteName: name)!
+    }
+
     private func script(_ body: String) throws -> URL {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("pnplug\(UInt32.random(in: 0..<UInt32.max))")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -54,7 +68,7 @@ final class PluginAPITests: XCTestCase {
         let ctx = PluginContext(store: AppStore(), client: CoreClient(socketPath: "/nonexistent"),
                                 config: ConfigFileStore(url: bin.deletingLastPathComponent().appendingPathComponent("config.json")),
                                 events: hub, runner: CoreRunner(binaryURL: bin),
-                                widgets: WidgetRegistry(defaults: UserDefaults(suiteName: "PluginAPITests-\(UUID().uuidString)")!),
+                                widgets: WidgetRegistry(defaults: defaults()),
                                 openSettings: { _ in })
         let plugin = RecordingPlugin()
         plugin.start(context: ctx)
