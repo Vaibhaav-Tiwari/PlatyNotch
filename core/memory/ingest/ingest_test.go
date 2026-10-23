@@ -431,3 +431,31 @@ func TestRedactCardSeparators(t *testing.T) {
 		}
 	}
 }
+
+func TestPasswordManagersAlwaysExcluded(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	s, err := store.Open(filepath.Join(t.TempDir(), "m.db"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	// User-supplied list replaces the defaults; the floor must still hold.
+	cfg := config.Memory{ExcludeApps: []string{"com.tinyspeck.slackmacgap"}}
+	i := New(s, cfg, func() time.Time { return now })
+
+	for _, b := range []string{"com.1password.1password", "COM.1Password.1Password", "com.tinyspeck.slackmacgap"} {
+		c := capture(long)
+		c.AppBundle = b
+		if n, err := i.Ingest(c); err != nil || n != 0 {
+			t.Fatalf("%s: n=%d err=%v", b, n, err)
+		}
+	}
+	if th, v, ch, _, _ := s.Counts(); th+v+ch != 0 {
+		t.Fatal("stored excluded capture")
+	}
+	c := capture(long)
+	c.AppBundle = "com.apple.Notes"
+	if n, err := i.Ingest(c); err != nil || n == 0 {
+		t.Fatalf("Notes should be kept: n=%d err=%v", n, err)
+	}
+}

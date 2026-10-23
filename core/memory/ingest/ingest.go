@@ -35,13 +35,22 @@ func New(s *store.Store, cfg config.Memory, now func() time.Time) *Ingester {
 	return &Ingester{store: s, cfg: cfg, now: now}
 }
 
+func (i *Ingester) excluded(bundle string) bool {
+	for _, list := range [][]string{config.AlwaysExcludedApps, i.cfg.ExcludeApps} {
+		for _, a := range list {
+			if strings.EqualFold(a, bundle) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // Ingest stores one capture and returns how many new chunks it produced.
 // Excluded apps and captures under 40 chars are dropped (0, nil).
 func (i *Ingester) Ingest(c protocol.CaptureText) (int, error) {
-	for _, a := range i.cfg.ExcludeApps {
-		if a == c.AppBundle {
-			return 0, nil
-		}
+	if i.excluded(c.AppBundle) {
+		return 0, nil
 	}
 	text := c.Text
 	// Bound regex work, redact, and only then truncate, so a secret straddling

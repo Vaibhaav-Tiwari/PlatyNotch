@@ -122,15 +122,19 @@ func Default() Config {
 			Enabled:                false,
 			CaptureIntervalSeconds: 20,
 			RetentionDays:          90,
-			ExcludeApps: []string{
-				"com.1password.1password", "com.agilebits.onepassword7",
-				"com.apple.keychainaccess", "com.bitwarden.desktop",
-				"com.apple.Passwords", "com.lastpass.LastPass",
-			},
-			Embedder:  Provider{Name: "none"},
-			Extractor: Provider{Name: "none"},
+			ExcludeApps:            append([]string(nil), AlwaysExcludedApps...),
+			Embedder:               Provider{Name: "none"},
+			Extractor:              Provider{Name: "none"},
 		},
 	}
+}
+
+// AlwaysExcludedApps are password managers that are never captured, whatever
+// exclude_apps a client supplies (a user list replaces the defaults).
+var AlwaysExcludedApps = []string{
+	"com.1password.1password", "com.agilebits.onepassword7",
+	"com.apple.keychainaccess", "com.bitwarden.desktop",
+	"com.apple.Passwords", "com.lastpass.LastPass",
 }
 
 // DefaultRules deny a few commands nobody should approve by accident.
