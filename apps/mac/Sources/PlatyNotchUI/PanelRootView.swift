@@ -17,7 +17,9 @@ final class PanelViewModel {
     var hud: HUDState?
     /// A HUD drawn as a thin line inside the approval peek or the open panel.
     var hudIndicator: HUDState?
-    /// Stops a ringing card that no running widget draws any more (fallback Stop button).
+    /// Something ringing under an approval or the open panel: the header chip.
+    var ringingChip: RingingItem?
+    /// Stops a ringing alarm or timer (the chip; a card no running widget draws any more).
     var onStopRinging: (String) -> Void = { _ in }
 }
 
@@ -40,6 +42,7 @@ struct PanelRootView: View {
                 let r = PanelLayout.localRect(layout.contentRect(for: model.mode), in: layout.windowFrame)
                 content(layout)
                     .frame(width: r.width, height: r.height)
+                    .overlay(alignment: .topLeading) { chip(layout) }
                     .background(Theme.surface)
                     .clipShape(Theme.panelShape(hasNotch: layout.hasNotch))
                     .offset(x: r.minX, y: r.minY)
@@ -57,7 +60,8 @@ struct PanelRootView: View {
 
     @ViewBuilder private func content(_ layout: PanelLayout) -> some View {
         // Open content starts below the camera housing on a notch.
-        let top: CGFloat = layout.hasNotch ? layout.anchor.height + 4 : 10
+        // (below the header strip for the approval peek and open panel without a notch).
+        let top = layout.contentInset(for: model.mode)
         switch model.mode {
         case .hidden:
             Color.clear
@@ -109,6 +113,17 @@ struct PanelRootView: View {
         case .peek(.drop):
             (widgets.dropZoneView() ?? AnyView(DropZonePlaceholder()))
                 .padding(EdgeInsets(top: top, leading: 12, bottom: 10, trailing: 12))
+        }
+    }
+
+    /// The ringing chip at its fixed place (`PanelLayout.ringingChipRect`): beside the
+    /// camera or in the header strip, never over or moving an approval card.
+    @ViewBuilder private func chip(_ layout: PanelLayout) -> some View {
+        if let item = model.ringingChip, let rect = layout.ringingChipRect(for: model.mode) {
+            let content = layout.contentRect(for: model.mode)
+            RingingChip(item: item, onStop: { model.onStopRinging(item.id) })
+                .frame(width: rect.width, height: rect.height)
+                .offset(x: rect.minX - content.minX, y: content.maxY - rect.maxY)
         }
     }
 

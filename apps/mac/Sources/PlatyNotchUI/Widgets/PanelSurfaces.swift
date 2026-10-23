@@ -2,6 +2,17 @@ import Foundation
 import Observation
 import PlatyNotchKit
 
+/// Something ringing: the widget's id for it and the title for "Stop <title>".
+public struct RingingItem: Equatable, Sendable, Identifiable {
+    public let id: String
+    public let title: String
+
+    public init(id: String, title: String) {
+        self.id = id
+        self.title = title
+    }
+}
+
 /// What `PanelSurfaces` sends each display's panel.
 public enum PanelSurfaceSignal: Equatable, Sendable {
     case peek(id: String, until: Date)
@@ -30,8 +41,10 @@ public final class PanelSurfaces {
     /// How long a HUD stays after the last change.
     public static let hudDuration: TimeInterval = 1.5
 
+    /// What is ringing, oldest first (the menu bar's "Stop <title>" items, the chip).
+    public private(set) var rings: [RingingItem] = []
     /// Ringing ids, oldest first. Games pause while this is non-empty (Task 10).
-    public private(set) var ringing: [String] = []
+    public var ringing: [String] { rings.map(\.id) }
     /// True while a drag session is in progress.
     public private(set) var dragActive = false
 
@@ -44,6 +57,25 @@ public final class PanelSurfaces {
     /// `registry` supplies the views; peeks and rings without a view are refused.
     public init(registry: WidgetRegistry? = nil) {
         self.registry = registry
+        observeRegistry()
+    }
+
+    /// A widget turned off mid-peek or mid-ring takes its surface with it (no blank card).
+    private func observeRegistry() {
+        guard let registry else { return }
+        withObservationTracking {
+            _ = registry.running
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                self?.dropSurfacesWithoutViews()
+                self?.observeRegistry()
+            }
+        }
+    }
+
+    func dropSurfacesWithoutViews() {
+        if let p = currentPeek, !hasView(p.id) { endPeek(id: p.id) }
+        for r in rings where !hasView(r.id) { stopRinging(id: r.id) }
     }
 
     // MARK: - Panels
@@ -53,7 +85,7 @@ public final class PanelSurfaces {
         guard !sinks.contains(where: { $0.sink === sink }) else { return }
         sinks.append(WeakSink(sink: sink))
         let t = now()
-        for id in ringing { sink.receive(.ring(id: id)) }
+        for r in rings { sink.receive(.ring(id: r.id)) }
         if let p = currentPeek, p.until > t { sink.receive(.peek(id: p.id, until: p.until)) }
         if let h = currentHUD, h.until > t { sink.receive(.hud(h.kind, level: h.level, until: h.until)) }
         if dragActive { sink.receive(.dragSession(active: true)) }
@@ -81,17 +113,18 @@ public final class PanelSurfaces {
     }
 
     /// Starts a sticky ringing surface (alarm, timer) shown until `stopRinging(id:)`. The
-    /// view is the widget's `peekView(id:)`. False when no running widget supplies one.
+    /// view is the widget's `peekView(id:)`; `title` names it in "Stop <title>" (menu bar,
+    /// chip). False when no running widget supplies a view.
     @discardableResult
-    public func ring(id: String) -> Bool {
+    public func ring(id: String, title: String) -> Bool {
         guard hasView(id) else { return false }
-        if !ringing.contains(id) { ringing.append(id) }
+        if !rings.contains(where: { $0.id == id }) { rings.append(RingingItem(id: id, title: title)) }
         send(.ring(id: id))
         return true
     }
 
     public func stopRinging(id: String) {
-        ringing.removeAll { $0 == id }
+        rings.removeAll { $0.id == id }
         send(.stopRinging(id: id))
     }
 

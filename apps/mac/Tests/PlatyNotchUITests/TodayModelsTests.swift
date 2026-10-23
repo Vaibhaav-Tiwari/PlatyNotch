@@ -54,7 +54,9 @@ final class TodayModelsTests: XCTestCase {
     }
 
     func testFocusPersistsAndHoldsWhileRunning() {
-        let defaults = UserDefaults(suiteName: "FocusModelTests-\(UUID().uuidString)")!
+        let suite = "FocusModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { UserDefaults.standard.removePersistentDomain(forName: suite) }
         let now = Date()
         let focus = FocusModel(defaults: defaults)
         XCTAssertFalse(focus.focusActive)
@@ -74,7 +76,9 @@ final class TodayModelsTests: XCTestCase {
     }
 
     func testFinishedFocusIsNotActive() {
-        let defaults = UserDefaults(suiteName: "FocusModelTests-\(UUID().uuidString)")!
+        let suite = "FocusModelTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { UserDefaults.standard.removePersistentDomain(forName: suite) }
         var finished = 0
         let focus = FocusModel(defaults: defaults, onFinish: { finished += 1 })
         focus.start(minutes: 25, now: Date().addingTimeInterval(-26 * 60))   // already over

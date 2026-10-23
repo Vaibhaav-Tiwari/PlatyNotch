@@ -15,11 +15,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private let updatesItem = NSMenuItem(title: "Check for Updates…", action: nil, keyEquivalent: "")
     private let pauseItem = NSMenuItem(title: "Pause capture for 1 hour", action: nil, keyEquivalent: "")
     private var observing = false
+    private let surfaces: PanelSurfaces?
+    /// "Stop <title>" items at the top while anything rings, then a separator.
+    private var stopMenuItems: [NSMenuItem] = []
 
-    init(capture: CaptureService?, updater: AppUpdater? = nil,
+    init(capture: CaptureService?, updater: AppUpdater? = nil, surfaces: PanelSurfaces? = nil,
          onOpen: @escaping () -> Void, onSettings: @escaping () -> Void) {
         self.capture = capture
         self.updater = updater
+        self.surfaces = surfaces
         self.onOpen = onOpen
         self.onSettings = onSettings
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -27,6 +31,41 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         item.button?.setAccessibilityLabel("PlatyNotch")
         buildMenu()
         observeCapture()
+        observeRinging()
+    }
+
+    /// One "Stop <title>" item per ringing alarm or timer, oldest first.
+    static func stopItems(_ rings: [RingingItem]) -> [(title: String, id: String)] {
+        rings.map { ("Stop \($0.title)", $0.id) }
+    }
+
+    /// Keeps the Stop items in step with `PanelSurfaces.rings` (also while the menu is open).
+    private func observeRinging() {
+        guard let surfaces, let menu = item.menu else { return }
+        let rings = withObservationTracking {
+            surfaces.rings
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.observeRinging() }
+        }
+        for old in stopMenuItems { menu.removeItem(old) }
+        stopMenuItems = []
+        let items = Self.stopItems(rings)
+        guard !items.isEmpty else { return }
+        for (i, entry) in items.enumerated() {
+            let mi = NSMenuItem(title: entry.title, action: #selector(stopRinging(_:)), keyEquivalent: "")
+            mi.target = self
+            mi.representedObject = entry.id
+            menu.insertItem(mi, at: i)
+            stopMenuItems.append(mi)
+        }
+        let sep = NSMenuItem.separator()
+        menu.insertItem(sep, at: items.count)
+        stopMenuItems.append(sep)
+    }
+
+    @objc private func stopRinging(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        surfaces?.stopRinging(id: id)
     }
 
     /// Whether the icon currently shows the capture dot (for smoke checks).

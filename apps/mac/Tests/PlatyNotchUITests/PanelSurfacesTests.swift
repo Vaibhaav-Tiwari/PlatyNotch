@@ -78,7 +78,7 @@ final class PanelSurfacesTests: XCTestCase {
     func testPeekWithoutAViewIsRefused() {
         let r = rig()
         XCTAssertFalse(r.context.peek(id: "other.thing", until: Date().addingTimeInterval(60)))
-        XCTAssertFalse(r.context.ring(id: "other.alarm"))
+        XCTAssertFalse(r.context.ring(id: "other.alarm", title: "Other"))
         XCTAssertEqual(r.controller.mode, .compact)
     }
 
@@ -92,8 +92,9 @@ final class PanelSurfacesTests: XCTestCase {
 
     func testRingingSharedAndStopped() {
         let r = rig()
-        XCTAssertTrue(r.context.ring(id: "fake.alarm"))
+        XCTAssertTrue(r.context.ring(id: "fake.alarm", title: "Alarm 7:30"))
         XCTAssertEqual(r.controller.mode, .peek(.ringing(id: "fake.alarm")))
+        XCTAssertEqual(r.surfaces.rings, [RingingItem(id: "fake.alarm", title: "Alarm 7:30")])
         XCTAssertEqual(r.context.ringing, ["fake.alarm"])
         XCTAssertEqual(r.surfaces.ringing, ["fake.alarm"])
         r.context.stopRinging(id: "fake.alarm")
@@ -108,7 +109,7 @@ final class PanelSurfacesTests: XCTestCase {
         r.controller.debugHandle(.setFullScreen(true))
         XCTAssertFalse(r.context.showHUD(kind: .volume, level: 0.5), "over full screen the system HUD should show instead")
         r.controller.debugHandle(.setFullScreen(false))
-        r.context.ring(id: "fake.alarm")
+        r.context.ring(id: "fake.alarm", title: "Alarm 7:30")
         XCTAssertFalse(r.context.showHUD(kind: .volume, level: 0.5), "under the ringing card the HUD is dropped")
     }
 
@@ -120,13 +121,17 @@ final class PanelSurfacesTests: XCTestCase {
         XCTAssertEqual(r.controller.hudIndicator?.kind, .brightness)
     }
 
+    private var mbpLayout: PanelLayout {
+        PanelLayout(screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),
+                    visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 950),
+                    auxLeft: CGRect(x: 0, y: 950, width: 654, height: 32),
+                    auxRight: CGRect(x: 858, y: 950, width: 654, height: 32))
+    }
+
     func testDragSessionExpandsOnlyNearTheNotch() {
         let r = rig()
-        let layout = PanelLayout(screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),
-                                 visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 950),
-                                 auxLeft: CGRect(x: 0, y: 950, width: 654, height: 32),
-                                 auxRight: CGRect(x: 858, y: 950, width: 654, height: 32))
-        r.controller.debugHandle(.layout(layout))
+        r.controller.debugHandle(.layout(mbpLayout))
+        r.controller.mouseDown = { true }
         r.context.dragSession(active: true)
         r.controller.dragMoved(to: CGPoint(x: 100, y: 100))
         XCTAssertEqual(r.controller.mode, .compact, "a drag far from the notch changes nothing")
@@ -144,9 +149,78 @@ final class PanelSurfacesTests: XCTestCase {
         XCTAssertEqual(r.controller.mode, .compact, "no drag session: no drop zone")
     }
 
+    /// Fix round 1: a stuck drag session (mouse already up) never opens the drop zone on hover.
+    func testDragNeedsTheMouseButtonDown() {
+        let r = rig()
+        r.controller.debugHandle(.layout(mbpLayout))
+        var down = true
+        r.controller.mouseDown = { down }
+        r.context.dragSession(active: true)
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 940))
+        XCTAssertEqual(r.controller.mode, .peek(.drop))
+        down = false
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 940))
+        XCTAssertEqual(r.controller.mode, .compact, "button released: the drop zone closes")
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 960))
+        XCTAssertEqual(r.controller.mode, .compact, "hovering with the button up never opens it")
+    }
+
+    /// Fix round 1: turning a widget off mid-peek or mid-ring drops its surface.
+    func testDisablingAWidgetDropsItsPeekAndRing() async {
+        let r = rig()
+        r.context.peek(id: "fake.water", until: Date().addingTimeInterval(60))
+        r.context.ring(id: "fake.alarm", title: "Alarm")
+        r.registry.setEnabled("fake", false)
+        await Task.yield()
+        XCTAssertTrue(r.surfaces.ringing.isEmpty)
+        XCTAssertEqual(r.controller.mode, .compact, "no blank peek or ringing card")
+    }
+
+    /// Fix round 1: "Open PlatyNotch" works while ringing (header chip) and over the drop zone.
+    func testExpandWhileRingingShowsPanelWithChip() {
+        let r = rig()
+        r.context.ring(id: "fake.alarm", title: "Alarm 7:30")
+        r.controller.expand()
+        XCTAssertEqual(r.controller.mode, .expanded)
+        XCTAssertEqual(r.controller.ringingChip, RingingItem(id: "fake.alarm", title: "Alarm 7:30"))
+        r.context.stopRinging(id: "fake.alarm")
+        XCTAssertNil(r.controller.ringingChip)
+
+        r.controller.debugHandle(.layout(mbpLayout))
+        r.controller.mouseDown = { true }
+        r.controller.debugHandle(.event(.click))   // close
+        r.context.dragSession(active: true)
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 940))
+        XCTAssertEqual(r.controller.mode, .peek(.drop))
+        r.controller.expand()
+        XCTAssertEqual(r.controller.mode, .expanded)
+    }
+
+    /// Fix round 1: after a peek / ringing card / drop zone ends with the cursor on the
+    /// pill, hovering opens the panel (the debouncer does not think it is still hovering).
+    func testHoverOpensAfterANonOpeningSurfaceEnds() {
+        let r = rig()
+        r.context.peek(id: "fake.water", until: Date().addingTimeInterval(60))
+        r.controller.hoverSample(inside: true, at: 0)
+        r.controller.hoverSample(inside: true, at: 1)
+        XCTAssertEqual(r.controller.mode, .peek(.widget(id: "fake.water")), "hovering a peek does not open")
+        r.context.endPeek(id: "fake.water")
+        r.controller.hoverSample(inside: true, at: 2)
+        r.controller.hoverSample(inside: true, at: 3)
+        XCTAssertEqual(r.controller.mode, .expanded)
+    }
+
+    func testMenuStopItemsFollowRinging() {
+        XCTAssertTrue(MenuBarController.stopItems([]).isEmpty)
+        let items = MenuBarController.stopItems([RingingItem(id: "a", title: "Alarm 7:30"),
+                                                  RingingItem(id: "b", title: "Tea timer")])
+        XCTAssertEqual(items.map(\.title), ["Stop Alarm 7:30", "Stop Tea timer"])
+        XCTAssertEqual(items.map(\.id), ["a", "b"])
+    }
+
     func testNewControllerGetsRingingAndPeekReplayed() {
         let r = rig()
-        r.context.ring(id: "fake.alarm")
+        r.context.ring(id: "fake.alarm", title: "Alarm 7:30")
         let late = NotchController(store: AppStore(), client: CoreClient(socketPath: "/nonexistent"), plugins: [],
                                    widgets: r.registry, surfaces: r.surfaces, minimal: true)
         XCTAssertEqual(late.mode, .peek(.ringing(id: "fake.alarm")))
@@ -172,6 +246,7 @@ final class PanelSurfacesTests: XCTestCase {
             AnyView(HUDIndicator(state: HUDState(kind: .volume, level: 0.5, until: Date()))),
             AnyView(DropZonePlaceholder()),
             AnyView(RingingFallback(id: "x", onStop: {})),
+            AnyView(RingingChip(item: RingingItem(id: "x", title: "Alarm"), onStop: {})),
         ]
         for v in views {
             let host = NSHostingView(rootView: v.frame(width: 380).environment(\.colorScheme, .dark))

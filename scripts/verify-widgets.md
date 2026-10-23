@@ -80,12 +80,18 @@ rules being checked are `PanelPrecedence` in `PlatyNotchKit/PanelState.swift`.
   bars. Off: they bounce again.
 - [ ] **13. Ringing (Task 2).** An alarm rings while the panel is compact: the ringing card
   grows out of the notch and stays until Stop or Snooze. Escape does nothing to it and the
-  frontmost app keeps keyboard focus (type in it while it rings). With the panel open, the
-  ringing card replaces it; Stop returns to the open panel if the cursor is still on it.
-  Over a full-screen video it still shows.
-- [ ] **14. Approval beats ringing.** While an alarm rings, trigger an approval
-  (`fake-events.sh`): the approval peek replaces the ringing card (the sound keeps
-  playing); answer it and the ringing card comes back. Escape never hides the approval.
+  frontmost app keeps keyboard focus (type in it while it rings). Over a full-screen video
+  it still shows. With the panel open (or opened from the menu bar while it rings), the
+  panel stays open and a small amber "Stop" chip sits at the top right (beside the camera
+  on a notch, in the header strip otherwise); one click on it stops the alarm.
+- [ ] **14. Approval and ringing.** While an alarm rings, trigger an approval
+  (`fake-events.sh`): the approval peek shows, and the alarm stays stoppable without
+  answering: the amber "Stop" chip beside the camera (or in the header strip) stops it on
+  the first click, and the menu bar menu has "Stop <alarm title>" at the top. Clicking
+  Stop does not move the approval card, does not change the peek's height and does not
+  take the approval's keyboard shortcuts. Ring again, answer the approval instead: the
+  full ringing card comes back. Escape never hides the approval. With the panel open and
+  an approval listed, the same chip shows and the cards do not move when it appears or goes.
 - [ ] **15. HUD (Task 4).** Press volume up: a slim bar grows out of the notch for about
   1.5 s, no keyboard focus is taken, and clicks just below the pill go to the app
   underneath. With an approval peek showing, volume keys draw only a thin line at the
@@ -105,3 +111,10 @@ rules being checked are `PanelPrecedence` in `PlatyNotchKit/PanelState.swift`.
 - [ ] **18. Two displays.** With "Show on all displays" on, a ringing card shows on both
   panels and Stop on one clears both. The drop zone opens only on the display whose notch
   the drag approaches.
+- [ ] **19. Menu bar Stop.** While anything rings, the menu bar menu starts with one
+  "Stop <title>" item per alarm or timer, oldest first; choosing one stops that one.
+  When nothing rings the items are gone.
+- [ ] **20. After a peek, hover opens.** Let a nudge or plug-in peek end (or stop a
+  ringing card) with the cursor resting on the pill: moving slightly on the pill opens
+  the panel as usual. Release a drag elsewhere, then hover the notch without the button
+  down: no drop zone.

@@ -127,7 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { self?.appearanceMayHaveChanged() }
         }
 
-        menuBar = MenuBarController(capture: capture, updater: updater,
+        menuBar = MenuBarController(capture: capture, updater: updater, surfaces: surfaces,
                                     onOpen: { [weak self] in self?.openPanel(tab: nil) },
                                     onSettings: { [weak self] in self?.openSettings(section: nil) })
 

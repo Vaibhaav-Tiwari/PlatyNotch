@@ -23,6 +23,13 @@ public struct PanelLayout: Equatable, Sendable {
     public static let hudHeight: CGFloat = 34
     /// The HUD is at least this wide (wider when the compact pill is).
     public static let hudMinWidth: CGFloat = 300
+    /// Without a notch, the approval peek and the open panel start with a header strip
+    /// this tall (the ringing chip's place) instead of the usual 10 pt inset.
+    public static let headerStrip: CGFloat = 26
+    /// How much taller those two are without a notch, so card room is unchanged.
+    public static let headerStripExtra: CGFloat = headerStrip - 10
+    /// The ringing chip (bell + Stop).
+    public static let chipSize = CGSize(width: 84, height: 20)
     /// How near the notch (or pill) a drag must come to open the drop zone.
     public static let dragReach: CGFloat = 60
     /// Height of the top-edge strip that reveals a hidden panel on screens without a notch.
@@ -61,7 +68,7 @@ public struct PanelLayout: Equatable, Sendable {
     /// The fixed window frame: big enough for every mode's content.
     public var windowFrame: CGRect {
         let size = CGSize(width: max(Self.expandedSize.width, compactRect.width),
-                          height: max(Self.expandedSize.height, compactRect.height))
+                          height: max(expandedSize.height, compactRect.height))
         return NotchGeometry.panelFrame(anchor: anchor, size: size, screenFrame: usable)
     }
 
@@ -69,17 +76,64 @@ public struct PanelLayout: Equatable, Sendable {
     public func contentRect(for mode: PanelMode) -> CGRect {
         switch mode {
         case .hidden, .compact: compactRect
-        case .peek(.approval): NotchGeometry.panelFrame(anchor: anchor, size: Self.peekSize, screenFrame: usable)
+        case .peek(.approval):
+            NotchGeometry.panelFrame(anchor: anchor, size: CGSize(width: Self.peekSize.width,
+                                                                  height: Self.peekSize.height + stripExtra),
+                                     screenFrame: usable)
         case .peek(.notice):
             NotchGeometry.panelFrame(anchor: anchor, size: CGSize(width: Self.peekSize.width,
                                                                   height: (hasNotch ? anchor.height : 0) + Self.noticeHeight),
                                      screenFrame: usable)
         case .expanded, .peek(.drop):
-            NotchGeometry.panelFrame(anchor: anchor, size: Self.expandedSize, screenFrame: usable)
+            NotchGeometry.panelFrame(anchor: anchor, size: expandedSize, screenFrame: usable)
         case .peek(.widget): below(width: Self.surfaceWidth, height: Self.widgetPeekHeight)
         case .peek(.ringing): below(width: Self.surfaceWidth, height: Self.ringingHeight)
         case .peek(.hud): below(width: max(Self.hudMinWidth, compactRect.width), height: Self.hudHeight)
         }
+    }
+
+    private var stripExtra: CGFloat { hasNotch ? 0 : Self.headerStripExtra }
+    private var expandedSize: CGSize {
+        CGSize(width: Self.expandedSize.width, height: Self.expandedSize.height + stripExtra)
+    }
+
+    /// Inset from the content rect's top to where a mode's content starts: below the
+    /// camera housing on a notch; below the header strip for the approval peek and the
+    /// open panel without one; else 10 pt.
+    public func contentInset(for mode: PanelMode) -> CGFloat {
+        if hasNotch { return anchor.height + 4 }
+        switch mode {
+        case .peek(.approval), .expanded: return Self.headerStrip
+        default: return 10
+        }
+    }
+
+    /// Where the approval cards sit (the approval peek, the open panel's column).
+    public func approvalSlot(for mode: PanelMode) -> CGRect? {
+        switch mode {
+        case .peek(.approval), .expanded:
+            let c = contentRect(for: mode)
+            return CGRect(x: c.minX + 12, y: c.minY + 10, width: c.width - 24,
+                          height: c.height - 10 - contentInset(for: mode))
+        default: return nil
+        }
+    }
+
+    /// The ringing chip under an approval peek or the open panel: the right ear beside the
+    /// camera on a notch, else the right of the header strip. Never inside `approvalSlot`.
+    public func ringingChipRect(for mode: PanelMode) -> CGRect? {
+        switch mode {
+        case .peek(.approval), .expanded: break
+        default: return nil
+        }
+        let c = contentRect(for: mode)
+        let size = Self.chipSize
+        if hasNotch {
+            let left = anchor.maxX + 6, right = c.maxX - 10
+            let w = min(size.width, right - left)
+            return CGRect(x: right - w, y: anchor.midY - size.height / 2, width: w, height: size.height)
+        }
+        return CGRect(x: c.maxX - 10 - size.width, y: c.maxY - 3 - size.height, width: size.width, height: size.height)
     }
 
     /// A surface `height` tall below the notch (its rect includes the notch) or below the pill.

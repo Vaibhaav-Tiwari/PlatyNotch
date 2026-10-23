@@ -77,6 +77,32 @@ struct DropZonePlaceholder: View {
     }
 }
 
+/// Something ringing while an approval or the open panel is up: a bell and Stop, at a
+/// fixed place. Clicks work on the first click (`acceptsFirstMouse`); no keyboard
+/// shortcut, never focusable, so it cannot take an approval's keys.
+struct RingingChip: View {
+    let item: RingingItem
+    let onStop: () -> Void
+
+    var body: some View {
+        Button(action: onStop) {
+            HStack(spacing: 4) {
+                Image(systemName: "bell.and.waves.left.and.right.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("Stop").font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(.black)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.color(.attention), in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .help("Stop \(item.title)")
+        .accessibilityLabel("Stop \(item.title)")
+    }
+}
+
 /// A ringing card whose widget no longer draws it (turned off mid-ring): always stoppable.
 struct RingingFallback: View {
     let id: String

@@ -83,9 +83,13 @@ public struct PanelSurfaceState: Equatable, Sendable {
 ///
 /// 1. A pending approval: the approval peek, or the open panel (which lists approvals on top).
 ///    Nothing covers it; Escape never hides it.
-/// 2. Ringing (alarm, timer): beats the open panel, the drop zone, HUDs and peeks. Shows over full screen.
-/// 3. The drop zone while a drag is near the notch. Not shown while an approval is pending.
-/// 4. The open panel.
+/// 2. The open panel.
+/// 3. Ringing (alarm, timer): beats the drop zone, HUDs and peeks; shows over full screen.
+///    Under an approval or the open panel it is a fixed ringing chip with Stop in the
+///    header strip (`ringingChip`), so the alarm never pressures an answer and never
+///    moves an approval card.
+/// 4. The drop zone while a drag is near the notch. Never shown while an approval is
+///    pending; a drag near an open panel (no approval) replaces it.
 /// 5. A HUD (dropped over full screen; a tiny indicator under an approval or the open panel).
 /// 6. An agent notice.
 /// 7. A widget peek such as a nudge (held, not shown, over full screen).
@@ -93,13 +97,23 @@ public struct PanelSurfaceState: Equatable, Sendable {
 public enum PanelPrecedence {
     public static func resolve(_ s: PanelSurfaceState) -> PanelMode {
         if s.approvals > 0 { return s.open ? .expanded : .peek(.approval) }
+        if s.open { return .expanded }
         if let ring = s.ringing.first { return .peek(.ringing(id: ring)) }
         if s.dragging { return .peek(.drop) }
-        if s.open { return .expanded }
         if let hud = s.hud, !s.fullScreen { return .peek(.hud(hud.kind)) }
         if s.notice { return .peek(.notice) }
         if let peek = s.widgetPeek, !s.fullScreen { return .peek(.widget(id: peek.id)) }
         return s.idle
+    }
+
+    /// The ringing id drawn as the header chip: something rings but an approval peek or
+    /// the open panel is showing.
+    public static func ringingChip(_ s: PanelSurfaceState) -> String? {
+        guard let ring = s.ringing.first else { return nil }
+        switch resolve(s) {
+        case .peek(.approval), .expanded: return ring
+        default: return nil
+        }
     }
 
     /// A HUD that cannot show as its own surface because an approval peek or the open
@@ -151,6 +165,8 @@ public struct PanelStateMachine: Sendable {
     public var hud: HUDState? { state.hud }
     public var widgetPeek: WidgetPeek? { state.widgetPeek }
     public var isDragging: Bool { state.dragging }
+    /// See `PanelPrecedence.ringingChip`.
+    public var ringingChip: String? { PanelPrecedence.ringingChip(state) }
     /// See `PanelPrecedence.hudIndicator`.
     public var hudIndicator: HUDState? { PanelPrecedence.hudIndicator(state) }
     /// When the next HUD or widget peek ends (send `.expire` then).
@@ -168,11 +184,9 @@ public struct PanelStateMachine: Sendable {
         case .hoverExit:
             state.open = false   // also when ringing covers the open panel
         case .click:
-            switch mode {
-            case .expanded: state.open = false
-            case .peek(.ringing), .peek(.drop): break   // never opens the panel behind them
-            default: open()
-            }
+            // From anywhere, ringing and the drop zone included (menu "Open PlatyNotch",
+            // `expand(tab:)`); the ringing card and drop zone themselves never send it.
+            if mode == .expanded { state.open = false } else { open() }
         case .escape:
             switch mode {
             case .expanded: state.open = false
@@ -206,6 +220,9 @@ public struct PanelStateMachine: Sendable {
             state.ringing.removeAll { $0 == id }
         case .dragBegan:
             state.dragging = true
+            // A drag near the open panel turns it into the drop zone. With an approval
+            // pending the panel stays as it is (rule 1).
+            if state.approvals == 0 { state.open = false }
         case .dragEnded:
             state.dragging = false
         }

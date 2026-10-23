@@ -42,6 +42,8 @@ public final class NotchController {
     /// A drag session is in progress (`PanelSurfaces`): the cursor is polled and the drop
     /// zone opens near the notch.
     private var dragSession = false
+    /// Whether the left mouse button is down (a drag cannot be in progress otherwise).
+    var mouseDown: () -> Bool = { NSEvent.pressedMouseButtons & 1 != 0 }
     private var workspaceObservers: [NSObjectProtocol] = []
 
     /// `carryOver` restores the panel state of the controller this one replaces (display change).
@@ -88,6 +90,10 @@ public final class NotchController {
     public var mode: PanelMode { machine.mode }
     /// A HUD drawn as a thin line inside the approval peek or open panel.
     public var hudIndicator: HUDState? { machine.hudIndicator }
+    /// Something ringing shown as the header chip (under an approval or the open panel).
+    public var ringingChip: RingingItem? {
+        machine.ringingChip.map { id in surfaces.rings.first { $0.id == id } ?? RingingItem(id: id, title: "Alarm") }
+    }
     /// State to hand to a replacement controller.
     public var carryOver: PanelCarryOver { PanelCarryOver(machine: machine, feed: feed) }
     /// The display this controller's panel is on.
@@ -174,6 +180,7 @@ public final class NotchController {
         model.visible = visible
         model.hud = machine.hud
         model.hudIndicator = machine.hudIndicator
+        model.ringingChip = ringingChip
         noteVisibleApprovals(mode: mode, visible: visible)
         panel.hasShadow = mode.hasShadow && visible
         panel.allowsKey = mode.canBecomeKey
@@ -211,9 +218,21 @@ public final class NotchController {
     }
 
     private func handle(_ event: PanelEvent) {
+        let before = machine.mode
         machine.handle(event)
+        // Hovering a peek, ringing card or drop zone never opens the panel, but the
+        // debouncer saw the cursor arrive. When that surface goes, start over so hovering
+        // the pill afterwards opens the panel.
+        if before != machine.mode, Self.isNonOpening(before) { debouncer.reset(hovering: false) }
         apply()
         scheduleExpiry()
+    }
+
+    private static func isNonOpening(_ mode: PanelMode) -> Bool {
+        switch mode {
+        case .peek(.widget), .peek(.ringing), .peek(.drop): true
+        default: false
+        }
     }
 
     /// Ends a HUD or widget peek at its `until`, even if nothing else happens.
@@ -245,12 +264,16 @@ public final class NotchController {
         } else {
             inside = PanelLayout.contains(layout.hitRect(for: machine.mode), p)
         }
-        let now = ProcessInfo.processInfo.systemUptime
+        hoverSample(inside: inside, at: ProcessInfo.processInfo.systemUptime)
+        updateEngaged()
+    }
+
+    /// Feeds one hover sample (`inside` the hit rect at uptime `now`).
+    func hoverSample(inside: Bool, at now: TimeInterval) {
         if let hovering = debouncer.update(inside: inside, at: now) {
             handle(hovering ? .hoverEnter : .hoverExit)
         }
         scheduleDeadline(now: now)
-        updateEngaged()
     }
 
     /// Re-samples the cursor when a pending hover change is due, even if it stopped moving.
@@ -271,7 +294,8 @@ public final class NotchController {
     /// `PanelLayout.dragReach` of the notch and closes when it leaves the drop zone.
     func dragMoved(to p: CGPoint) {
         guard dragSession, let layout else { return }
-        let near = layout.dragHover(p, showing: machine.isDragging)
+        // A session whose end was missed (button already up) never opens it on hover.
+        let near = mouseDown() && layout.dragHover(p, showing: machine.isDragging)
         if near != machine.isDragging { handle(near ? .dragBegan : .dragEnded) }
     }
 
@@ -427,28 +451,33 @@ extension NotchController: PanelSurfaceSink {
         step.handle(.approvalsChanged(count: 0))
         step.handle(.hoverExit)
         step.handle(.noticeTimeout)
-        let checks: [(PanelEvent, PanelMode)] = [
-            (.widgetPeek(id: "smoke.peek", until: until), .peek(.widget(id: "smoke.peek"))),
-            (.hud(.volume, level: 0.5, until: until), .peek(.hud(.volume))),
-            (.ringStarted(id: "smoke.ring"), .peek(.ringing(id: "smoke.ring"))),
-            (.approvalsChanged(count: 1), .peek(.approval)),
-            (.escape, .peek(.approval)),
-            (.dragBegan, .peek(.approval)),
-            (.approvalsChanged(count: 0), .peek(.ringing(id: "smoke.ring"))),
-            (.ringStopped(id: "smoke.ring"), .peek(.drop)),
-            (.dragEnded, .peek(.hud(.volume))),
-            (.expire(now: until), .compact),   // .hidden in Minimal mode with nothing live
+        // (event, mode after it, ringing chip after it)
+        let checks: [(PanelEvent, PanelMode, String?)] = [
+            (.widgetPeek(id: "smoke.peek", until: until), .peek(.widget(id: "smoke.peek")), nil),
+            (.hud(.volume, level: 0.5, until: until), .peek(.hud(.volume)), nil),
+            (.ringStarted(id: "smoke.ring"), .peek(.ringing(id: "smoke.ring")), nil),
+            (.approvalsChanged(count: 1), .peek(.approval), "smoke.ring"),
+            (.escape, .peek(.approval), "smoke.ring"),
+            (.dragBegan, .peek(.approval), "smoke.ring"),
+            (.approvalsChanged(count: 0), .peek(.ringing(id: "smoke.ring")), nil),
+            (.click, .expanded, "smoke.ring"),
+            (.click, .peek(.ringing(id: "smoke.ring")), nil),
+            (.ringStopped(id: "smoke.ring"), .peek(.drop), nil),
+            (.dragEnded, .peek(.hud(.volume)), nil),
+            (.expire(now: until), .compact, nil),   // .hidden in Minimal mode with nothing live
         ]
-        for (event, expected) in checks {
+        for (event, expected, chip) in checks {
             step.handle(event)
             machine = step
             apply()
             let ok = step.mode == expected || (expected == .compact && step.mode == .hidden && step.minimal)
             if !ok { return "after \(event) mode \(step.mode), expected \(expected)" }
+            if step.ringingChip != chip { return "after \(event) ringing chip \(step.ringingChip ?? "none")" }
             guard let layout else { continue }
             if !layout.windowFrame.contains(layout.contentRect(for: step.mode)) {
                 return "\(step.mode) does not fit the window"
             }
+            if chip != nil, layout.ringingChipRect(for: step.mode) == nil { return "no chip place in \(step.mode)" }
         }
         return nil
     }

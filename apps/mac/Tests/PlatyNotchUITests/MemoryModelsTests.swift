@@ -53,7 +53,9 @@ final class MemoryModelsTests: XCTestCase {
     }
 
     func testCaptureOffWhenMemoryDisabledAndPausePersists() {
-        let defaults = UserDefaults(suiteName: "platynotch.tests.\(UUID().uuidString)")!
+        let suite = "platynotch.tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { UserDefaults.standard.removePersistentDomain(forName: suite) }
         let capture = CaptureService(send: { _ in }, defaults: defaults)
         capture.apply(CaptureSettings(enabled: false))
         XCTAssertEqual(capture.status, .off)

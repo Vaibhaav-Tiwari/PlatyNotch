@@ -95,9 +95,10 @@ public struct WidgetContext {
     public func endPeek(id: String) { surfaces.endPeek(id: id) }
 
     /// A ringing alarm or timer: `peekView(id:)` at ringing height until `stopRinging(id:)`.
-    /// Shows over full screen and over the open panel; only a pending approval goes first.
+    /// Shows over full screen. Under a pending approval or the open panel it is a ringing
+    /// chip ("Stop") in the header instead; the menu bar shows "Stop <title>" meanwhile.
     @discardableResult
-    public func ring(id: String) -> Bool { surfaces.ring(id: id) }
+    public func ring(id: String, title: String) -> Bool { surfaces.ring(id: id, title: title) }
 
     public func stopRinging(id: String) { surfaces.stopRinging(id: id) }
 

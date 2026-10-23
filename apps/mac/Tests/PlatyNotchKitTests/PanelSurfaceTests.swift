@@ -87,23 +87,33 @@ final class PanelSurfaceTests: XCTestCase {
         XCTAssertEqual(m.mode, .compact)
     }
 
-    func testDragOverOpenPanelReturnsToOpenPanel() {
+    /// A drag near an open panel turns it into the drop zone (same rect); afterwards it rests.
+    func testDragNearOpenPanelReplacesIt() {
         var m = PanelStateMachine()
         m.handle(.click)
         m.handle(.dragBegan)
         XCTAssertEqual(m.mode, .peek(.drop))
         m.handle(.dragEnded)
-        XCTAssertEqual(m.mode, .expanded)
+        XCTAssertEqual(m.mode, .compact)
     }
 
-    func testClickIgnoredOnRingingAndDrop() {
+    /// Fix round 1: opening (menu "Open PlatyNotch", a widget) works while ringing or
+    /// while the drop zone shows. Ringing then shows as the header chip.
+    func testOpeningWhileRingingOrDroppingShowsPanel() {
         var m = PanelStateMachine()
         m.handle(.ringStarted(id: "r"))
         m.handle(.click)
+        XCTAssertEqual(m.mode, .expanded)
+        XCTAssertEqual(m.ringingChip, "r")
+        m.handle(.click)
+        XCTAssertEqual(m.mode, .peek(.ringing(id: "r")))
+        XCTAssertNil(m.ringingChip, "the full ringing card needs no chip")
         m.handle(.ringStopped(id: "r"))
-        XCTAssertEqual(m.mode, .compact, "a click on the ringing card never opens the panel behind it")
         m.handle(.dragBegan)
         m.handle(.click)
+        XCTAssertEqual(m.mode, .expanded)
+        m.handle(.click)
+        XCTAssertEqual(m.mode, .peek(.drop))
         m.handle(.dragEnded)
         XCTAssertEqual(m.mode, .compact)
     }
@@ -161,14 +171,20 @@ final class PanelSurfaceTests: XCTestCase {
         m.handle(.ringStarted(id: "r"))
         m.handle(.approvalsChanged(count: 1))
         XCTAssertEqual(m.mode, .peek(.approval))
+        XCTAssertEqual(m.ringingChip, "r", "the alarm stays stoppable without answering the approval")
         m.handle(.approvalsChanged(count: 0))
         XCTAssertEqual(m.mode, .peek(.ringing(id: "r")))
+        XCTAssertNil(m.ringingChip)
     }
 
     func testRingingDuringApprovalWaits() {
         var m = PanelStateMachine()
         m.handle(.approvalsChanged(count: 1))
         m.handle(.ringStarted(id: "r"))
+        XCTAssertEqual(m.mode, .peek(.approval))
+        XCTAssertEqual(m.ringingChip, "r")
+        m.handle(.ringStopped(id: "r"))   // Stop on the chip
+        XCTAssertNil(m.ringingChip)
         XCTAssertEqual(m.mode, .peek(.approval))
         m.handle(.escape)
         XCTAssertEqual(m.mode, .peek(.approval), "Escape never hides an approval")
@@ -226,17 +242,24 @@ final class PanelSurfaceTests: XCTestCase {
         XCTAssertEqual(m.mode, .peek(.ringing(id: "r")))
     }
 
-    func testRingingBeatsOpenPanelAndHoverExitClosesIt() {
+    /// Fix round 1: ringing never takes over the open panel; it shows as the header chip.
+    func testRingingNeverCoversOpenPanel() {
         var m = PanelStateMachine()
         m.handle(.click)
         m.handle(.ringStarted(id: "r"))
+        XCTAssertEqual(m.mode, .expanded)
+        XCTAssertEqual(m.ringingChip, "r")
+        m.handle(.hoverExit)
         XCTAssertEqual(m.mode, .peek(.ringing(id: "r")))
         m.handle(.ringStopped(id: "r"))
-        XCTAssertEqual(m.mode, .expanded)
-        m.handle(.ringStarted(id: "r"))
-        m.handle(.hoverExit)
-        m.handle(.ringStopped(id: "r"))
         XCTAssertEqual(m.mode, .compact)
+
+        var withApproval = PanelStateMachine()
+        withApproval.handle(.click)
+        withApproval.handle(.approvalsChanged(count: 1))
+        withApproval.handle(.ringStarted(id: "r"))
+        XCTAssertEqual(withApproval.mode, .expanded)
+        XCTAssertEqual(withApproval.ringingChip, "r")
     }
 
     func testRingingBeatsDropZone() {
@@ -310,9 +333,9 @@ final class PanelSurfaceTests: XCTestCase {
         XCTAssertEqual(s { $0.approvals = 1; $0.ringing = ["r"]; $0.dragging = true; $0.hud = hud; $0.widgetPeek = peek },
                        .peek(.approval))
         XCTAssertEqual(s { $0.approvals = 1; $0.open = true; $0.ringing = ["r"] }, .expanded)
-        XCTAssertEqual(s { $0.ringing = ["r"]; $0.open = true; $0.dragging = true; $0.hud = hud }, .peek(.ringing(id: "r")))
-        XCTAssertEqual(s { $0.dragging = true; $0.open = true; $0.hud = hud }, .peek(.drop))
-        XCTAssertEqual(s { $0.open = true; $0.hud = hud; $0.notice = true }, .expanded)
+        XCTAssertEqual(s { $0.open = true; $0.ringing = ["r"]; $0.dragging = true; $0.hud = hud; $0.notice = true }, .expanded)
+        XCTAssertEqual(s { $0.ringing = ["r"]; $0.dragging = true; $0.hud = hud }, .peek(.ringing(id: "r")))
+        XCTAssertEqual(s { $0.dragging = true; $0.hud = hud; $0.notice = true }, .peek(.drop))
         XCTAssertEqual(s { $0.hud = hud; $0.notice = true; $0.widgetPeek = peek }, .peek(.hud(.volume)))
         XCTAssertEqual(s { $0.notice = true; $0.widgetPeek = peek }, .peek(.notice))
         XCTAssertEqual(s { $0.widgetPeek = peek }, .peek(.widget(id: "a")))
@@ -345,6 +368,23 @@ final class PanelSurfaceTests: XCTestCase {
         m.setFullScreen(true)
         XCTAssertEqual(m.mode, .compact)
         XCTAssertNil(m.hudIndicator)
+    }
+
+    func testRingingChipOnlyWhereTheCardCannotShow() {
+        func chip(_ f: (inout PanelSurfaceState) -> Void) -> String? {
+            var st = PanelSurfaceState(idle: .compact)
+            st.ringing = ["r"]
+            f(&st)
+            return PanelPrecedence.ringingChip(st)
+        }
+        XCTAssertEqual(chip { $0.approvals = 1 }, "r")
+        XCTAssertEqual(chip { $0.open = true }, "r")
+        XCTAssertEqual(chip { $0.approvals = 2; $0.open = true }, "r")
+        XCTAssertNil(chip { _ in })
+        XCTAssertNil(chip { $0.dragging = true })
+        var none = PanelSurfaceState(idle: .compact)
+        none.approvals = 1
+        XCTAssertNil(PanelPrecedence.ringingChip(none))
     }
 
     func testFullScreenPolicyNeverSuppressesRingingOrDrop() {
@@ -420,6 +460,41 @@ final class PanelSurfaceLayoutTests: XCTestCase {
         for l in [mbp, ext] {
             for m in modes { XCTAssertTrue(l.windowFrame.contains(l.contentRect(for: m)), "\(m)") }
         }
+    }
+
+    /// Fix round 1: the ringing chip never moves an approval card or changes a height.
+    /// Same mode with and without ringing, so the same content and slot rects; the chip
+    /// sits in the header strip (beside the camera on a notch), outside the slot.
+    func testRingingChipNeverMovesApprovalCards() {
+        func machine(open: Bool, ringing: Bool) -> PanelStateMachine {
+            var m = PanelStateMachine()
+            if open { m.handle(.click) }
+            m.handle(.approvalsChanged(count: 2))
+            if ringing { m.handle(.ringStarted(id: "time.alarm")) }
+            return m
+        }
+        for open in [false, true] {
+            let plain = machine(open: open, ringing: false)
+            let ringing = machine(open: open, ringing: true)
+            XCTAssertEqual(plain.mode, ringing.mode)
+            XCTAssertNil(plain.ringingChip)
+            XCTAssertEqual(ringing.ringingChip, "time.alarm")
+            for l in [mbp, ext] {
+                let mode = ringing.mode
+                XCTAssertEqual(l.contentRect(for: plain.mode), l.contentRect(for: mode))
+                let slot = try! XCTUnwrap(l.approvalSlot(for: mode))
+                XCTAssertEqual(l.approvalSlot(for: plain.mode), slot)
+                let chip = try! XCTUnwrap(l.ringingChipRect(for: mode))
+                XCTAssertFalse(chip.intersects(slot), "\(mode) chip \(chip) over cards \(slot)")
+                XCTAssertTrue(l.contentRect(for: mode).contains(chip), "\(mode) chip inside the hit rect")
+                if l.hasNotch { XCTAssertFalse(chip.intersects(l.anchor), "chip clear of the camera housing") }
+                XCTAssertGreaterThanOrEqual(chip.width, 60)
+            }
+        }
+        // Card room on a screen without a notch is what it was before the header strip.
+        XCTAssertEqual(ext.approvalSlot(for: .peek(.approval))!.height, PanelLayout.peekSize.height - 20)
+        XCTAssertNil(mbp.ringingChipRect(for: .compact))
+        XCTAssertNil(mbp.approvalSlot(for: .peek(.notice)))
     }
 
     func testHUDIsClickThroughBeyondThePill() {
