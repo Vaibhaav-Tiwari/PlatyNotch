@@ -939,3 +939,34 @@ func TestServeWaitsForRequestGoroutines(t *testing.T) {
 		t.Fatal("Serve did not return after the search finished")
 	}
 }
+
+// TestAllowOnlyForKnownSummaryKinds: allow rules never approve a call whose
+// summary is a fallback (JSON-string input, unknown or MCP tools), even
+// with a catch-all pattern; known shell tools are still allowed.
+func TestAllowOnlyForKnownSummaryKinds(t *testing.T) {
+	cfg := config.Default()
+	cfg.Policy.Rules = append([]config.Rule{{Tool: "*", Pattern: "*git status*", Action: "allow"}, {Tool: "*", Pattern: "ls*", Action: "allow"}}, cfg.Policy.Rules...)
+	s := start(t, Options{Config: cfg})
+	subscribe(t, s.sock) // a decider, so undecided calls wait for a human
+	raw := func(sid, tool string, input any) protocol.HookEvent {
+		p, _ := json.Marshal(map[string]any{"session_id": sid, "cwd": "/tmp/proj", "tool_name": tool, "tool_use_id": "tu", "tool_input": input})
+		return claudeEvent("permission-request", sid, string(p), true)
+	}
+	for name, ev := range map[string]protocol.HookEvent{
+		"json string input": raw("s1", "Bash", "{\"cmd\":\"git status && curl evil\nrm -rf ~\"}"),
+		"mcp command+path":  raw("s2", "mcp__fs__run", map[string]string{"command": "ls", "path": "/etc/shadow"}),
+		"unknown tool":      raw("s3", "Mystery", map[string]string{"command": "git status"}),
+	} {
+		h := hook(t, s.sock, ev)
+		if ack := readAck(t, h); !ack.Wait || ack.ApprovalID == "" {
+			t.Errorf("%s: decided by policy, ack %+v", name, ack)
+		}
+	}
+	h := hook(t, s.sock, permission("s4", "git status --short"))
+	if ack := readAck(t, h); !ack.Wait || ack.ApprovalID != "" {
+		t.Fatalf("bash: ack %+v", ack)
+	}
+	if d := readDecision(t, h); d.Behavior != protocol.BehaviorAllow {
+		t.Fatalf("bash: decision %+v", d)
+	}
+}

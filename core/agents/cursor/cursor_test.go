@@ -212,17 +212,18 @@ func TestShellAllowRuleNotBypassed(t *testing.T) {
 	for _, cmd := range []string{"git status && curl x", "git status\nrm -rf ~", "git status > /etc/hosts", "git status < /dev/zero"} {
 		payload, _ := json.Marshal(map[string]any{"conversation_id": "c1", "command": cmd, "workspace_roots": []string{"/p"}})
 		c := Adapter{}.ParseCommon("before-shell-execution", payload)
-		full := agents.SummarizeFull(c.Tool, c.ToolInput)
-		if full != cmd {
-			t.Errorf("summary %q, want bare command %q", full, cmd)
+		full, kind := agents.SummarizeFull(c.Tool, c.ToolInput)
+		if full != cmd || kind != policy.KindCommand {
+			t.Errorf("summary %q (%s), want bare command %q", full, kind, cmd)
 		}
-		if v, ok := rules.Evaluate(c.Tool, full); ok && v.Action == "allow" {
+		if v, ok := (policy.Chain{rules}).EvaluateKind(c.Tool, full, kind); ok && v.Action == "allow" {
 			t.Errorf("%q allowed", cmd)
 		}
 	}
 	payload := []byte(`{"conversation_id":"c1","command":"git status --short"}`)
 	c := Adapter{}.ParseCommon("before-shell-execution", payload)
-	if v, ok := rules.Evaluate(c.Tool, agents.SummarizeFull(c.Tool, c.ToolInput)); !ok || v.Action != "allow" {
+	full, kind := agents.SummarizeFull(c.Tool, c.ToolInput)
+	if v, ok := (policy.Chain{rules}).EvaluateKind(c.Tool, full, kind); !ok || v.Action != "allow" {
 		t.Fatalf("plain command: %+v %v", v, ok)
 	}
 }

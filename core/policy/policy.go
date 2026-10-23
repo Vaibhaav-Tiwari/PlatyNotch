@@ -21,12 +21,58 @@ type Provider interface {
 	Evaluate(tool, summary string) (Verdict, bool)
 }
 
+// Kind says what a summary is (see agents.SummarizeFull).
+type Kind string
+
+const (
+	KindCommand Kind = "command" // a known shell tool's command
+	KindPath    Kind = "path"    // a known file tool's path
+	KindURL     Kind = "url"     // WebFetch's URL
+	KindOther   Kind = "other"   // anything else, including fallbacks
+)
+
+// shellTools run their "command" input in a shell.
+var shellTools = map[string]bool{"Bash": true, "Shell": true, "run_terminal_cmd": true}
+
+// KindFor is the kind a tool's summary has when its input carries the
+// expected field.
+func KindFor(tool string) Kind {
+	switch {
+	case shellTools[tool]:
+		return KindCommand
+	case fileTools[tool]:
+		return KindPath
+	case tool == "WebFetch":
+		return KindURL
+	}
+	return KindOther
+}
+
+// KindProvider is implemented by providers that take the summary's kind
+// into account.
+type KindProvider interface {
+	EvaluateKind(tool, summary string, kind Kind) (Verdict, bool)
+}
+
 // Chain evaluates providers in order; the first match wins.
 type Chain []Provider
 
+// Evaluate is EvaluateKind with KindFor(tool).
 func (c Chain) Evaluate(tool, summary string) (Verdict, bool) {
+	return c.EvaluateKind(tool, summary, KindFor(tool))
+}
+
+// EvaluateKind passes kind to providers implementing KindProvider.
+func (c Chain) EvaluateKind(tool, summary string, kind Kind) (Verdict, bool) {
 	for _, p := range c {
-		if v, ok := p.Evaluate(tool, summary); ok {
+		var v Verdict
+		var ok bool
+		if kp, isKP := p.(KindProvider); isKP {
+			v, ok = kp.EvaluateKind(tool, summary, kind)
+		} else {
+			v, ok = p.Evaluate(tool, summary)
+		}
+		if ok {
 			return v, true
 		}
 	}
@@ -37,7 +83,8 @@ type local struct{ rules []config.Rule }
 
 // Local returns a provider backed by config rules (Source "local").
 // Rules are tried in order; empty patterns and unknown actions are skipped,
-// and so is an allow rule when the summary contains a shell control sequence
+// and so is an allow rule when the summary's kind is not command, path or
+// url (see EvaluateKind), when the summary contains a shell control sequence
 // the pattern does not contain literally (see config.Rule), or when the
 // summary looks truncated (ends in TruncationMark), is a JSON fallback
 // (starts with '{' or '['; JSON escaping hides control operators), or is a
@@ -50,9 +97,18 @@ func Local(rules []config.Rule) Provider {
 
 func (local) Name() string { return "local" }
 
+// Evaluate is EvaluateKind with KindFor(tool).
 func (l local) Evaluate(tool, summary string) (Verdict, bool) {
+	return l.EvaluateKind(tool, summary, KindFor(tool))
+}
+
+// EvaluateKind never applies an allow rule unless kind is command, path or
+// url: a fallback summary (unknown or MCP tool, JSON or string input) can
+// hide arguments and escaped control operators from the pattern.
+func (l local) EvaluateKind(tool, summary string, kind Kind) (Verdict, bool) {
 	summary = strings.TrimSpace(summary)
-	noAllow := strings.HasSuffix(summary, TruncationMark) ||
+	noAllow := (kind != KindCommand && kind != KindPath && kind != KindURL) ||
+		strings.HasSuffix(summary, TruncationMark) ||
 		strings.HasPrefix(summary, "{") || strings.HasPrefix(summary, "[") ||
 		uncleanPath(tool, summary)
 	for _, r := range l.rules {
