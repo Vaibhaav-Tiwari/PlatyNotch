@@ -22,29 +22,44 @@ public final class NotchController {
     private var debouncer = HoverDebouncer()
     private var panel: NotchPanel?
     private var layout: PanelLayout?
-    private var displayID: CGDirectDisplayID?
 
     private var cursor = NSEvent.mouseLocation
     private var fullScreen = false
     private var suppressed = false
-    private var lastApprovalCount = 0
-    private var lastNotice: Notice?
+    private var feed: PanelFeed
+    private var topInset: CGFloat = 0
     private var deadlineTask: Task<Void, Never>?
     private var noticeTask: Task<Void, Never>?
     private var recheckTask: Task<Void, Never>?
     private var workspaceObservers: [NSObjectProtocol] = []
 
+    /// `carryOver` restores the panel state of the controller this one replaces (display change).
+    /// Without it, notices already in the store count as shown.
     public init(store: AppStore, client: CoreClient, plugins: [NotchPlugin],
-                minimal: Bool = UserDefaults.standard.bool(forKey: NotchSettings.minimal)) {
+                minimal: Bool = UserDefaults.standard.bool(forKey: NotchSettings.minimal),
+                carryOver: PanelCarryOver? = nil) {
         self.store = store
         self.client = client
         self.plugins = plugins
-        self.machine = PanelStateMachine(minimal: minimal)
+        if let carryOver {
+            machine = carryOver.machine
+            machine.minimal = minimal
+            feed = carryOver.feed
+        } else {
+            machine = PanelStateMachine(minimal: minimal)
+            feed = PanelFeed(lastNotice: store.notices.last)
+        }
+        // An open panel must still close when the cursor is away after a rebuild.
+        debouncer.reset(hovering: machine.mode == .expanded)
         model.onClick = { [weak self] in self?.handle(.click) }
-        tracker.onMove = { [weak self] p in self?.cursorMoved(p) }
+        tracker.onMove = { [weak self] _ in self?.sampleCursor() }
     }
 
     public var mode: PanelMode { machine.mode }
+    /// State to hand to a replacement controller.
+    public var carryOver: PanelCarryOver { PanelCarryOver(machine: machine, feed: feed) }
+    /// The display this controller's panel is on.
+    public private(set) var displayID: CGDirectDisplayID?
     public var minimal: Bool {
         get { machine.minimal }
         set { machine.minimal = newValue; apply() }
@@ -58,6 +73,7 @@ public final class NotchController {
                             auxLeft: screen.auxiliaryTopLeftArea, auxRight: screen.auxiliaryTopRightArea)
         layout = l
         displayID = screen.displayID
+        topInset = screen.safeAreaInsets.top
         model.layout = l
 
         let first = panel == nil
@@ -72,7 +88,9 @@ public final class NotchController {
             observeStore()
         }
         syncFromStore()
+        if machine.mode == .peek(.notice) { scheduleNoticeTimeout() }
         refreshFullScreen()
+        sampleCursor()
     }
 
     /// Removes the panel and stops all monitoring.
@@ -103,6 +121,7 @@ public final class NotchController {
     /// Pushes the current mode, full-screen suppression and cursor into the window.
     private func apply() {
         guard let panel, let layout else { return }
+        cursor = NSEvent.mouseLocation   // never decide pass-through from a stale position
         let mode = machine.mode
         suppressed = FullScreenPolicy.shouldSuppress(
             fullScreen: fullScreen, mode: mode, cursor: cursor, revealRect: layout.revealRect,
@@ -117,7 +136,17 @@ public final class NotchController {
             panel.orderOut(nil)
             panel.orderFrontRegardless()
         }
-        panel.ignoresMouseEvents = !(visible && PanelLayout.contains(layout.hitRect(for: mode), cursor))
+        panel.ignoresMouseEvents = PanelLayout.ignoresMouse(visible: visible, hitRect: layout.hitRect(for: mode),
+                                                            cursor: cursor)
+        updateEngaged()
+    }
+
+    /// Poll the cursor while anything depends on it moving: a hover or pending debounce,
+    /// a revealed full-screen panel, or a window currently catching clicks (so leaving
+    /// the hit rect always restores pass-through).
+    private func updateEngaged() {
+        tracker.engaged = debouncer.isHovering || debouncer.deadline != nil
+            || (fullScreen && !suppressed) || panel?.ignoresMouseEvents == false
     }
 
     private func handle(_ event: PanelEvent) {
@@ -127,9 +156,10 @@ public final class NotchController {
 
     // MARK: - Hover
 
-    private func cursorMoved(_ p: CGPoint) {
-        cursor = p
+    /// Re-reads the cursor (in `apply`) and feeds the hover debouncer.
+    private func sampleCursor() {
         apply()
+        let p = cursor
         guard let layout else { return }
         let inside: Bool
         if suppressed {
@@ -144,7 +174,7 @@ public final class NotchController {
             handle(hovering ? .hoverEnter : .hoverExit)
         }
         scheduleDeadline(now: now)
-        tracker.engaged = debouncer.isHovering || debouncer.deadline != nil || (fullScreen && !suppressed)
+        updateEngaged()
     }
 
     /// Re-samples the cursor when a pending hover change is due, even if it stopped moving.
@@ -155,7 +185,7 @@ public final class NotchController {
         deadlineTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
-            self?.cursorMoved(NSEvent.mouseLocation)
+            self?.sampleCursor()
         }
     }
 
@@ -178,22 +208,20 @@ public final class NotchController {
 
     private func syncFromStore() {
         machine.setLive(PanelMode.hasLive(sessions: store.sessions))
-        let n = store.approvals.count
-        if n != lastApprovalCount {
-            lastApprovalCount = n
-            machine.handle(.approvalsChanged(count: n))
-        }
-        if let notice = store.notices.last, notice != lastNotice {
-            lastNotice = notice
-            machine.handle(.notice)
-            noticeTask?.cancel()
-            noticeTask = Task { [weak self] in
-                try? await Task.sleep(for: NotchController.noticeDuration)
-                guard !Task.isCancelled else { return }
-                self?.handle(.noticeTimeout)
-            }
+        for event in feed.update(approvalCount: store.approvals.count, latestNotice: store.notices.last) {
+            machine.handle(event)
+            if event == .notice { scheduleNoticeTimeout() }
         }
         apply()
+    }
+
+    private func scheduleNoticeTimeout() {
+        noticeTask?.cancel()
+        noticeTask = Task { [weak self] in
+            try? await Task.sleep(for: NotchController.noticeDuration)
+            guard !Task.isCancelled else { return }
+            self?.handle(.noticeTimeout)
+        }
     }
 
     // MARK: - Full screen
@@ -220,21 +248,27 @@ public final class NotchController {
     /// Whether the frontmost app has a window covering this display.
     private func refreshFullScreen() {
         guard let displayID else { return }
+        let display = CGDisplayBounds(displayID)
+        let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        let menuBarLevel = Int(CGWindowLevelForKey(.mainMenuWindow))
         var bounds: [CGRect] = []
-        if let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
-           let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
-                                                 kCGNullWindowID) as? [[String: Any]] {
-            for w in info {
-                guard (w[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid,
-                      (w[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
-                      let dict = w[kCGWindowBounds as String] as? NSDictionary,
-                      let r = CGRect(dictionaryRepresentation: dict as CFDictionary) else { continue }
+        var menuBarVisible = false
+        let info = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
+                                              kCGNullWindowID) as? [[String: Any]] ?? []
+        for w in info {
+            guard let dict = w[kCGWindowBounds as String] as? NSDictionary,
+                  let r = CGRect(dictionaryRepresentation: dict as CFDictionary) else { continue }
+            let layer = (w[kCGWindowLayer as String] as? NSNumber)?.intValue
+            if layer == menuBarLevel, abs(r.minY - display.minY) <= 1, r.intersects(display) {
+                menuBarVisible = true   // the menu bar is drawn at this display's top
+            }
+            if layer == 0, let pid, (w[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid {
                 bounds.append(r)
             }
         }
-        fullScreen = FullScreenPolicy.isFullScreen(windowBounds: bounds, displayBounds: CGDisplayBounds(displayID))
+        fullScreen = FullScreenPolicy.isFullScreen(windowBounds: bounds, displayBounds: display,
+                                                   topInset: topInset, menuBarVisible: menuBarVisible)
         apply()
-        tracker.engaged = debouncer.isHovering || debouncer.deadline != nil || (fullScreen && !suppressed)
     }
 }
 

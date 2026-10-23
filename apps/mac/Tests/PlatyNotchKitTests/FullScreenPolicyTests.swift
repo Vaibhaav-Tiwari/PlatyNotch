@@ -5,18 +5,46 @@ import XCTest
 final class FullScreenPolicyTests: XCTestCase {
     let display = CGRect(x: 0, y: 0, width: 1512, height: 982)
 
-    func testIsFullScreen() {
-        XCTAssertTrue(FullScreenPolicy.isFullScreen(windowBounds: [CGRect(x: 0, y: 0, width: 1512, height: 982)],
-                                                    displayBounds: display))
-        XCTAssertTrue(FullScreenPolicy.isFullScreen(windowBounds: [CGRect(x: 0.5, y: 0, width: 1511.5, height: 982)],
-                                                    displayBounds: display))
-        // Maximised (zoomed) window below the menu bar is not full screen.
-        XCTAssertFalse(FullScreenPolicy.isFullScreen(windowBounds: [CGRect(x: 0, y: 32, width: 1512, height: 950)],
-                                                     displayBounds: display))
-        XCTAssertFalse(FullScreenPolicy.isFullScreen(windowBounds: [], displayBounds: display))
+    func testIsFullScreenWithoutNotch() {
+        func fs(_ w: [CGRect]) -> Bool {
+            FullScreenPolicy.isFullScreen(windowBounds: w, displayBounds: display, topInset: 0, menuBarVisible: false)
+        }
+        XCTAssertTrue(fs([CGRect(x: 0, y: 0, width: 1512, height: 982)]))
+        XCTAssertTrue(fs([CGRect(x: 0.5, y: 0, width: 1511.5, height: 982)]))
+        XCTAssertFalse(fs([CGRect(x: 0, y: 32, width: 1512, height: 950)]))   // not up to the top
+        XCTAssertFalse(fs([CGRect(x: 0, y: 0, width: 1400, height: 982)]))    // not full width
+        XCTAssertFalse(fs([]))
         // Full screen on another display does not count.
-        XCTAssertFalse(FullScreenPolicy.isFullScreen(windowBounds: [CGRect(x: 1512, y: 0, width: 1920, height: 1080)],
-                                                     displayBounds: display))
+        XCTAssertFalse(fs([CGRect(x: 1512, y: 0, width: 1920, height: 1080)]))
+    }
+
+    func testIsFullScreenOnNotchedDisplay() {
+        // macOS puts full-screen windows below the camera housing (safe-area top inset 32).
+        let belowNotch = CGRect(x: 0, y: 32, width: 1512, height: 950)
+        XCTAssertTrue(FullScreenPolicy.isFullScreen(windowBounds: [belowNotch], displayBounds: display,
+                                                    topInset: 32, menuBarVisible: false))
+        XCTAssertTrue(FullScreenPolicy.isFullScreen(windowBounds: [CGRect(x: 0, y: 32.5, width: 1512, height: 949.5)],
+                                                    displayBounds: display, topInset: 32, menuBarVisible: false))
+        // Same bounds with the menu bar showing is a zoomed window, not full screen.
+        XCTAssertFalse(FullScreenPolicy.isFullScreen(windowBounds: [belowNotch], displayBounds: display,
+                                                     topInset: 32, menuBarVisible: true))
+        // Window reaching the very top (e.g. a borderless game) still counts.
+        XCTAssertTrue(FullScreenPolicy.isFullScreen(windowBounds: [display], displayBounds: display,
+                                                    topInset: 32, menuBarVisible: true))
+        // Not reaching the bottom.
+        XCTAssertFalse(FullScreenPolicy.isFullScreen(windowBounds: [CGRect(x: 0, y: 32, width: 1512, height: 900)],
+                                                     displayBounds: display, topInset: 32, menuBarVisible: false))
+        // Display on the right of the primary: same rule, offset origin.
+        let ext = CGRect(x: 1512, y: 0, width: 1512, height: 982)
+        XCTAssertTrue(FullScreenPolicy.isFullScreen(windowBounds: [CGRect(x: 1512, y: 32, width: 1512, height: 950)],
+                                                    displayBounds: ext, topInset: 32, menuBarVisible: false))
+    }
+
+    func testIgnoresMouseOutsideHitRectRegardlessOfHistory() {
+        let hit = CGRect(x: 590, y: 950, width: 320, height: 32)
+        XCTAssertTrue(PanelLayout.ignoresMouse(visible: true, hitRect: hit, cursor: CGPoint(x: 100, y: 100)))
+        XCTAssertFalse(PanelLayout.ignoresMouse(visible: true, hitRect: hit, cursor: CGPoint(x: 700, y: 982)))
+        XCTAssertTrue(PanelLayout.ignoresMouse(visible: false, hitRect: hit, cursor: CGPoint(x: 700, y: 960)))
     }
 
     let reveal = CGRect(x: 600, y: 979, width: 300, height: 3)

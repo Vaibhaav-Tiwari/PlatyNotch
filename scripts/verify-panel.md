@@ -40,7 +40,9 @@ Tick each on the hardware you have; note the Mac model and macOS version.
   screen edge, no shadow. Hovering the notch for a moment expands the panel
   downward from the notch; moving away collapses it after ~⅓ s. Clicking the
   compact panel expands it; clicking again collapses. Clicks on the menu bar left
-  and right of the panel still reach the menu bar / status items. With the panel
+  and right of the panel's ears still reach the menu bar / status items. By design
+  the compact ears (~64 pt each side of the notch) cover menu-bar items that sit
+  right next to the notch; those items are not clickable through the panel. With the panel
   expanded, click into it then press Esc: it collapses.
 - [ ] **2. Mac without a notch (or an external display as main).** A rounded pill
   appears centred just below the menu bar, not covering it. Expanded and peek
@@ -52,6 +54,12 @@ Tick each on the hardware you have; note the Mac model and macOS version.
   pill area shows it again; moving down into it keeps it; moving away hides it
   again. Leaving full screen brings the panel back within about a second. A
   full-screen app on a *different* display does not hide it.
+  On a notched display macOS places full-screen windows below the camera housing;
+  the panel must still hide there (a maximised, non-full-screen window must *not*
+  hide it). Multi-display caveat: only the *frontmost* app is checked, so a
+  full-screen app on display A that is not frontmost (you clicked an app on display
+  B) leaves A's panel showing; with "Show on all displays" each display checks the
+  frontmost app's windows against its own bounds.
 - [ ] **4. Display changes.** Plug or unplug an external display, change which
   display is main (System Settings › Displays › arrangement, drag the menu bar), and
   change resolution ("More Space"). Each time the panel is rebuilt on the main
@@ -78,15 +86,26 @@ Tick each on the hardware you have; note the Mac model and macOS version.
 
 ## Automated equivalents
 
+Run from `apps/mac`. Each block is a subshell that removes its temp dirs.
+
 ```sh
-cd apps/mac && swift test
-(cd core && go build -o /tmp/pn-notch ./cmd/notch)
-H=$(mktemp -d); S=$(mktemp -d /tmp/pn.XXXX)
-PLATYNOTCH_CORE_BIN=/tmp/pn-notch PLATYNOTCH_HOME=$H PLATYNOTCH_SOCKET=$S/n.sock \
-  swift run PlatyNotch --smoke          # SMOKE OK panels=1 mode=compact
+swift test
+
+# Launch smoke: supervised core, temp home and socket.
+(
+  set -e
+  (cd ../../core && go build -o /tmp/pn-notch ./cmd/notch)
+  H=$(mktemp -d); S=$(mktemp -d /tmp/pn.XXXX); trap 'rm -rf "$H" "$S"' EXIT
+  PLATYNOTCH_CORE_BIN=/tmp/pn-notch PLATYNOTCH_HOME=$H PLATYNOTCH_SOCKET=$S/n.sock \
+    swift run PlatyNotch --smoke       # SMOKE OK panels=1 mode=compact
+)
 
 # Approval peek end to end: app first (smoke after 10 s), then the fake events.
-export PLATYNOTCH_HOME=$(mktemp -d) PLATYNOTCH_SOCKET=$(mktemp -d /tmp/pn.XXXX)/n.sock
-(PLATYNOTCH_EXTERNAL_CORE=1 PLATYNOTCH_SMOKE_DELAY=10 swift run PlatyNotch --smoke &)
-PN_FAKE_HOLD=8 ../../scripts/fake-events.sh --auto   # app prints SMOKE OK panels=1 mode=peek(approval)
+(
+  H=$(mktemp -d); S=$(mktemp -d /tmp/pn.XXXX); trap 'rm -rf "$H" "$S"' EXIT
+  export PLATYNOTCH_HOME=$H PLATYNOTCH_SOCKET=$S/n.sock
+  PLATYNOTCH_EXTERNAL_CORE=1 PLATYNOTCH_SMOKE_DELAY=10 swift run PlatyNotch --smoke &
+  PN_FAKE_HOLD=8 ../../scripts/fake-events.sh --auto >/dev/null
+  wait                                 # SMOKE OK panels=1 mode=peek(approval)
+)
 ```

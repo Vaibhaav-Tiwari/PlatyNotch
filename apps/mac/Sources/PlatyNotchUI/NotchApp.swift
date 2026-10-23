@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var controllers: [NotchController] = []
     private var pump: Task<Void, Never>?
     private var screenObserver: NSObjectProtocol?
+    private var signalSources: [DispatchSourceSignal] = []
 
     init(coreBinary: String, plugins: [NotchPlugin], options: LaunchOptions) {
         self.coreBinary = coreBinary
@@ -41,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        handleTerminationSignals()
         if !options.externalCore {
             let s = CoreSupervisor(binaryURL: CorePaths.coreBinary(name: coreBinary), logURL: CorePaths.coreLog())
             s.start()
@@ -73,14 +75,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         supervisor?.stop()
     }
 
+    /// SIGTERM / SIGINT (kill, Ctrl-C under `swift run`) quit through `terminate`, so the
+    /// supervised core gets its SIGTERM instead of being orphaned.
+    private func handleTerminationSignals() {
+        for sig in [SIGTERM, SIGINT] {
+            signal(sig, SIG_IGN)
+            let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
+            source.setEventHandler { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.supervisor?.stop()
+                    NSApplication.shared.terminate(nil)
+                }
+            }
+            source.resume()
+            signalSources.append(source)
+        }
+    }
+
     /// One controller per target screen: the primary (menu bar) display, or all
     /// displays when "Show on all displays" is on.
+    /// Panel state carries over per display (falling back to the old primary panel), so a
+    /// rebuild neither collapses an open panel nor replays the last notice.
     private func rebuildControllers() {
-        for c in controllers { c.detach() }
+        var carry: [CGDirectDisplayID: PanelCarryOver] = [:]
+        for c in controllers {
+            if let id = c.displayID { carry[id] = c.carryOver }
+            c.detach()
+        }
+        let fallback = controllers.first?.carryOver
         let screens = UserDefaults.standard.bool(forKey: NotchSettings.showOnAllDisplays)
             ? NSScreen.screens : Array(NSScreen.screens.prefix(1))
-        controllers = screens.map { screen in
-            let c = NotchController(store: store, client: client, plugins: plugins)
+        controllers = screens.enumerated().map { index, screen in
+            let state = screen.displayID.flatMap { carry[$0] } ?? (index == 0 ? fallback : nil)
+            let c = NotchController(store: store, client: client, plugins: plugins, carryOver: state)
             c.attach(to: screen)
             return c
         }

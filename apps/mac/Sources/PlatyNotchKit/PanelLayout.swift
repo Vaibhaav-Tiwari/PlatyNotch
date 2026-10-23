@@ -87,6 +87,12 @@ public struct PanelLayout: Equatable, Sendable {
         p.x >= rect.minX && p.x <= rect.maxX && p.y >= rect.minY && p.y <= rect.maxY
     }
 
+    /// The window passes clicks through unless its content is visible and the cursor
+    /// is on the hit rect. Depends only on the current cursor, never on earlier state.
+    public static func ignoresMouse(visible: Bool, hitRect: CGRect, cursor: CGPoint) -> Bool {
+        !(visible && contains(hitRect, cursor))
+    }
+
     /// AppKit global coordinates (bottom-left of the primary display) → Quartz (top-left).
     public static func cgRect(fromAppKit r: CGRect, primaryHeight: CGFloat) -> CGRect {
         CGRect(x: r.minX, y: primaryHeight - r.maxY, width: r.width, height: r.height)

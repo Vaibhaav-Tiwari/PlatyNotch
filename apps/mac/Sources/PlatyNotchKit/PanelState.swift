@@ -6,7 +6,7 @@ public enum PeekReason: Equatable, Sendable {
     case approval, notice
 }
 
-public enum PanelEvent: Sendable {
+public enum PanelEvent: Equatable, Sendable {
     case hoverEnter, hoverExit, click, escape
     case approvalsChanged(count: Int)
     case notice, noticeTimeout

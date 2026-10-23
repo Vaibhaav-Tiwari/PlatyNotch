@@ -2,12 +2,19 @@ import CoreGraphics
 
 /// Hides the panel over full-screen apps unless the cursor reaches the top edge.
 public enum FullScreenPolicy {
-    /// True when any of the frontmost app's windows covers the whole display
-    /// (Quartz coordinates, 1 pt tolerance).
-    public static func isFullScreen(windowBounds: [CGRect], displayBounds: CGRect) -> Bool {
-        windowBounds.contains { w in
-            abs(w.minX - displayBounds.minX) <= 1 && abs(w.minY - displayBounds.minY) <= 1
-                && abs(w.maxX - displayBounds.maxX) <= 1 && abs(w.maxY - displayBounds.maxY) <= 1
+    /// True when one of the frontmost app's windows fills the display (Quartz
+    /// coordinates, top-left origin, 1 pt tolerance): full width, down to the bottom,
+    /// and from the top, or from `topInset` below it on a notched display (macOS puts
+    /// full-screen windows under the camera housing). A window starting at `topInset`
+    /// only counts while the menu bar is hidden: with it showing, those are the bounds
+    /// of an ordinary zoomed window (on notched Macs the menu bar is as tall as the notch).
+    public static func isFullScreen(windowBounds: [CGRect], displayBounds d: CGRect,
+                                    topInset: CGFloat, menuBarVisible: Bool) -> Bool {
+        func near(_ a: CGFloat, _ b: CGFloat) -> Bool { abs(a - b) <= 1 }
+        return windowBounds.contains { w in
+            guard near(w.minX, d.minX), near(w.maxX, d.maxX), near(w.maxY, d.maxY) else { return false }
+            if near(w.minY, d.minY) { return true }
+            return topInset > 0 && !menuBarVisible && near(w.minY, d.minY + topInset)
         }
     }
 
