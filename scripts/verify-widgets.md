@@ -225,3 +225,71 @@ Apple Music and a YouTube video in Safari, bundled app (adapter) and `swift run`
   the pill shown: visualiser off, PlatyNotch stays where it was before this task (12 fps
   synthetic bars); on, it adds no more than ~1-2% (SwiftUI redraws at ≤30 fps); with the
   pill hidden (full screen, panel on another tab) it returns to idle.
+
+## Task 4: volume, brightness and keyboard-backlight HUDs
+
+Automated: `HUDTests` (key decoding with the C18 vectors, 1/16 and ⌥⇧ 1/64 steps,
+clamping, volume/mute rules, the swallow gate, `hudWouldShow`) and `HUDWidgetTests`
+(a fake tap and fake controls: off by default, no tap or listener while off, no prompt
+on enable, pass-through without Accessibility / refused tap / full screen / ringing /
+no panel on the cursor's display, HUD only on the target display). No test or smoke run
+creates an event tap or changes volume or brightness; `--smoke` builds the HUD views
+from an inert copy of the widget. The tap needs **Accessibility** (an active
+`.defaultTap` filter; `CGEvent.tapCreate` returns nil without it), not Input
+Monitoring. Logs: `log stream --predicate 'subsystem == "dev.platynotch.app" AND
+(category == "MediaKeyTap" OR category == "HUDWidget")'`.
+
+Use the installed app (`scripts/build-app.sh`): Accessibility is granted to a bundle.
+Reset between runs with `tccutil reset Accessibility dev.platynotch.app`. An ad-hoc
+build loses the grant on every rebuild.
+
+- [ ] **41. Off by default.** Fresh defaults: Settings › Widgets lists "Volume &
+  brightness HUD" switched off. Volume keys show the system HUD; the log shows no
+  "media key tap started".
+- [ ] **42. Review Focus #4: no permission.** With Accessibility reset, turn the widget
+  on (Settings › Widgets, or the onboarding Permissions page toggle). No system prompt
+  appears. Press volume up/down, mute, brightness: the **system HUD shows and works**,
+  ours never does, and nothing lags. Settings › Widgets › Volume & brightness HUD says
+  "Off: needs Accessibility…" with "Allow Accessibility…" and "Open System Settings"; the
+  Today tile says the same; Settings › Permissions › Accessibility mentions the HUD.
+- [ ] **43. Allow.** Click "Allow Accessibility…": the system prompt appears (only now).
+  Grant it in System Settings: within a second or two (no relaunch) the status reads
+  "On". Volume up: our slim bar grows out of the notch for ~1.5 s with the output's name
+  ("MacBook Pro Speakers"), and the **system HUD does not appear**. 16 presses go from 0
+  to full; ⌥⇧ + key moves a quarter step; ⌥ alone + key opens Sound settings as usual.
+  Mute: slashed speaker, empty bar; volume up unmutes. Control Centre's Sound slider
+  agrees with our level.
+- [ ] **44. Revoke while running.** Remove PlatyNotch from Privacy & Security ›
+  Accessibility: within a second or two the status returns to "needs Accessibility" and
+  the system HUD handles every key (no key is lost or stuck).
+- [ ] **45. Output changes.** Connect AirPods (or plug in headphones): the next volume
+  press shows their name. Switch output to a device without volume control (HDMI /
+  DisplayPort audio): the system HUD shows ("not supported"), ours does not.
+- [ ] **46. Brightness.** Brightness keys on the built-in display: our HUD (sun glyph),
+  the screen dims/brightens by 1/16, ⌥⇧ by 1/64; Control Centre's Display slider agrees.
+  Clamshell (external display only): the system handles the keys. Note for this Mac
+  whether brightness keys reach the tap at all (some Apple Silicon keyboards handle them
+  below the event system; then the system HUD shows, which is acceptable).
+- [ ] **47. Keyboard backlight.** On a Mac or keyboard with backlight keys: our HUD
+  ("light.max"), level steps by 1/16. Without a backlit keyboard the widget's settings
+  say the system HUD still shows for the keyboard backlight.
+- [ ] **48. Our HUD only where it shows.** Widget on and allowed:
+  - full-screen video: the **system** HUD shows (key passed through);
+  - an alarm ringing: the system HUD shows;
+  - approval peek up: a 2 pt line at the bottom of the approval card, no system HUD,
+    the card does not move;
+  - two displays, "Show on all displays" off, cursor on the display without the panel:
+    the system HUD shows; move the cursor to the notch display: ours. With "Show on all
+    displays" on: ours, on the display under the cursor only.
+- [ ] **49. Hang.** Find the pid (`pgrep -x PlatyNotch`), `kill -STOP <pid>`, press
+  volume up a few times: after at most about a second the **system HUD shows and the
+  volume changes** (the window server timed the tap out). `kill -CONT <pid>`: the next
+  presses show our HUD again (the tap re-enabled itself) and no key was applied twice.
+- [ ] **50. Crash.** `kill -9 <pid>`: volume keys immediately show the system HUD.
+  Relaunch: ours again (if the widget is on and allowed).
+- [ ] **51. Off again.** Turn the widget off: "media key tap stopped" in the log and the
+  system HUD shows at once. Quit: same.
+- [ ] **52. Secure input.** Focus a password field (secure input on) and press volume
+  keys: they keep working (ours or the system's), nothing sticks after leaving the field.
+- [ ] **53. Idle cost.** Widget on and allowed, collapsed, no music: Activity Monitor
+  shows PlatyNotch where it was before (no polling; the tap runs only on key presses).

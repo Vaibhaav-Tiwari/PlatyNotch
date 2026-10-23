@@ -109,10 +109,13 @@ public struct WidgetContext {
     /// What is ringing (games pause while non-empty).
     public var ringing: [String] { surfaces.ringing }
 
-    /// A level HUD for `PanelSurfaces.hudDuration`. False when no panel shows it (full
-    /// screen, a ringing card): let the system HUD show then.
+    /// A level HUD for `PanelSurfaces.hudDuration` on `display` (default: the display
+    /// under the cursor, else the main one). False when that display's panel does not
+    /// show it (full screen, a ringing card, no panel there): let the system HUD show then.
     @discardableResult
-    public func showHUD(kind: HUDKind, level: Double) -> Bool { surfaces.showHUD(kind: kind, level: level) }
+    public func showHUD(kind: HUDKind, level: Double, display: CGDirectDisplayID? = nil) -> Bool {
+        surfaces.showHUD(kind: kind, level: level, display: display)
+    }
 
     /// The drag detector reports a drag session (Task 5): while active, a panel opens its
     /// drop zone when the cursor comes within `PanelLayout.dragReach` of its notch.

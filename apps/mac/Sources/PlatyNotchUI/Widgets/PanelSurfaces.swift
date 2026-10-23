@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 import PlatyNotchKit
@@ -19,6 +20,7 @@ public enum PanelSurfaceSignal: Equatable, Sendable {
     case endPeek(id: String)
     case ring(id: String)
     case stopRinging(id: String)
+    /// Sent only to the panel on the HUD's target display (see `PanelSurfaces.showHUD`).
     case hud(HUDKind, level: Double, until: Date)
     /// A drag with something on the drag pasteboard is in progress (Task 5's detector).
     case dragSession(active: Bool)
@@ -30,6 +32,10 @@ public protocol PanelSurfaceSink: AnyObject {
     func receive(_ signal: PanelSurfaceSignal)
     /// Whether this panel currently shows the HUD (as a surface or an indicator).
     var showsHUD: Bool { get }
+    /// Whether a HUD sent now would show (`PanelPrecedence.hudWouldShow`, not suppressed).
+    var hudWouldShow: Bool { get }
+    /// The display the panel is on; nil before it is placed (it then matches any display).
+    var displayID: CGDirectDisplayID? { get }
 }
 
 /// The transient surfaces widgets ask for (peeks, ringing, HUDs, the drag session),
@@ -47,12 +53,20 @@ public final class PanelSurfaces {
     public var ringing: [String] { rings.map(\.id) }
     /// True while a drag session is in progress.
     public private(set) var dragActive = false
+    /// Where a HUD sent now would show: the media-key tap takes a key only for these
+    /// (`HUDReadiness.covers`). Kept current as panels change (`sinkStateChanged`).
+    public private(set) var hudReadiness = HUDReadiness()
+    /// Told synchronously when `hudReadiness` changes (the HUD widget's tap gate).
+    @ObservationIgnored private var readinessHandlers: [ObjectIdentifier: (HUDReadiness) -> Void] = [:]
 
     @ObservationIgnored private weak var registry: WidgetRegistry?
     @ObservationIgnored private var sinks: [WeakSink] = []
     @ObservationIgnored private var currentPeek: WidgetPeek?
-    @ObservationIgnored private var currentHUD: HUDState?
+    @ObservationIgnored private var currentHUD: (state: HUDState, display: CGDirectDisplayID)?
     @ObservationIgnored var now: () -> Date = Date.init
+    /// The display a HUD goes to when the caller names none: the one under the cursor,
+    /// else the main display.
+    @ObservationIgnored var defaultHUDDisplay: () -> CGDirectDisplayID = PanelSurfaces.displayUnderCursor
 
     /// `registry` supplies the views; peeks and rings without a view are refused.
     public init(registry: WidgetRegistry? = nil) {
@@ -87,12 +101,33 @@ public final class PanelSurfaces {
         let t = now()
         for r in rings { sink.receive(.ring(id: r.id)) }
         if let p = currentPeek, p.until > t { sink.receive(.peek(id: p.id, until: p.until)) }
-        if let h = currentHUD, h.until > t { sink.receive(.hud(h.kind, level: h.level, until: h.until)) }
+        if let h = currentHUD, h.state.until > t, Self.matches(sink, h.display) {
+            sink.receive(.hud(h.state.kind, level: h.state.level, until: h.state.until))
+        }
         if dragActive { sink.receive(.dragSession(active: true)) }
+        sinkStateChanged()
     }
 
     public func detach(_ sink: PanelSurfaceSink) {
         sinks.removeAll { $0.sink == nil || $0.sink === sink }
+        sinkStateChanged()
+    }
+
+    /// A panel's mode, full-screen state or display changed: recompute `hudReadiness`.
+    public func sinkStateChanged() {
+        var next = HUDReadiness()
+        for w in sinks {
+            guard let sink = w.sink, sink.hudWouldShow else { continue }
+            if let id = sink.displayID { next.displays.insert(id) } else { next.anyDisplay = true }
+        }
+        guard next != hudReadiness else { return }
+        hudReadiness = next
+        for f in readinessHandlers.values { f(next) }
+    }
+
+    /// Calls `handler` whenever `hudReadiness` changes, until replaced or removed (nil).
+    public func onHUDReadinessChange(owner: AnyObject, _ handler: ((HUDReadiness) -> Void)?) {
+        readinessHandlers[ObjectIdentifier(owner)] = handler
     }
 
     // MARK: - Widget API (through WidgetContext)
@@ -128,14 +163,31 @@ public final class PanelSurfaces {
         send(.stopRinging(id: id))
     }
 
-    /// Shows a level HUD for `hudDuration`. Returns whether any panel shows it (false over
-    /// full screen or under a ringing card), so the caller can let the system HUD show instead.
+    /// Shows a level HUD for `hudDuration` on one display: `display`, or the display
+    /// under the cursor (else the main display). Other displays' panels do not get it.
+    /// Returns whether that display's panel shows it (false over full screen, under a
+    /// ringing card, or when no panel is on that display), so the caller lets the system
+    /// HUD show instead. A panel not yet placed on a display counts for any display.
     @discardableResult
-    public func showHUD(kind: HUDKind, level: Double) -> Bool {
+    public func showHUD(kind: HUDKind, level: Double, display: CGDirectDisplayID? = nil) -> Bool {
+        let target = display ?? defaultHUDDisplay()
         let h = HUDState(kind: kind, level: level, until: now().addingTimeInterval(Self.hudDuration))
-        currentHUD = h
-        send(.hud(kind, level: h.level, until: h.until))
-        return sinks.contains { $0.sink?.showsHUD == true }
+        currentHUD = (h, target)
+        sinks.removeAll { $0.sink == nil }
+        let targets = sinks.compactMap(\.sink).filter { Self.matches($0, target) }
+        for sink in targets { sink.receive(.hud(kind, level: h.level, until: h.until)) }
+        return targets.contains { $0.showsHUD }
+    }
+
+    private static func matches(_ sink: PanelSurfaceSink, _ display: CGDirectDisplayID) -> Bool {
+        sink.displayID.map { $0 == display } ?? true
+    }
+
+    /// The display under the mouse, else the main display.
+    nonisolated static func displayUnderCursor() -> CGDirectDisplayID {
+        let p = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { NSMouseInRect(p, $0.frame, false) }
+        return screen?.displayID ?? CGMainDisplayID()
     }
 
     /// A drag began / ended anywhere (Task 5's detector). Each panel opens its drop zone
@@ -159,4 +211,18 @@ public final class PanelSurfaces {
     private struct WeakSink {
         weak var sink: PanelSurfaceSink?
     }
+}
+
+/// Which displays' panels would show a HUD sent now (`PanelSurfaces.hudReadiness`).
+public struct HUDReadiness: Equatable, Sendable {
+    public var displays: Set<CGDirectDisplayID> = []
+    /// A panel not yet placed on a display would (tests); it matches any display.
+    public var anyDisplay = false
+
+    public init(displays: Set<CGDirectDisplayID> = [], anyDisplay: Bool = false) {
+        self.displays = displays
+        self.anyDisplay = anyDisplay
+    }
+
+    public func covers(_ display: CGDirectDisplayID) -> Bool { anyDisplay || displays.contains(display) }
 }

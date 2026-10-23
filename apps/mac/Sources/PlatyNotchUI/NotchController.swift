@@ -169,6 +169,7 @@ public final class NotchController {
 
     /// Pushes the current mode, full-screen suppression and cursor into the window.
     private func apply() {
+        defer { surfaces.sinkStateChanged() }   // the media-key tap's view of where a HUD would show
         guard let panel, let layout else { return }
         cursor = NSEvent.mouseLocation   // never decide pass-through from a stale position
         let mode = machine.mode
@@ -415,11 +416,14 @@ extension NotchController: PanelSurfaceSink {
         !suppressed && (machine.mode.isHUD || machine.hudIndicator != nil)
     }
 
+    public var hudWouldShow: Bool { machine.hudWouldShow }
+
     /// What tests and `--smoke` feed the controller directly.
     enum DebugInput {
         case event(PanelEvent)
         case setFullScreen(Bool)
         case layout(PanelLayout)
+        case display(CGDirectDisplayID)
     }
 
     func debugHandle(_ input: DebugInput) {
@@ -432,6 +436,9 @@ extension NotchController: PanelSurfaceSink {
         case .layout(let l):
             layout = l
             model.layout = l
+        case .display(let id):
+            displayID = id
+            surfaces.sinkStateChanged()
         }
     }
 

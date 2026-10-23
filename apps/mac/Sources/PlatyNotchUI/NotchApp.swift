@@ -363,9 +363,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return (count, failed)
     }
 
-    /// Lays out the built-in HUD, indicator, drop zone and ringing fallback off screen.
+    /// Lays out the built-in HUD, indicator, drop zone and ringing fallback off screen,
+    /// and the HUD widget's views (an inert copy: it is off by default, and smoke never taps keys).
     private func buildSurfaceViews() {
+        let hud = HUDWidget.inert()
         let views: [AnyView] = HUDKind.allCases.map { AnyView(HUDBar(state: HUDState(kind: $0, level: 0.5, until: Date()))) }
+            + HUDKind.allCases.compactMap { hud.hudView(kind: $0, level: 0.5) }
+            + [AnyView(HUDView(kind: .volume, level: 0.5, output: "MacBook Pro Speakers")),
+               hud.tileView()] + [hud.settingsView()].compactMap { $0 }
             + [AnyView(HUDIndicator(state: HUDState(kind: .volume, level: 0.5, until: Date()))),
                AnyView(DropZonePlaceholder()), AnyView(RingingFallback(id: "smoke", onStop: {})),
                AnyView(RingingOverlay(title: "Alarm", subtitle: "Alarm · 7:00", isAlarm: true, onSnooze: {}, onStop: {}))]

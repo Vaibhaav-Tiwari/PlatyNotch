@@ -125,6 +125,16 @@ public enum PanelPrecedence {
         default: return nil
         }
     }
+
+    /// Whether a HUD sent now would be on screen, as its own surface or as the
+    /// indicator: false over full screen, under ringing and during the drop zone. The
+    /// media-key tap takes a key (hiding the system HUD) only when this holds.
+    public static func hudWouldShow(_ s: PanelSurfaceState) -> Bool {
+        guard !s.fullScreen else { return false }
+        var probe = s
+        probe.hud = HUDState(kind: .volume, level: 0, until: .distantFuture)
+        return resolve(probe).isHUD || hudIndicator(probe) != nil
+    }
 }
 
 /// Pure state machine for the notch panel; no AppKit.
@@ -169,6 +179,8 @@ public struct PanelStateMachine: Sendable {
     public var ringingChip: String? { PanelPrecedence.ringingChip(state) }
     /// See `PanelPrecedence.hudIndicator`.
     public var hudIndicator: HUDState? { PanelPrecedence.hudIndicator(state) }
+    /// See `PanelPrecedence.hudWouldShow`.
+    public var hudWouldShow: Bool { PanelPrecedence.hudWouldShow(state) }
     /// When the next HUD or widget peek ends (send `.expire` then).
     public var nextExpiry: Date? {
         [state.hud?.until, state.widgetPeek?.until].compactMap { $0 }.min()

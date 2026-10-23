@@ -176,8 +176,30 @@ private struct PermissionsPage: View {
         VStack(alignment: .leading, spacing: 8) {
             PageTitle(title: "Permissions",
                       text: "All optional. macOS asks only when you click Allow, and you can change your mind in System Settings.")
-            ScrollView { PermissionRows(permissions: services.permissions) }
+            ScrollView {
+                PermissionRows(permissions: services.permissions)
+                HUDOptIn(widgets: services.widgets).padding(.top, 14)
+            }
         }
+    }
+}
+
+/// Opt-in for the volume and brightness HUD (off by default; it needs Accessibility).
+private struct HUDOptIn: View {
+    let widgets: WidgetRegistry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle("Replace the volume and brightness HUD", isOn: Binding(
+                get: { widgets.isEnabled(HUDWidget.widgetID) },
+                set: { widgets.setEnabled(HUDWidget.widgetID, $0) }))
+                .toggleStyle(.switch)
+            Text("Shows volume, brightness and keyboard backlight in the notch. Needs Accessibility (above); without it the system HUD shows as before.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

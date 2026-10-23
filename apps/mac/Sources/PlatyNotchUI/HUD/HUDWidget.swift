@@ -1,0 +1,319 @@
+import AppKit
+import Observation
+import os
+import PlatyNotchKit
+import SwiftUI
+
+/// The controls the HUD changes, made when the widget starts (so the private frameworks
+/// are only loaded while it is on) and dropped when it stops.
+@MainActor
+struct HUDControls {
+    var volume: VolumeControl
+    var brightness: LevelControl
+    var backlight: LevelControl
+
+    static func system() -> HUDControls {
+        HUDControls(volume: SystemVolume(), brightness: DisplayBrightness(), backlight: KeyboardBacklight())
+    }
+
+    /// Nothing available, nothing changed (smoke runs).
+    static var inert: HUDControls {
+        HUDControls(volume: NoVolume(), brightness: NoLevel(), backlight: NoLevel())
+    }
+}
+
+@MainActor
+private final class NoVolume: VolumeControl {
+    var canSetVolume: Bool { false }
+    var canMute: Bool { false }
+    var outputName: String? { nil }
+    func state() -> VolumeChange.State? { nil }
+    func set(_ state: VolumeChange.State) -> Bool { false }
+    func startObserving(_ onChange: @escaping @MainActor () -> Void) {}
+    func stopObserving() {}
+}
+
+@MainActor
+private final class NoLevel: LevelControl {
+    var isAvailable: Bool { false }
+    func level() -> Float? { nil }
+    func setLevel(_ value: Float) -> Bool { false }
+}
+
+/// Volume, brightness and keyboard-backlight HUDs that replace the system HUD.
+///
+/// Off by default (it needs Accessibility). While it runs and Accessibility is allowed,
+/// an event tap (`SystemMediaKeyTap`) takes a media key only when PlatyNotch can do the
+/// whole job: the control exists on this Mac and our HUD would show on the display under
+/// the cursor (`MediaKeyGate`). Everything else, and everything while the permission is
+/// missing, the tap failed or the widget is off, goes to the system as usual.
+/// A disabled widget has no tap, no CoreAudio listener and no notification observers.
+@MainActor @Observable
+final class HUDWidget: NotchWidget {
+    static let widgetID = "hud"
+    @ObservationIgnored private static let log = Logger(subsystem: "dev.platynotch.app", category: "HUDWidget")
+
+    enum Status: Equatable {
+        /// Not running (widget off).
+        case stopped
+        /// No Accessibility: the system HUD shows.
+        case needsAccessibility
+        /// Accessibility is allowed but macOS refused the tap.
+        case tapRefused
+        case on
+    }
+
+    let id = HUDWidget.widgetID
+    let title = "Volume & brightness HUD"
+    let systemImage = "speaker.wave.2"
+    let defaultEnabled = false
+
+    private(set) var status: Status = .stopped
+    /// The keys PlatyNotch handles on this Mac (the rest go to the system).
+    private(set) var available: Set<MediaKeyKind> = []
+    private(set) var outputName: String?
+
+    @ObservationIgnored private let makeTap: () -> MediaKeyTapping
+    @ObservationIgnored private let makeControls: () -> HUDControls
+    @ObservationIgnored private let trust: AccessibilityTrust
+    @ObservationIgnored private var context: WidgetContext?
+    @ObservationIgnored private var controls: HUDControls?
+    @ObservationIgnored private var tap: MediaKeyTapping?
+    @ObservationIgnored private var router: MediaKeyRouter?
+    @ObservationIgnored private var observers: [(NotificationCenter, NSObjectProtocol)] = []
+    @ObservationIgnored private var recheckTask: Task<Void, Never>?
+    @ObservationIgnored private var generation = 0
+
+    init(makeTap: @escaping () -> MediaKeyTapping = { SystemMediaKeyTap() },
+         makeControls: @escaping () -> HUDControls = { HUDControls.system() },
+         trust: AccessibilityTrust = .system) {
+        self.makeTap = makeTap
+        self.makeControls = makeControls
+        self.trust = trust
+    }
+
+    /// Smoke runs: no tap, no prompt, controls that change nothing.
+    static func inert() -> HUDWidget {
+        HUDWidget(makeTap: { NoMediaKeyTap() }, makeControls: { .inert }, trust: .never)
+    }
+
+    var isRunning: Bool { context != nil }
+
+    // MARK: - Lifecycle
+
+    func start(context: WidgetContext) {
+        guard self.context == nil else { return }
+        self.context = context
+        generation += 1
+        let controls = makeControls()
+        self.controls = controls
+        controls.volume.startObserving { [weak self] in self?.refreshControls() }
+        observeSystem()
+        context.surfaces.onHUDReadinessChange(owner: self) { [weak self] _ in self?.pushGate() }
+        refreshControls()
+        connect()
+    }
+
+    func stop() {
+        guard context != nil else { return }
+        generation += 1
+        disconnectTap()
+        controls?.volume.stopObserving()
+        controls = nil
+        context?.surfaces.onHUDReadinessChange(owner: self, nil)
+        for (center, o) in observers { center.removeObserver(o) }
+        observers = []
+        recheckTask?.cancel()
+        recheckTask = nil
+        context = nil
+        status = .stopped
+        available = []
+        outputName = nil
+    }
+
+    /// Creates the tap when Accessibility is allowed and drops it when not.
+    private func connect() {
+        guard context != nil else { return }
+        guard trust.isTrusted() else {
+            disconnectTap()
+            status = .needsAccessibility
+            return
+        }
+        if tap == nil {
+            let t = makeTap()
+            let r = MediaKeyRouter { [weak self] action, display in
+                // From the tap callback: hand off, never wait.
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated { self?.perform(action, display: display) }
+                }
+            }
+            guard t.start(router: r) else {
+                status = .tapRefused
+                return
+            }
+            tap = t
+            router = r
+        }
+        status = .on
+        pushGate()
+    }
+
+    private func disconnectTap() {
+        router?.update { $0.active = false }
+        tap?.stop()
+        tap = nil
+        router = nil
+    }
+
+    // MARK: - Permission
+
+    /// The "Allow" button: shows the system Accessibility prompt, then picks the grant up
+    /// (the distributed notification below, and a bounded recheck for a minute).
+    func requestAccess() {
+        trust.request()
+        recheckTask?.cancel()
+        recheckTask = Task { [weak self] in
+            for _ in 0..<60 {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled, let self, self.isRunning else { return }
+                if self.trust.isTrusted() {
+                    self.connect()
+                    return
+                }
+            }
+        }
+    }
+
+    /// Retry after macOS refused the tap.
+    func retry() { connect() }
+
+    private func observeSystem() {
+        // Posted when any app's Accessibility entry changes (granted or revoked).
+        let dnc = DistributedNotificationCenter.default()
+        observers.append((dnc, dnc.addObserver(forName: Notification.Name("com.apple.accessibility.api"),
+                                              object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.trustMayHaveChanged() }
+        }))
+        // Displays come and go (clamshell): brightness availability changes.
+        let nc = NotificationCenter.default
+        observers.append((nc, nc.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
+                                             object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshControls() }
+        }))
+    }
+
+    func trustMayHaveChanged() {
+        // The notification arrives before the new state can be read.
+        let gen = generation
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard let self, self.generation == gen else { return }
+            self.connect()
+        }
+    }
+
+    // MARK: - Gate
+
+    private func refreshControls() {
+        guard let controls else { return }
+        var keys: Set<MediaKeyKind> = []
+        if controls.volume.canSetVolume { keys.formUnion([.volumeUp, .volumeDown]) }
+        if controls.volume.canMute { keys.insert(.mute) }
+        if controls.brightness.isAvailable { keys.formUnion([.brightnessUp, .brightnessDown]) }
+        if controls.backlight.isAvailable { keys.formUnion([.backlightUp, .backlightDown]) }
+        if keys != available { available = keys }
+        let name = controls.volume.outputName
+        if name != outputName { outputName = name }
+        pushGate()
+    }
+
+    /// Copies what the tap needs into its lock-protected gate.
+    private func pushGate() {
+        guard let router else { return }
+        let active = status == .on
+        let keys = available
+        let readiness = context?.surfaces.hudReadiness ?? HUDReadiness()
+        router.update { gate in
+            gate.active = active
+            gate.available = keys
+            gate.readyDisplays = readiness.displays
+            gate.readyOnAnyDisplay = readiness.anyDisplay
+        }
+    }
+
+    // MARK: - Keys
+
+    /// A key the tap took: change the level and show our HUD on `display`.
+    func perform(_ action: MediaKeyAction, display: CGDirectDisplayID) {
+        guard let controls, let context, let hud = action.kind.hud else { return }
+        let level: Float?
+        switch hud {
+        case .volume:
+            if let now = controls.volume.state() {
+                let next = VolumeChange.apply(action.kind, fine: action.fine, to: now)
+                controls.volume.set(next)
+                level = next.shownLevel
+            } else {
+                level = nil
+            }
+        case .brightness:
+            level = step(controls.brightness, action)
+        case .keyboardBacklight:
+            level = step(controls.backlight, action)
+        }
+        guard let level else {
+            Self.log.error("\(hud.rawValue, privacy: .public) key taken but the level could not be read")
+            return
+        }
+        if !context.showHUD(kind: hud, level: Double(level), display: display) {
+            // The panel changed between the tap's check and now (rare): the change applied, no HUD.
+            Self.log.notice("HUD not shown after a taken key")
+        }
+    }
+
+    private func step(_ control: LevelControl, _ action: MediaKeyAction) -> Float? {
+        guard let now = control.level() else { return nil }
+        let next = LevelStep.next(now, up: action.kind.isUp, fine: action.fine)
+        control.setLevel(next)
+        return next
+    }
+
+    // MARK: - Views
+
+    func hudView(kind: HUDKind, level: Double) -> AnyView? {
+        AnyView(HUDView(kind: kind, level: level, output: kind == .volume ? outputName : nil))
+    }
+
+    func tileView() -> AnyView { AnyView(HUDTile(widget: self)) }
+
+    func settingsView() -> AnyView? { AnyView(HUDSettingsView(widget: self)) }
+
+    /// Why the system HUD is still showing, for Settings and the tile; nil when ours is on.
+    var explanation: String? {
+        switch status {
+        case .on, .stopped: nil
+        case .needsAccessibility:
+            """
+            Off: needs Accessibility. macOS lets an app take the volume and brightness keys \
+            only with Accessibility allowed. Until then the system HUD shows as usual.
+            """
+        case .tapRefused:
+            """
+            Off: macOS refused the key tap although Accessibility looks allowed. Remove \
+            PlatyNotch from System Settings › Privacy & Security › Accessibility, add it \
+            again, then Retry. The system HUD shows meanwhile.
+            """
+        }
+    }
+
+    /// Keys this Mac cannot change through PlatyNotch (left to the system HUD).
+    var unavailableNote: String? {
+        guard status == .on else { return nil }
+        var missing: [String] = []
+        if !available.contains(.volumeUp) { missing.append("volume (this output has no volume control)") }
+        if !available.contains(.brightnessUp) { missing.append("brightness (no built-in display)") }
+        if !available.contains(.backlightUp) { missing.append("keyboard backlight (none on this keyboard)") }
+        guard !missing.isEmpty else { return nil }
+        return "The system HUD still shows for " + missing.joined(separator: ", ") + "."
+    }
+}

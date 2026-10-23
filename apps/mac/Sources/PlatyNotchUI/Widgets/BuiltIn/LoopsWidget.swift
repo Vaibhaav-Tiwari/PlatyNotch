@@ -33,7 +33,8 @@ private struct LoopsTile: View {
 }
 
 /// The Plan 3 Today features as widgets, in their old order, then Plan 3b's.
-/// `persist: false` (smoke runs) reads saved widget state but never writes it.
+/// `persist: false` (smoke runs) reads saved widget state but never writes it, and the
+/// HUD never creates an event tap, prompts, or touches volume or brightness.
 @MainActor
 enum BuiltInWidgets {
     static func register(in registry: WidgetRegistry, store: AppStore, today: TodayServices, persist: Bool = true) {
@@ -42,5 +43,6 @@ enum BuiltInWidgets {
         registry.register(FocusWidget(focus: today.focus))
         registry.register(LoopsWidget(store: store, actions: today.loops))
         registry.register(TimeWidget(persist: persist))
+        registry.register(persist ? HUDWidget() : HUDWidget.inert())
     }
 }

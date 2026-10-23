@@ -22,8 +22,8 @@ struct PermissionRows: View {
         VStack(alignment: .leading, spacing: 14) {
             PermissionRow(
                 title: "Accessibility", systemImage: "accessibility",
-                why: "Reads the text of the window in front, for Memory.",
-                withoutIt: "Memory capture stays off. Everything else works.",
+                why: "Reads the text of the window in front, for Memory, and lets the volume and brightness HUD take those keys.",
+                withoutIt: "Memory capture stays off and the system's volume and brightness HUD shows. Everything else works.",
                 state: permissions.accessibility ? .granted : .notAsked,
                 allow: { permissions.requestAccessibility() },
                 openSettings: { Permissions.open(.accessibility) })

@@ -180,8 +180,9 @@ final class WidgetRegistryTests: XCTestCase {
         let registry = WidgetRegistry(defaults: defaults())
         let today = TodayServices(client: CoreClient(socketPath: "/nonexistent"))
         BuiltInWidgets.register(in: registry, store: AppStore(), today: today, persist: false)
-        XCTAssertEqual(registry.orderedWidgets.map(\.id), ["music", "meeting", "focus", "loops", "time"])
-        XCTAssertEqual(registry.visibleWidgets.count, 5)
+        XCTAssertEqual(registry.orderedWidgets.map(\.id), ["music", "meeting", "focus", "loops", "time", "hud"])
+        XCTAssertEqual(registry.visibleWidgets.count, 5, "the HUD is off by default (needs Accessibility)")
+        XCTAssertFalse(registry.isEnabled(HUDWidget.widgetID))
     }
 
     /// Turning a widget off calls `disabled()` after `stop`; quitting (`stopAll`) does not.
