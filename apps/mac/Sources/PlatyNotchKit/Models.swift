@@ -139,6 +139,16 @@ public struct Session: Codable, Sendable, Equatable, Identifiable {
 
     public var id: String { key }
 
+    public init(key: String, agent: String, agentName: String, sessionID: String, cwd: String? = nil,
+                project: String? = nil, state: SessionState, title: String? = nil, tool: String? = nil,
+                message: String? = nil, pid: Int? = nil, tty: String? = nil, termProgram: String? = nil,
+                subagents: Int? = nil, startedAt: Date, updatedAt: Date) {
+        self.key = key; self.agent = agent; self.agentName = agentName; self.sessionID = sessionID
+        self.cwd = cwd; self.project = project; self.state = state; self.title = title; self.tool = tool
+        self.message = message; self.pid = pid; self.tty = tty; self.termProgram = termProgram
+        self.subagents = subagents; self.startedAt = startedAt; self.updatedAt = updatedAt
+    }
+
     enum CodingKeys: String, CodingKey {
         case key, agent
         case agentName = "agent_name"
@@ -169,6 +179,14 @@ public struct Approval: Codable, Sendable, Equatable, Identifiable {
     public var createdAt: Date
     public var expiresAt: Date
 
+    public init(id: String, sessionKey: String, agent: String, agentName: String, project: String? = nil,
+                cwd: String? = nil, tool: String, summary: String, input: RawJSON? = nil,
+                createdAt: Date, expiresAt: Date) {
+        self.id = id; self.sessionKey = sessionKey; self.agent = agent; self.agentName = agentName
+        self.project = project; self.cwd = cwd; self.tool = tool; self.summary = summary
+        self.input = input; self.createdAt = createdAt; self.expiresAt = expiresAt
+    }
+
     enum CodingKeys: String, CodingKey {
         case id
         case sessionKey = "session_key"
@@ -194,6 +212,10 @@ public struct ApprovalResolved: Codable, Sendable, Equatable {
     public var id: String
     public var behavior: String
     public var source: String?
+
+    public init(id: String, behavior: String, source: String? = nil) {
+        self.id = id; self.behavior = behavior; self.source = source
+    }
 }
 
 public struct Window: Codable, Sendable, Equatable {
@@ -222,6 +244,8 @@ public struct Limits: Codable, Sendable, Equatable {
 public struct Usage: Codable, Sendable, Equatable {
     public var claude: Limits?
     public var codex: Limits?
+
+    public init(claude: Limits? = nil, codex: Limits? = nil) { self.claude = claude; self.codex = codex }
 }
 
 public struct Loop: Codable, Sendable, Equatable, Identifiable {
@@ -268,6 +292,12 @@ public struct MemoryStatus: Codable, Sendable, Equatable {
     public var embedder: String
     public var extractor: String
     public var lastError: String?
+
+    public init(enabled: Bool = false, threads: Int = 0, versions: Int = 0, chunks: Int = 0, pending: Int = 0,
+                embedder: String = "", extractor: String = "", lastError: String? = nil) {
+        self.enabled = enabled; self.threads = threads; self.versions = versions; self.chunks = chunks
+        self.pending = pending; self.embedder = embedder; self.extractor = extractor; self.lastError = lastError
+    }
 
     enum CodingKeys: String, CodingKey {
         case enabled, threads, versions, chunks, pending, embedder, extractor
@@ -334,6 +364,10 @@ public struct Notice: Codable, Sendable, Equatable {
     public var body: String?
     public var sessionKey: String?
 
+    public init(kind: String, title: String, body: String? = nil, sessionKey: String? = nil) {
+        self.kind = kind; self.title = title; self.body = body; self.sessionKey = sessionKey
+    }
+
     enum CodingKeys: String, CodingKey {
         case kind, title, body
         case sessionKey = "session_key"
@@ -347,6 +381,12 @@ public struct Snapshot: Codable, Sendable, Equatable {
     public var loops: [Loop]
     public var memory: MemoryStatus
     public var edition: String
+
+    public init(sessions: [Session] = [], approvals: [Approval] = [], usage: Usage = Usage(),
+                loops: [Loop] = [], memory: MemoryStatus = MemoryStatus(), edition: String = "free") {
+        self.sessions = sessions; self.approvals = approvals; self.usage = usage
+        self.loops = loops; self.memory = memory; self.edition = edition
+    }
 }
 
 public struct ExtMessage: Codable, Sendable, Equatable {
