@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory/provider"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory/store"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -216,4 +217,50 @@ func TestMemoryOff(t *testing.T) {
 			t.Errorf("%s: isError=%v %q", name, res.IsError, text(t, res))
 		}
 	}
+}
+
+func TestLazyOpenPicksUpMemoryTurnedOn(t *testing.T) {
+	var st *store.Store
+	cs := connect(t, Deps{Open: func() (*store.Store, provider.Embedder, error) { return st, nil, nil }})
+	if res := call(t, cs, "recent_activity", map[string]any{}); !res.IsError || text(t, res) != MsgMemoryOff {
+		t.Fatalf("before: %v %q", res.IsError, text(t, res))
+	}
+	st = newStore(t)
+	seed(t, st, "k1", "Inbox", "hello", time.Now())
+	res := call(t, cs, "recent_activity", map[string]any{})
+	if res.IsError || !strings.Contains(text(t, res), "Inbox") {
+		t.Fatalf("after: %v %q", res.IsError, text(t, res))
+	}
+}
+
+func TestLimitAndHoursAreClamped(t *testing.T) {
+	s := newStore(t)
+	seed(t, s, "k1", "Inbox", "hello world", time.Now())
+	cs := connect(t, Deps{Store: s})
+	for _, lim := range []int{-5, 0, 1000} {
+		res := call(t, cs, "search_memory", map[string]any{"query": "hello", "limit": lim})
+		if res.IsError || !strings.Contains(text(t, res), "Inbox") {
+			t.Fatalf("limit %d: %v %s", lim, res.IsError, text(t, res))
+		}
+	}
+	for _, h := range []int{-1, 0, 1 << 40} {
+		res := call(t, cs, "recent_activity", map[string]any{"hours": h})
+		if res.IsError || !strings.Contains(text(t, res), "Inbox") {
+			t.Fatalf("hours %d: %v %s", h, res.IsError, text(t, res))
+		}
+	}
+	th, _, _ := s.GetThread(mustThreadID(t, s))
+	res := call(t, cs, "get_thread", map[string]any{"thread_id": th.ID, "hours": 1 << 40})
+	if res.IsError {
+		t.Fatalf("get_thread huge hours: %s", text(t, res))
+	}
+}
+
+func mustThreadID(t *testing.T, s *store.Store) string {
+	t.Helper()
+	ts, err := s.ThreadsUpdatedSince(time.Time{}, 1)
+	if err != nil || len(ts) != 1 {
+		t.Fatalf("threads %v %v", ts, err)
+	}
+	return ts[0].ID
 }

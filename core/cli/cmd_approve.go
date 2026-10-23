@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
+	"time"
 
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
@@ -79,3 +81,34 @@ func (c *coreConn) sendConfirmed(typ string, payload any) error {
 		}
 	}
 }
+
+// sendAwaitReply sends one message and waits for the reply carrying id: an
+// error reply becomes the returned error, any other type with that id is
+// success. For handlers that always answer (loop.set_status).
+func (c *coreConn) sendAwaitReply(typ, id string, payload any, timeout time.Duration) error {
+	if err := c.w.Send(typ, id, payload); err != nil {
+		return err
+	}
+	_ = c.nc.SetReadDeadline(time.Now().Add(timeout))
+	for {
+		env, err := c.r.Read()
+		if err != nil {
+			var ne net.Error
+			if errors.As(err, &ne) && ne.Timeout() {
+				return errNoAnswer
+			}
+			return fmt.Errorf("no reply from core: %w", err)
+		}
+		if env.ID != id {
+			continue
+		}
+		if env.Type == protocol.TypeError {
+			var e protocol.ErrorMsg
+			_ = env.Decode(&e)
+			return errors.New(e.Message)
+		}
+		return nil
+	}
+}
+
+var errNoAnswer = errors.New("PlatyNotch did not answer.")

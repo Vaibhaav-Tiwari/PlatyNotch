@@ -72,7 +72,9 @@ func (s *Server) handleUI(ctx context.Context, c *conn, env protocol.Envelope) {
 			defer cancel()
 			if err := s.mem.SetLoopStatus(rctx, ls); err != nil {
 				c.replyErr(id, err.Error())
+				return
 			}
+			c.reply(protocol.TypeLoopSetStatus, id, nil)
 		}()
 
 	case protocol.TypeMemorySearch:

@@ -19,6 +19,7 @@ import (
 const (
 	maxSearchLimit = 20
 	defaultHours   = 24
+	maxHours       = 24 * 365
 	maxActivity    = 500
 )
 
@@ -169,12 +170,13 @@ func hoursOrDefault(h int) int {
 	if h <= 0 {
 		return defaultHours
 	}
-	return h
+	return min(h, maxHours)
 }
 
 func doSearch(ctx context.Context, d Deps, in searchIn) (any, error) {
-	if d.Store == nil {
-		return nil, errMemoryOff
+	d, err := d.ready()
+	if err != nil {
+		return nil, err
 	}
 	since, err := parseTime("since", in.Since)
 	if err != nil {
@@ -200,8 +202,9 @@ func doSearch(ctx context.Context, d Deps, in searchIn) (any, error) {
 }
 
 func doLoops(d Deps, in loopsIn) (any, error) {
-	if d.Store == nil {
-		return nil, errMemoryOff
+	d, err := d.ready()
+	if err != nil {
+		return nil, err
 	}
 	status := in.Status
 	if status == "" {
@@ -223,8 +226,9 @@ func doLoops(d Deps, in loopsIn) (any, error) {
 }
 
 func doThread(d Deps, in threadIn) (any, error) {
-	if d.Store == nil {
-		return nil, errMemoryOff
+	d, err := d.ready()
+	if err != nil {
+		return nil, err
 	}
 	if in.ThreadID == "" {
 		return nil, errors.New("thread_id is required")
@@ -262,8 +266,9 @@ func truncate(s string, n int) (string, bool) {
 }
 
 func doActivity(d Deps, in activityIn) (any, error) {
-	if d.Store == nil {
-		return nil, errMemoryOff
+	d, err := d.ready()
+	if err != nil {
+		return nil, err
 	}
 	hours := hoursOrDefault(in.Hours)
 	ts, err := d.Store.ThreadsUpdatedSince(time.Now().Add(-time.Duration(hours)*time.Hour), maxActivity)
@@ -294,8 +299,9 @@ func doActivity(d Deps, in activityIn) (any, error) {
 }
 
 func doResolve(ctx context.Context, d Deps, in resolveIn) (any, error) {
-	if d.Store == nil {
-		return nil, errMemoryOff
+	d, err := d.ready()
+	if err != nil {
+		return nil, err
 	}
 	if in.ID == "" {
 		return nil, errors.New("id is required")

@@ -8,6 +8,7 @@ package mcpserver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory/provider"
@@ -36,6 +37,10 @@ var ErrCoreDown = errors.New(MsgCoreNotUp)
 type Deps struct {
 	Store    *store.Store      // opened read-only
 	Embedder provider.Embedder // nil: keyword search only
+	// Open, when set and Store is nil, is asked on every call for the current
+	// store and embedder, so memory turned on after the server started is
+	// picked up. It should cache. A nil store means memory is off.
+	Open func() (*store.Store, provider.Embedder, error)
 	// Resolve sends loop.set_status to the running core.
 	Resolve func(ctx context.Context, s protocol.LoopSetStatus) error
 }
@@ -61,3 +66,19 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, deps Deps) error {
 type nopWriteCloser struct{ io.Writer }
 
 func (nopWriteCloser) Close() error { return nil }
+
+// ready returns d with Store and Embedder filled from Open when needed, or
+// errMemoryOff.
+func (d Deps) ready() (Deps, error) {
+	if d.Store == nil && d.Open != nil {
+		st, emb, err := d.Open()
+		if err != nil {
+			return d, fmt.Errorf("%s (%v)", MsgMemoryOff, err)
+		}
+		d.Store, d.Embedder = st, emb
+	}
+	if d.Store == nil {
+		return d, errMemoryOff
+	}
+	return d, nil
+}

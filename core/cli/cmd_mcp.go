@@ -7,11 +7,9 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
+	"time"
 
-	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/mcpserver"
-	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory/provider"
-	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory/store"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/paths"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
@@ -33,33 +31,13 @@ func (a *app) mcp(ctx context.Context, args []string) int {
 	defer logFile.Close()
 	logger := log.New(logFile, "", log.LstdFlags|log.Lmicroseconds)
 
-	cfg, err := config.Load()
-	if err != nil {
-		logger.Printf("config: %v (using defaults)", err)
-	}
-	deps := mcpserver.Deps{Resolve: resolveViaCore}
-	if cfg.Memory.Enabled {
-		if _, statErr := os.Stat(paths.MemoryDB()); statErr == nil {
-			st, err := store.Open(paths.MemoryDB(), true)
-			if err != nil {
-				logger.Printf("memory.db: %v (memory off)", err)
-			} else {
-				defer st.Close()
-				deps.Store = st
-			}
-		} else {
-			logger.Printf("memory.db: %v (memory off)", statErr)
-		}
-		if emb, err := provider.NewEmbedder(cfg.Memory.Embedder); err != nil {
-			logger.Printf("embedder: %v (keyword search only)", err)
-		} else if emb != nil {
-			deps.Embedder = emb
-		}
-	}
+	src := &memSource{logger: logger}
+	defer src.Close()
+	deps := mcpserver.Deps{Resolve: resolveViaCore, Open: src.get}
 
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	logger.Printf("mcp server started (memory %v)", deps.Store != nil)
+	logger.Printf("mcp server started")
 	if err := mcpserver.Serve(ctx, a.stdin, a.stdout, deps); err != nil {
 		logger.Printf("mcp server: %v", err)
 		return 1
@@ -68,6 +46,8 @@ func (a *app) mcp(ctx context.Context, args []string) int {
 	return 0
 }
 
+const resolveTimeout = 5 * time.Second
+
 // resolveViaCore sends loop.set_status to the running core as the cli role.
 func resolveViaCore(_ context.Context, s protocol.LoopSetStatus) error {
 	c, err := dialCore()
@@ -75,5 +55,5 @@ func resolveViaCore(_ context.Context, s protocol.LoopSetStatus) error {
 		return mcpserver.ErrCoreDown
 	}
 	defer c.Close()
-	return c.sendConfirmed(protocol.TypeLoopSetStatus, s)
+	return c.sendAwaitReply(protocol.TypeLoopSetStatus, "r", s, resolveTimeout)
 }

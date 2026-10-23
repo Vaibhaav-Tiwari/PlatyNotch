@@ -437,6 +437,9 @@ func (m *fakeMemory) Loops(context.Context, string) ([]protocol.Loop, error) {
 	return []protocol.Loop{{ID: "loop_1", Title: "Send draft", Status: "open"}}, nil
 }
 func (m *fakeMemory) SetLoopStatus(_ context.Context, s protocol.LoopSetStatus) error {
+	if s.ID == "missing" {
+		return errors.New("loop not found")
+	}
 	m.mu.Lock()
 	fn := m.onLoops
 	m.mu.Unlock()
@@ -470,6 +473,13 @@ func TestMemoryOn(t *testing.T) {
 	ui.send(protocol.TypeLoopSetStatus, "l1", protocol.LoopSetStatus{ID: "loop_1", Status: "resolved"})
 	if loops := decode[[]protocol.Loop](t, ui.waitFor(protocol.TypeLoopsUpdated)); len(loops) != 0 {
 		t.Fatalf("loops %+v", loops)
+	}
+	if ack := ui.waitFor(protocol.TypeLoopSetStatus); ack.ID != "l1" {
+		t.Fatalf("ack id %q", ack.ID)
+	}
+	ui.send(protocol.TypeLoopSetStatus, "l2", protocol.LoopSetStatus{ID: "missing", Status: "resolved"})
+	if e := ui.waitFor(protocol.TypeError); e.ID != "l2" || decode[protocol.ErrorMsg](t, e).Message != "loop not found" {
+		t.Fatalf("error reply %s %s", e.ID, e.Data)
 	}
 	ui.send(protocol.TypeCaptureText, "", protocol.CaptureText{AppName: "Slack", Text: "hello"})
 	ui.send(protocol.TypePing, "p", nil) // capture is handled in order before the ping
