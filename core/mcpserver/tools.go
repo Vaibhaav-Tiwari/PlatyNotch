@@ -95,22 +95,22 @@ type resolveOut struct {
 }
 
 func registerTools(s *mcp.Server, d Deps) {
-	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Search what the user saw, read or wrote on their screen. Returns matching snippets with the app, time and thread id."},
+	mcp.AddTool(s, &mcp.Tool{Name: "search_memory", Description: "Search what the user saw, read or wrote on their screen. Returns matching snippets with the app, time and thread id." + untrusted},
 		func(ctx context.Context, _ *mcp.CallToolRequest, in searchIn) (*mcp.CallToolResult, any, error) {
 			out, err := doSearch(ctx, d, in)
 			return nil, out, err
 		})
-	mcp.AddTool(s, &mcp.Tool{Name: "list_open_loops", Description: "List commitments, requests and follow-ups detected in the user's screen history."},
+	mcp.AddTool(s, &mcp.Tool{Name: "list_open_loops", Description: "List commitments, requests and follow-ups detected in the user's screen history." + untrusted},
 		func(ctx context.Context, _ *mcp.CallToolRequest, in loopsIn) (*mcp.CallToolResult, any, error) {
 			out, err := doLoops(d, in)
 			return nil, out, err
 		})
-	mcp.AddTool(s, &mcp.Tool{Name: "get_thread", Description: "Read the recent text of one thread (a window, document or conversation), up to 20000 characters."},
+	mcp.AddTool(s, &mcp.Tool{Name: "get_thread", Description: "Read the recent text of one thread (a window, document or conversation), up to 20000 characters." + untrusted},
 		func(ctx context.Context, _ *mcp.CallToolRequest, in threadIn) (*mcp.CallToolResult, any, error) {
 			out, err := doThread(d, in)
 			return nil, out, err
 		})
-	mcp.AddTool(s, &mcp.Tool{Name: "recent_activity", Description: "Threads the user touched recently, grouped by app, with titles."},
+	mcp.AddTool(s, &mcp.Tool{Name: "recent_activity", Description: "Threads the user touched recently, grouped by app, with titles." + untrusted},
 		func(ctx context.Context, _ *mcp.CallToolRequest, in activityIn) (*mcp.CallToolResult, any, error) {
 			out, err := doActivity(d, in)
 			return nil, out, err
