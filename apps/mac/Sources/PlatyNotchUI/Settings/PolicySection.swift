@@ -36,7 +36,12 @@ struct PolicySection: View {
             }
             .frame(minHeight: 180, idealHeight: 240)
 
-            Label(PolicyRuleCheck.allowNote, systemImage: "info.circle")
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(PolicyRuleCheck.allowNote)
+                    Text(PolicyRuleCheck.allowDetail).font(.caption)
+                }
+            } icon: { Image(systemName: "info.circle") }
                 .font(.callout)
                 .foregroundStyle(.secondary)
 

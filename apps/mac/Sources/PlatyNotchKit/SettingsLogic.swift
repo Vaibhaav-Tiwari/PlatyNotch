@@ -75,19 +75,23 @@ public enum StatuslineCheck {
     }
 }
 
-/// What the Policy section says about a rule before it is saved.
+/// What the Policy section says about a rule before it is saved. Mirrors the core:
+/// `core/policy/policy.go` (`local.EvaluateKind`: allow only for command/path/url
+/// kinds, the compound guard, `urlAllow`) and the adapters that assign kinds
+/// (`core/agents/claudecode` PolicySummary via `agents.SummarizeFull`;
+/// `core/agents/cursor` PolicySummary: before-shell-execution as "Shell").
+/// Every other adapter and tool is kind "other": allow rules never apply.
 public enum PolicyRuleCheck {
-    /// Tools whose calls have a plain summary kind (command, file path, URL) that
-    /// "allow" rules can match. Every other tool still asks.
+    /// Tool names whose permission prompts get a command, path or URL kind.
     public static let allowableTools: Set<String> = [
-        "Bash", "Shell", "run_terminal_cmd",
-        "Write", "Edit", "MultiEdit", "Read", "NotebookEdit",
-        "WebFetch",
+        "Bash", "Write", "Edit", "MultiEdit", "Read", "NotebookEdit", "WebFetch",   // Claude Code
+        "Shell",                                                                     // Cursor shell commands
     ]
 
     public static let allowNote = "Allow rules only auto-approve plain shell commands, file paths and URLs. Everything else still asks you."
+    public static let allowDetail = "That means Claude Code's Bash, Write, Edit, MultiEdit, Read, NotebookEdit and WebFetch prompts and Cursor's shell commands; other agents always ask. A chained command (; && | > $( …) is allowed only when the pattern spells out the same chain, and a URL rule must look like https://host or https://host/path."
 
-    /// Nil when the rule is fine; otherwise why it will not save or will not do what it says.
+    /// Nil when the rule is fine; otherwise why it will not save.
     public static func problem(_ rule: ConfigFile.Rule) -> String? {
         let tool = rule.tool.trimmingCharacters(in: .whitespaces)
         if tool.isEmpty { return "Tool is empty (use * for any tool)." }
@@ -96,13 +100,26 @@ public enum PolicyRuleCheck {
         return nil
     }
 
-    /// A non-blocking warning for allow rules that cannot auto-approve what they name.
+    /// A non-blocking warning for allow rules that cannot do what they say.
     public static func warning(_ rule: ConfigFile.Rule) -> String? {
         guard rule.action == "allow" else { return nil }
-        if rule.tool == "*" { return "Applies only to plain commands, file paths and URLs." }
+        if rule.tool == "*" {
+            return "Allow with tool * still covers only Claude Code's Bash, file and WebFetch prompts and Cursor's shell commands."
+        }
         if !allowableTools.contains(rule.tool) { return "\(rule.tool) calls are never auto-approved; this rule has no effect." }
-        if rule.pattern == "*" { return "Allows every \(rule.tool) call. Prefer a narrower pattern." }
+        if rule.tool == "WebFetch", !isURLAllowPattern(rule.pattern) {
+            return "URL allow patterns must be scheme://host or scheme://host/path; this one never matches."
+        }
+        if rule.pattern == "*" { return "Allows every plain \(rule.tool) call. Prefer a narrower pattern." }
         return nil
+    }
+
+    /// The shape `urlAllow` accepts: "scheme://hostpat[/pathpat]", hostpat non-empty without ? # @.
+    public static func isURLAllowPattern(_ pattern: String) -> Bool {
+        guard let r = pattern.range(of: "://"), r.lowerBound > pattern.startIndex else { return false }
+        let rest = pattern[r.upperBound...]
+        let host = rest.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: false).first ?? ""
+        return !host.isEmpty && !host.contains(where: { "?#@".contains($0) })
     }
 
     public static func validate(_ rules: [ConfigFile.Rule]) -> String? {
@@ -143,6 +160,11 @@ public enum AppURL: Equatable, Sendable {
 public enum SecretRef {
     public static func keychain(_ account: String) -> String { "keychain:\(account)" }
 
+    /// One Keychain account per purpose and provider ("embedder.openai",
+    /// "extractor.openai"), so a key saved for one provider role is never sent
+    /// to the other role's host.
+    public static func account(purpose: String, provider: String) -> String { "\(purpose).\(provider)" }
+
     public static func keychainAccount(_ ref: String) -> String? {
         guard ref.hasPrefix("keychain:") else { return nil }
         let a = String(ref.dropFirst("keychain:".count))
@@ -155,4 +177,40 @@ public enum SettingsBounds {
     public static let captureInterval = 5...300
     public static let retentionDays = 1...3650
     public static let timeout = ConfigFile.minTimeoutSeconds...ConfigFile.maxTimeoutSeconds
+}
+
+/// The secrets the app hands to `notch serve` on an inherited pipe
+/// (`PLATYNOTCH_SECRETS_FD`): a JSON object {account: secret} holding exactly the
+/// Keychain accounts that config.json refers to.
+public enum InheritedSecrets {
+    public static let envName = "PLATYNOTCH_SECRETS_FD"
+
+    /// Every `keychain:<account>` string anywhere in the config (Pro keys included), sorted, unique.
+    public static func accounts(in json: OrderedJSON) -> [String] {
+        var found = Set<String>()
+        func walk(_ v: OrderedJSON) {
+            switch v {
+            case .string(let s): if let a = SecretRef.keychainAccount(s) { found.insert(a) }
+            case .array(let items): items.forEach(walk)
+            case .object(let pairs): pairs.forEach { walk($0.1) }
+            default: break
+            }
+        }
+        walk(json)
+        return found.sorted()
+    }
+
+    /// The payload for `config` (missing or unreadable file → `{}`). Accounts the
+    /// lookup has no secret for are left out (the core then falls back to `security`).
+    public static func payload(configURL: URL, lookup: (String) -> String?) -> Data {
+        guard let data = try? Data(contentsOf: configURL), let json = try? OrderedJSON.parse(data) else {
+            return Data("{}".utf8)
+        }
+        return payload(accounts: accounts(in: json), lookup: lookup)
+    }
+
+    public static func payload(accounts: [String], lookup: (String) -> String?) -> Data {
+        let pairs = accounts.compactMap { a in lookup(a).map { (a, OrderedJSON.string($0)) } }
+        return OrderedJSON.object(pairs).data
+    }
 }

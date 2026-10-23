@@ -55,6 +55,13 @@ final class SettingsLogicTests: XCTestCase {
         XCTAssertNotNil(PolicyRuleCheck.warning(R(tool: "mcp__github__merge", pattern: "*", action: "allow")))
         XCTAssertNotNil(PolicyRuleCheck.warning(R(tool: "*", pattern: "ls", action: "allow")))
         XCTAssertNotNil(PolicyRuleCheck.warning(R(tool: "Bash", pattern: "*", action: "allow")))
+        XCTAssertNil(PolicyRuleCheck.warning(R(tool: "Shell", pattern: "npm test", action: "allow")), "Cursor shell")
+        XCTAssertNotNil(PolicyRuleCheck.warning(R(tool: "run_terminal_cmd", pattern: "ls", action: "allow")),
+                        "Cursor's shell arrives as Shell; other names stay kind other")
+        XCTAssertNil(PolicyRuleCheck.warning(R(tool: "WebFetch", pattern: "https://docs.example.com/*", action: "allow")))
+        XCTAssertNotNil(PolicyRuleCheck.warning(R(tool: "WebFetch", pattern: "*example.com*", action: "allow")))
+        XCTAssertNotNil(PolicyRuleCheck.warning(R(tool: "WebFetch", pattern: "https://u@h/", action: "allow")))
+        XCTAssertNil(PolicyRuleCheck.warning(R(tool: "Read", pattern: "/Users/me/src/*", action: "allow")))
         XCTAssertEqual(PolicyRuleCheck.validate(ConfigFile.defaultRules), nil)
         XCTAssertEqual(PolicyRuleCheck.validate([R(tool: "Bash", pattern: "x", action: "ask"), R(tool: "", pattern: "x", action: "ask")])?.hasPrefix("Rule 2"), true)
     }
@@ -105,5 +112,34 @@ final class CoreEventHubTests: XCTestCase {
         XCTAssertEqual(streamed, [.connected, .message(ext), .disconnected])
         XCTAssertEqual(CoreEvent.message(ext).extMessage, ExtMessage(ext: "pro", kind: "ping"))
         XCTAssertNil(CoreEvent.connected.extMessage)
+    }
+}
+
+extension SettingsLogicTests {
+    func testKeychainAccountsArePerPurpose() {
+        let emb = SecretRef.account(purpose: "embedder", provider: "openai")
+        let ext = SecretRef.account(purpose: "extractor", provider: "openai")
+        XCTAssertEqual(emb, "embedder.openai")
+        XCTAssertEqual(ext, "extractor.openai")
+        XCTAssertNotEqual(emb, ext)
+        XCTAssertEqual(SecretRef.keychainAccount(SecretRef.keychain(emb)), emb)
+    }
+
+    func testSecretsPayloadHasOnlyReferencedAccounts() throws {
+        let config = """
+        {"memory": {"embedder": {"name": "openai", "api_key_ref": "keychain:embedder.openai"},
+                    "extractor": {"name": "openai", "api_key_ref": "env:OPENAI_API_KEY"}},
+         "pro": {"cloud": {"token_ref": "keychain:pro.cloud"}, "note": "keychain:"},
+         "statusline": {}}
+        """
+        let json = try OrderedJSON.parse(Data(config.utf8))
+        XCTAssertEqual(InheritedSecrets.accounts(in: json), ["embedder.openai", "pro.cloud"])
+        let store = ["embedder.openai": "sk-emb", "extractor.openai": "sk-ext", "unrelated": "x"]
+        let data = InheritedSecrets.payload(accounts: InheritedSecrets.accounts(in: json), lookup: { store[$0] })
+        let decoded = try JSONDecoder().decode([String: String].self, from: data)
+        XCTAssertEqual(decoded, ["embedder.openai": "sk-emb"], "only referenced accounts that exist")
+
+        let missing = URL(fileURLWithPath: "/nonexistent/config.json")
+        XCTAssertEqual(String(decoding: InheritedSecrets.payload(configURL: missing, lookup: { store[$0] }), as: UTF8.self), "{}")
     }
 }

@@ -65,12 +65,15 @@ extension NotchPlugin {
 /// What a plugin gets from the app.
 @MainActor
 public struct PluginContext {
+    /// Read-only for plugins (the app feeds it from the core).
     public let store: AppStore
+    /// For `send` / `request` only. Its event stream has a single reader (the app) and
+    /// is not visible to plugins: use `events` below to receive core events.
     public let client: CoreClient
     /// Read/write `config.json`; writes keep unknown keys and trigger `config.reload`.
     /// Plugins keep their settings under `pro` (`config.update { $0.pro = … }`).
     public let config: ConfigFileStore
-    /// Every core event (the socket stream has one reader; subscribe here instead).
+    /// Every core event. Subscribe here; never read `client.events` (single consumer).
     public let events: CoreEventHub
     let runner: CoreRunner
     let openSettingsHandler: (String?) -> Void

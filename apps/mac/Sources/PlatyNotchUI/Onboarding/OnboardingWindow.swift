@@ -201,6 +201,11 @@ private struct MemoryPage: View {
                 get: { config.config.memory.enabled },
                 set: { on in config.set { $0.memory.enabled = on } }))
                 .toggleStyle(.switch)
+            if !services.store.approvals.isEmpty {
+                Label("Changing this restarts the core: pending approvals go back to the agent's terminal.",
+                      systemImage: "exclamationmark.triangle")
+                    .font(.caption).foregroundStyle(.orange)
+            }
             if config.config.memory.enabled, !services.permissions.accessibility {
                 HStack {
                     Text("Capture also needs Accessibility access.").font(.caption).foregroundStyle(.secondary)

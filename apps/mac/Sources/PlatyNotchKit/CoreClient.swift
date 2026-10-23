@@ -20,7 +20,10 @@ public actor CoreClient {
 
     public static let reconnectDelays: [Double] = [0.25, 0.5, 1, 2]
 
-    public nonisolated let events: AsyncStream<CoreEvent>
+    /// SINGLE CONSUMER. The app's `CoreEventHub` is its only reader; a second reader
+    /// would steal events from the store. Package access, so plugins cannot reach it:
+    /// they subscribe through `PluginContext.events`.
+    package nonisolated let events: AsyncStream<CoreEvent>
     private let continuation: AsyncStream<CoreEvent>.Continuation
     private let socketPath: String
     private let clientName: String

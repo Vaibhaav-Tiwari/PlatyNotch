@@ -76,7 +76,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         handleTerminationSignals()
         TerminalFocus.startTracking()
         if !options.externalCore {
-            let s = CoreSupervisor(binaryURL: runner.binaryURL, logURL: CorePaths.coreLog())
+            // Each launch gets the Keychain secrets config.json refers to, so the core
+            // never runs /usr/bin/security (whose access prompt is not ours).
+            let configURL = config.url
+            let s = CoreSupervisor(binaryURL: runner.binaryURL, logURL: CorePaths.coreLog(), secrets: {
+                InheritedSecrets.payload(configURL: configURL, lookup: { Keychain.read(account: $0) })
+            })
             s.start()
             supervisor = s
         }

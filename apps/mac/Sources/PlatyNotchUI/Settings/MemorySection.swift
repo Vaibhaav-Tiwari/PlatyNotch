@@ -41,10 +41,10 @@ struct MemorySection: View {
                     excludedApps
                 }
                 Section("Search embeddings") {
-                    ProviderEditor(provider: $draft.embedder, purpose: "Finds related text by meaning. None uses keyword search only.")
+                    ProviderEditor(provider: $draft.embedder, role: "embedder", explanation: "Finds related text by meaning. None uses keyword search only.")
                 }
                 Section("Open-loop extraction") {
-                    ProviderEditor(provider: $draft.extractor, purpose: "Spots promises and requests in what you read and write. None turns open loops off.")
+                    ProviderEditor(provider: $draft.extractor, role: "extractor", explanation: "Spots promises and requests in what you read and write. None turns open loops off.")
                 }
             }
             .formStyle(.grouped)
@@ -159,7 +159,9 @@ struct MemorySection: View {
 /// Provider name, model, base URL and API key (saved to the Keychain on "Save key").
 private struct ProviderEditor: View {
     @Binding var provider: ConfigFile.Provider
-    let purpose: String
+    /// "embedder" or "extractor": each role has its own Keychain account.
+    let role: String
+    let explanation: String
     @State private var key = ""
     @State private var keyNote: String?
 
@@ -167,7 +169,7 @@ private struct ProviderEditor: View {
         Picker("Provider", selection: $provider.name) {
             ForEach(names, id: \.self) { Text(Self.label($0)).tag($0) }
         }
-        Text(purpose).font(.caption).foregroundStyle(.secondary)
+        Text(explanation).font(.caption).foregroundStyle(.secondary)
         if provider.name != "none" {
             TextField("Model", text: $provider.model, prompt: Text(modelPrompt))
             TextField("Base URL", text: $provider.baseURL, prompt: Text(urlPrompt))
@@ -179,6 +181,12 @@ private struct ProviderEditor: View {
                 if let keyNote { Text(verbatim: keyNote).font(.caption).foregroundStyle(.secondary) }
             }
         }
+        EmptyView()
+            .onChange(of: provider.name) { _, _ in
+                // A key saved for another provider must not follow to the new one's host.
+                if let a = SecretRef.keychainAccount(provider.apiKeyRef), a != account { provider.apiKeyRef = "" }
+                keyNote = nil
+            }
     }
 
     /// Built-in names plus whatever the file has (e.g. a Pro provider).
@@ -204,7 +212,7 @@ private struct ProviderEditor: View {
         provider.name == "ollama" ? "http://localhost:11434" : "https://api.openai.com/v1"
     }
 
-    private var account: String { provider.name }
+    private var account: String { SecretRef.account(purpose: role, provider: provider.name) }
 
     private var keyPrompt: String {
         if let a = SecretRef.keychainAccount(provider.apiKeyRef), Keychain.exists(account: a) { return "Saved in Keychain" }

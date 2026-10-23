@@ -21,7 +21,9 @@ public final class AppStore {
 
     public init() {}
 
-    public func apply(_ event: CoreEvent) {
+    /// Fed by the app's `CoreEventHub` only. Not part of the plugin API (package
+    /// access): plugins read the store, they never inject core events.
+    package func apply(_ event: CoreEvent) {
         switch event {
         case .connected: connection = .connected
         case .disconnected: connection = .reconnecting
@@ -29,7 +31,7 @@ public final class AppStore {
         }
     }
 
-    public func apply(_ env: Envelope) {
+    package func apply(_ env: Envelope) {
         guard let type = MessageType(rawValue: env.type) else { return }
         switch type {
         case .snapshot:

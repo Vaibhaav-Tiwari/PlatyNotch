@@ -14,6 +14,9 @@ public final class CoreSupervisor {
     private let arguments: [String]
     private let logURL: URL
     private let delayScale: Double
+    /// Builds the `{account: secret}` JSON handed to each launched core on stdin
+    /// (`PLATYNOTCH_SECRETS_FD=0`). Nil: no secrets pipe.
+    private let secrets: (@MainActor () -> Data)?
     private var backoff = RestartBackoff()
     private var process: Process?
     private var startedAt: Date?
@@ -26,11 +29,13 @@ public final class CoreSupervisor {
     public init(binaryURL: URL = CoreSupervisor.defaultBinaryURL,
                 arguments: [String] = ["serve"],
                 logURL: URL = CoreSupervisor.defaultLogURL,
-                delayScale: Double = 1) {
+                delayScale: Double = 1,
+                secrets: (@MainActor () -> Data)? = nil) {
         self.binaryURL = binaryURL
         self.arguments = arguments
         self.logURL = logURL
         self.delayScale = delayScale
+        self.secrets = secrets
     }
 
     public var isRunning: Bool { process?.isRunning ?? false }
@@ -62,7 +67,10 @@ public final class CoreSupervisor {
     /// settings are only read at startup). SIGKILL after `killGrace` if it hangs.
     /// The restart does not count as a crash for the backoff.
     public func restart() {
-        guard !stopped else { return }
+        // Already replacing: the new core starts when the old one has exited and
+        // reads the current config then, so one replacement covers both requests.
+        // Never launch while the old core is still exiting (its exit removes the socket).
+        guard !stopped, replacing == nil else { return }
         restartTask?.cancel()
         restartTask = nil
         guard let p = process, p.isRunning else {
@@ -92,11 +100,31 @@ public final class CoreSupervisor {
         p.terminationHandler = { [weak self] proc in
             Task { @MainActor in self?.didExit(proc) }
         }
+        var secretsPipe: Pipe?
+        if secrets != nil {
+            let pipe = Pipe()
+            // A core that exits before reading must not SIGPIPE the app.
+            _ = fcntl(pipe.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
+            p.standardInput = pipe
+            var env = ProcessInfo.processInfo.environment
+            env[InheritedSecrets.envName] = "0"
+            p.environment = env
+            secretsPipe = pipe
+        }
         do {
             try p.run()
             process = p
             startedAt = Date()
+            if let secretsPipe, let secrets {
+                let payload = secrets()
+                let writer = secretsPipe.fileHandleForWriting
+                DispatchQueue.global(qos: .userInitiated).async {
+                    try? writer.write(contentsOf: payload)
+                    try? writer.close()
+                }
+            }
         } catch {
+            try? secretsPipe?.fileHandleForWriting.close()
             process = nil
             scheduleRestart()
         }
