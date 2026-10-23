@@ -783,3 +783,44 @@ func TestDeciderReconnectWithinGrace(t *testing.T) {
 		t.Fatalf("approval resolved without an answer: %v", err)
 	}
 }
+
+// A permission event whose own payload names no tool (unreadable, truncated or
+// empty) must never reach policy or a human: a catch-all allow rule would
+// otherwise auto-allow it, and the session's earlier tool must not be borrowed.
+func TestPermissionWithoutToolNeverWaits(t *testing.T) {
+	cfg := config.Default()
+	cfg.Policy.Rules = append([]config.Rule{{Tool: "*", Pattern: "*", Action: "allow"}}, cfg.Policy.Rules...)
+	s := start(t, Options{Config: cfg})
+	ui, _ := subscribe(t, s.sock)
+
+	// Seed the session with an earlier tool.
+	pre := claudeEvent("pre-tool-use", "s1",
+		`{"session_id":"s1","cwd":"/tmp/proj","tool_name":"Bash","tool_input":{"command":"ls"}}`, false)
+	readAck(t, hook(t, s.sock, pre))
+
+	for i, payload := range []string{"", `{"session_id":"s1","cwd":"/tmp/proj"}`} {
+		ev := claudeEvent("permission-request", "s1", payload, true)
+		if payload == "" {
+			ev.Payload = nil
+		}
+		h := hook(t, s.sock, ev)
+		if ack := readAck(t, h); ack.Wait {
+			t.Fatalf("case %d: hook waits on a tool-less permission event: %+v", i, ack)
+		}
+		if env, err := h.next(150 * time.Millisecond); err == nil {
+			t.Fatalf("case %d: unexpected %s after no-wait ack", i, env.Type)
+		}
+	}
+	for {
+		env, err := ui.next(150 * time.Millisecond)
+		if err != nil {
+			break
+		}
+		if env.Type == protocol.TypeApprovalAdded {
+			t.Fatalf("approval opened: %s", env.Data)
+		}
+	}
+	if p := s.Snapshot().Approvals; len(p) != 0 {
+		t.Fatalf("pending %+v", p)
+	}
+}

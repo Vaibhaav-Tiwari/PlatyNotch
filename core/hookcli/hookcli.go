@@ -19,7 +19,9 @@ import (
 )
 
 const (
-	maxStdin    = 4 << 20
+	// maxStdin leaves room for the envelope around the payload so one hook
+	// event always fits a single wire line.
+	maxStdin    = wire.MaxLine - 64<<10
 	dialTimeout = 300 * time.Millisecond
 	sendBudget  = time.Second
 	ackBudget   = 2 * time.Second
@@ -34,8 +36,9 @@ func Run(agent, event string, stdin io.Reader, stdout io.Writer, env func(string
 		env = os.Getenv
 	}
 
-	raw, _ := io.ReadAll(io.LimitReader(stdin, maxStdin))
+	raw, _ := io.ReadAll(io.LimitReader(stdin, maxStdin+1))
 	_, _ = io.Copy(io.Discard, stdin) // drop any excess so the agent's pipe never blocks
+	tooBig := len(raw) > maxStdin
 
 	adapter, ok := agents.Get(agent)
 	if !ok {
@@ -52,7 +55,9 @@ func Run(agent, event string, stdin io.Reader, stdout io.Writer, env func(string
 	}
 	defer conn.Close()
 
-	want := adapter.IsPermissionEvent(event) && adapter.Approvals() != agents.ApprovalsNone
+	// An oversize payload is never forwarded: the event still updates
+	// session state, but no decision is requested for a call nobody can see.
+	want := !tooBig && adapter.IsPermissionEvent(event) && adapter.Approvals() != agents.ApprovalsNone
 
 	ev := protocol.HookEvent{
 		Agent:        agent,
@@ -62,7 +67,7 @@ func Run(agent, event string, stdin io.Reader, stdout io.Writer, env func(string
 		WantDecision: want,
 		At:           time.Now().UTC(),
 	}
-	if json.Valid(raw) {
+	if !tooBig && json.Valid(raw) {
 		ev.Payload = json.RawMessage(raw)
 	}
 	if wd, err := os.Getwd(); err == nil {
@@ -70,6 +75,12 @@ func Run(agent, event string, stdin io.Reader, stdout io.Writer, env func(string
 	}
 	if needsProcInfo(event) {
 		fillProcInfo(&ev, env("CLAUDE_PID"))
+	}
+
+	// JSON escaping can grow a payload past one wire line; if so, drop it
+	// (and the decision request) rather than send a line the core rejects.
+	if b, err := json.Marshal(ev); err != nil || len(b) > maxStdin {
+		ev.Payload, ev.WantDecision, want = nil, false, false
 	}
 
 	_ = conn.SetDeadline(time.Now().Add(sendBudget))

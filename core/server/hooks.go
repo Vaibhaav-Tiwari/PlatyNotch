@@ -38,8 +38,16 @@ func (s *Server) handleHook(ctx context.Context, c *conn, env protocol.Envelope)
 		noWait()
 		return
 	}
+	// A permission event must name its own tool. An unreadable, truncated or
+	// empty payload never reaches policy (a catch-all allow rule would allow
+	// it) or a human (who would see a blank prompt); the agent then asks in
+	// its own terminal. The session's earlier tool is never borrowed.
+	if common.Tool == "" {
+		noWait()
+		return
+	}
 
-	tool := firstNonEmpty(common.Tool, sess.Tool)
+	tool := common.Tool
 	summary := agents.Summarize(tool, common.ToolInput)
 	audit := ext.AuditEvent{
 		Agent: ev.Agent, Project: sess.Project, CWD: sess.CWD, Tool: tool, Summary: summary,

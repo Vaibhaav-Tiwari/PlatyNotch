@@ -96,7 +96,12 @@ Session states: `active`, `idle`, `waiting_input`, `blocked`, `exited`.
   source `hook-gone`).
 - Approvals reach deciders only when the event wants a decision, the adapter
   treats the event as a permission request and supports approvals, and
-  approvals are enabled for that agent. A policy `allow`/`deny` verdict
+  approvals are enabled for that agent, and the event's own payload names a
+  tool (an unreadable, truncated or tool-less payload gets `wait: false` and
+  never reaches policy or a decider). `notch hook` itself never forwards a
+  payload over 4 MiB − 64 KiB (or one that would not fit a single line once
+  encoded); it sends the event without payload and without `want_decision`.
+  A policy `allow`/`deny` verdict
   answers immediately (`source` is the policy's, e.g. `local`); `ask` or no
   verdict shows the approval to deciders (subscribed `ui` clients and
   extension deciders). With no decider the hook gets `wait: false`. When the

@@ -158,3 +158,56 @@ func TestServerHangsUp(t *testing.T) {
 }
 
 var _ = io.EOF
+
+// Stdin over the limit is never forwarded as a decision request, even if the
+// server (wrongly) answers with an allow.
+func TestOversizeStdinNoDecisionRequest(t *testing.T) {
+	sock := sockPath(t)
+	var got protocol.HookEvent
+	done := make(chan struct{})
+	fakeServer(t, sock, func(w *wire.Writer, ev protocol.Envelope, c net.Conn) {
+		ev.Decode(&got)
+		w.Send(protocol.TypeHookAck, ev.ID, protocol.HookAck{Wait: true, TimeoutMS: 5000})
+		w.Send(protocol.TypeHookDecision, ev.ID, protocol.HookDecision{Behavior: protocol.BehaviorAllow})
+		close(done)
+	})
+	big := `{"tool_name":"Bash","tool_input":{"command":"` + strings.Repeat("a", maxStdin) + `"}}`
+	out, code, _ := run(t, "claude-code", "permission-request", big, sock)
+	if code != 0 || out != "" {
+		t.Fatalf("code=%d out=%q", code, out)
+	}
+	<-done
+	if got.WantDecision || len(got.Payload) != 0 {
+		t.Fatalf("forwarded want=%v payload=%d bytes", got.WantDecision, len(got.Payload))
+	}
+}
+
+// A maximal stdin still fits one wire line once wrapped in the envelope.
+func TestMaxStdinFitsWire(t *testing.T) {
+	if maxStdin > wire.MaxLine-(32<<10) {
+		t.Fatalf("maxStdin %d leaves no room for the envelope under %d", maxStdin, wire.MaxLine)
+	}
+}
+
+// A payload under the stdin limit that grows past a wire line once escaped
+// (each '<' becomes <) is dropped together with the decision request.
+func TestEscapedPayloadTooBigNoDecisionRequest(t *testing.T) {
+	sock := sockPath(t)
+	var got protocol.HookEvent
+	done := make(chan struct{})
+	fakeServer(t, sock, func(w *wire.Writer, ev protocol.Envelope, c net.Conn) {
+		ev.Decode(&got)
+		w.Send(protocol.TypeHookAck, ev.ID, protocol.HookAck{Wait: true, TimeoutMS: 5000})
+		w.Send(protocol.TypeHookDecision, ev.ID, protocol.HookDecision{Behavior: protocol.BehaviorAllow})
+		close(done)
+	})
+	big := `{"tool_name":"Bash","tool_input":{"command":"` + strings.Repeat("<", 1<<20) + `"}}`
+	out, code, _ := run(t, "claude-code", "permission-request", big, sock)
+	if code != 0 || out != "" {
+		t.Fatalf("code=%d out=%q", code, out)
+	}
+	<-done
+	if got.WantDecision || len(got.Payload) != 0 {
+		t.Fatalf("forwarded want=%v payload=%d bytes", got.WantDecision, len(got.Payload))
+	}
+}
