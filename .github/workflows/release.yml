@@ -172,25 +172,25 @@ jobs:
           fi
           umask 077
           key="$RUNNER_TEMP/sparkle_ed_key"
+          trap 'rm -f "$key"' EXIT
           printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$key"
           pages="$RUNNER_TEMP/gh-pages"
           if git fetch --depth 1 origin gh-pages 2>/dev/null; then
-            git worktree add "$pages" FETCH_HEAD
-            git -C "$pages" switch -c gh-pages
+            git worktree add --detach "$pages" FETCH_HEAD
           else
+            echo "No gh-pages branch yet; creating it."
             git worktree add --detach "$pages"
-            git -C "$pages" switch --orphan gh-pages
+            git -C "$pages" switch --orphan "appcast-$TAG"
           fi
           touch "$pages/.nojekyll"
           scripts/make-appcast.sh --dmg "$DMG" --key-file "$key" --appcast "$pages/appcast.xml" \
             --url "https://github.com/$REPO/releases/download/$TAG/$(basename "$DMG")" \
             --notes-url "https://github.com/$REPO/releases/tag/$TAG"
-          rm -f "$key"
           git -C "$pages" add appcast.xml .nojekyll
           git -C "$pages" -c user.name="github-actions[bot]" \
             -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             commit -m "appcast: $TAG"
-          git -C "$pages" push origin gh-pages
+          git -C "$pages" push origin HEAD:refs/heads/gh-pages
 
       - name: Clean up signing keychain
         if: always() && steps.devid.outputs.keychain != ''
