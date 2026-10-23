@@ -101,7 +101,7 @@ func Run(agent, event string, stdin io.Reader, stdout io.Writer, env func(string
 	r := wire.NewReader(conn)
 	_ = conn.SetReadDeadline(time.Now().Add(ackBudget))
 	ack, err := r.Read()
-	if err != nil || ack.Type != protocol.TypeHookAck {
+	if err != nil || ack.Type != protocol.TypeHookAck || ack.ID != id {
 		return 0
 	}
 	var a protocol.HookAck
@@ -115,7 +115,7 @@ func Run(agent, event string, stdin io.Reader, stdout io.Writer, env func(string
 		if err != nil {
 			return 0
 		}
-		if msg.Type != protocol.TypeHookDecision {
+		if msg.Type != protocol.TypeHookDecision || msg.ID != id {
 			continue
 		}
 		var d protocol.HookDecision

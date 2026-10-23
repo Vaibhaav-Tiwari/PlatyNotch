@@ -245,3 +245,20 @@ func TestAgentPID(t *testing.T) {
 		t.Errorf("unknown grandparent: got %d", got)
 	}
 }
+
+// Replies carrying another request's id are ignored.
+func TestWrongIDIgnored(t *testing.T) {
+	for _, tc := range []struct{ ackID, decID string }{{"nope", "1"}, {"1", "nope"}} {
+		sock := sockPath(t)
+		fakeServer(t, sock, func(w *wire.Writer, ev protocol.Envelope, c net.Conn) {
+			w.Send(protocol.TypeHookAck, tc.ackID, protocol.HookAck{Wait: true, TimeoutMS: 300})
+			w.Send(protocol.TypeHookDecision, tc.decID, protocol.HookDecision{Behavior: protocol.BehaviorAllow})
+			time.Sleep(100 * time.Millisecond)
+			c.Close()
+		})
+		out, code, _ := run(t, "claude-code", "permission-request", `{"tool_name":"Bash"}`, sock)
+		if code != 0 || out != "" {
+			t.Fatalf("ack=%q dec=%q: code=%d out=%q", tc.ackID, tc.decID, code, out)
+		}
+	}
+}
