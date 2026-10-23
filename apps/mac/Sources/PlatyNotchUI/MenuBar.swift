@@ -32,8 +32,30 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     /// Whether the icon currently shows the capture dot (for smoke checks).
     private(set) var showsDot = false
 
-    private func buildMenu() {
+    /// A menu whose items keep the `isEnabled` this controller sets (AppKit's automatic
+    /// enabling would turn on every item that has a target).
+    static func newMenu() -> NSMenu {
         let menu = NSMenu()
+        menu.autoenablesItems = false
+        return menu
+    }
+
+    /// The pause item: off and missing Accessibility mean there is nothing to pause.
+    static func pauseItemState(_ status: CaptureStatus) -> (title: String, enabled: Bool) {
+        switch status {
+        case .paused(let until):
+            let f = DateFormatter()
+            f.timeStyle = .short
+            return ("Resume capture (paused until \(f.string(from: until)))", true)
+        case .capturing:
+            return ("Pause capture for 1 hour", true)
+        case .off, .needsAccessibility:
+            return ("Pause capture for 1 hour", false)
+        }
+    }
+
+    private func buildMenu() {
+        let menu = Self.newMenu()
         menu.delegate = self
         menu.addItem(withTitle: "Open PlatyNotch", action: #selector(open), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Settings…", action: #selector(settings), keyEquivalent: ",").target = self
@@ -55,19 +77,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         if let updater, updater.isEnabled { updatesItem.isEnabled = updater.canCheckForUpdates }
         guard let capture else { pauseItem.isHidden = true; return }
-        switch capture.status {
-        case .paused(let until):
-            let f = DateFormatter()
-            f.timeStyle = .short
-            pauseItem.title = "Resume capture (paused until \(f.string(from: until)))"
-            pauseItem.isEnabled = true
-        case .capturing:
-            pauseItem.title = "Pause capture for 1 hour"
-            pauseItem.isEnabled = true
-        case .off, .needsAccessibility:
-            pauseItem.title = "Pause capture for 1 hour"
-            pauseItem.isEnabled = false
-        }
+        let state = Self.pauseItemState(capture.status)
+        pauseItem.title = state.title
+        pauseItem.isEnabled = state.enabled
     }
 
     @objc private func open() { onOpen() }

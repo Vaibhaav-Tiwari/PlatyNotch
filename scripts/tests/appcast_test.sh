@@ -72,10 +72,26 @@ expect "enclosure url" "$first" -- test "${first##* }" = \
 
 read -r _ _ _ sig _ <<<"$first"
 base64 -d <<<"$sig" >"$TMP/sig.bin"
-if "$OPENSSL" pkeyutl -verify -pubin -inkey "$TMP/pub.pem" -rawin -in "$TMP/PlatyNotch.dmg" -sigfile "$TMP/sig.bin" >/dev/null; then
-  echo "ok   EdDSA signature verifies with the public key"
+# Verify with an openssl that has `pkeyutl -rawin` (OpenSSL 3), else python3 `cryptography`,
+# else skip this check (a missing tool is not a failure).
+VERIFY_OPENSSL=""
+for o in "$OPENSSL" /opt/homebrew/bin/openssl /usr/local/opt/openssl@3/bin/openssl; do
+  if [[ -x "$o" ]] && "$o" pkeyutl -help 2>&1 | grep -q rawin; then VERIFY_OPENSSL="$o"; break; fi
+done
+if [[ -n "$VERIFY_OPENSSL" ]]; then
+  expect "EdDSA signature verifies with the public key (openssl)" "signature does not verify" -- \
+    "$VERIFY_OPENSSL" pkeyutl -verify -pubin -inkey "$TMP/pub.pem" -rawin -in "$TMP/PlatyNotch.dmg" \
+    -sigfile "$TMP/sig.bin"
+elif python3 -I -c 'import cryptography' 2>/dev/null; then
+  expect "EdDSA signature verifies with the public key (python cryptography)" "signature does not verify" -- \
+    python3 -I -c '
+import sys
+from cryptography.hazmat.primitives.serialization import load_pem_public_key
+key = load_pem_public_key(open(sys.argv[1], "rb").read())
+key.verify(open(sys.argv[2], "rb").read(), open(sys.argv[3], "rb").read())
+' "$TMP/pub.pem" "$TMP/sig.bin" "$TMP/PlatyNotch.dmg"
 else
-  fail "signature does not verify"
+  echo "skip signature check: no openssl with pkeyutl -rawin and no python3 cryptography"
 fi
 expect "minimum macOS" "no minimumSystemVersion 15.0" -- grep -q 'minimumSystemVersion>15.0<' "$TMP/appcast.xml"
 

@@ -62,6 +62,8 @@ public enum HookBinaryLink {
         } catch {
             return .failed("create \(dir.path): \(error.localizedDescription)")
         }
+        // Accepted TOCTOU window: a regular file created between the check above and the
+        // rename below would be replaced; only this user's own processes can write here.
         let tmp = dir.appendingPathComponent(".notch.\(UUID().uuidString).tmp")
         do {
             try fm.createSymbolicLink(atPath: tmp.path, withDestinationPath: target.path)

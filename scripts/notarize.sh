@@ -42,8 +42,10 @@ status="$(plutil -extract status raw -o - "$WORK/result.json" 2>/dev/null || ech
 id="$(plutil -extract id raw -o - "$WORK/result.json" 2>/dev/null || echo "")"
 echo "notarize: $status ($id)"
 if [[ "$status" != "Accepted" ]]; then
-  [[ -n "$id" ]] && xcrun notarytool log "$id" --key "$AC_API_KEY_PATH" --key-id "$AC_API_KEY_ID" \
-    --issuer "$AC_API_ISSUER" || true
+  if [[ -n "$id" ]]; then
+    xcrun notarytool log "$id" --key "$AC_API_KEY_PATH" --key-id "$AC_API_KEY_ID" \
+      --issuer "$AC_API_ISSUER" || true
+  fi
   exit 1
 fi
 

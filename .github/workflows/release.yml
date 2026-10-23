@@ -32,15 +32,16 @@ jobs:
     env:
       TAG: ${{ github.ref_name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0   # tags and the commit count (CFBundleVersion)
+          persist-credentials: false   # only the appcast step gets a token, for its push
 
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: core/go.mod
           cache-dependency-path: core/go.sum
@@ -72,15 +73,18 @@ jobs:
             exit 0
           fi
           umask 077
+          # The decoded certificate never outlives this step; the .p8 is removed on failure
+          # here and by the clean-up step after the release.
+          trap 'rm -f "$RUNNER_TEMP/devid.p12"; [[ -n "${ok:-}" ]] || rm -f "$RUNNER_TEMP/AuthKey.p8"' EXIT
           keychain="$RUNNER_TEMP/release.keychain-db"
           kc_pass="$(openssl rand -hex 24)"
           security create-keychain -p "$kc_pass" "$keychain"
+          echo "keychain=$keychain" >> "$GITHUB_OUTPUT"   # so clean-up runs even if a later line fails
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$kc_pass" "$keychain"
           printf '%s' "$DEVELOPER_ID_CERT_P12" | base64 --decode > "$RUNNER_TEMP/devid.p12"
           security import "$RUNNER_TEMP/devid.p12" -k "$keychain" -P "$DEVELOPER_ID_CERT_PASSWORD" \
             -T /usr/bin/codesign
-          rm -f "$RUNNER_TEMP/devid.p12"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$kc_pass" "$keychain" > /dev/null
           # Search the temporary keychain first (this runner's keychain list only).
           existing=()
@@ -98,22 +102,21 @@ jobs:
             echo "AC_API_KEY_ID=$AC_API_KEY_ID"
             echo "AC_API_ISSUER=$AC_API_ISSUER"
           } >> "$GITHUB_ENV"
-          echo "keychain=$keychain" >> "$GITHUB_OUTPUT"
           echo "identity=$identity" >> "$GITHUB_OUTPUT"
+          ok=1
           echo "Signing with: $identity"
 
       - name: Build PlatyNotch.app
         env:
           IDENTITY: ${{ steps.devid.outputs.identity }}
           SPARKLE_ED_PUBLIC_KEY: ${{ vars.SPARKLE_ED_PUBLIC_KEY }}
-          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          HAS_SPARKLE: ${{ secrets.SPARKLE_ED_PRIVATE_KEY != '' }}
         run: |
-          if [[ -z "$SPARKLE_ED_PRIVATE_KEY" ]]; then
+          if [[ "$HAS_SPARKLE" != "true" ]]; then
             [[ -n "$SPARKLE_ED_PUBLIC_KEY" ]] && echo "::warning::SPARKLE_ED_PUBLIC_KEY is set but the SPARKLE_ED_PRIVATE_KEY secret is not; updates stay off"
             echo "Sparkle updates: off (no SPARKLE_ED_PRIVATE_KEY secret); users update from GitHub Releases."
             unset SPARKLE_ED_PUBLIC_KEY
           fi
-          unset SPARKLE_ED_PRIVATE_KEY
           if [[ -n "$IDENTITY" ]]; then
             scripts/build-app.sh --sign "$IDENTITY"
           else
@@ -164,6 +167,7 @@ jobs:
       - name: Appcast (optional)
         env:
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         run: |
           if [[ -z "$SPARKLE_ED_PRIVATE_KEY" ]]; then
@@ -175,7 +179,12 @@ jobs:
           trap 'rm -f "$key"' EXIT
           printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$key"
           pages="$RUNNER_TEMP/gh-pages"
-          if git fetch --depth 1 origin gh-pages 2>/dev/null; then
+          # checkout ran with persist-credentials: false; authenticate this step's fetch and
+          # push with a header (masked by Actions, never on a command line or in a URL).
+          auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 | tr -d '\n')"
+          echo "::add-mask::${auth#AUTHORIZATION: basic }"
+          gitauth() { git -c "http.https://github.com/.extraheader=$auth" "$@"; }
+          if gitauth fetch --depth 1 origin gh-pages 2>/dev/null; then
             git worktree add --detach "$pages" FETCH_HEAD
           else
             echo "No gh-pages branch yet; creating it."
@@ -190,7 +199,7 @@ jobs:
           git -C "$pages" -c user.name="github-actions[bot]" \
             -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
             commit -m "appcast: $TAG"
-          git -C "$pages" push origin HEAD:refs/heads/gh-pages
+          gitauth -C "$pages" push origin HEAD:refs/heads/gh-pages
 
       - name: Clean up signing keychain
         if: always() && steps.devid.outputs.keychain != ''
