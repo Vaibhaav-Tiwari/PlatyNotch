@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -297,5 +298,40 @@ func TestThreadReaders(t *testing.T) {
 	ts, err := s.ThreadsUpdatedSince(now.Add(-time.Hour), 10)
 	if err != nil || len(ts) != 1 {
 		t.Fatalf("ThreadsUpdatedSince = %+v %v", ts, err)
+	}
+}
+
+// Purged words must not survive in the FTS5 index segments nor in the raw
+// database bytes (main file + WAL) once the purge has checkpointed.
+func TestPurgeScrubsFTSAndFile(t *testing.T) {
+	s, p := open(t)
+	old := time.Now().Add(-48 * time.Hour)
+	const secret = "zqxvordelmuntastic"
+	seed(t, s, "meeting notes "+secret+" quarterly", old)
+	if _, err := s.PurgeBefore(time.Now().Add(-24 * time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.db.Query(`SELECT block FROM chunks_fts_data`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var b []byte
+		if err := rows.Scan(&b); err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(b, []byte(secret)) {
+			t.Fatalf("purged token still in chunks_fts_data")
+		}
+	}
+	rows.Close()
+	for _, f := range []string{p, p + "-wal"} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		if bytes.Contains(b, []byte(secret)) {
+			t.Fatalf("purged token still in %s", filepath.Base(f))
+		}
 	}
 }

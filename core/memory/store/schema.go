@@ -81,4 +81,11 @@ CREATE TABLE retry_queue (
 	`
 CREATE UNIQUE INDEX retry_kind_chunk ON retry_queue(kind, chunk_id);
 CREATE INDEX chunks_thread ON chunks(thread_id);
+`,
+	// 3: FTS5 'delete' only writes tombstones, leaving purged words in the
+	// index segments; secure-delete removes them in place. Rebuild scrubs
+	// anything already tombstoned.
+	`
+INSERT INTO chunks_fts(chunks_fts, rank) VALUES('secure-delete', 1);
+INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild');
 `}

@@ -294,7 +294,9 @@ func (s *Store) Counts() (threads, versions, chunks, pending int, err error) {
 
 // PurgeBefore deletes chunks captured and versions created before t (FTS rows
 // and vectors go with them, as do orphaned retry_queue rows), then threads left with no versions. It returns
-// the number of chunks deleted, including cascade-deleted ones.
+// the number of chunks deleted, including cascade-deleted ones. Deleted text
+// is overwritten (secure_delete, FTS5 secure-delete) and the WAL is
+// checkpointed and truncated afterwards.
 func (s *Store) PurgeBefore(t time.Time) (int, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -318,7 +320,14 @@ func (s *Store) PurgeBefore(t time.Time) (int, error) {
 	if _, err := tx.Exec(`DELETE FROM threads WHERE id NOT IN (SELECT thread_id FROM versions)`); err != nil {
 		return 0, err
 	}
-	return n, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	// Copy the scrubbed pages into the main file and truncate the WAL so the
+	// purged text does not linger in old WAL frames (best effort: a reader
+	// holding a snapshot can make the checkpoint partial).
+	_, _ = s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
+	return n, nil
 }
 
 // CountChunks returns how many chunks belong to the version.
