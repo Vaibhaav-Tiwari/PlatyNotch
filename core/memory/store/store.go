@@ -223,7 +223,8 @@ func (s *Store) AddChunks(cs []Chunk) ([]int64, error) {
 	return ids, tx.Commit()
 }
 
-// SetVector stores the embedding (little-endian float32) and marks the chunk embedded.
+// SetVector stores the embedding (little-endian float32) and marks the chunk
+// embedded, dropping any embed retry row. It returns ErrChunkGone if the chunk was deleted (e.g. purged).
 func (s *Store) SetVector(chunkID int64, model string, vec []float32) error {
 	b := make([]byte, 4*len(vec))
 	for i, f := range vec {
@@ -234,10 +235,20 @@ func (s *Store) SetVector(chunkID int64, model string, vec []float32) error {
 		return err
 	}
 	defer tx.Rollback()
+	var n int
+	if err := tx.QueryRow(`SELECT count(*) FROM chunks WHERE id=?`, chunkID).Scan(&n); err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrChunkGone
+	}
 	if _, err := tx.Exec(`INSERT OR REPLACE INTO chunk_vectors(chunk_id,model,dim,vec) VALUES(?,?,?,?)`, chunkID, model, len(vec), b); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`UPDATE chunks SET embed_status='done' WHERE id=?`, chunkID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM retry_queue WHERE kind='embed' AND chunk_id=?`, chunkID); err != nil {
 		return err
 	}
 	return tx.Commit()

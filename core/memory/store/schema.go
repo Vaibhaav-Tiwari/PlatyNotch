@@ -76,4 +76,9 @@ CREATE TABLE retry_queue (
   next_at INTEGER NOT NULL,
   last_error TEXT NOT NULL DEFAULT ''
 );
+`,
+	// 2: one retry row per (kind, chunk); thread lookups for extraction batching.
+	`
+CREATE UNIQUE INDEX retry_kind_chunk ON retry_queue(kind, chunk_id);
+CREATE INDEX chunks_thread ON chunks(thread_id);
 `}

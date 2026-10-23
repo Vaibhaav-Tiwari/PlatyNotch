@@ -197,7 +197,7 @@ type Loop struct {
 	Title        string     `json:"title"`
 	Details      string     `json:"details,omitempty"`
 	Kind         string     `json:"kind"`   // "commitment" | "request" | "followup" | "task"
-	Status       string     `json:"status"` // "open" | "resolved" | "dismissed"
+	Status       string     `json:"status"` // "open" | "resolved" | "dismissed" | "stale"
 	SourceApp    string     `json:"source_app,omitempty"`
 	SourceThread string     `json:"source_thread,omitempty"`
 	Quote        string     `json:"quote,omitempty"`

@@ -43,7 +43,7 @@ func TestMigrateTwiceIsNoop(t *testing.T) {
 	}
 	defer s2.Close()
 	var n int
-	if err := s2.db.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&n); err != nil || n != 1 {
+	if err := s2.db.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&n); err != nil || n != len(migrations) {
 		t.Fatalf("migrations=%d err=%v", n, err)
 	}
 }
