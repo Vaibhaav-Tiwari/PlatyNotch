@@ -207,12 +207,13 @@ Apple Music and a YouTube video in Safari, bundled app (adapter) and `swift run`
 - [ ] **38. Tap stops when hidden.** Visualiser on and allowed, music playing. Watch the
   orange recording indicator / Control Centre "System audio recording" entry, or
   `log stream --predicate 'subsystem == "dev.platynotch.app" AND category == "AudioTap"'`
-  ("visualiser tap started/stopped"):
+  ("visualiser tap started/stopped"). Stops below come about 0.8 s later (a grace so a
+  pill ↔ panel switch keeps the tap; opening the panel on Today logs no stop/start pair):
   - pause the music: stopped; play: started;
   - open the panel on the Agents tab (no pill, no tile): stopped; switch to Today: started;
   - full-screen app hiding the pill: stopped; reveal the pill: started;
   - Reduce Motion on: stopped (still bars);
-  - turn the toggle off, or turn the Music widget off: stopped at once.
+  - turn the toggle off, or turn the Music widget off, or quit: stopped at once (no grace).
 - [ ] **39. Developer ID build.** Signed with `PlatyNotch.entitlements` (hardened
   runtime), the visualiser still gets audio after allowing the prompt. If it stays
   silent, the `com.apple.security.device.audio-input` entitlement is the suspect.

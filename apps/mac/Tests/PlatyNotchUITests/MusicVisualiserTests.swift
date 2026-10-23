@@ -31,8 +31,35 @@ final class FakeTap: AudioTapping {
     }
 }
 
+/// Stands in for `Task.sleep` in the stop grace: nothing wakes until `fire()`.
+@MainActor
+final class ManualSleeper {
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+    var pending: Int { waiting.count }
+
+    func sleep(_ seconds: TimeInterval) async {
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    /// Lets newly scheduled tasks reach their sleep.
+    func settle() async {
+        for _ in 0..<5 { await Task.yield() }
+    }
+
+    /// Ends every sleep, then lets the woken tasks run.
+    func fire() async {
+        await settle()
+        let w = waiting
+        waiting = []
+        for c in w { c.resume() }
+        for _ in 0..<5 { await Task.yield() }
+    }
+}
+
 @MainActor
 final class MusicVisualiserTests: XCTestCase {
+    private var sleeper = ManualSleeper()
+
     private func defaults() -> UserDefaults {
         let suite = "dev.platynotch.tests.visualiser.\(UUID().uuidString)"
         addTeardownBlock { UserDefaults.standard.removePersistentDomain(forName: suite) }
@@ -43,7 +70,8 @@ final class MusicVisualiserTests: XCTestCase {
         let d = defaults()
         d.set(enabled, forKey: MusicVisualiser.enabledKey)
         var taps: [FakeTap] = []
-        let v = MusicVisualiser(defaults: d, primeDuration: prime, makeTap: {
+        let sleeper = self.sleeper
+        let v = MusicVisualiser(defaults: d, primeDuration: prime, sleep: { await sleeper.sleep($0) }, makeTap: {
             let t = FakeTap()
             taps.append(t)
             return t
@@ -71,11 +99,13 @@ final class MusicVisualiserTests: XCTestCase {
         XCTAssertEqual(taps().count, 1, "the prompt belongs to turning the toggle on")
         XCTAssertTrue(v.isRunning)
         try await Task.sleep(for: .milliseconds(200))
+        XCTAssertTrue(v.isRunning, "priming over: the stop grace starts")
+        await sleeper.fire()
         XCTAssertFalse(v.isRunning, "nothing playing or visible: the tap stops after priming")
         XCTAssertEqual(taps()[0].stops, 1)
     }
 
-    func testRunsOnlyWhilePlayingAndVisible() {
+    func testRunsOnlyWhilePlayingAndVisible() async {
         let (v, taps, _) = make(enabled: true)   // turned on in an earlier session: no priming
         v.setWidgetRunning(true)
         XCTAssertTrue(taps().isEmpty)
@@ -89,12 +119,54 @@ final class MusicVisualiserTests: XCTestCase {
         v.setViewer(pill, visible: false)
         XCTAssertTrue(v.isRunning, "the tile still shows bars")
         v.setViewer(tile, visible: false)
+        await sleeper.fire()
         XCTAssertFalse(v.isRunning, "neither the pill nor the tile is visible: the tap stops")
         XCTAssertEqual(taps()[0].stops, 1)
         v.setViewer(tile, visible: true)
         XCTAssertEqual(taps().count, 2, "a fresh tap when bars show again")
         v.setPlaying(false)
+        await sleeper.fire()
         XCTAssertFalse(v.isRunning, "paused: the tap stops")
+    }
+
+    /// The pill disappears just before the panel's tile appears (or the other way round):
+    /// within the grace the same tap carries on.
+    func testGraceKeepsTheTapAcrossTransitions() async {
+        let (v, taps, _) = make(enabled: true)
+        v.setWidgetRunning(true)
+        v.setPlaying(true)
+        let pill = UUID(), tile = UUID()
+        v.setViewer(pill, visible: true)
+        v.setViewer(pill, visible: false)    // panel opens: pill gone first
+        await sleeper.settle()
+        XCTAssertTrue(v.isRunning, "still within the grace")
+        XCTAssertEqual(sleeper.pending, 1)
+        v.setViewer(tile, visible: true)     // tile appears
+        await sleeper.fire()                 // the cancelled grace wakes and does nothing
+        XCTAssertTrue(v.isRunning)
+        XCTAssertEqual(taps().count, 1, "no destroy and rebuild")
+        XCTAssertEqual(taps()[0].stops, 0)
+        // a second hide schedules a fresh grace, which does stop it
+        v.setViewer(tile, visible: false)
+        XCTAssertTrue(v.isRunning)
+        await sleeper.fire()
+        XCTAssertFalse(v.isRunning)
+        XCTAssertEqual(taps()[0].stops, 1)
+    }
+
+    func testToggleOffDuringGraceStopsAtOnce() async {
+        let (v, taps, _) = make(enabled: true)
+        v.setWidgetRunning(true)
+        v.setPlaying(true)
+        let id = UUID()
+        v.setViewer(id, visible: true)
+        v.setViewer(id, visible: false)
+        XCTAssertTrue(v.isRunning)
+        v.setEnabled(false)
+        XCTAssertFalse(v.isRunning, "turning the toggle off never waits for the grace")
+        XCTAssertEqual(taps()[0].stops, 1)
+        await sleeper.fire()
+        XCTAssertEqual(taps()[0].stops, 1, "the stale grace does nothing")
     }
 
     func testTogglingOffStopsAtOnce() {
@@ -105,6 +177,7 @@ final class MusicVisualiserTests: XCTestCase {
         XCTAssertTrue(v.isRunning)
         v.setEnabled(false)
         XCTAssertFalse(v.isRunning)
+        XCTAssertEqual(sleeper.pending, 0, "no grace")
         XCTAssertEqual(taps()[0].stops, 1)
         XCTAssertFalse(d.bool(forKey: MusicVisualiser.enabledKey))
         XCTAssertEqual(v.levels, Array(repeating: 0, count: MusicVisualiser.bandCount))
@@ -115,9 +188,10 @@ final class MusicVisualiserTests: XCTestCase {
         v.setWidgetRunning(true)
         v.setPlaying(true)
         v.setViewer(UUID(), visible: true)
-        v.setWidgetRunning(false)
+        v.setWidgetRunning(false)   // also what quitting does (registry.stopAll → stop)
         XCTAssertFalse(v.isRunning)
         XCTAssertEqual(taps()[0].stops, 1)
+        XCTAssertEqual(sleeper.pending, 0, "no grace")
     }
 
     func testNoPrimeWhileWidgetOff() {
@@ -179,6 +253,40 @@ final class MusicVisualiserTests: XCTestCase {
         w.stop()
         XCTAssertTrue(taps().isEmpty)
         XCTAssertNil(np.onPlayingChange)
+    }
+
+    /// The sink copies under the lock and analyses outside it; clearing forgets everything.
+    func testSinkLevelsAndClear() {
+        let sink = SampleSink(bands: 4)
+        let tone = (0..<1024).map { Float(0.8 * sin(2 * Double.pi * 1_000 * Double($0) / 48_000)) }
+        tone.withUnsafeBufferPointer { sink.push($0, channels: 1, sampleRate: 48_000) }
+        XCTAssertEqual(sink.retainedSampleCount, 1024)
+        XCTAssertGreaterThan(sink.levels().values.max() ?? 0, 0.7)
+        sink.clear()
+        XCTAssertEqual(sink.retainedSampleCount, 0)
+        XCTAssertEqual(sink.levels().values, [0, 0, 0, 0])
+    }
+
+    /// A report with no timestamp is stamped when it arrives, not on each read; a later
+    /// report with the same elapsed time keeps that stamp.
+    func testClockStampedOnceOnArrival() {
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        let report = NowPlayingInfo(bundleIdentifier: "x", title: "T", isPlaying: true, elapsed: 10, duration: 100)
+        let first = NowPlaying.stamped(report, previous: nil, now: t0)
+        XCTAssertEqual(first?.timestamp, t0)
+        let clock = PlaybackClock(info: first!, now: t0.addingTimeInterval(5))
+        XCTAssertEqual(clock?.position(now: t0.addingTimeInterval(5)), 15, "moves on from the stamp")
+        var diff = report
+        diff.artist = "New"
+        XCTAssertEqual(NowPlaying.stamped(diff, previous: first, now: t0.addingTimeInterval(9))?.timestamp, t0)
+        var moved = report
+        moved.elapsed = 50
+        XCTAssertEqual(NowPlaying.stamped(moved, previous: first, now: t0.addingTimeInterval(9))?.timestamp,
+                       t0.addingTimeInterval(9))
+        let given = NowPlayingInfo(bundleIdentifier: "x", title: "T", isPlaying: true, elapsed: 1, timestamp: t0)
+        XCTAssertEqual(NowPlaying.stamped(given, previous: nil, now: t0.addingTimeInterval(3))?.timestamp, t0)
+        XCTAssertNil(NowPlaying.stamped(NowPlayingInfo(bundleIdentifier: "x", title: "T", isPlaying: true),
+                                        previous: nil, now: t0)?.timestamp, "no elapsed: nothing to stamp")
     }
 
     func testSeekWithoutTimesDoesNothing() {

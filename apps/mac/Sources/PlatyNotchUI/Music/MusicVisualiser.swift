@@ -9,8 +9,10 @@ import SwiftUI
 /// Off by default (Settings › Widgets › Music › "Live visualiser"). The audio tap runs only
 /// while all of these hold: the toggle is on, the music widget runs, music plays, and a
 /// pill or tile with bars is on screen (each `MusicBars` reports itself, and only while the
-/// panel is really shown and Reduce Motion is off). Anything else stops and destroys the
-/// tap at once. The one exception is turning the toggle on: the tap starts for
+/// panel is really shown and Reduce Motion is off). When bars stop showing or music
+/// pauses the tap is destroyed after `stopGrace`, so a pill ↔ panel switch (one bars view
+/// disappearing just before the next appears) keeps the same tap; turning the toggle off
+/// or the widget off (also at quit) destroys it at once. The one exception is turning the toggle on: the tap starts for
 /// `primeDuration` so macOS asks for System Audio Recording then, never on a later play.
 ///
 /// Privacy: samples go from the tap into `SpectrumAnalyser` (one FFT window, in memory,
@@ -29,6 +31,8 @@ public final class MusicVisualiser {
     public static let signalFloor: Float = 0.02
     /// No signal for this long → the bars fall back to their synthetic animation.
     public static let silenceGrace: TimeInterval = 1.5
+    /// How long the tap outlives its last reason to run (pill ↔ panel transitions).
+    public static let stopGrace: TimeInterval = 0.8
 
     /// Smoothed levels, `bandCount` of them (0 while stopped).
     public private(set) var levels: [Float] = Array(repeating: 0, count: MusicVisualiser.bandCount)
@@ -53,11 +57,17 @@ public final class MusicVisualiser {
     @ObservationIgnored private var playing = false
     @ObservationIgnored private var widgetRunning = false
     @ObservationIgnored private var viewers: Set<UUID> = []
+    @ObservationIgnored private let sleep: @MainActor (TimeInterval) async -> Void
+    @ObservationIgnored private var pendingStop: Task<Void, Never>?
+    @ObservationIgnored private var stopGeneration = 0
 
+    /// `sleep` waits out `stopGrace` (tests inject one they release by hand).
     public init(defaults: UserDefaults = .standard, primeDuration: TimeInterval = 2,
+                sleep: @escaping @MainActor (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) },
                 makeTap: @escaping @MainActor () -> AudioTapping = { SystemAudioTap() }) {
         self.defaults = defaults
         self.primeDuration = primeDuration
+        self.sleep = sleep
         self.makeTap = makeTap
         enabled = defaults.bool(forKey: Self.enabledKey)
     }
@@ -118,11 +128,35 @@ public final class MusicVisualiser {
     // MARK: - Tap
 
     private func reconcile() {
-        if wantsTap, tap == nil {
-            startTap()
-        } else if !wantsTap, tap != nil {
-            stopTap()
+        if wantsTap {
+            cancelPendingStop()
+            if tap == nil { startTap() }
+        } else if tap != nil {
+            if !enabled || !widgetRunning {
+                cancelPendingStop()   // toggle off, widget off, quit: no grace
+                stopTap()
+            } else if pendingStop == nil {
+                scheduleStop()
+            }
         }
+    }
+
+    private func scheduleStop() {
+        stopGeneration += 1
+        let generation = stopGeneration
+        let sleep = self.sleep
+        pendingStop = Task { @MainActor [weak self] in
+            await sleep(Self.stopGrace)
+            guard let self, self.stopGeneration == generation else { return }
+            self.pendingStop = nil
+            if !self.wantsTap, self.tap != nil { self.stopTap() }
+        }
+    }
+
+    private func cancelPendingStop() {
+        stopGeneration += 1
+        pendingStop?.cancel()
+        pendingStop = nil
     }
 
     private func startTap() {
@@ -185,18 +219,39 @@ public final class MusicVisualiser {
 }
 
 /// The analyser behind a lock: the tap's thread pushes, the main actor reads levels.
+/// Under the lock there is only the push into the ring and a copy into a preallocated
+/// buffer; the FFT runs outside it, so the audio callback never waits on the FFT or an
+/// allocation.
 final class SampleSink: @unchecked Sendable {
     private let lock = OSAllocatedUnfairLock()
     private var analyser: SpectrumAnalyser
+    private let bands: Int
+    // Reader side (main actor only).
+    private var scratch = [Float](repeating: 0, count: SpectrumBands.fftSize)
+    private let fft = SpectrumFFT(size: SpectrumBands.fftSize)
 
-    init(bands: Int) { analyser = SpectrumAnalyser(bands: bands) }
+    init(bands: Int) {
+        self.bands = bands
+        analyser = SpectrumAnalyser(bands: bands)
+    }
 
     func push(_ samples: UnsafeBufferPointer<Float>, channels: Int, sampleRate: Double) {
         lock.withLockUnchecked { analyser.push(interleaved: samples, channels: channels, sampleRate: sampleRate) }
     }
 
-    func levels() -> BandLevels { lock.withLockUnchecked { analyser.levels() } }
-    func clear() { lock.withLockUnchecked { analyser.clear() } }
+    @MainActor func levels() -> BandLevels {
+        let (count, rate) = lock.withLockUnchecked { analyser.copySamples(into: &scratch) }
+        guard count > 0 else { return BandLevels(values: [Float](repeating: 0, count: bands)) }
+        return BandLevels(values: fft.levels(of: scratch, sampleRate: rate, bands: bands))
+    }
+
+    /// Forgets the ring, the copy and the FFT's scratch.
+    @MainActor func clear() {
+        lock.withLockUnchecked { analyser.clear() }
+        for i in scratch.indices { scratch[i] = 0 }
+        fft.clear()
+    }
+
     var retainedSampleCount: Int { lock.withLockUnchecked { analyser.retainedSampleCount } }
 }
 

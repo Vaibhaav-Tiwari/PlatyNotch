@@ -97,6 +97,21 @@ final class MusicTests: XCTestCase {
         XCTAssertEqual(a.levels().values, [Float](repeating: 0, count: 6))
     }
 
+    func testCopySamplesOldestFirst() {
+        var a = SpectrumAnalyser(bands: 2)
+        var buffer = [Float](repeating: -1, count: SpectrumBands.fftSize)
+        XCTAssertEqual(a.copySamples(into: &buffer).count, 0)
+        a.push((0..<(SpectrumBands.fftSize + 3)).map(Float.init), sampleRate: 44_100)
+        let (count, rate) = a.copySamples(into: &buffer)
+        XCTAssertEqual(count, SpectrumBands.fftSize)
+        XCTAssertEqual(rate, 44_100)
+        XCTAssertEqual(buffer.first, 3)   // the 3 oldest were overwritten
+        XCTAssertEqual(buffer.last, Float(SpectrumBands.fftSize + 2))
+        a.clear()
+        _ = a.copySamples(into: &buffer)
+        XCTAssertTrue(buffer.allSatisfy { $0 == 0 })
+    }
+
     func testAnalyserMixesStereoToMono() {
         var a = SpectrumAnalyser(bands: 4)
         // interleaved L/R with R = -L cancels to silence

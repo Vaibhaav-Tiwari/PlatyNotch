@@ -124,7 +124,9 @@ struct MusicScrubber: View {
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Playback position")
-            .accessibilityValue("\(TodayFormat.clock(position)) of \(TodayFormat.clock(clock.duration))")
+            .accessibilityValue(clock.duration > 0
+                                ? "\(TodayFormat.clock(position)) of \(TodayFormat.clock(clock.duration))"
+                                : TodayFormat.clock(position))
             .accessibilityAdjustableAction { direction in
                 let step: TimeInterval = direction == .increment ? 10 : -10
                 nowPlaying.seek(to: clock.position(now: Date()) + step)

@@ -13,7 +13,7 @@ public enum SpectrumBands {
 
     public static func compute(samples: [Float], sampleRate: Double, bands: Int) -> [Float] {
         guard bands > 0 else { return [] }
-        let fft = FFT(size: fftSize)
+        let fft = SpectrumFFT(size: fftSize)
         var window = [Float](repeating: 0, count: fftSize)
         // The last `fftSize` samples, zero-padded in front when there are fewer.
         let tail = samples.suffix(fftSize)
@@ -50,62 +50,70 @@ public enum SpectrumBands {
         let db = 20 * log10(Double(amplitude))
         return Float(min(max((db - floorDB) / -floorDB, 0), 1))
     }
+}
 
-    /// A reusable vDSP FFT and its buffers (not thread-safe: one user at a time).
-    final class FFT {
-        let size: Int
-        private let log2n: vDSP_Length
-        private let setup: FFTSetup
-        private var hann: [Float]
-        private var real: [Float]
-        private var imag: [Float]
-        private var magnitudes: [Float]
-        private var ranges: [Range<Int>] = []
-        private var rangesKey: (Double, Int) = (0, 0)
+/// A reusable vDSP FFT and its scratch buffers (not thread-safe: one user at a time).
+/// Only the returned levels are allocated per call.
+public final class SpectrumFFT {
+    public let size: Int
+    private let log2n: vDSP_Length
+    private let setup: FFTSetup
+    private var hann: [Float]
+    private var real: [Float]
+    private var imag: [Float]
+    private var magnitudes: [Float]
+    private var windowed: [Float]
+    private var ranges: [Range<Int>] = []
+    private var rangesKey: (Double, Int) = (0, 0)
 
-        init(size: Int) {
-            self.size = size
-            log2n = vDSP_Length(log2(Double(size)))
-            setup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2))!
-            hann = [Float](repeating: 0, count: size)
-            vDSP_hann_window(&hann, vDSP_Length(size), Int32(vDSP_HANN_DENORM))
-            real = [Float](repeating: 0, count: size / 2)
-            imag = [Float](repeating: 0, count: size / 2)
-            magnitudes = [Float](repeating: 0, count: size / 2)
+    public init(size: Int) {
+        self.size = size
+        log2n = vDSP_Length(log2(Double(size)))
+        setup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2))!
+        hann = [Float](repeating: 0, count: size)
+        vDSP_hann_window(&hann, vDSP_Length(size), Int32(vDSP_HANN_DENORM))
+        real = [Float](repeating: 0, count: size / 2)
+        imag = [Float](repeating: 0, count: size / 2)
+        magnitudes = [Float](repeating: 0, count: size / 2)
+        windowed = [Float](repeating: 0, count: size)
+    }
+
+    /// Zeroes every scratch buffer (what is left of the last audio analysed).
+    public func clear() {
+        for i in real.indices { real[i] = 0; imag[i] = 0; magnitudes[i] = 0 }
+        for i in windowed.indices { windowed[i] = 0 }
+    }
+
+    deinit { vDSP_destroy_fftsetup(setup) }
+
+    /// `samples` must hold exactly `size` values (oldest first).
+    public func levels(of samples: [Float], sampleRate: Double, bands: Int) -> [Float] {
+        precondition(samples.count == size)
+        if rangesKey != (sampleRate, bands) {
+            ranges = SpectrumBands.binRanges(bands: bands, sampleRate: sampleRate, size: size)
+            rangesKey = (sampleRate, bands)
         }
-
-        deinit { vDSP_destroy_fftsetup(setup) }
-
-        /// `samples` must hold exactly `size` values.
-        func levels(of samples: [Float], sampleRate: Double, bands: Int) -> [Float] {
-            precondition(samples.count == size)
-            if rangesKey != (sampleRate, bands) {
-                ranges = SpectrumBands.binRanges(bands: bands, sampleRate: sampleRate, size: size)
-                rangesKey = (sampleRate, bands)
-            }
-            var windowed = [Float](repeating: 0, count: size)
-            vDSP_vmul(samples, 1, hann, 1, &windowed, 1, vDSP_Length(size))
-            let half = size / 2
-            real.withUnsafeMutableBufferPointer { rp in
-                imag.withUnsafeMutableBufferPointer { ip in
-                    var split = DSPSplitComplex(realp: rp.baseAddress!, imagp: ip.baseAddress!)
-                    windowed.withUnsafeBufferPointer { wp in
-                        wp.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: half) {
-                            vDSP_ctoz($0, 2, &split, 1, vDSP_Length(half))
-                        }
+        vDSP_vmul(samples, 1, hann, 1, &windowed, 1, vDSP_Length(size))
+        let half = size / 2
+        real.withUnsafeMutableBufferPointer { rp in
+            imag.withUnsafeMutableBufferPointer { ip in
+                var split = DSPSplitComplex(realp: rp.baseAddress!, imagp: ip.baseAddress!)
+                windowed.withUnsafeBufferPointer { wp in
+                    wp.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: half) {
+                        vDSP_ctoz($0, 2, &split, 1, vDSP_Length(half))
                     }
-                    vDSP_fft_zrip(setup, &split, 1, log2n, FFTDirection(FFT_FORWARD))
-                    vDSP_zvabs(&split, 1, &magnitudes, 1, vDSP_Length(half))
                 }
+                vDSP_fft_zrip(setup, &split, 1, log2n, FFTDirection(FFT_FORWARD))
+                vDSP_zvabs(&split, 1, &magnitudes, 1, vDSP_Length(half))
             }
-            // A sine of amplitude A peaks at A·N/2 in the DFT, halved by the Hann window's
-            // coherent gain (A·N/4), doubled by zrip's scaling (A·N/2): A = magnitude · 2/N.
-            let scale = 2 / Float(size)
-            return ranges.map { r in
-                var peak: Float = 0
-                for k in r where magnitudes[k] > peak { peak = magnitudes[k] }
-                return SpectrumBands.level(amplitude: peak * scale)
-            }
+        }
+        // A sine of amplitude A peaks at A·N/2 in the DFT, halved by the Hann window's
+        // coherent gain (A·N/4), doubled by zrip's scaling (A·N/2): A = magnitude · 2/N.
+        let scale = 2 / Float(size)
+        return ranges.map { r in
+            var peak: Float = 0
+            for k in r where magnitudes[k] > peak { peak = magnitudes[k] }
+            return SpectrumBands.level(amplitude: peak * scale)
         }
     }
 }
@@ -118,14 +126,15 @@ public struct BandLevels: Equatable, Sendable {
 
 /// Keeps the latest `SpectrumBands.fftSize` mono samples (in memory only, overwritten as
 /// audio arrives; nothing else is kept) and reduces them to `BandLevels` on demand.
-/// Not thread-safe: the caller serialises `push` and `levels`.
-public struct SpectrumAnalyser {
+/// Not thread-safe: the caller serialises `push` and `levels`. Non-copyable: it owns its
+/// FFT scratch, which copies would otherwise share.
+public struct SpectrumAnalyser: ~Copyable {
     public let bands: Int
     private var ring: [Float]
     private var write = 0
     private var filled = 0
     private var sampleRate: Double = 48_000
-    private let fft = SpectrumBands.FFT(size: SpectrumBands.fftSize)
+    private let fft = SpectrumFFT(size: SpectrumBands.fftSize)
 
     public init(bands: Int) {
         self.bands = max(bands, 0)
@@ -159,11 +168,22 @@ public struct SpectrumAnalyser {
         filled = min(n, filled + frames)
     }
 
-    /// Forgets every sample.
+    /// Forgets every sample, including what the last FFT left in its buffers.
     public mutating func clear() {
         for i in ring.indices { ring[i] = 0 }
         write = 0
         filled = 0
+        fft.clear()
+    }
+
+    /// Copies the held samples, oldest first, into `buffer` (`SpectrumBands.fftSize` long,
+    /// allocated by the caller; no allocation here, so it is cheap under a lock). Returns
+    /// how many are real samples and their rate.
+    public func copySamples(into buffer: inout [Float]) -> (count: Int, sampleRate: Double) {
+        precondition(buffer.count == ring.count)
+        let n = ring.count
+        for i in 0..<n { buffer[i] = ring[(write + i) % n] }
+        return (filled, sampleRate)
     }
 
     public func levels() -> BandLevels {
