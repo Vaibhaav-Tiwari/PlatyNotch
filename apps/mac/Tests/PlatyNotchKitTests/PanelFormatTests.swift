@@ -166,18 +166,36 @@ final class PanelFormatTests: XCTestCase {
 
     func testDecisionsLifecycle() throws {
         var d = ApprovalDecisions()
-        XCTAssertTrue(d.begin(id: "a", .allow))
-        XCTAssertFalse(d.begin(id: "a", .deny), "a second answer while one is in flight is ignored")
+        let a = approval("a", created: 0), b = approval("b", created: 1)
+        XCTAssertEqual(d.begin(a, .allow, now: now, canAnswer: true), .send)
+        XCTAssertEqual(d.begin(a, .deny, now: now, canAnswer: true), .ignored,
+                       "a second answer while one is in flight is ignored")
         XCTAssertEqual(d.phase(for: "a"), .sending(.allow))
         d.fail(id: "a", message: "not connected")
         XCTAssertEqual(d.phase(for: "a"), .failed("not connected"))
-        XCTAssertTrue(d.begin(id: "a", .deny), "after a failure the user can answer again")
-        XCTAssertTrue(d.begin(id: "b", .allow))
+        XCTAssertEqual(d.begin(a, .deny, now: now, canAnswer: true), .send, "after a failure the user can answer again")
+        XCTAssertEqual(d.begin(b, .allow, now: now, canAnswer: true), .send)
         d.sync(pending: ["b", "c"], connected: true)
         XCTAssertNil(d.phase(for: "a"), "resolved approvals are forgotten")
         XCTAssertEqual(d.phase(for: "b"), .sending(.allow))
         d.sync(pending: ["b"], connected: false)
         XCTAssertNil(d.phase(for: "b"), "a lost connection clears in-flight answers; the next snapshot is the truth")
+    }
+
+    func testDecideWhileReconnectingIgnored() {
+        var d = ApprovalDecisions()
+        XCTAssertEqual(d.begin(approval("a", created: 0), .allow, now: now, canAnswer: false), .ignored)
+        XCTAssertNil(d.phase(for: "a"))
+    }
+
+    func testDecideChecksExpiryAtDecideTime() {
+        var d = ApprovalDecisions()
+        let a = approval("a", created: 0, expires: 100)
+        XCTAssertEqual(d.begin(a, .allow, now: now.addingTimeInterval(100), canAnswer: true), .expired)
+        XCTAssertEqual(d.phase(for: "a"), .expired)
+        XCTAssertEqual(ApprovalCardStatus(approval: a, now: now, canAnswer: true, phase: d.phase(for: "a")), .expired,
+                       "shows Expired at once, before the next tick")
+        XCTAssertEqual(d.begin(a, .allow, now: now, canAnswer: true), .ignored, "an expired approval stays unanswerable")
     }
 
     func testDecideEnvelope() throws {

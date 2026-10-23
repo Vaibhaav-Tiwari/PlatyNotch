@@ -29,6 +29,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = AppStore()
     private let socketPath = CorePaths.socketPath()
     private lazy var client = CoreClient(socketPath: socketPath)
+    /// Shared by every display's panel: one answer per approval, "Sending…" everywhere.
+    private lazy var responder = ApprovalResponder(client: client)
     private var supervisor: CoreSupervisor?
     private var controllers: [NotchController] = []
     private var pump: Task<Void, Never>?
@@ -107,7 +109,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ? NSScreen.screens : Array(NSScreen.screens.prefix(1))
         controllers = screens.enumerated().map { index, screen in
             let state = screen.displayID.flatMap { carry[$0] } ?? (index == 0 ? fallback : nil)
-            let c = NotchController(store: store, client: client, plugins: plugins, carryOver: state)
+            let c = NotchController(store: store, client: client, plugins: plugins, responder: responder,
+                                    carryOver: state)
             c.attach(to: screen)
             return c
         }

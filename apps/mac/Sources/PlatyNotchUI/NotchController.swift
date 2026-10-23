@@ -39,7 +39,9 @@ public final class NotchController {
     /// `carryOver` restores the panel state of the controller this one replaces (display change).
     /// Without it, notices already in the store count as shown.
     /// `extraTabs` follow the built-in tabs (plugin tabs); `onOpenTerminal` focuses a session's terminal.
+    /// Pass one `responder` to every display's controller so answers are shared.
     public init(store: AppStore, client: CoreClient, plugins: [NotchPlugin],
+                responder: ApprovalResponder? = nil,
                 extraTabs: [PanelTab] = [],
                 onOpenTerminal: @escaping (Session) -> Void = { _ in },
                 minimal: Bool = UserDefaults.standard.bool(forKey: NotchSettings.minimal),
@@ -49,7 +51,7 @@ public final class NotchController {
         self.plugins = plugins
         self.extraTabs = extraTabs
         self.onOpenTerminal = onOpenTerminal
-        self.responder = ApprovalResponder(client: client)
+        self.responder = responder ?? ApprovalResponder(client: client)
         if let carryOver {
             machine = carryOver.machine
             machine.minimal = minimal
@@ -139,6 +141,7 @@ public final class NotchController {
         let visible = mode != .hidden && !suppressed
         model.mode = mode
         model.visible = visible
+        noteVisibleApprovals(mode: mode, visible: visible)
         panel.hasShadow = mode.hasShadow && visible
         panel.allowsKey = mode.canBecomeKey
         if !mode.canBecomeKey && panel.isKeyWindow {
@@ -149,6 +152,20 @@ public final class NotchController {
         panel.ignoresMouseEvents = PanelLayout.ignoresMouse(visible: visible, hitRect: layout.hitRect(for: mode),
                                                             cursor: cursor)
         updateEngaged()
+    }
+
+    /// Arms approval cards only once they are actually on screen in a fixed position.
+    private func noteVisibleApprovals(mode: PanelMode, visible: Bool) {
+        let ordered = ApprovalFormat.ordered(store.approvals).map(\.id)
+        let ids: [String]
+        switch mode {
+        case _ where !visible: ids = []
+        case .peek(.approval): ids = Array(ordered.prefix(1))
+        case .expanded: ids = ordered
+        default: ids = []
+        }
+        var arming = model.arming
+        if arming.noteVisible(ids, at: Date()) { model.arming = arming }
     }
 
     /// Poll the cursor while anything depends on it moving: a hover or pending debounce,

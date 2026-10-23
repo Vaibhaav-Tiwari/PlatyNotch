@@ -1,3 +1,4 @@
+import AppKit
 import PlatyNotchKit
 import SwiftUI
 
@@ -8,6 +9,8 @@ final class PanelViewModel {
     var visible = false
     var layout: PanelLayout?
     var selectedTab = BuiltinTab.agents
+    /// Which approval cards have been on screen long enough to be answered (this window).
+    var arming = ApprovalArming()
     /// Toggles expanded / collapsed (the state machine's `.click`).
     var onClick: () -> Void = {}
 }
@@ -51,7 +54,8 @@ struct PanelRootView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { model.onClick() }
         case .peek(.approval):
-            ApprovalPeek(store: store, responder: responder, onExpand: model.onClick, onOpenTerminal: onOpenTerminal)
+            ApprovalPeek(store: store, responder: responder, arming: model.arming, onExpand: model.onClick,
+                         onDecide: decide, onOpenTerminal: onOpenTerminal)
                 .padding(EdgeInsets(top: top, leading: 12, bottom: 10, trailing: 12))
         case .peek(.notice):
             Group {
@@ -62,19 +66,34 @@ struct PanelRootView: View {
             .contentShape(Rectangle())
             .onTapGesture { model.onClick() }
         case .expanded:
-            ExpandedPanel(store: store, responder: responder, extraTabs: extraTabs,
+            ExpandedPanel(store: store, responder: responder, arming: model.arming, extraTabs: extraTabs,
                           selectedTab: Binding(get: { model.selectedTab }, set: { model.selectedTab = $0 }),
-                          onCollapse: model.onClick, onOpenTerminal: onOpenTerminal)
+                          onCollapse: model.onClick, onDecide: decide, onOpenTerminal: onOpenTerminal)
                 .padding(EdgeInsets(top: top, leading: 12, bottom: 10, trailing: 12))
         }
     }
 }
 
-/// The approval peek: the oldest approval, plus a way to see the rest in the open panel.
+extension PanelRootView {
+    /// Every Allow / Deny goes through here: auto-repeat keys and double-clicks are
+    /// dropped, a card not yet armed shows "Look first…", and the shared responder
+    /// refuses expired, in-flight or reconnecting answers.
+    func decide(_ approval: Approval, _ behavior: ApprovalBehavior) {
+        guard DecisionInput.accepts(NSApp.currentEvent) else { return }
+        let now = Date()
+        guard model.arming.attempt(approval.id, at: now) else { return }
+        responder.decide(approval, behavior, now: now, canAnswer: store.canAnswerApprovals)
+    }
+}
+
+/// The approval peek: the oldest approval in full; the next one as a compact row whose
+/// "Open" expands the panel (answered there). The header and "More" also expand.
 struct ApprovalPeek: View {
     let store: AppStore
     let responder: ApprovalResponder
+    let arming: ApprovalArming
     let onExpand: () -> Void
+    let onDecide: (Approval, ApprovalBehavior) -> Void
     let onOpenTerminal: (Session) -> Void
 
     var body: some View {
@@ -85,19 +104,15 @@ struct ApprovalPeek: View {
                              session: store.sessions.first { $0.key == first.sessionKey },
                              canAnswer: store.canAnswerApprovals,
                              phase: responder.phase(for: first.id),
+                             arming: arming,
                              maxLines: 6,
                              shortcuts: true,
-                             onDecide: { responder.decide(first, $0) },
+                             onExpand: onExpand,
+                             onDecide: { onDecide(first, $0) },
                              onOpenTerminal: onOpenTerminal)
             }
             if ordered.count > 1 {
-                Button(action: onExpand) {
-                    Text("\(ordered.count - 1) more waiting — show all")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Theme.color(.attention))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Show all \(ordered.count) approvals")
+                ApprovalRow(approval: ordered[1], more: ordered.count - 2, onOpen: onExpand)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

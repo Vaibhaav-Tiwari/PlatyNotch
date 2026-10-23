@@ -7,8 +7,9 @@ public struct PanelLayout: Equatable, Sendable {
     public static let compactEar: CGFloat = 64
     /// Compact pill width on screens without a notch.
     public static let pillWidth: CGFloat = 200
-    /// Room for an approval card below the notch: header, a few summary lines, buttons.
-    public static let peekSize = CGSize(width: 420, height: 210)
+    /// Room for an approval card below the notch: header, a few summary lines, buttons,
+    /// and a one-line row for the next approval.
+    public static let peekSize = CGSize(width: 420, height: 236)
     /// Height of a notice peek below the notch (or the menu bar).
     public static let noticeHeight: CGFloat = 64
     public static let expandedSize = CGSize(width: 560, height: 380)

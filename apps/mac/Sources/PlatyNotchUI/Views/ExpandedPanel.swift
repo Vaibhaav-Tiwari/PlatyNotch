@@ -27,9 +27,11 @@ enum BuiltinTab {
 struct ExpandedPanel: View {
     let store: AppStore
     let responder: ApprovalResponder
+    let arming: ApprovalArming
     let extraTabs: [PanelTab]
     @Binding var selectedTab: String
     let onCollapse: () -> Void
+    let onDecide: (Approval, ApprovalBehavior) -> Void
     let onOpenTerminal: (Session) -> Void
 
     var body: some View {
@@ -52,9 +54,9 @@ struct ExpandedPanel: View {
     @ViewBuilder private var approvals: some View {
         let count = store.approvals.count
         let list = ApprovalList(approvals: store.approvals, sessions: store.sessions,
-                                canAnswer: store.canAnswerApprovals, responder: responder,
+                                canAnswer: store.canAnswerApprovals, responder: responder, arming: arming,
                                 maxLines: count > 1 ? 5 : ApprovalFormat.maxSummaryLines,
-                                onOpenTerminal: onOpenTerminal)
+                                onDecide: onDecide, onOpenTerminal: onOpenTerminal)
         VStack(alignment: .leading, spacing: 4) {
             if count > 1 {
                 Text("\(count) approvals waiting · oldest first")

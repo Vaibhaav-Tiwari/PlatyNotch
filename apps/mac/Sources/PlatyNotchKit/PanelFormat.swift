@@ -150,6 +150,17 @@ public enum ApprovalFormat {
         return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
     }
 
+    /// The summary's first line, made visible (hidden characters marked) — for one-line rows.
+    /// With `lineCountSuffix`, says how many lines follow.
+    public static func firstLine(_ summary: String, lineCountSuffix: Bool = false) -> String {
+        let text = SummarySanitizer.visible(summary).text
+        let lines = text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+        let first = lines.first.map(String.init) ?? ""
+        guard lineCountSuffix, lines.count > 1 else { return first }
+        let more = lines.count - 1
+        return "\(first) … (+\(more) \(more == 1 ? "line" : "lines"))"
+    }
+
     public static func decideEnvelope(id: String, _ behavior: ApprovalBehavior) throws -> Envelope {
         try Envelope.make(.approvalDecide, id: nil,
                           ApprovalDecide(id: id, behavior: behavior.rawValue, source: "notch"))
@@ -160,6 +171,13 @@ public enum ApprovalFormat {
 public enum DecisionPhase: Sendable, Equatable {
     case sending(ApprovalBehavior)
     case failed(String)
+    /// The user tried to answer at or after `expires_at`; nothing was sent.
+    case expired
+}
+
+/// What to do with a click on Allow / Deny.
+public enum DecideOutcome: Sendable, Equatable {
+    case send, ignored, expired
 }
 
 /// Optimistic answers in flight, keyed by approval id.
@@ -170,11 +188,22 @@ public struct ApprovalDecisions: Sendable, Equatable {
 
     public func phase(for id: String) -> DecisionPhase? { phases[id] }
 
-    /// Marks `id` as sending; false (and no change) if an answer is already in flight.
-    public mutating func begin(id: String, _ behavior: ApprovalBehavior) -> Bool {
-        if case .sending = phases[id] { return false }
-        phases[id] = .sending(behavior)
-        return true
+    /// Decides whether an answer may be sent now, and marks it sending if so.
+    /// Ignored while reconnecting, while an answer is in flight, or once expired;
+    /// expiry is checked here, not only on the countdown tick.
+    public mutating func begin(_ approval: Approval, _ behavior: ApprovalBehavior, now: Date,
+                               canAnswer: Bool) -> DecideOutcome {
+        switch phases[approval.id] {
+        case .sending, .expired: return .ignored
+        case .failed, nil: break
+        }
+        if now >= approval.expiresAt {
+            phases[approval.id] = .expired
+            return .expired
+        }
+        guard canAnswer else { return .ignored }
+        phases[approval.id] = .sending(behavior)
+        return .send
     }
 
     public mutating func fail(id: String, message: String) {
@@ -200,12 +229,13 @@ public enum ApprovalCardStatus: Sendable, Equatable {
     case expired
 
     public init(approval: Approval, now: Date, canAnswer: Bool, phase: DecisionPhase?) {
-        guard let countdown = ApprovalFormat.countdown(to: approval.expiresAt, now: now) else {
+        guard phase != .expired, let countdown = ApprovalFormat.countdown(to: approval.expiresAt, now: now) else {
             self = .expired
             return
         }
         switch phase {
         case .sending(let b): self = .sending(b)
+        case .expired: self = .expired
         case _ where !canAnswer: self = .reconnecting(countdown: countdown)
         case .failed(let message): self = .ready(countdown: countdown, error: message)
         case nil: self = .ready(countdown: countdown, error: nil)
@@ -215,5 +245,95 @@ public enum ApprovalCardStatus: Sendable, Equatable {
     public var canAnswer: Bool {
         if case .ready = self { return true }
         return false
+    }
+}
+
+/// Guards against answering an approval the user has not seen: a card is armed only
+/// after it has been visible in the same position for `delay`. A card that moves (the
+/// one above was answered), or is hidden and shown again, starts over. One instance
+/// per panel window.
+public struct ApprovalArming: Sendable, Equatable {
+    public static let delay: TimeInterval = 0.7
+    /// How long an early click shows "Look first…".
+    public static let lookFirstDuration: TimeInterval = 1.2
+
+    private struct Shown: Sendable, Equatable {
+        var slot: Int
+        var at: Date
+    }
+
+    private var shown: [String: Shown] = [:]
+    private var lookFirstUntil: [String: Date] = [:]
+
+    public init() {}
+
+    /// Records which approvals are visible and answerable, in display order.
+    /// Returns whether anything changed (callers skip needless view updates).
+    @discardableResult
+    public mutating func noteVisible(_ ids: [String], at now: Date) -> Bool {
+        var next: [String: Shown] = [:]
+        for (slot, id) in ids.enumerated() {
+            if let old = shown[id], old.slot == slot { next[id] = old } else { next[id] = Shown(slot: slot, at: now) }
+        }
+        let nextLook = lookFirstUntil.filter { next[$0.key] != nil }
+        guard next != shown || nextLook != lookFirstUntil else { return false }
+        shown = next
+        lookFirstUntil = nextLook
+        return true
+    }
+
+    public func isArmed(_ id: String, at now: Date) -> Bool {
+        guard let s = shown[id] else { return false }
+        return now.timeIntervalSince(s.at) >= Self.delay - 1e-9
+    }
+
+    /// True when an answer may go ahead; otherwise shows "Look first…" for a moment.
+    @discardableResult
+    public mutating func attempt(_ id: String, at now: Date) -> Bool {
+        if isArmed(id, at: now) { return true }
+        lookFirstUntil[id] = now.addingTimeInterval(Self.lookFirstDuration)
+        return false
+    }
+
+    public func showsLookFirst(_ id: String, at now: Date) -> Bool {
+        guard let until = lookFirstUntil[id] else { return false }
+        return now < until
+    }
+}
+
+/// Makes characters that could hide or disguise part of a command visible:
+/// bidi overrides and isolates, zero-width characters, BOM, C0/C1 controls (except
+/// newline and tab) and DEL become `⟨U+XXXX⟩`; ESC (ANSI sequences) becomes `⟨ESC⟩`
+/// with the rest of the sequence left as text.
+public enum SummarySanitizer {
+    public struct Result: Sendable, Equatable {
+        public var text: String
+        public var hadHidden: Bool
+    }
+
+    public static func visible(_ summary: String) -> Result {
+        var out = String.UnicodeScalarView()
+        var hidden = false
+        for scalar in summary.unicodeScalars {
+            if scalar.value == 0x1B {
+                out.append(contentsOf: "⟨ESC⟩".unicodeScalars)
+                hidden = true
+            } else if isHidden(scalar.value) {
+                out.append(contentsOf: String(format: "⟨U+%04X⟩", scalar.value).unicodeScalars)
+                hidden = true
+            } else {
+                out.append(scalar)
+            }
+        }
+        return Result(text: String(out), hadHidden: hidden)
+    }
+
+    static func isHidden(_ v: UInt32) -> Bool {
+        switch v {
+        case 0x0A, 0x09: false
+        case 0x00...0x1F, 0x7F, 0x80...0x9F: true
+        case 0x200B...0x200F, 0x202A...0x202E, 0x2066...0x2069, 0xFEFF: true
+        default: false
+        }
     }
 }

@@ -1,29 +1,42 @@
 import PlatyNotchKit
 import SwiftUI
 
-/// One pending approval: who asks (agent, project, tool), the exact summary in a
-/// monospaced, selectable, scrollable view, a countdown to `expires_at`, and Deny / Allow.
+/// One pending approval: who asks (agent, project, tool), the summary in a monospaced,
+/// selectable, scrollable view (hidden characters made visible), a countdown to
+/// `expires_at`, and Deny / Allow.
 ///
-/// Return never answers: no button is a default action. ⌘↩ allows and ⌘⌫ denies, and
-/// only on the card given `shortcuts` (the oldest), so one keystroke answers one approval.
+/// Return never answers: no button is a default action, and Allow cannot take keyboard
+/// focus. ⌘↩ allows and ⌘⌫ denies, only on the card given `shortcuts` (the oldest).
 /// Shortcuts need the panel to be key, which happens only when the user clicks into it.
+/// Answers before the card is armed (`ApprovalArming`) are dropped by `onDecide`'s owner
+/// and the card shows "Look first…".
 struct ApprovalCard: View {
     let approval: Approval
     let session: Session?
     let canAnswer: Bool
     let phase: DecisionPhase?
+    let arming: ApprovalArming
     /// Most summary lines shown before scrolling (the peek has less room than the panel).
     var maxLines = ApprovalFormat.maxSummaryLines
     var shortcuts = false
+    /// Set in the peek: the header and a "More" button open the full panel.
+    var onExpand: (() -> Void)?
     let onDecide: (ApprovalBehavior) -> Void
     let onOpenTerminal: (Session) -> Void
 
     var body: some View {
+        let visible = SummarySanitizer.visible(approval.summary)
         TimelineView(.periodic(from: .now, by: 1)) { ctx in
             let status = ApprovalCardStatus(approval: approval, now: ctx.date, canAnswer: canAnswer, phase: phase)
+            let lookFirst = status.canAnswer && arming.showsLookFirst(approval.id, at: ctx.date)
             VStack(alignment: .leading, spacing: 6) {
-                header(status)
-                SummaryView(summary: approval.summary, maxLines: maxLines)
+                header(status, lookFirst: lookFirst)
+                if visible.hadHidden {
+                    Label("Contains hidden characters", systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Theme.color(.attention))
+                }
+                SummaryView(summary: visible.text, maxLines: maxLines)
                 footer(status)
             }
         }
@@ -33,7 +46,7 @@ struct ApprovalCard: View {
         .accessibilityLabel("\(approval.agentName) asks to run \(approval.tool)")
     }
 
-    private func header(_ status: ApprovalCardStatus) -> some View {
+    private func header(_ status: ApprovalCardStatus, lookFirst: Bool) -> some View {
         HStack(spacing: 6) {
             Image(systemName: Theme.agentSymbol(approval.agent))
                 .foregroundStyle(Theme.color(.attention))
@@ -52,14 +65,19 @@ struct ApprovalCard: View {
             Tag(text: approval.tool)
                 .layoutPriority(1)
             Spacer(minLength: 4)
-            statusLabel(status)
+            statusLabel(status, lookFirst: lookFirst)
                 .layoutPriority(2)
         }
+        .contentShape(Rectangle())
+        .onTapGesture { onExpand?() }
+        .accessibilityAction(named: "Show all approvals") { onExpand?() }
     }
 
-    @ViewBuilder private func statusLabel(_ status: ApprovalCardStatus) -> some View {
+    @ViewBuilder private func statusLabel(_ status: ApprovalCardStatus, lookFirst: Bool) -> some View {
         Group {
             switch status {
+            case .ready where lookFirst:
+                Text("Look first…").foregroundStyle(Theme.color(.attention))
             case .ready(let countdown, _):
                 Text(countdown).monospacedDigit().foregroundStyle(.secondary)
                     .accessibilityLabel("Expires in \(countdown)")
@@ -76,25 +94,35 @@ struct ApprovalCard: View {
     }
 
     private func footer(_ status: ApprovalCardStatus) -> some View {
-        HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             if case .ready(_, let error?) = status {
                 Text(verbatim: error)
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.color(.critical))
                     .lineLimit(2)
-            } else if let session {
-                Button("Open terminal") { onOpenTerminal(session) }
-                    .buttonStyle(.link)
-                    .font(.system(size: 11))
-                    .accessibilityHint("Shows the terminal running this session")
             }
-            Spacer(minLength: 0)
-            decisionButtons(enabled: status.canAnswer)
+            HStack(spacing: 8) {
+                if let session {
+                    Button("Open terminal") { onOpenTerminal(session) }
+                        .buttonStyle(.link)
+                        .font(.system(size: 11))
+                        .accessibilityHint("Shows the terminal running this session")
+                }
+                if let onExpand {
+                    Button("More", action: onExpand)
+                        .buttonStyle(.link)
+                        .font(.system(size: 11))
+                        .accessibilityLabel("Show all approvals")
+                }
+                Spacer(minLength: 0)
+                decisionButtons(enabled: status.canAnswer)
+            }
         }
         .controlSize(.small)
     }
 
-    /// Deny and Allow; neither is a default action, so Return does nothing.
+    /// Deny and Allow; neither is a default action, so Return does nothing. Allow never
+    /// takes keyboard focus, so Space with Full Keyboard Access cannot allow either.
     private func decisionButtons(enabled: Bool) -> some View {
         HStack(spacing: 8) {
             Button { onDecide(.deny) } label: {
@@ -109,6 +137,7 @@ struct ApprovalCard: View {
                     .labelStyle(TrailingIconLabelStyle())
             }
             .tint(Theme.color(.active))
+            .focusable(false)
             .keyboardShortcut(shortcuts ? KeyboardShortcut(.return, modifiers: .command) : nil)
             .accessibilityLabel("Allow")
             .accessibilityHint(shortcuts ? "Command-Return" : "")
@@ -118,7 +147,7 @@ struct ApprovalCard: View {
     }
 }
 
-/// The exact summary: monospaced, selectable, growing to `maxLines` and then scrolling.
+/// The summary: monospaced, selectable, growing to `maxLines` and then scrolling.
 private struct SummaryView: View {
     let summary: String
     let maxLines: Int
@@ -157,13 +186,53 @@ private struct TrailingIconLabelStyle: LabelStyle {
     }
 }
 
+/// One line for an approval waiting behind the first in the peek: agent · tool · first
+/// summary line, and "Open" (answering happens in the full panel).
+struct ApprovalRow: View {
+    let approval: Approval
+    /// Approvals beyond this one ("+n more").
+    let more: Int
+    let onOpen: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: Theme.agentSymbol(approval.agent))
+                .foregroundStyle(Theme.color(.attention))
+                .accessibilityHidden(true)
+            Text(verbatim: "\(approval.agentName) · \(approval.tool)")
+                .font(.system(size: 11, weight: .semibold))
+                .lineLimit(1)
+                .layoutPriority(1)
+            Text(verbatim: ApprovalFormat.firstLine(approval.summary, lineCountSuffix: true))
+                .font(Theme.mono)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 4)
+            if more > 0 {
+                Text("+\(more) more").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            Button("Open", action: onOpen)
+                .controlSize(.small)
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Open the panel to answer \(approval.agentName)'s \(approval.tool) request")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .accessibilityElement(children: .contain)
+    }
+}
+
 /// All pending approvals, oldest first; only the oldest takes the keyboard shortcuts.
 struct ApprovalList: View {
     let approvals: [Approval]
     let sessions: [Session]
     let canAnswer: Bool
     let responder: ApprovalResponder
+    let arming: ApprovalArming
     var maxLines = ApprovalFormat.maxSummaryLines
+    let onDecide: (Approval, ApprovalBehavior) -> Void
     let onOpenTerminal: (Session) -> Void
 
     var body: some View {
@@ -173,9 +242,10 @@ struct ApprovalList: View {
                              session: sessions.first { $0.key == approval.sessionKey },
                              canAnswer: canAnswer,
                              phase: responder.phase(for: approval.id),
+                             arming: arming,
                              maxLines: maxLines,
                              shortcuts: index == 0,
-                             onDecide: { responder.decide(approval, $0) },
+                             onDecide: { onDecide(approval, $0) },
                              onOpenTerminal: onOpenTerminal)
             }
         }

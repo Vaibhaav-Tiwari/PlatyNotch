@@ -10,8 +10,9 @@ What each mode shows:
   waiting or needs approval, grey = idle) and `+n` for more; on the right a count of
   pending approvals, or an amber bolt while the core is not connected. On a notch Mac
   the dots sit in the left ear and the badge in the right ear.
-- **Peek (approval)**: the oldest approval card, and "n more waiting — show all" when
-  there are several. **Peek (notice)**: a short toast ("Claude Code finished").
+- **Peek (approval)**: the oldest approval card in full; with several, the next one as
+  a one-line row (agent · tool · first line, "+n more", "Open"). Clicking the card
+  header, "More" or "Open" opens the full panel. **Peek (notice)**: a short toast ("Claude Code finished").
 - **Expanded**: tabs Agents, Today, Focus, Memory (the last three say "Coming soon"),
   pending approvals above the tab, the Agents list and Claude/Codex usage bars, and a
   chevron close button. An amber "Reconnecting…" shows in the tab bar while the core
@@ -104,8 +105,13 @@ long multi-line command with a Unicode path). The core default expiry is 100 s.
   backslashes intact (`npm test -- --grep "panel \"peek\""`). Drag-select part of the
   summary and ⌘C: the pasted text matches. The countdown in the top right ticks down
   once a second.
+- [ ] **9b. Hidden characters.** Send an approval whose command contains a bidi
+  override or ANSI colors, e.g. via `fake-events.sh`'s `permission` with
+  `$'echo \u202Egnp.exe \e[31mred\e[0m'`: the card shows "Contains hidden characters"
+  and the summary reads `⟨U+202E⟩gnp.exe ⟨ESC⟩[31mred⟨ESC⟩[0m`.
 - [ ] **10. Several approvals at once.** After step 3 the peek shows the oldest
-  (fake-1) with "2 more waiting — show all". Clicking it opens the panel: "3 approvals
+  (fake-1) in full and a row "Claude Code · Bash · git status … +1 more  Open" with no
+  Allow/Deny. "Open" opens the panel: "3 approvals
   waiting · oldest first", cards ordered fake-1, fake-2, fake-3, and the list scrolls.
   Answer the middle one: only it disappears and its hook in terminal A prints the
   decision; the others keep their own countdowns and buttons.
@@ -117,19 +123,29 @@ long multi-line command with a Unicode path). The core default expiry is 100 s.
 - [ ] **12. Keyboard.** With the approval peeking and the panel *not* clicked, typing
   in another app (including Return, ⌘↩, ⌘⌫) goes to that app and answers nothing.
   Click into the card (e.g. on the summary): Return does nothing; ⌘⌫ denies the
-  oldest card, ⌘↩ allows it; one keystroke answers one approval. The buttons show the
+  oldest card, ⌘↩ allows it; one keystroke answers one approval.
+  **Carry-over guard:** with two approvals pending, hold ⌘↩ (key repeat), or
+  double-click Allow, or click Allow twice quickly: only the first approval is
+  answered; the next one slides into place, and a click or ⌘↩ within ~0.7 s shows
+  "Look first…" instead of answering. After 0.7 s it answers normally. A card that
+  just appeared (or the panel just opened) also shows "Look first…" for the first
+  0.7 s. With Full Keyboard Access on (System Settings › Keyboard), Tab reaches Deny
+  but never Allow. The buttons show the
   shortcut hints. VoiceOver reads "Allow" / "Deny" with the shortcut as hint, and the
   summary text.
 - [ ] **13. Sending.** Click Allow: the countdown changes to "Sending…" and both
-  buttons disable until the card disappears (normally at once). Terminal A prints
+  buttons disable until the card disappears (normally at once). With "Show on all
+  displays", the other display's card shows "Sending…" too and cannot answer again. Terminal A prints
   `decision: ... allow`.
 - [ ] **14. Reconnecting.** With approvals pending (app supervising its own core, as in
   case 8), kill the core: the cards stay, show "Reconnecting… m:ss" in amber and the
   buttons are disabled; "Open terminal" still works. When the core is back (its
   approvals are lost with it, so the cards disappear) nothing is stuck in "Sending…".
-  A send failure shows a red message under the summary and re-enables the buttons.
+  A send failure shows a red message under the summary, with "Open terminal" still
+  beside the buttons, and re-enables them.
 - [ ] **15. Expiry.** Let an approval run out: at 0:00 the card reads "Expired —
-  answer in the terminal" and the buttons disable; the card goes away when the core
+  answer in the terminal" and the buttons disable (clicking Allow in the last second
+  before the tick shows Expired immediately and sends nothing); the card goes away when the core
   resolves it, and the hook in terminal A falls back to the terminal prompt.
 - [ ] **16. Open terminal.** "Open terminal" shows when the approval's session is
   known; clicking it does nothing yet (terminal focus is Task 7). Agents tab rows
