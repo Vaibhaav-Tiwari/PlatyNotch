@@ -6,13 +6,16 @@ import SwiftUI
 @MainActor
 public final class TodayServices {
     public let nowPlaying: NowPlaying
+    /// The music bars' live visualiser (off until the user turns it on).
+    public let visualiser: MusicVisualiser
     public let calendar: CalendarService
     public let focus: FocusModel
     public let loops: LoopActions
 
-    public init(client: CoreClient, nowPlaying: NowPlaying = NowPlaying(), calendar: CalendarService = CalendarService(),
-                focus: FocusModel = FocusModel()) {
+    public init(client: CoreClient, nowPlaying: NowPlaying = NowPlaying(), visualiser: MusicVisualiser? = nil,
+                calendar: CalendarService = CalendarService(), focus: FocusModel = FocusModel()) {
         self.nowPlaying = nowPlaying
+        self.visualiser = visualiser ?? MusicVisualiser()
         self.calendar = calendar
         self.focus = focus
         loops = LoopActions(client: client)

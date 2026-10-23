@@ -64,7 +64,9 @@ final class NowPlayingParserTests: XCTestCase {
         // Captured from mediaremote-adapter v0.7.7 `stream` (artwork trimmed).
         var p = MediaRemoteStreamParser()
         p.feed(line(#"{"type":"data","diff":false,"payload":{"playbackRate":0,"album":"","elapsedTime":44.536737000000002,"timestamp":"2026-10-23T19:21:58Z","bundleIdentifier":"com.google.Chrome","processIdentifier":51749,"title":"X","artist":"","playing":false,"duration":47.6}}"#))
-        XCTAssertEqual(p.current, NowPlayingInfo(bundleIdentifier: "com.google.Chrome", title: "X", isPlaying: false))
+        XCTAssertEqual(p.current, NowPlayingInfo(bundleIdentifier: "com.google.Chrome", title: "X", isPlaying: false,
+                                                 elapsed: 44.536737000000002, duration: 47.6, rate: 0,
+                                                 timestamp: ISO8601DateFormatter().date(from: "2026-10-23T19:21:58Z")))
     }
 
     func testAppleScriptOutput() {

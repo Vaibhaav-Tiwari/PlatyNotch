@@ -42,7 +42,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Shared by every display's panel: one answer per approval, "Sending…" everywhere.
     private lazy var responder = ApprovalResponder(client: client)
     /// Now playing, calendar, focus and loop actions, shared by every display.
-    private lazy var today = TodayServices(client: client)
+    /// Smoke runs never create a real audio tap (the visualiser gets one that does nothing).
+    private lazy var today = TodayServices(client: client, visualiser: MusicVisualiser(makeTap: { [options] in
+        options.smoke || options.smokeSettings ? NoAudioTap() as AudioTapping : SystemAudioTap()
+    }))
     /// Built-in and plugin widgets. Smoke runs read the saved layout but never write it.
     private lazy var widgets = WidgetRegistry(persist: !options.smoke && !options.smokeSettings)
     /// Widget peeks, ringing, HUDs and the drag session, shown on every display's panel.

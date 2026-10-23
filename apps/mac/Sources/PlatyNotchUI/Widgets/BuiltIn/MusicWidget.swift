@@ -1,9 +1,12 @@
 import PlatyNotchKit
 import SwiftUI
 
-/// Now playing: a tile with track and controls, and music bars in the pill while playing.
-/// Reading starts when the widget starts (at launch when enabled), so the pill shows
-/// music without the Today tab ever being opened.
+/// Now playing: a tile (`MusicTile`: artwork glow, scrubber, controls) and music bars in
+/// the pill while playing. Reading starts when the widget starts (at launch when enabled),
+/// so the pill shows music without the Today tab ever being opened.
+///
+/// The live visualiser (`MusicVisualiser`) is a separate toggle in this widget's settings,
+/// off by default; its audio tap and permission prompt only ever start from that toggle.
 @MainActor
 final class MusicWidget: NotchWidget {
     static let widgetID = "music"
@@ -13,9 +16,11 @@ final class MusicWidget: NotchWidget {
     let systemImage = "music.note"
     let defaultEnabled = true
     let nowPlaying: NowPlaying
+    let visualiser: MusicVisualiser
 
-    init(nowPlaying: NowPlaying) {
+    init(nowPlaying: NowPlaying, visualiser: MusicVisualiser) {
         self.nowPlaying = nowPlaying
+        self.visualiser = visualiser
     }
 
     var liveActivities: [LiveActivity] {
@@ -24,66 +29,49 @@ final class MusicWidget: NotchWidget {
                              tint: .accent, accessibilityLabel: "Music playing")]
     }
 
-    func start(context: WidgetContext) { nowPlaying.start() }
-    func stop() { nowPlaying.stop() }
+    func start(context: WidgetContext) {
+        let visualiser = self.visualiser
+        nowPlaying.onPlayingChange = { visualiser.setPlaying($0) }
+        nowPlaying.start()
+        visualiser.setPlaying(nowPlaying.isPlaying)
+        visualiser.setWidgetRunning(true)
+    }
+
+    func stop() {
+        visualiser.setWidgetRunning(false)   // the tap stops with the widget
+        nowPlaying.onPlayingChange = nil
+        nowPlaying.stop()
+        visualiser.setPlaying(false)
+    }
 
     func tileView() -> AnyView {
         let nowPlaying = self.nowPlaying
-        return AnyView(NowPlayingCard(nowPlaying: nowPlaying)
+        return AnyView(MusicTile(nowPlaying: nowPlaying, visualiser: visualiser)
             .onAppear { nowPlaying.setVisible(true) }
             .onDisappear { nowPlaying.setVisible(false) })
     }
+
+    func settingsView() -> AnyView? {
+        AnyView(MusicSettingsView(visualiser: visualiser))
+    }
 }
 
-struct NowPlayingCard: View {
-    let nowPlaying: NowPlaying
+/// Settings › Widgets › Music.
+struct MusicSettingsView: View {
+    let visualiser: MusicVisualiser
 
     var body: some View {
-        if let title = nowPlaying.title {
-            HStack(spacing: 8) {
-                artwork
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(verbatim: title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                    if let artist = nowPlaying.artist {
-                        Text(verbatim: artist).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-                    }
-                }
-                Spacer(minLength: 4)
-                HStack(spacing: 10) {
-                    control("backward.fill", "Previous track") { nowPlaying.previous() }
-                    control(nowPlaying.isPlaying ? "pause.fill" : "play.fill",
-                            nowPlaying.isPlaying ? "Pause" : "Play") { nowPlaying.playPause() }
-                    control("forward.fill", "Next track") { nowPlaying.next() }
-                }
-            }
-            .padding(6)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        } else {
-            Label("Nothing playing", systemImage: "music.note")
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle("Live visualiser", isOn: Binding(get: { visualiser.enabled }, set: { visualiser.setEnabled($0) }))
+            Text("""
+            The music bars follow what your Mac is playing. macOS asks for System Audio \
+            Recording when you turn this on. PlatyNotch listens only while music plays and the \
+            bars are on screen; the sound is reduced to bar heights in memory and never \
+            recorded, saved or sent.
+            """)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    @ViewBuilder private var artwork: some View {
-        Group {
-            if let image = nowPlaying.artwork {
-                Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
-            } else {
-                Image(systemName: "music.note").font(.system(size: 14)).foregroundStyle(.secondary)
-            }
-        }
-        .frame(width: 32, height: 32)
-        .background(Theme.codeBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .accessibilityHidden(true)
-    }
-
-    private func control(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 12)).frame(width: 18, height: 18).contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
     }
 }

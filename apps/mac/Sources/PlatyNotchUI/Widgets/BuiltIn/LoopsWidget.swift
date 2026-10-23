@@ -37,7 +37,7 @@ private struct LoopsTile: View {
 @MainActor
 enum BuiltInWidgets {
     static func register(in registry: WidgetRegistry, store: AppStore, today: TodayServices, persist: Bool = true) {
-        registry.register(MusicWidget(nowPlaying: today.nowPlaying))
+        registry.register(MusicWidget(nowPlaying: today.nowPlaying, visualiser: today.visualiser))
         registry.register(MeetingWidget(calendar: today.calendar))
         registry.register(FocusWidget(focus: today.focus))
         registry.register(LoopsWidget(store: store, actions: today.loops))

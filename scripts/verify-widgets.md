@@ -169,3 +169,58 @@ bundled app (`scripts/build-app.sh`), since notifications need a bundle.
 - [ ] **31. Packaged sounds.** `scripts/build-app.sh` ends without error (it checks the
   sounds in `Contents/Resources/PlatyNotch_PlatyNotchUI.bundle` and verifies its
   signature); the alarm and chime are audible in the bundled app (not the system "Glass").
+
+## Task 3: music player and live visualiser
+
+Automated: `MusicTests` (bands, smoother, analyser privacy, dominant colour, playback
+clock, adapter time fields), `MusicVisualiserTests` (tap gating with a fake tap). No test
+or smoke run creates a real tap: `--smoke` / `--smoke-settings` give the visualiser
+`NoAudioTap`. The visualiser setting is `music.visualiser` in the app's defaults
+(`defaults delete PlatyNotch music.visualiser` under `swift run`). Check with Spotify,
+Apple Music and a YouTube video in Safari, bundled app (adapter) and `swift run` without
+`PLATYNOTCH_MEDIAREMOTE_DIR` (AppleScript: Spotify and Music only).
+
+- [ ] **32. Tile.** Today › Music shows the artwork with a soft glow in its main colour
+  (changes with the next track), title, artist, the app's icon and name (Safari for
+  YouTube, not "WebKit") and the output device (e.g. "MacBook Pro Speakers"; switch to
+  AirPods: the name follows when the tile is shown again or the track changes).
+- [ ] **33. Scrub.** The position and `-remaining` labels tick once a second while
+  playing and stop while paused. Drag the bar: the thumb follows, the times show the
+  drag position, and on release playback jumps there (Spotify, Music, YouTube). A live
+  stream with no length shows no seekable bar.
+- [ ] **34. Seek reaches the player.** After a seek, the player's own UI shows the new
+  position, and a second later the tile still agrees (no jump back). Adapter build and
+  AppleScript fallback both.
+- [ ] **35. Favourite.** With Apple Music the heart toggles the track's favourite (first
+  click may ask for Automation for Music, on that click only); Music's own heart follows.
+  No heart for Spotify or Safari.
+- [ ] **36. Visualiser off by default, no prompt on play.** Fresh install
+  (`tccutil reset All dev.platynotch.app`, `defaults delete dev.platynotch.app
+  music.visualiser`): play music, open the panel, show the Today tab: no System Audio
+  Recording prompt; the bars bounce on their synthetic animation (as before this task).
+- [ ] **37. Prompt timing.** Settings › Widgets › Music › Live visualiser on: the System
+  Audio Recording prompt appears now (first time only), even with nothing playing. Allow:
+  with music playing the pill's three bars follow the music (bass left, treble right) and
+  the tile shows six. Deny (or turn it off in System Settings › Privacy & Security ›
+  Screen & System Audio Recording): the bars fall back to the synthetic bounce within
+  ~2 s; no further prompts on later plays.
+- [ ] **38. Tap stops when hidden.** Visualiser on and allowed, music playing. Watch the
+  orange recording indicator / Control Centre "System audio recording" entry, or
+  `log stream --predicate 'subsystem == "dev.platynotch.app" AND category == "AudioTap"'`
+  ("visualiser tap started/stopped"):
+  - pause the music: stopped; play: started;
+  - open the panel on the Agents tab (no pill, no tile): stopped; switch to Today: started;
+  - full-screen app hiding the pill: stopped; reveal the pill: started;
+  - Reduce Motion on: stopped (still bars);
+  - turn the toggle off, or turn the Music widget off: stopped at once.
+- [ ] **39. Developer ID build.** Signed with `PlatyNotch.entitlements` (hardened
+  runtime), the visualiser still gets audio after allowing the prompt. If it stays
+  silent, the `com.apple.security.device.audio-input` entitlement is the suspect.
+  Ad-hoc builds lose the grant on every rebuild (like Accessibility): expect the prompt
+  again after an update.
+- [ ] **40. CPU.** Measured headlessly: one visualiser frame (mix 512 stereo frames,
+  1024-point FFT, 12 bands, smoothing) costs about 2.4 µs in a release build on this
+  Mac (~0.01% CPU at 30 fps). Check by eye in Activity Monitor with music playing and
+  the pill shown: visualiser off, PlatyNotch stays where it was before this task (12 fps
+  synthetic bars); on, it adds no more than ~1-2% (SwiftUI redraws at ≤30 fps); with the
+  pill hidden (full screen, panel on another tab) it returns to idle.

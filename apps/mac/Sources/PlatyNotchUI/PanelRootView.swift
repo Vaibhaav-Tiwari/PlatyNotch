@@ -54,6 +54,7 @@ struct PanelRootView: View {
         // Pill timelines (countdown, music bars) tick only while the panel is really shown,
         // not while hidden or suppressed over full screen.
         .environment(\.panelTicking, model.visible)
+        .environment(\.musicVisualiser, today.visualiser)
         .animation(.spring(duration: 0.25), value: model.mode)
         .animation(.easeOut(duration: 0.15), value: model.visible)
     }
