@@ -1,6 +1,7 @@
 package loops
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -233,5 +234,36 @@ func TestStaleLoopReopensOnNewMention(t *testing.T) {
 	}
 	if r := mustList(t, s, "resolved"); len(r) != 1 {
 		t.Fatalf("resolved=%+v", r)
+	}
+}
+
+// TestResolveOnlyFromOpen: a dismissed (or already resolved, or stale) loop
+// cannot be flipped to resolved; the error says it is not open.
+func TestResolveOnlyFromOpen(t *testing.T) {
+	s := openStore(t)
+	Apply(s, provider.ExtractResult{Loops: []protocol.Loop{newLoop("Ship it")}}, "Mail", "th1", t0)
+	id := mustList(t, s, "open")[0].ID
+	if err := SetStatus(s, protocol.LoopSetStatus{ID: id, Status: "dismissed"}, t0); err != nil {
+		t.Fatal(err)
+	}
+	err := SetStatus(s, protocol.LoopSetStatus{ID: id, Status: "resolved", Evidence: "x"}, t0)
+	if err == nil || !errors.Is(err, store.ErrLoopNotOpen) || err.Error() != "loop is not open" {
+		t.Fatalf("resolve dismissed: %v", err)
+	}
+	if d := mustList(t, s, "dismissed"); len(d) != 1 || d[0].Evidence != "" || d[0].ResolvedAt != nil {
+		t.Fatalf("dismissed loop changed: %+v", d)
+	}
+	if err := SetStatus(s, protocol.LoopSetStatus{ID: "nope", Status: "resolved"}, t0); !errors.Is(err, store.ErrLoopNotFound) {
+		t.Fatalf("unknown id: %v", err)
+	}
+	// Reopened by the user, it can be resolved again.
+	if err := SetStatus(s, protocol.LoopSetStatus{ID: id, Status: "open"}, t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetStatus(s, protocol.LoopSetStatus{ID: id, Status: "resolved"}, t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetStatus(s, protocol.LoopSetStatus{ID: id, Status: "resolved"}, t0); !errors.Is(err, store.ErrLoopNotOpen) {
+		t.Fatalf("resolve twice: %v", err)
 	}
 }

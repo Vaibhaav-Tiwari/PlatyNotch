@@ -9,6 +9,9 @@ import (
 // ErrLoopNotFound reports an unknown loop id.
 var ErrLoopNotFound = errors.New("loop not found")
 
+// ErrLoopNotOpen reports an attempt to resolve a loop that is not open.
+var ErrLoopNotOpen = errors.New("loop is not open")
+
 // Loop is a row of the loops table.
 type Loop struct {
 	ID, Title, Details, Kind, Status string
@@ -114,23 +117,32 @@ func (s *Store) ListLoops(status string, limit int) ([]Loop, error) {
 	return out, rows.Err()
 }
 
-// SetLoopStatus sets status (caller validates it). "resolved" sets
-// resolved_at to now; any other status clears it. A non-empty evidence
-// replaces the stored one.
+// SetLoopStatus sets status (caller validates it). "resolved" applies only
+// to an open loop (else ErrLoopNotOpen; a dismissed loop stays dismissed)
+// and sets resolved_at to now; any other status clears it. A non-empty
+// evidence replaces the stored one.
 func (s *Store) SetLoopStatus(id, status, evidence string, now time.Time) error {
 	var resolvedAt any
+	q := `UPDATE loops SET status=?, resolved_at=?, evidence=CASE WHEN ?<>'' THEN ? ELSE evidence END WHERE id=?`
 	if status == "resolved" {
 		resolvedAt = ms(now)
+		q += ` AND status='open'`
 	}
-	r, err := s.db.Exec(`UPDATE loops SET status=?, resolved_at=?, evidence=CASE WHEN ?<>'' THEN ? ELSE evidence END WHERE id=?`,
-		status, resolvedAt, evidence, evidence, id)
+	r, err := s.db.Exec(q, status, resolvedAt, evidence, evidence, id)
 	if err != nil {
 		return err
 	}
-	if n, _ := r.RowsAffected(); n == 0 {
+	if n, _ := r.RowsAffected(); n > 0 {
+		return nil
+	}
+	var exists int
+	if err := s.db.QueryRow(`SELECT count(*) FROM loops WHERE id=?`, id).Scan(&exists); err != nil {
+		return err
+	}
+	if exists == 0 {
 		return ErrLoopNotFound
 	}
-	return nil
+	return ErrLoopNotOpen
 }
 
 // ArchiveLoops marks open loops detected before t as "stale".
