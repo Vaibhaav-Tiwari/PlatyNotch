@@ -355,3 +355,44 @@ func TestRedactCardNeverLeaks(t *testing.T) {
 		}
 	}
 }
+
+func TestThreadTitleAndURLSanitized(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	i, s := newIngester(t, &now)
+	c := capture(long)
+	c.WindowTitle = "deploy key sk-abcdefghijklmnopqrstuvwx1234 - Terminal"
+	c.URL = "https://user:pw@app.example.com/callback/sk-abcdefghijklmnopqrstuvwx9999?access_token=SECRETTOKEN123#frag=SECRETFRAG"
+	if _, err := i.Ingest(c); err != nil {
+		t.Fatal(err)
+	}
+	ts, err := s.ThreadsUpdatedSince(time.Time{}, 10)
+	if err != nil || len(ts) != 1 {
+		t.Fatalf("threads=%+v err=%v", ts, err)
+	}
+	th := ts[0]
+	for _, f := range []string{th.Title, th.URL, th.Key} {
+		for _, bad := range []string{"sk-abc", "SECRETTOKEN", "SECRETFRAG", "access_token", "pw@", "user:"} {
+			if strings.Contains(f, bad) {
+				t.Errorf("stored field %q contains %q", f, bad)
+			}
+		}
+	}
+	if th.URL != "https://app.example.com/callback/[redacted]" {
+		t.Errorf("url = %q", th.URL)
+	}
+	if th.Title != "deploy key [redacted] - Terminal" {
+		t.Errorf("title = %q", th.Title)
+	}
+	// Without a URL the key comes from the title and must be redacted too.
+	c2 := capture(long + " two")
+	c2.WindowTitle = "token sk-abcdefghijklmnopqrstuvwx5678"
+	if _, err := i.Ingest(c2); err != nil {
+		t.Fatal(err)
+	}
+	ts, _ = s.ThreadsUpdatedSince(time.Time{}, 10)
+	for _, th := range ts {
+		if strings.Contains(th.Key, "sk-abc") || strings.Contains(th.Title, "sk-abc") {
+			t.Errorf("secret in thread %+v", th)
+		}
+	}
+}

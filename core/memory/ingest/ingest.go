@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -61,8 +62,8 @@ func (i *Ingester) Ingest(c protocol.CaptureText) (int, error) {
 		at = i.now()
 	}
 	th, err := i.store.UpsertThread(store.Thread{
-		AppBundle: c.AppBundle, AppName: c.AppName, Key: ThreadKey(c),
-		Title: c.WindowTitle, URL: c.URL,
+		AppBundle: c.AppBundle, AppName: c.AppName, Key: Redact(ThreadKey(c)),
+		Title: Redact(c.WindowTitle), URL: Redact(stripURL(c.URL)),
 	})
 	if err != nil {
 		return 0, err
@@ -107,4 +108,15 @@ func (i *Ingester) Ingest(c protocol.CaptureText) (int, error) {
 		return 0, err
 	}
 	return len(cs), nil
+}
+
+// stripURL keeps only scheme, host and path: query strings and fragments
+// routinely carry tokens, and userinfo carries credentials. Unparseable or
+// host-less URLs are dropped.
+func stripURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	return (&url.URL{Scheme: u.Scheme, Host: u.Host, Path: u.Path}).String()
 }
