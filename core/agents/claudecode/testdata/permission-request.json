@@ -1,0 +1,1 @@
+{"session_id":"sess-123","transcript_path":"/Users/me/.claude/projects/x/sess-123.jsonl","cwd":"/Users/me/proj","hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"npm test","description":"Run tests"},"tool_use_id":"toolu_01"}
