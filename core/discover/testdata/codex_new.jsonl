@@ -1,0 +1,6 @@
+{"timestamp":"2026-01-02T03:04:05.000Z","type":"session_meta","payload":{"id":"codex-sess-1","cwd":"/work/cx","timestamp":"2026-01-02T03:04:05.000Z"}}
+{"timestamp":"2026-01-02T03:04:06.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>synthetic</environment_context>"}]}}
+{"timestamp":"2026-01-02T03:04:07.000Z","type":"event_msg","payload":{"type":"user_message","message":"codex first prompt"}}
+{"timestamp":"2026-01-02T03:04:08.000Z","type":"event_msg","payload":{"type":"item_completed","item":{"type":"AgentMessage","content":[]}}}
+{"timestamp":"2026-01-02T03:05:00.000Z","type":"event_msg","payload":{"type":"item_completed","item":{"type":"UserMessage","content":[{"type":"text","text":"codex follow up\nmore"}]}}}
+{"timestamp":"2026-01-02T03:05:10.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"done"}]}}
