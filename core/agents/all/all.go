@@ -3,10 +3,10 @@
 package all
 
 import (
-	_ "github.com/platynotch/platynotch/core/agents/claudecode"
-	_ "github.com/platynotch/platynotch/core/agents/codex"
-	_ "github.com/platynotch/platynotch/core/agents/cursor"
-	_ "github.com/platynotch/platynotch/core/agents/gemini"
-	_ "github.com/platynotch/platynotch/core/agents/opencode"
-	_ "github.com/platynotch/platynotch/core/agents/qwen"
+	_ "github.com/Vaibhaav-Tiwari/PlatyNotch/core/agents/claudecode"
+	_ "github.com/Vaibhaav-Tiwari/PlatyNotch/core/agents/codex"
+	_ "github.com/Vaibhaav-Tiwari/PlatyNotch/core/agents/cursor"
+	_ "github.com/Vaibhaav-Tiwari/PlatyNotch/core/agents/gemini"
+	_ "github.com/Vaibhaav-Tiwari/PlatyNotch/core/agents/opencode"
+	_ "github.com/Vaibhaav-Tiwari/PlatyNotch/core/agents/qwen"
 )

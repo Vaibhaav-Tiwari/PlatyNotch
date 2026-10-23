@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/platynotch/platynotch/core/protocol"
-	"github.com/platynotch/platynotch/core/wire"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/wire"
 )
 
 const (

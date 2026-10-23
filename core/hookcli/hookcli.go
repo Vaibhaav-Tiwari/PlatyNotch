@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/platynotch/platynotch/core/agents"
-	"github.com/platynotch/platynotch/core/paths"
-	"github.com/platynotch/platynotch/core/protocol"
-	"github.com/platynotch/platynotch/core/wire"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/agents"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/paths"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/wire"
 )
 
 const (

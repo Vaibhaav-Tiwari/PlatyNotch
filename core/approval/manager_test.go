@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/platynotch/platynotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
 
 func newM() (*Manager, *time.Time) {

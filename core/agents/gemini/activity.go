@@ -22,7 +22,7 @@ package gemini
 import (
 	"encoding/json"
 
-	"github.com/platynotch/platynotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
 
 // deriveState maps a Gemini hook sub-command (and payload) onto a

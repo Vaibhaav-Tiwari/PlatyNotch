@@ -7,7 +7,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/platynotch/platynotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
 
 // ApprovalSupport says how far approve-from-the-notch is trusted for an agent.

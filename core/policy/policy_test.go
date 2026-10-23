@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/platynotch/platynotch/core/config"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
 )
 
 func TestMatch(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/platynotch/platynotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
 
 // MaxLine bounds one message (hook payloads can carry large tool inputs).

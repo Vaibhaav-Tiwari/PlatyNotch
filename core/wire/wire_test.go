@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/platynotch/platynotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
 
 func TestReaderSkipsBlankLinesAndRejectsOversize(t *testing.T) {

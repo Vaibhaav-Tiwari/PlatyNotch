@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Module path `github.com/platynotch/platynotch/core`; Go 1.27.
+- Module path `github.com/Vaibhaav-Tiwari/PlatyNotch/core`; Go 1.27.
 - Data dir `~/Library/Application Support/PlatyNotch`, overridable with `PLATYNOTCH_HOME`; user home overridable with `PLATYNOTCH_USER_HOME`; socket with `PLATYNOTCH_SOCKET` (all tests set these to temp dirs).
 - Socket file mode 0600; reject peers whose uid ≠ `os.Getuid()`.
 - `notch hook` always exits 0; prints to stdout only a decision for a permission event that got an allow/deny.

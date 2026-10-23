@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/platynotch/platynotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
 
 func write(t *testing.T, path, content string, mtime time.Time) {

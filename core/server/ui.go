@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/platynotch/platynotch/core/config"
-	"github.com/platynotch/platynotch/core/ext"
-	"github.com/platynotch/platynotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/ext"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
 
 const (

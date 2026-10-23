@@ -8,10 +8,10 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/platynotch/platynotch/core/config"
-	"github.com/platynotch/platynotch/core/memory"
-	"github.com/platynotch/platynotch/core/policy"
-	"github.com/platynotch/platynotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/policy"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
 
 // AuditEvent records one approval decision (by a human, a policy or a timeout).

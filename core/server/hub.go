@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/platynotch/platynotch/core/protocol"
-	"github.com/platynotch/platynotch/core/wire"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/wire"
 )
 
 // writeTimeout bounds one socket write so a stuck peer cannot pin a goroutine.

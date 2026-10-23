@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/platynotch/platynotch/core/paths"
-	"github.com/platynotch/platynotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/paths"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
 
 // env points every PlatyNotch path at temp dirs. The socket lives under /tmp

@@ -3,7 +3,7 @@ package all
 import (
 	"testing"
 
-	"github.com/platynotch/platynotch/core/agents"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/agents"
 )
 
 func TestAllRegistersSix(t *testing.T) {

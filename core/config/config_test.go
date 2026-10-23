@@ -3,7 +3,7 @@ package config
 import (
 	"os"
 
-	"github.com/platynotch/platynotch/core/paths"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/paths"
 	"path/filepath"
 	"strconv"
 	"testing"

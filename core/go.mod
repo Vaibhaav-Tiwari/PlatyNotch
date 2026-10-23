@@ -1,4 +1,4 @@
-module github.com/platynotch/platynotch/core
+module github.com/Vaibhaav-Tiwari/PlatyNotch/core
 
 go 1.27.1
 

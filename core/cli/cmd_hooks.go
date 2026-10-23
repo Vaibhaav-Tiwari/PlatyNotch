@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/platynotch/platynotch/core/agents"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/agents"
 )
 
 // agentStatus is one row of `hooks status --json` (read by the Mac app).

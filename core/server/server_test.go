@@ -15,11 +15,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/platynotch/platynotch/core/config"
-	"github.com/platynotch/platynotch/core/ext"
-	"github.com/platynotch/platynotch/core/policy"
-	"github.com/platynotch/platynotch/core/protocol"
-	"github.com/platynotch/platynotch/core/wire"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/ext"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/policy"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/wire"
 )
 
 // shortDir returns a temp dir short enough for a Unix socket path (macOS caps

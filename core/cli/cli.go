@@ -16,17 +16,17 @@ import (
 	"path/filepath"
 	"sort"
 
-	_ "github.com/platynotch/platynotch/core/agents/all" // register every adapter
-	"github.com/platynotch/platynotch/core/config"
-	"github.com/platynotch/platynotch/core/ext"
-	"github.com/platynotch/platynotch/core/hookcli"
-	"github.com/platynotch/platynotch/core/memory"
-	"github.com/platynotch/platynotch/core/paths"
-	"github.com/platynotch/platynotch/core/usage"
+	_ "github.com/Vaibhaav-Tiwari/PlatyNotch/core/agents/all" // register every adapter
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/ext"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/hookcli"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/paths"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/usage"
 )
 
 // Version is the release version, set at build time with
-// -ldflags "-X github.com/platynotch/platynotch/core/cli.Version=1.2.3".
+// -ldflags "-X github.com/Vaibhaav-Tiwari/PlatyNotch/core/cli.Version=1.2.3".
 var Version = "dev"
 
 // Command is a subcommand added by an embedding binary (e.g. Pro's `pair`).

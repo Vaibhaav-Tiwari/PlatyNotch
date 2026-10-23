@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/platynotch/platynotch/core/protocol"
-	"github.com/platynotch/platynotch/core/session"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/session"
 )
 
 const (

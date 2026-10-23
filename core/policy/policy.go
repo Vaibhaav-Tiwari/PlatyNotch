@@ -4,7 +4,7 @@ package policy
 import (
 	"strings"
 
-	"github.com/platynotch/platynotch/core/config"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
 )
 
 // Verdict is a policy decision. Action is "allow", "deny" or "ask".

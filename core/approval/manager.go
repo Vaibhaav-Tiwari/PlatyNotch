@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/platynotch/platynotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
 
 var (

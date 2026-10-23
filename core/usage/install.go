@@ -19,9 +19,9 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/platynotch/platynotch/core/config"
-	"github.com/platynotch/platynotch/core/hookjson"
-	"github.com/platynotch/platynotch/core/paths"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/hookjson"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/paths"
 )
 
 const statusLineKey = "statusLine"

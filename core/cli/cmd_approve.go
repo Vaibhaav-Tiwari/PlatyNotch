@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/platynotch/platynotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
 
 // approve <id> allow|deny [--message m]. The core replies to approval.decide

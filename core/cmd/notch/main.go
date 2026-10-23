@@ -6,7 +6,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/platynotch/platynotch/core/cli"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/cli"
 )
 
 func main() {

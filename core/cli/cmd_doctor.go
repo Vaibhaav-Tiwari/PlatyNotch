@@ -7,10 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/platynotch/platynotch/core/agents"
-	"github.com/platynotch/platynotch/core/config"
-	"github.com/platynotch/platynotch/core/hookjson"
-	"github.com/platynotch/platynotch/core/paths"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/agents"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/hookjson"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/paths"
 )
 
 // doctor reports the health of an install. Only an unreachable core, an

@@ -20,7 +20,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/platynotch/platynotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
 
 // Watcher polls usage.json (written by `notch statusline`) and the newest

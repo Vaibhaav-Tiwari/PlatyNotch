@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/platynotch/platynotch/core/agents/all"
-	"github.com/platynotch/platynotch/core/protocol"
-	"github.com/platynotch/platynotch/core/wire"
+	_ "github.com/Vaibhaav-Tiwari/PlatyNotch/core/agents/all"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/wire"
 )
 
 func sockPath(t *testing.T) string {

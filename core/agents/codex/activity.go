@@ -19,7 +19,7 @@
 
 package codex
 
-import "github.com/platynotch/platynotch/core/protocol"
+import "github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 
 // deriveState maps a Codex hook sub-command onto a protocol.State; false
 // means no activity signal. Codex has no SessionEnd/Notification hook, so

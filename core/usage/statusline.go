@@ -31,9 +31,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/platynotch/platynotch/core/config"
-	"github.com/platynotch/platynotch/core/paths"
-	"github.com/platynotch/platynotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/paths"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
 
 // now is the package clock; tests replace it.

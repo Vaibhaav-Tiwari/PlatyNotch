@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/platynotch/platynotch/core/paths"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/paths"
 )
 
 type Config struct {

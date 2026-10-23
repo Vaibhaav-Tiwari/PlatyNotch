@@ -22,14 +22,14 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/platynotch/platynotch/core/agents/all" // register every adapter
-	"github.com/platynotch/platynotch/core/approval"
-	"github.com/platynotch/platynotch/core/config"
-	"github.com/platynotch/platynotch/core/ext"
-	"github.com/platynotch/platynotch/core/memory"
-	"github.com/platynotch/platynotch/core/policy"
-	"github.com/platynotch/platynotch/core/protocol"
-	"github.com/platynotch/platynotch/core/session"
+	_ "github.com/Vaibhaav-Tiwari/PlatyNotch/core/agents/all" // register every adapter
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/approval"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/ext"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/policy"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/session"
 )
 
 // queueSize bounds each subscriber's outbound queue. A UI client that falls

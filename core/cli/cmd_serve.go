@@ -11,12 +11,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/platynotch/platynotch/core/config"
-	"github.com/platynotch/platynotch/core/discover"
-	"github.com/platynotch/platynotch/core/memory"
-	"github.com/platynotch/platynotch/core/paths"
-	"github.com/platynotch/platynotch/core/server"
-	"github.com/platynotch/platynotch/core/usage"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/discover"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/paths"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/server"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/usage"
 )
 
 const (

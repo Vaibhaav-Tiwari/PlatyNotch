@@ -19,7 +19,7 @@
 
 package qwen
 
-import "github.com/platynotch/platynotch/core/protocol"
+import "github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 
 // deriveState is AO's name-only standard mapping, which AO's dispatcher uses
 // for qwen (qwen has no activity.go of its own). false means no signal.

@@ -7,7 +7,7 @@ package memory
 import (
 	"context"
 
-	"github.com/platynotch/platynotch/core/protocol"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
 
 // Service is the memory engine behind capture.text, memory.search and loops.
