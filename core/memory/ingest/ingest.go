@@ -16,6 +16,7 @@ import (
 const (
 	minChars     = 40
 	maxChars     = 200_000
+	precapSlack  = 4096
 	chunkSize    = 1200
 	chunkOverlap = 150
 )
@@ -41,14 +42,19 @@ func (i *Ingester) Ingest(c protocol.CaptureText) (int, error) {
 			return 0, nil
 		}
 	}
-	if utf8.RuneCountInString(strings.TrimSpace(c.Text)) < minChars {
-		return 0, nil
-	}
 	text := c.Text
-	if utf8.RuneCountInString(text) > maxChars {
-		text = string([]rune(text)[:maxChars])
+	// Bound regex work, redact, and only then truncate, so a secret straddling
+	// the cap cannot leave a fragment behind.
+	if r := []rune(text); len(r) > maxChars+precapSlack {
+		text = string(r[:maxChars+precapSlack])
 	}
 	text = Redact(text)
+	if r := []rune(text); len(r) > maxChars {
+		text = string(r[:maxChars])
+	}
+	if utf8.RuneCountInString(strings.TrimSpace(text)) < minChars {
+		return 0, nil
+	}
 
 	at := c.CapturedAt
 	if at.IsZero() {
@@ -68,7 +74,7 @@ func (i *Ingester) Ingest(c protocol.CaptureText) (int, error) {
 		return 0, err
 	}
 	v := store.Version{
-		ID: hex.EncodeToString(vid), ThreadID: th.ID, HourBucket: i.now().Unix() / 3600,
+		ID: hex.EncodeToString(vid), ThreadID: th.ID, HourBucket: at.Unix() / 3600,
 		Content: text, ContentHash: hash, Chars: utf8.RuneCountInString(text), CreatedAt: at,
 	}
 	prev, err := i.store.PutVersion(v)

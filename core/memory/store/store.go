@@ -157,6 +157,9 @@ func (s *Store) UpsertThread(t Thread) (Thread, error) {
 	return out, err
 }
 
+// PutVersion returns the version it replaced, nil when it inserted; the caller
+// sets Version.ID for inserts.
+//
 // PutVersion upserts v for (thread, hour_bucket) in place. If a row exists its
 // content, hash, chars and created_at are updated, its id and chunks are kept,
 // and the previous row is returned as prev so the caller can diff; chunks for

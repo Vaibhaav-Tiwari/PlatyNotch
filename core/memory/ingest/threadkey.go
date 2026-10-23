@@ -17,7 +17,13 @@ var counterPrefix = regexp.MustCompile(`^(?:\(\d+\)\s*|[•·]\s*)+`)
 func ThreadKey(c protocol.CaptureText) string {
 	if c.URL != "" {
 		if u, err := url.Parse(c.URL); err == nil && u.Host != "" {
-			return u.Host + u.Path
+			path := strings.TrimRight(u.Path, "/")
+			return strings.ToLower(u.Host) + path + func() string {
+				if path == "" {
+					return "/"
+				}
+				return ""
+			}()
 		}
 	}
 	if t := strings.TrimSpace(counterPrefix.ReplaceAllString(strings.TrimSpace(c.WindowTitle), "")); t != "" {

@@ -14,7 +14,17 @@ import (
 
 func TestThreadKeyURL(t *testing.T) {
 	c := protocol.CaptureText{AppName: "Chrome", WindowTitle: "Inbox", URL: "https://mail.google.com/mail/u/0/#inbox/abc?x=1"}
-	if got := ThreadKey(c); got != "mail.google.com/mail/u/0/" {
+	if got := ThreadKey(c); got != "mail.google.com/mail/u/0" {
+		t.Fatalf("got %q", got)
+	}
+	for _, u := range []string{"https://Example.com/a/", "https://example.com/a"} {
+		c.URL = u
+		if got := ThreadKey(c); got != "example.com/a" {
+			t.Fatalf("%s: got %q", u, got)
+		}
+	}
+	c.URL = "https://Example.com"
+	if got := ThreadKey(c); got != "example.com/" {
 		t.Fatalf("got %q", got)
 	}
 	c.URL = "https://example.com/a/b?q=1"
@@ -50,6 +60,15 @@ func TestRedact(t *testing.T) {
 		"-----BEGIN PRIVATE KEY-----\ntruncated":                                          "[redacted]",
 	}
 	for in, want := range cases {
+		if got := Redact(in); got != want {
+			t.Errorf("Redact(%q) = %q, want %q", in, got, want)
+		}
+	}
+	for in, want := range map[string]string{
+		"on 2024-01-15 4242 4242 4242 4242 paid": "on 2024-01-15 [redacted] paid",
+		"order 123 4242424242424242":             "order 123 [redacted]",
+		"4242 4242 4242 4242 12/27":              "[redacted] 12/27",
+	} {
 		if got := Redact(in); got != want {
 			t.Errorf("Redact(%q) = %q, want %q", in, got, want)
 		}
@@ -247,5 +266,50 @@ func TestNewHourNewVersion(t *testing.T) {
 	th, v, _, _, _ := s.Counts()
 	if th != 1 || v != 2 {
 		t.Fatalf("threads=%d versions=%d", th, v)
+	}
+}
+
+func TestSecretStraddlingCapIsRedacted(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	i, s := newIngester(t, &now)
+	key := "sk-abcdefghijklmnopqrstuvwxyz0123456789"
+	text := strings.Repeat("a", maxChars-10) + key + " tail"
+	if _, err := i.Ingest(capture(text)); err != nil {
+		t.Fatal(err)
+	}
+	ps, _ := s.PendingChunks("embed", 1000)
+	for _, c := range ps {
+		if strings.Contains(c.Text, "sk-") {
+			t.Fatal("key fragment stored")
+		}
+	}
+}
+
+func TestMinimumMeasuredAfterRedaction(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	i, s := newIngester(t, &now)
+	n, err := i.Ingest(capture("sk-abcdefghijklmnopqrstuvwxyz0123456789 ok"))
+	if err != nil || n != 0 {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+	if th, _, _, _, _ := s.Counts(); th != 0 {
+		t.Fatal("stored")
+	}
+}
+
+func TestHourBucketFollowsCapturedAt(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	i, s := newIngester(t, &now)
+	c := capture(long)
+	c.CapturedAt = now.Add(-5 * time.Hour)
+	if _, err := i.Ingest(c); err != nil {
+		t.Fatal(err)
+	}
+	c.CapturedAt = now // same now, different bucket than first
+	if _, err := i.Ingest(c); err != nil {
+		t.Fatal(err)
+	}
+	if _, v, _, _, _ := s.Counts(); v != 2 {
+		t.Fatalf("versions=%d", v)
 	}
 }
