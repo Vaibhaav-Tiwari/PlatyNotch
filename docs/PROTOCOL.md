@@ -117,7 +117,8 @@ Session states: `active`, `idle`, `waiting_input`, `blocked`, `exited`.
   memory is disabled; `capture.text` is then dropped silently.
 - `loop.set_status` always replies, asynchronously: on success a `loop.set_status`
   envelope with the same `id` and no data; on failure (unknown loop, invalid
-  status, memory off) an `error` with the same `id`. Clients that need the
+  status, memory off, or `resolved` for a loop that is not `open`: "loop is
+  not open") an `error` with the same `id`. Clients that need the
   outcome wait for the reply carrying their `id`; ping/pong ordering does not
   cover it.
 - `config.reload` replies with a `notice` of kind `info` (same `id`) on success.
