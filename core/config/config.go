@@ -36,7 +36,7 @@ type Policy struct {
 }
 
 // Rule matches a tool call. Tool is an exact tool name ("Bash", "Write") or "*".
-// Pattern is a glob (path.Match syntax plus "**" for any run) against the
+// Pattern is a glob ("*" any run incl. "/" and spaces, "?" one char) against the
 // approval summary (the command or file path).
 type Rule struct {
 	Tool    string `json:"tool"`
