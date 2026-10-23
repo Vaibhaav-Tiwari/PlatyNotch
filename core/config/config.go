@@ -24,6 +24,13 @@ type Config struct {
 	Pro json.RawMessage `json:"pro,omitempty"`
 }
 
+// Approval timeout bounds. The hook client waits timeout + 2 s and agents kill
+// a hook after 120 s, so the timeout must stay at or below 115 s.
+const (
+	MinTimeoutSeconds = 10
+	MaxTimeoutSeconds = 115
+)
+
 type Approvals struct {
 	Enabled        bool            `json:"enabled"`
 	TimeoutSeconds int             `json:"timeout_seconds"` // how long a hook waits for a click
@@ -119,8 +126,13 @@ func LoadFile(path string) (Config, error) {
 	if err := json.Unmarshal(b, &cfg); err != nil {
 		return Default(), err
 	}
-	if cfg.Approvals.TimeoutSeconds <= 0 {
+	switch t := cfg.Approvals.TimeoutSeconds; {
+	case t <= 0:
 		cfg.Approvals.TimeoutSeconds = 100
+	case t < MinTimeoutSeconds:
+		cfg.Approvals.TimeoutSeconds = MinTimeoutSeconds
+	case t > MaxTimeoutSeconds:
+		cfg.Approvals.TimeoutSeconds = MaxTimeoutSeconds
 	}
 	if cfg.Approvals.Agents == nil {
 		cfg.Approvals.Agents = map[string]bool{}

@@ -5,6 +5,7 @@ import (
 
 	"github.com/platynotch/platynotch/core/paths"
 	"path/filepath"
+	"strconv"
 	"testing"
 )
 
@@ -56,4 +57,25 @@ func TestSecretEnv(t *testing.T) {
 func osStat(t *testing.T) (os.FileInfo, error) {
 	t.Helper()
 	return os.Stat(paths.Config())
+}
+
+// The hook client waits timeout+2 s; agents kill hooks at 120 s, so the
+// timeout is clamped to [10, 115] (non-positive still means the default).
+func TestTimeoutClamped(t *testing.T) {
+	for _, tc := range []struct{ in, want int }{
+		{0, 100}, {-5, 100}, {1, 10}, {10, 10}, {60, 60}, {115, 115}, {116, 115}, {600, 115},
+	} {
+		p := filepath.Join(t.TempDir(), "config.json")
+		b := []byte(`{"approvals":{"enabled":true,"timeout_seconds":` + strconv.Itoa(tc.in) + `}}`)
+		if err := os.WriteFile(p, b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cfg, err := LoadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Approvals.TimeoutSeconds != tc.want {
+			t.Errorf("timeout %d: got %d, want %d", tc.in, cfg.Approvals.TimeoutSeconds, tc.want)
+		}
+	}
 }
