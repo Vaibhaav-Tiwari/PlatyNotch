@@ -111,6 +111,12 @@ public final class NotchController {
         sampleCursor()
     }
 
+    /// Opens the panel (menu bar "Open PlatyNotch", `platynotch://open`).
+    public func expand() {
+        guard machine.mode != .expanded else { return }
+        handle(.click)
+    }
+
     /// Removes the panel and stops all monitoring.
     public func detach() {
         tracker.stop()

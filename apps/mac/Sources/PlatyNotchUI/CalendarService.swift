@@ -24,6 +24,8 @@ public final class CalendarService {
     public private(set) var next: EKEvent?
     public private(set) var joinURL: URL?
 
+    /// Set by the app: "Calendar access is off › Open Settings" goes to Settings › Permissions.
+    @ObservationIgnored public var onOpenSettings: (() -> Void)?
     @ObservationIgnored private let store = EKEventStore()
     @ObservationIgnored private var changeObserver: NSObjectProtocol?
     @ObservationIgnored private var requesting = false
@@ -77,8 +79,14 @@ public final class CalendarService {
         joinURL = MeetingLinks.firstJoinURL(in: [event.url?.absoluteString ?? "", event.location ?? "", event.notes ?? ""])
     }
 
+    /// Opens PlatyNotch Settings at Permissions when wired (the app does), else System Settings.
     public func openSettings() {
-        NSWorkspace.shared.open(Self.settingsURL)
+        if let onOpenSettings { onOpenSettings() } else { NSWorkspace.shared.open(Self.settingsURL) }
+    }
+
+    /// Re-reads the authorization status (never prompts).
+    public func refreshAccess() {
+        access = Self.currentAccess()
     }
 
     private static func isDeclined(_ e: EKEvent) -> Bool {

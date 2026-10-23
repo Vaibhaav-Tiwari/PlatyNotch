@@ -25,6 +25,12 @@ public enum CorePaths {
         home(env: env, userHome: userHome).appendingPathComponent("config.json")
     }
 
+    /// The memory database (Go `paths.MemoryDB`).
+    public static func memoryDB(env: [String: String] = ProcessInfo.processInfo.environment,
+                                userHome: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+        home(env: env, userHome: userHome).appendingPathComponent("memory.db")
+    }
+
     /// `PLATYNOTCH_CORE_BIN`, else `name` next to the running executable
     /// (`Contents/MacOS/notch` in the bundle, `.build/debug/notch` under `swift run`).
     public static func coreBinary(name: String,

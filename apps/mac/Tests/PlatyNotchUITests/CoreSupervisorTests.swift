@@ -52,3 +52,26 @@ final class CoreSupervisorTests: XCTestCase {
         XCTAssertFalse(sup.isRunning)
     }
 }
+
+extension CoreSupervisorTests {
+    func testRestartWaitsForExitThenLaunchesOnce() async throws {
+        let dir = try tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let counter = dir.appendingPathComponent("count")
+        // Takes a moment to shut down, like the core closing its socket.
+        let bin = try makeScript(dir, body: "echo run >> '\(counter.path)'; trap 'sleep 0.2; exit 0' TERM; while true; do sleep 0.05; done")
+        let sup = CoreSupervisor(binaryURL: bin, logURL: dir.appendingPathComponent("core.log"), delayScale: 0.01)
+        sup.start()
+        for _ in 0..<100 where lines(counter) < 1 { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(lines(counter), 1)
+        sup.restart()
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(lines(counter), 1, "the new core starts only after the old one exited")
+        for _ in 0..<100 where lines(counter) < 2 { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(lines(counter), 2)
+        XCTAssertTrue(sup.isRunning)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(lines(counter), 2, "exactly one replacement")
+        sup.stop()
+    }
+}

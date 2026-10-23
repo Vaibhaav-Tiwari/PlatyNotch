@@ -25,7 +25,11 @@ let package = Package(
             name: "PlatyNotch",
             dependencies: ["PlatyNotchKit", "PlatyNotchUI"]
         ),
-        .testTarget(name: "PlatyNotchKitTests", dependencies: ["PlatyNotchKit"]),
+        .testTarget(
+            name: "PlatyNotchKitTests",
+            dependencies: ["PlatyNotchKit"],
+            exclude: ["Fixtures"]   // read through #filePath
+        ),
         .testTarget(name: "PlatyNotchUITests", dependencies: ["PlatyNotchUI"]),
     ]
 )

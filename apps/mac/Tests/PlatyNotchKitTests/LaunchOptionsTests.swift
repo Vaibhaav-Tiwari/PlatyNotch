@@ -19,3 +19,12 @@ final class LaunchOptionsTests: XCTestCase {
         XCTAssertFalse(LaunchOptions(arguments: [], env: ["PLATYNOTCH_EXTERNAL_CORE": "0"]).externalCore)
     }
 }
+
+extension LaunchOptionsTests {
+    func testSmokeSettingsFlag() {
+        let o = LaunchOptions(arguments: ["PlatyNotch", "--smoke-settings"], env: [:])
+        XCTAssertTrue(o.smokeSettings)
+        XCTAssertFalse(o.smoke)
+        XCTAssertFalse(LaunchOptions(arguments: ["PlatyNotch", "--smoke"], env: [:]).smokeSettings)
+    }
+}

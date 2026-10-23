@@ -1,21 +1,6 @@
 import PlatyNotchKit
 import SwiftUI
 
-/// A tab in the expanded panel. Built-in tabs come first; plugins append theirs
-/// (passed to `NotchController` as `extraTabs`).
-@MainActor
-public struct PanelTab: Identifiable {
-    public let id: String
-    public let title: String
-    let content: () -> AnyView
-
-    public init<Content: View>(id: String, title: String, @ViewBuilder content: @escaping () -> Content) {
-        self.id = id
-        self.title = title
-        self.content = { AnyView(content()) }
-    }
-}
-
 enum BuiltinTab {
     static let agents = "agents"
     static let today = "today"
@@ -45,7 +30,7 @@ struct ExpandedPanel: View {
                     .frame(maxHeight: 240, alignment: .top)
                     .layoutPriority(1)
             }
-            (tabs.first { $0.id == selectedTab } ?? tabs[0]).content()
+            (tabs.first { $0.id == selectedTab } ?? tabs[0]).view
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .clipped()
         }
@@ -78,16 +63,16 @@ struct ExpandedPanel: View {
         let today = self.today
         let memory = self.memory
         return [
-            PanelTab(id: BuiltinTab.agents, title: "Agents") {
+            PanelTab(id: BuiltinTab.agents, title: "Agents", systemImage: "terminal") {
                 AgentsTab(sessions: store.sessions, usage: store.usage, onOpenTerminal: open)
             },
-            PanelTab(id: BuiltinTab.today, title: "Today") {
+            PanelTab(id: BuiltinTab.today, title: "Today", systemImage: "calendar") {
                 TodayTab(store: store, today: today)
             },
-            PanelTab(id: BuiltinTab.focus, title: "Focus") {
+            PanelTab(id: BuiltinTab.focus, title: "Focus", systemImage: "timer") {
                 FocusTab(focus: today.focus)
             },
-            PanelTab(id: BuiltinTab.memory, title: "Memory") {
+            PanelTab(id: BuiltinTab.memory, title: "Memory", systemImage: "brain") {
                 MemoryTab(store: store, memory: memory)
             },
         ] + extraTabs
