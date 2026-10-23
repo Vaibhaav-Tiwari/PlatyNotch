@@ -45,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         handleTerminationSignals()
+        TerminalFocus.startTracking()
         if !options.externalCore {
             let s = CoreSupervisor(binaryURL: CorePaths.coreBinary(name: coreBinary), logURL: CorePaths.coreLog())
             s.start()

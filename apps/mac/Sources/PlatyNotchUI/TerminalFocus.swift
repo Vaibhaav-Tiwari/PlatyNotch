@@ -14,6 +14,7 @@ enum TerminalFocus {
     private static let terminalScript = """
     on run argv
         set wanted to item 1 of argv
+        with timeout of 3 seconds
         tell application id "com.apple.Terminal"
             repeat with w in windows
                 repeat with t in tabs of w
@@ -26,6 +27,7 @@ enum TerminalFocus {
                 end repeat
             end repeat
         end tell
+        end timeout
         return "miss"
     end run
     """
@@ -33,6 +35,7 @@ enum TerminalFocus {
     private static let iTermScript = """
     on run argv
         set wanted to item 1 of argv
+        with timeout of 3 seconds
         tell application id "com.googlecode.iterm2"
             repeat with w in windows
                 repeat with t in tabs of w
@@ -48,6 +51,7 @@ enum TerminalFocus {
                 end repeat
             end repeat
         end tell
+        end timeout
         return "miss"
     end run
     """
@@ -81,23 +85,35 @@ enum TerminalFocus {
         // Never launch a terminal that is not running, and never run with an unvalidated tty.
         guard isRunning(bundleID) else { activateByAncestry(session); return }
         guard let tty = session.tty.flatMap(TTY.normalize) else { activate(bundleID: bundleID); return }
-        switch run(script: script, argument: tty) {
-        case .success: break
-        case .failure(let code):
-            if code == -1743, !loggedAutomationDenied {
-                loggedAutomationDenied = true
-                log.notice("Automation permission denied for \(bundleID, privacy: .public); activating the app only")
-            } else if code != -1743 {
-                log.error("AppleScript failed (\(code)) for \(bundleID, privacy: .public)")
+        // AppleEvents can block (first-run consent prompt, hung terminal): never on the main actor.
+        scriptQueue.async {
+            let result = run(script: script, argument: tty)
+            Task { @MainActor in
+                switch result {
+                case .found: break
+                case .miss:   // no tab with that tty: at least bring the app forward
+                    activate(bundleID: bundleID)
+                case .failure(let code):
+                    if code == -1743 {
+                        if !loggedAutomationDenied {
+                            loggedAutomationDenied = true
+                            log.notice("Automation permission denied for \(bundleID, privacy: .public); activating the app only")
+                        }
+                    } else {
+                        log.error("AppleScript failed (\(code)) for \(bundleID, privacy: .public)")   // incl. -1712 timeout
+                    }
+                    activate(bundleID: bundleID)   // single fallback, no retry
+                }
             }
-            activate(bundleID: bundleID)   // single fallback, no retry
         }
     }
 
-    private enum RunResult { case success, failure(Int) }
+    private static let scriptQueue = DispatchQueue(label: "dev.platynotch.terminal-focus", qos: .userInitiated)
 
-    /// Calls the script's `run` handler with one string argument (`argv`).
-    private static func run(script source: String, argument: String) -> RunResult {
+    private enum RunResult: Sendable { case found, miss, failure(Int) }
+
+    /// Calls the script's `run` handler with one string argument (`argv`). Fresh NSAppleScript per call.
+    private nonisolated static func run(script source: String, argument: String) -> RunResult {
         guard let script = NSAppleScript(source: source) else { return .failure(-1) }
         let event = NSAppleEventDescriptor(
             eventClass: AEEventClass(kCoreEventClass), eventID: AEEventID(kAEOpenApplication),
@@ -107,27 +123,60 @@ enum TerminalFocus {
         args.insert(NSAppleEventDescriptor(string: argument), at: 1)
         event.setParam(args, forKeyword: AEKeyword(keyDirectObject))
         var error: NSDictionary?
-        _ = script.executeAppleEvent(event, error: &error)
-        if let error {
-            return .failure((error[NSAppleScript.errorNumber] as? Int) ?? -1)
+        let out = script.executeAppleEvent(event, error: &error)
+        if let error { return .failure((error[NSAppleScript.errorNumber] as? Int) ?? -1) }
+        return out.stringValue == "ok" ? .found : .miss
+    }
+
+    // MARK: tracking
+
+    nonisolated(unsafe) private static var lastActive: [String: Date] = [:]
+    nonisolated(unsafe) private static var tracker: NSObjectProtocol?
+
+    /// Records when known terminals were last frontmost, for the tmux fallback. Call once at launch.
+    static func startTracking() {
+        guard tracker == nil else { return }
+        tracker = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            guard let id = app?.bundleIdentifier, TerminalApps.knownTerminalIDs.contains(id) else { return }
+            MainActor.assumeIsolated { lastActive[id] = Date() }
         }
-        return .success
     }
 
     // MARK: pid ancestry
 
     private static func activateByAncestry(_ session: Session) {
-        guard let pid = session.pid, pid > 1 else { return }
-        var current = pid_t(pid)
+        guard let pid = session.pid.flatMap({ pid_t(exactly: $0) }), pid > 1 else {
+            activateMostRecentTerminal(); return
+        }
+        var current = pid
         for _ in 0..<64 {   // bounded walk
             if let app = NSRunningApplication(processIdentifier: current), app.bundleIdentifier != nil,
                app.activationPolicy == .regular {
                 app.activate()
                 return
             }
-            guard let parent = parentPID(of: current), parent > 1, parent != current else { return }
+            guard let parent = parentPID(of: current), parent > 1, parent != current else { break }
             current = parent
         }
+        activateMostRecentTerminal()
+    }
+
+    /// Ancestry dead-ends at launchd (typical under tmux, whose server is detached from the terminal):
+    /// activate the most recently active running terminal we have seen (tracked via `startTracking`),
+    /// else the most recently launched one.
+    private static func activateMostRecentTerminal() {
+        let running = TerminalApps.knownTerminalIDs.compactMap {
+            id in NSRunningApplication.runningApplications(withBundleIdentifier: id).first.map { (id, $0) }
+        }
+        let best = running.max { a, b in
+            let da = lastActive[a.0] ?? .distantPast, db = lastActive[b.0] ?? .distantPast
+            if da != db { return da < db }
+            return (a.1.launchDate ?? .distantPast) < (b.1.launchDate ?? .distantPast)
+        }
+        best?.1.activate()
     }
 
     private static func parentPID(of pid: pid_t) -> pid_t? {
