@@ -60,7 +60,7 @@ func newID() string {
 // Open opens (creating with mode 0600 if needed) the database at path. When
 // readOnly is false it enables WAL and runs migrations.
 func Open(path string, readOnly bool) (*Store, error) {
-	q := "_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	q := "_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=secure_delete(1)"
 	if !readOnly {
 		f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 		if err != nil {
@@ -157,18 +157,23 @@ func (s *Store) UpsertThread(t Thread) (Thread, error) {
 	return out, err
 }
 
-// PutVersion stores v for (thread, hour_bucket). If one exists it is replaced
-// (its chunks are deleted with it) and returned as prev so the caller can diff.
+// PutVersion upserts v for (thread, hour_bucket) in place. If a row exists its
+// content, hash, chars and created_at are updated, its id and chunks are kept,
+// and the previous row is returned as prev so the caller can diff; chunks for
+// the new text attach to prev.ID. Otherwise v is inserted (v.ID, or a new id).
+// A zero CreatedAt means now.
 func (s *Store) PutVersion(v Version) (*Version, error) {
 	if v.ID == "" {
 		v.ID = newID()
+	}
+	if v.CreatedAt.IsZero() {
+		v.CreatedAt = time.Now()
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback()
-	var prev *Version
 	var p Version
 	var c int64
 	err = tx.QueryRow(`SELECT id,thread_id,hour_bucket,content,content_hash,chars,created_at FROM versions WHERE thread_id=? AND hour_bucket=?`,
@@ -176,19 +181,20 @@ func (s *Store) PutVersion(v Version) (*Version, error) {
 	switch {
 	case err == nil:
 		p.CreatedAt = fromMs(c)
-		prev = &p
-		if _, err := tx.Exec(`DELETE FROM versions WHERE id=?`, p.ID); err != nil {
+		if _, err := tx.Exec(`UPDATE versions SET content=?,content_hash=?,chars=?,created_at=? WHERE id=?`,
+			v.Content, v.ContentHash, v.Chars, ms(v.CreatedAt), p.ID); err != nil {
 			return nil, err
 		}
+		return &p, tx.Commit()
 	case errors.Is(err, sql.ErrNoRows):
+		if _, err := tx.Exec(`INSERT INTO versions(id,thread_id,hour_bucket,content,content_hash,chars,created_at) VALUES(?,?,?,?,?,?,?)`,
+			v.ID, v.ThreadID, v.HourBucket, v.Content, v.ContentHash, v.Chars, ms(v.CreatedAt)); err != nil {
+			return nil, err
+		}
+		return nil, tx.Commit()
 	default:
 		return nil, err
 	}
-	if _, err := tx.Exec(`INSERT INTO versions(id,thread_id,hour_bucket,content,content_hash,chars,created_at) VALUES(?,?,?,?,?,?,?)`,
-		v.ID, v.ThreadID, v.HourBucket, v.Content, v.ContentHash, v.Chars, ms(v.CreatedAt)); err != nil {
-		return nil, err
-	}
-	return prev, tx.Commit()
 }
 
 // AddChunks inserts chunks (status pending) and returns their ids.
@@ -273,24 +279,30 @@ func (s *Store) Counts() (threads, versions, chunks, pending int, err error) {
 }
 
 // PurgeBefore deletes chunks captured and versions created before t (FTS rows
-// and vectors go with them), then threads left with no versions. It returns
-// the number of chunks deleted.
+// and vectors go with them, as do orphaned retry_queue rows), then threads left with no versions. It returns
+// the number of chunks deleted, including cascade-deleted ones.
 func (s *Store) PurgeBefore(t time.Time) (int, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
 	}
 	defer tx.Rollback()
-	r, err := tx.Exec(`DELETE FROM chunks WHERE captured_at < ?`, ms(t))
-	if err != nil {
+	var n int
+	if err := tx.QueryRow(`SELECT count(*) FROM chunks WHERE captured_at < ? OR version_id IN (SELECT id FROM versions WHERE created_at < ?)`,
+		ms(t), ms(t)).Scan(&n); err != nil {
 		return 0, err
 	}
-	n, _ := r.RowsAffected()
+	if _, err := tx.Exec(`DELETE FROM chunks WHERE captured_at < ?`, ms(t)); err != nil {
+		return 0, err
+	}
 	if _, err := tx.Exec(`DELETE FROM versions WHERE created_at < ?`, ms(t)); err != nil {
+		return 0, err
+	}
+	if _, err := tx.Exec(`DELETE FROM retry_queue WHERE chunk_id NOT IN (SELECT id FROM chunks)`); err != nil {
 		return 0, err
 	}
 	if _, err := tx.Exec(`DELETE FROM threads WHERE id NOT IN (SELECT thread_id FROM versions)`); err != nil {
 		return 0, err
 	}
-	return int(n), tx.Commit()
+	return n, tx.Commit()
 }

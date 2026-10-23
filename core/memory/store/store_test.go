@@ -1,6 +1,7 @@
 package store
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -151,7 +152,7 @@ func TestFileMode0600(t *testing.T) {
 	s, p := open(t)
 	seed(t, s, "x", time.Now())
 	for _, f := range []string{p, p + "-wal", p + "-shm"} {
-		fi, err := osStat(f)
+		fi, err := os.Stat(f)
 		if err != nil {
 			continue
 		}
@@ -159,8 +160,84 @@ func TestFileMode0600(t *testing.T) {
 			t.Errorf("%s mode %v", f, fi.Mode().Perm())
 		}
 	}
-	fi, err := osStat(p)
+	fi, err := os.Stat(p)
 	if err != nil || fi.Mode().Perm() != 0o600 {
 		t.Fatalf("main file: %v %v", fi, err)
+	}
+}
+
+func TestPutVersionKeepsChunksAndID(t *testing.T) {
+	s, _ := open(t)
+	th, _ := s.UpsertThread(Thread{AppBundle: "a", Key: "k"})
+	now := time.Now()
+	if _, err := s.PutVersion(Version{ID: "orig", ThreadID: th.ID, HourBucket: 7, Content: "alpha", CreatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddChunks([]Chunk{{VersionID: "orig", ThreadID: th.ID, Text: "alpha zebra", CapturedAt: now}}); err != nil {
+		t.Fatal(err)
+	}
+	prev, err := s.PutVersion(Version{ID: "other", ThreadID: th.ID, HourBucket: 7, Content: "alpha beta", Chars: 10})
+	if err != nil || prev == nil || prev.ID != "orig" || prev.Content != "alpha" {
+		t.Fatalf("prev=%+v err=%v", prev, err)
+	}
+	var id, content string
+	var created int64
+	s.db.QueryRow(`SELECT id, content, created_at FROM versions`).Scan(&id, &content, &created)
+	if id != "orig" || content != "alpha beta" || created == 0 {
+		t.Fatalf("id=%s content=%s created=%d", id, content, created)
+	}
+	_, _, ch, _, _ := s.Counts()
+	var fts int
+	s.db.QueryRow(`SELECT count(*) FROM chunks_fts WHERE chunks_fts MATCH 'zebra'`).Scan(&fts)
+	if ch != 1 || fts != 1 {
+		t.Fatalf("chunks=%d fts=%d", ch, fts)
+	}
+}
+
+func TestPathWithSpace(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "Application Support", "Platy Notch")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "mem.db")
+	s, err := Open(p, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seed(t, s, "hello", time.Now())
+	ro, err := Open(p, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ro.Close()
+	if th, _, _, _, err := ro.Counts(); err != nil || th != 1 {
+		t.Fatalf("th=%d err=%v", th, err)
+	}
+	s.Close()
+}
+
+func TestPurgeRetryQueueAndCascadeCount(t *testing.T) {
+	s, _ := open(t)
+	old := time.Now().Add(-48 * time.Hour)
+	th, ids := seed(t, s, "old one", old)
+	// chunk captured recently but attached to an old version: cascade-deleted.
+	if _, err := s.AddChunks([]Chunk{{VersionID: "v1", ThreadID: th.ID, Idx: 1, Text: "recent", CapturedAt: time.Now()}}); err != nil {
+		t.Fatal(err)
+	}
+	s.db.Exec(`INSERT INTO retry_queue(kind,chunk_id,next_at) VALUES('embed',?,0)`, ids[0])
+	s.db.Exec(`INSERT INTO retry_queue(kind,chunk_id,next_at) VALUES('embed',?,0)`, ids[0]+1)
+	n, err := s.PurgeBefore(time.Now().Add(-24 * time.Hour))
+	if err != nil || n != 2 {
+		t.Fatalf("n=%d err=%v", n, err)
+	}
+	var q int
+	s.db.QueryRow(`SELECT count(*) FROM retry_queue`).Scan(&q)
+	if q != 0 {
+		t.Fatalf("retry rows=%d", q)
+	}
+	var sd int
+	s.db.QueryRow(`PRAGMA secure_delete`).Scan(&sd)
+	if sd != 1 {
+		t.Fatalf("secure_delete=%d", sd)
 	}
 }
