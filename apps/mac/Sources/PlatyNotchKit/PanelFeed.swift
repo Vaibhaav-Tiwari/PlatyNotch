@@ -1,25 +1,27 @@
-/// Turns store snapshots (approval count, latest notice) into `PanelEvent`s,
+/// Turns store snapshots (approval count, notice sequence) into `PanelEvent`s,
 /// remembering what was already delivered so nothing is replayed.
 public struct PanelFeed: Equatable, Sendable {
     public private(set) var approvalCount: Int
-    public private(set) var lastNotice: Notice?
+    /// `AppStore.noticeSequence` of the last notice delivered (or consumed). A sequence,
+    /// not the notice itself: two identical notices in a row must both peek.
+    public private(set) var noticeSequence: Int
 
-    /// Seed with what is already shown (e.g. the store's latest notice) to suppress replays.
-    public init(approvalCount: Int = 0, lastNotice: Notice? = nil) {
+    /// Seed with what is already shown (the store's `noticeSequence`) to suppress replays.
+    public init(approvalCount: Int = 0, noticeSequence: Int = 0) {
         self.approvalCount = approvalCount
-        self.lastNotice = lastNotice
+        self.noticeSequence = noticeSequence
     }
 
     /// With `holdNotices` (a focus session is running) a new notice is consumed without a
     /// `.notice` event, so it neither peeks now nor replays when focus ends. Approvals still pass.
-    public mutating func update(approvalCount n: Int, latestNotice: Notice?, holdNotices: Bool = false) -> [PanelEvent] {
+    public mutating func update(approvalCount n: Int, noticeSequence seq: Int, holdNotices: Bool = false) -> [PanelEvent] {
         var events: [PanelEvent] = []
         if n != approvalCount {
             approvalCount = n
             events.append(.approvalsChanged(count: n))
         }
-        if let latestNotice, latestNotice != lastNotice {
-            lastNotice = latestNotice
+        if seq > noticeSequence {
+            noticeSequence = seq
             if !holdNotices { events.append(.notice) }
         }
         return events

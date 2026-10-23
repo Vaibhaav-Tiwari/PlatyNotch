@@ -30,6 +30,8 @@ public actor CoreClient {
 
     private var transport: Transport?
     private var runTask: Task<Void, Never>?
+    /// The loop `stop()` cancelled, until it has wound down (`start()` waits for it).
+    private var stoppedRun: Task<Void, Never>?
     private var pending: [String: CheckedContinuation<Envelope, Error>] = [:]
 
     public init(socketPath: String, clientName: String = "PlatyNotch/0.1.0") {
@@ -38,14 +40,21 @@ public actor CoreClient {
         (events, continuation) = AsyncStream.makeStream(of: CoreEvent.self, bufferingPolicy: .unbounded)
     }
 
-    /// Connects (and keeps reconnecting) until `stop()`.
+    /// Connects (and keeps reconnecting) until `stop()`. After a `stop()`, the new loop
+    /// starts only once the old one has finished, so its last `.disconnected` never
+    /// lands after the new `.connected`.
     public func start() {
         guard runTask == nil else { return }
-        runTask = Task { await self.run() }
+        let previous = stoppedRun
+        runTask = Task {
+            await previous?.value
+            await self.run()
+        }
     }
 
     public func stop() {
         runTask?.cancel()
+        stoppedRun = runTask ?? stoppedRun
         runTask = nil
         transport?.close()
         transport = nil
@@ -91,6 +100,10 @@ public actor CoreClient {
             var wasConnected = false
             do {
                 try await t.connect()
+                // stop() may have run while connect() was suspended. Reporting this
+                // connection would race the next start()'s loop (its late .disconnected
+                // could follow the new .connected), so drop it without any event.
+                if Task.isCancelled { t.close(); break }
                 transport = t
                 wasConnected = true
                 attempt = 0

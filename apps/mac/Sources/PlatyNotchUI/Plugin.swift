@@ -51,6 +51,11 @@ public protocol NotchPlugin: AnyObject {
     func handle(event: ExtMessage)
     /// `platynotch://` URLs the core app does not handle, offered to plugins in order.
     /// Return true when handled.
+    ///
+    /// The URL is attacker-controlled: any web page, document or app can open a
+    /// `platynotch://` link without the user meaning to. Treat every part of it as
+    /// untrusted input: never run commands, approve or answer anything, change settings,
+    /// or send data from a URL alone; at most show UI that asks the user to confirm.
     func handle(url: URL) -> Bool
 }
 

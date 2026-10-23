@@ -2,6 +2,9 @@ import Foundation
 
 /// Fans `CoreClient.events` (a single-consumer stream) out to any number of
 /// subscribers on the main actor: the store, plugins, settings.
+/// Plugins get this hub but may only listen (`subscribe`, `stream`, `cancel`): feeding
+/// it (`start`, `publish`) and `stop` are package access, so no plugin can inject a
+/// fake approval or cut the store off from the core.
 @MainActor
 public final class CoreEventHub {
     public typealias Token = UUID
@@ -13,7 +16,7 @@ public final class CoreEventHub {
     public init() {}
 
     /// Starts reading `source`. Call once.
-    public func start(_ source: AsyncStream<CoreEvent>) {
+    package func start(_ source: AsyncStream<CoreEvent>) {
         guard pump == nil else { return }
         pump = Task { @MainActor [weak self] in
             for await event in source { self?.publish(event) }
@@ -21,7 +24,7 @@ public final class CoreEventHub {
         }
     }
 
-    public func stop() {
+    package func stop() {
         pump?.cancel()
         pump = nil
         finishStreams()
@@ -52,7 +55,7 @@ public final class CoreEventHub {
     }
 
     /// Delivers one event (also used by tests).
-    public func publish(_ event: CoreEvent) {
+    package func publish(_ event: CoreEvent) {
         for (_, h) in handlers { h(event) }
         for c in streams.values { c.yield(event) }
     }

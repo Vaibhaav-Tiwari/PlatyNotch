@@ -41,19 +41,21 @@ struct MemorySection: View {
                     excludedApps
                 }
                 Section("Search embeddings") {
-                    ProviderEditor(provider: $draft.embedder, role: "embedder", explanation: "Finds related text by meaning. None uses keyword search only.")
+                    ProviderEditor(provider: $draft.embedder, savedRef: config.config.memory.embedder.apiKeyRef,
+                                   services: services, role: "embedder",
+                                   explanation: "Finds related text by meaning. None uses keyword search only.")
                 }
                 Section("Open-loop extraction") {
-                    ProviderEditor(provider: $draft.extractor, role: "extractor", explanation: "Spots promises and requests in what you read and write. None turns open loops off.")
+                    ProviderEditor(provider: $draft.extractor, savedRef: config.config.memory.extractor.apiKeyRef,
+                                   services: services, role: "extractor",
+                                   explanation: "Spots promises and requests in what you read and write. None turns open loops off.")
                 }
             }
             .formStyle(.grouped)
 
             HStack {
                 if !services.store.approvals.isEmpty, draft != base {
-                    Label("Saving restarts the core: pending approvals go back to the agent's terminal.",
-                          systemImage: "exclamationmark.triangle")
-                        .font(.caption).foregroundStyle(.orange)
+                    CoreRestartWarningLabel(action: "Saving")
                 }
                 Spacer()
                 Button("Revert") { load() }.disabled(draft == base)
@@ -156,9 +158,25 @@ struct MemorySection: View {
     }
 }
 
+/// "<action> restarts the core: pending approvals go back to the agent's terminal."
+/// Shown wherever a change restarts the core while approvals are pending.
+struct CoreRestartWarningLabel: View {
+    let action: String
+
+    var body: some View {
+        Label(CoreRestartWarning.text(action: action), systemImage: "exclamationmark.triangle")
+            .font(.caption).foregroundStyle(.orange)
+    }
+}
+
 /// Provider name, model, base URL and API key (saved to the Keychain on "Save key").
+/// Replacing the key of a provider config.json already uses leaves the config unchanged,
+/// so "Save key" itself restarts the core (secrets reach it only at launch).
 private struct ProviderEditor: View {
     @Binding var provider: ConfigFile.Provider
+    /// This provider's `api_key_ref` as saved in config.json (not the draft).
+    let savedRef: String
+    let services: SettingsServices
     /// "embedder" or "extractor": each role has its own Keychain account.
     let role: String
     let explanation: String
@@ -177,6 +195,9 @@ private struct ProviderEditor: View {
                 HStack {
                     SecureField("API key", text: $key, prompt: Text(keyPrompt))
                     Button("Save key") { saveKey() }.disabled(key.isEmpty)
+                }
+                if !key.isEmpty, effect.warnsAboutApprovals(pending: services.store.approvals.count) {
+                    CoreRestartWarningLabel(action: "Saving the key")
                 }
                 if let keyNote { Text(verbatim: keyNote).font(.caption).foregroundStyle(.secondary) }
             }
@@ -220,11 +241,19 @@ private struct ProviderEditor: View {
         return "Stored in your Keychain"
     }
 
+    /// What saving the key now would take before the core uses it.
+    private var effect: KeySaveEffect {
+        KeySaveEffect.after(savedRef: savedRef, newRef: SecretRef.keychain(account))
+    }
+
     private func saveKey() {
         do {
-            provider.apiKeyRef = try Keychain.save(key, account: account)
+            let ref = try Keychain.save(key, account: account)
+            let effect = KeySaveEffect.after(savedRef: savedRef, newRef: ref)
+            provider.apiKeyRef = ref
             key = ""
-            keyNote = "Saved in Keychain (service PlatyNotch, account \(account)). Click Save below to use it."
+            keyNote = effect.note(account: account)
+            if effect == .restartCore { services.restartCore() }
         } catch {
             keyNote = "Could not save the key: \(error)"
         }

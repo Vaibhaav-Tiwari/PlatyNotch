@@ -202,9 +202,7 @@ private struct MemoryPage: View {
                 set: { on in config.set { $0.memory.enabled = on } }))
                 .toggleStyle(.switch)
             if !services.store.approvals.isEmpty {
-                Label("Changing this restarts the core: pending approvals go back to the agent's terminal.",
-                      systemImage: "exclamationmark.triangle")
-                    .font(.caption).foregroundStyle(.orange)
+                CoreRestartWarningLabel(action: "Changing this")
             }
             if config.config.memory.enabled, !services.permissions.accessibility {
                 HStack {

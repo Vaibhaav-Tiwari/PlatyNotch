@@ -12,7 +12,9 @@ described in [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ## Install
 
-PlatyNotch needs a Mac with a notch (Apple silicon) and macOS 15 or later.
+PlatyNotch needs macOS 15 or later. On a MacBook with a notch it sits around
+the notch; on displays without one it shows as a pill at the top centre of the
+screen, just below the menu bar.
 
 1. Download `PlatyNotch-<version>.dmg` from
    [GitHub Releases](https://github.com/Vaibhaav-Tiwari/PlatyNotch/releases).
@@ -43,6 +45,9 @@ check for updates**. Otherwise download new versions from
 [GitHub Releases](https://github.com/Vaibhaav-Tiwari/PlatyNotch/releases) and
 replace the app in Applications.
 
+After an update macOS may ask whether PlatyNotch can use its Keychain items
+(the API keys you saved in Settings › Memory). Click **Always Allow**.
+
 On-screen capture (memory) uses the Accessibility permission. Because the app
 is not Developer ID signed, macOS may not recognise an updated copy as the same
 app: if capture stops after an update, untick and re-tick PlatyNotch in
@@ -63,8 +68,9 @@ notarizes the DMG.
 
 ## Memory and privacy
 
-Memory is **off by default**. Turn it on with `"memory": {"enabled": true}` in
-`~/Library/Application Support/PlatyNotch/config.json`.
+Memory is **off by default**. Turn it on in **Settings › Memory** (setting
+`"memory": {"enabled": true}` in
+`~/Library/Application Support/PlatyNotch/config.json` also works).
 
 - **Local only.** Captured screen text is stored in
   `~/Library/Application Support/PlatyNotch/memory.db`, a SQLite file (and its
@@ -118,7 +124,8 @@ captures:
   Private window, so add Safari to `memory.exclude_apps` (or pause capture)
   if that matters to you.
 
-"Pause capture for 1 hour" is in the Memory tab.
+"Pause capture for 1 hour" is in the menu bar item's menu and in the Memory
+tab.
 
 ## License
 

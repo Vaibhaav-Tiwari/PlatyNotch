@@ -23,4 +23,17 @@ final class MenuBarTests: XCTestCase {
         XCTAssertTrue(paused.enabled)
         XCTAssertTrue(paused.title.hasPrefix("Resume capture (paused until "), paused.title)
     }
+
+    func testUpdatesItemFollowsSparkleWhenUpdatesAreOn() {
+        XCTAssertEqual(MenuBarController.updatesItemState(isEnabled: true, canCheck: true).enabled, true)
+        XCTAssertEqual(MenuBarController.updatesItemState(isEnabled: true, canCheck: false).enabled, false)
+        XCTAssertEqual(MenuBarController.updatesItemState(isEnabled: true, canCheck: false).title, "Check for Updates…")
+    }
+
+    func testUpdatesItemOpensReleasesPageWhenUpdatesAreOff() {
+        // No Sparkle key: the item links to GitHub Releases and is always available.
+        let s = MenuBarController.updatesItemState(isEnabled: false, canCheck: false)
+        XCTAssertEqual(s.title, "Download Updates from GitHub Releases…")
+        XCTAssertTrue(s.enabled)
+    }
 }

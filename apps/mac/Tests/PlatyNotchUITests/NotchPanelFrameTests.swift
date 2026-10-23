@@ -9,9 +9,13 @@ final class NotchPanelFrameTests: XCTestCase {
     func testPanelKeepsFrameAtScreenTop() throws {
         let screen = try XCTUnwrap(NSScreen.screens.first)
         let frame = NSRect(x: screen.frame.midX - 280, y: screen.frame.maxY - 380, width: 560, height: 380)
-        let panel = NotchPanel(frame: frame)
-        XCTAssertEqual(panel.constrainFrameRect(frame, to: screen), frame)
-        let aboveTop = frame.offsetBy(dx: 0, dy: 40)
-        XCTAssertEqual(panel.constrainFrameRect(aboveTop, to: screen), aboveTop)
+        let panel = NotchPanel(frame: .zero)
+        // Through AppKit's own path: ordering a window in constrains its frame to the
+        // screen (clear and click-through, so nothing visible happens).
+        panel.setFrame(frame, display: false)
+        panel.orderFrontRegardless()
+        defer { panel.orderOut(nil) }
+        XCTAssertEqual(panel.frame.maxY, screen.frame.maxY, "panel was pushed below the menu bar")
+        XCTAssertEqual(panel.frame, frame)
     }
 }

@@ -54,13 +54,19 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
     }
 
+    /// The updates item: Sparkle's own check when updates are on (disabled while a check
+    /// is already running), otherwise a link to GitHub Releases that always works.
+    static func updatesItemState(isEnabled: Bool, canCheck: Bool) -> (title: String, enabled: Bool) {
+        isEnabled ? ("Check for Updates…", canCheck) : ("Download Updates from GitHub Releases…", true)
+    }
+
     private func buildMenu() {
         let menu = Self.newMenu()
         menu.delegate = self
         menu.addItem(withTitle: "Open PlatyNotch", action: #selector(open), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Settings…", action: #selector(settings), keyEquivalent: ",").target = self
         if let updater {
-            updatesItem.title = updater.isEnabled ? "Check for Updates…" : "Download Updates from GitHub Releases…"
+            updatesItem.title = Self.updatesItemState(isEnabled: updater.isEnabled, canCheck: false).title
             updatesItem.action = #selector(checkForUpdates)
             updatesItem.target = self
             menu.addItem(updatesItem)
@@ -75,7 +81,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
-        if let updater, updater.isEnabled { updatesItem.isEnabled = updater.canCheckForUpdates }
+        if let updater {
+            let state = Self.updatesItemState(isEnabled: updater.isEnabled, canCheck: updater.canCheckForUpdates)
+            updatesItem.title = state.title
+            updatesItem.isEnabled = state.enabled
+        }
         guard let capture else { pauseItem.isHidden = true; return }
         let state = Self.pauseItemState(capture.status)
         pauseItem.title = state.title

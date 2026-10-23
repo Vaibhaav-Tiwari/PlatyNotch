@@ -64,11 +64,10 @@ final class FocusTimerTests: XCTestCase {
     }
 
     func testFeedHoldsNoticesDuringFocus() {
-        let n1 = Notice(kind: "info", title: "one"), n2 = Notice(kind: "info", title: "two")
         var f = PanelFeed()
-        XCTAssertEqual(f.update(approvalCount: 1, latestNotice: n1, holdNotices: true), [.approvalsChanged(count: 1)])
-        XCTAssertEqual(f.lastNotice, n1)   // consumed: not replayed when focus ends
-        XCTAssertEqual(f.update(approvalCount: 1, latestNotice: n1), [])
-        XCTAssertEqual(f.update(approvalCount: 1, latestNotice: n2), [.notice])
+        XCTAssertEqual(f.update(approvalCount: 1, noticeSequence: 1, holdNotices: true), [.approvalsChanged(count: 1)])
+        XCTAssertEqual(f.noticeSequence, 1)   // consumed: not replayed when focus ends
+        XCTAssertEqual(f.update(approvalCount: 1, noticeSequence: 1), [])
+        XCTAssertEqual(f.update(approvalCount: 1, noticeSequence: 2), [.notice])
     }
 }

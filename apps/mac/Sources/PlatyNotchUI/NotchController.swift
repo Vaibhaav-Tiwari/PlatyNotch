@@ -65,7 +65,7 @@ public final class NotchController {
             feed = carryOver.feed
         } else {
             machine = PanelStateMachine(minimal: minimal)
-            feed = PanelFeed(lastNotice: store.notices.last)
+            feed = PanelFeed(noticeSequence: store.noticeSequence)
         }
         // An open panel must still close when the cursor is away after a rebuild.
         debouncer.reset(hovering: machine.mode == .expanded)
@@ -235,7 +235,7 @@ public final class NotchController {
         withObservationTracking {
             _ = store.approvals.count
             _ = store.sessions
-            _ = store.notices.last
+            _ = store.noticeSequence
             _ = store.connection
         } onChange: { [weak self] in
             Task { @MainActor in
@@ -250,7 +250,7 @@ public final class NotchController {
         responder.sync(store: store)
         machine.setLive(PanelMode.hasLive(sessions: store.sessions))
         // During focus, notices are consumed without peeking; approvals still peek.
-        for event in feed.update(approvalCount: store.approvals.count, latestNotice: store.notices.last,
+        for event in feed.update(approvalCount: store.approvals.count, noticeSequence: store.noticeSequence,
                                  holdNotices: today.focus.focusActive) {
             machine.handle(event)
             if event == .notice { scheduleNoticeTimeout() }

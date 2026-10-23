@@ -123,3 +123,39 @@ extension CoreSupervisorTests {
         sup.stop()
     }
 }
+
+extension CoreSupervisorTests {
+    func perms(_ url: URL) -> Int {
+        ((try? FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions]) as? NSNumber)?.intValue ?? -1
+    }
+
+    /// The app creates PLATYNOTCH_HOME and logs/ before the core can: owner-only, like the core does.
+    func testLogDirectoriesAndFileAreOwnerOnly() async throws {
+        let dir = try tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let home = dir.appendingPathComponent("home")
+        let log = home.appendingPathComponent("logs/core.log")
+        let bin = try makeScript(dir, body: "echo hi; exec sleep 30")
+        let sup = CoreSupervisor(binaryURL: bin, logURL: log, delayScale: 0.01)
+        sup.start()
+        defer { sup.stop() }
+        XCTAssertEqual(perms(home), 0o700)
+        XCTAssertEqual(perms(home.appendingPathComponent("logs")), 0o700)
+        XCTAssertEqual(perms(log), 0o600)
+    }
+
+    func testExistingWorldReadableLogIsTightened() async throws {
+        let dir = try tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let log = dir.appendingPathComponent("logs/core.log")
+        try FileManager.default.createDirectory(at: log.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "old\n".write(to: log, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: log.path)
+        let bin = try makeScript(dir, body: "exec sleep 30")
+        let sup = CoreSupervisor(binaryURL: bin, logURL: log, delayScale: 0.01)
+        sup.start()
+        defer { sup.stop() }
+        XCTAssertEqual(perms(log), 0o600)
+        XCTAssertEqual(try String(contentsOf: log, encoding: .utf8), "old\n", "appends, never truncates")
+    }
+}

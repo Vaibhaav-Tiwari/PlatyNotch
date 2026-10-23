@@ -14,6 +14,9 @@ final class SettingsServices {
     let agents: AgentsModel
     let updater: AppUpdater
     var showOnboarding: () -> Void = {}
+    /// Debounced restart of the supervised core (the app's `scheduleCoreRestart`), for
+    /// changes config.json does not see, such as a rotated Keychain key.
+    var restartCore: () -> Void = {}
 
     init(config: ConfigFileStore, runner: CoreRunner, store: AppStore, capture: CaptureService?, calendar: CalendarService,
          updater: AppUpdater) {

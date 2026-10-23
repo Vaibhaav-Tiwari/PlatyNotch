@@ -142,4 +142,31 @@ extension SettingsLogicTests {
         let missing = URL(fileURLWithPath: "/nonexistent/config.json")
         XCTAssertEqual(String(decoding: InheritedSecrets.payload(configURL: missing, lookup: { store[$0] }), as: UTF8.self), "{}")
     }
+
+    // MARK: - Key rotation (I1)
+
+    func testRotatingAKeyTheConfigAlreadyUsesRestartsTheCore() {
+        // Same account, same ref: config.json does not change, Save stays disabled,
+        // and the running core still holds the old secret.
+        let effect = KeySaveEffect.after(savedRef: "keychain:embedder.openai", newRef: "keychain:embedder.openai")
+        XCTAssertEqual(effect, .restartCore)
+        XCTAssertFalse(effect.note(account: "embedder.openai").contains("Click Save"))
+        XCTAssertTrue(effect.note(account: "embedder.openai").contains("restarts"))
+    }
+
+    func testANewKeyRefWaitsForSave() {
+        for saved in ["", "env:OPENAI_API_KEY", "keychain:embedder.ollama"] {
+            let effect = KeySaveEffect.after(savedRef: saved, newRef: "keychain:embedder.openai")
+            XCTAssertEqual(effect, .saveSettings, saved)
+            XCTAssertTrue(effect.note(account: "embedder.openai").contains("Click Save below"))
+        }
+    }
+
+    func testRestartWarningOnlyWhenARestartWouldDropPendingApprovals() {
+        XCTAssertTrue(KeySaveEffect.restartCore.warnsAboutApprovals(pending: 1))
+        XCTAssertFalse(KeySaveEffect.restartCore.warnsAboutApprovals(pending: 0))
+        XCTAssertFalse(KeySaveEffect.saveSettings.warnsAboutApprovals(pending: 3))
+        XCTAssertEqual(CoreRestartWarning.text(action: "Saving"),
+                       "Saving restarts the core: pending approvals go back to the agent's terminal.")
+    }
 }

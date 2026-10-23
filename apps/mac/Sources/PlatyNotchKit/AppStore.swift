@@ -18,6 +18,9 @@ public final class AppStore {
     public private(set) var edition = "free"
     public private(set) var connection: ConnectionState = .connecting
     public private(set) var notices: [Notice] = []
+    /// Counts every notice received (never trimmed), so two identical notices in a row
+    /// are still two events for the panel.
+    public private(set) var noticeSequence = 0
 
     public init() {}
 
@@ -65,6 +68,7 @@ public final class AppStore {
         case .notice:
             guard let n: Notice = try? env.decode() else { return }
             notices.append(n)
+            noticeSequence += 1
             if notices.count > Self.maxNotices { notices.removeFirst(notices.count - Self.maxNotices) }
         default:
             break

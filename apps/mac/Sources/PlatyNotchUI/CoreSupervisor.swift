@@ -152,10 +152,17 @@ public final class CoreSupervisor {
         }
     }
 
+    /// The app usually creates PLATYNOTCH_HOME before the core can, so it uses the core's
+    /// modes: directories 0700, core.log 0600 (an older world-readable log is tightened).
     private func openLog() -> FileHandle? {
         let fm = FileManager.default
-        try? fm.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if !fm.fileExists(atPath: logURL.path) { fm.createFile(atPath: logURL.path, contents: nil) }
+        // The attributes apply to every directory created here, the home included.
+        try? fm.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true,
+                                attributes: [.posixPermissions: 0o700])
+        if !fm.fileExists(atPath: logURL.path) {
+            fm.createFile(atPath: logURL.path, contents: nil, attributes: [.posixPermissions: 0o600])
+        }
+        try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: logURL.path)
         guard let h = try? FileHandle(forWritingTo: logURL) else { return nil }
         _ = try? h.seekToEnd()
         return h

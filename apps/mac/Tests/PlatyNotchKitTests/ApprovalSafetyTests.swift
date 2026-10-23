@@ -167,4 +167,13 @@ final class ApprovalSafetyTests: XCTestCase {
         XCTAssertEqual(ApprovalFormat.firstLine("a\nb", lineCountSuffix: true), "a … (+1 line)")
         XCTAssertEqual(ApprovalFormat.firstLine("a\nb\nc", lineCountSuffix: true), "a … (+2 lines)")
     }
+
+    func testFirstLineShowsHiddenSeparatorsInsteadOfSplittingOnThem() {
+        // U+2028 and CR must not hide what follows; ESC and zero-width are marked.
+        XCTAssertEqual(ApprovalFormat.firstLine("ls\u{2028}rm -rf ~"), "ls⟨U+2028⟩rm -rf ~")
+        XCTAssertEqual(ApprovalFormat.firstLine("ls\rrm -rf ~\nnext"), "ls⟨U+000D⟩rm -rf ~")
+        XCTAssertEqual(ApprovalFormat.firstLine("\u{1B}[2Kok\u{200B}\r\nnext", lineCountSuffix: true),
+                       "⟨ESC⟩[2Kok⟨U+200B⟩⟨U+000D⟩ … (+1 line)")
+        XCTAssertEqual(ApprovalFormat.firstLine("a\tb\u{85}c"), "a\tb⟨U+0085⟩c")
+    }
 }

@@ -187,6 +187,37 @@ final class CoreClientTests: XCTestCase {
         await client.stop()
     }
 
+    /// stop() then start() (a quick restart): a connect() still in flight when stop()
+    /// ran must not report `.connected` for the cancelled loop, whose `.disconnected`
+    /// could then land after the new loop's `.connected` and leave the store
+    /// "reconnecting" while connected. The last event is the new loop's `.connected`.
+    func testStopThenStartEndsConnected() async throws {
+        // Stop at staggered points so some land while connect() is still in flight.
+        for i in 0..<20 {
+            let server = TestServer()
+            try server.listen()
+            defer { server.shutdown() }
+            let client = CoreClient(socketPath: server.path)
+            let events = client.events
+            let collector = Task { () -> [CoreEvent] in
+                var seen: [CoreEvent] = []
+                for await e in events { seen.append(e) }
+                return seen
+            }
+            await client.start()
+            try await Task.sleep(for: .microseconds(i * 100))
+            await client.stop()
+            await client.start()
+            try await Task.sleep(for: .milliseconds(200))
+            collector.cancel()
+            let seen = await collector.value
+            XCTAssertEqual(seen.last, .connected, "iteration \(i): \(seen)")
+            XCTAssertEqual(seen.filter { $0 == .connected }.count - seen.filter { $0 == .disconnected }.count, 1,
+                           "iteration \(i): exactly one live connection: \(seen)")
+            await client.stop()
+        }
+    }
+
     func testRestartBackoffSequenceAndReset() {
         var b = RestartBackoff()
         XCTAssertEqual([b.nextDelay(), b.nextDelay(), b.nextDelay(), b.nextDelay(), b.nextDelay()], [1, 2, 5, 10, 10])

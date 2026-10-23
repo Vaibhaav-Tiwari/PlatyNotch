@@ -62,6 +62,15 @@ final class AppStoreTests: XCTestCase {
         XCTAssertEqual(store.notices.count, 20)
     }
 
+    func testNoticeSequenceCountsEveryNoticeEvenWhenTrimmed() throws {
+        let store = AppStore()
+        XCTAssertEqual(store.noticeSequence, 0)
+        for _ in 0..<25 { store.apply(try .make(.notice, Notice(kind: "info", title: "same"))) }
+        XCTAssertEqual(store.noticeSequence, 25)
+        store.apply(Envelope(type: "notice", data: RawJSON(.string("garbage"))))
+        XCTAssertEqual(store.noticeSequence, 25, "undecodable notices do not count")
+    }
+
     func testUsageLoopsAndMemoryReplace() throws {
         let store = AppStore()
         store.apply(try .make(.memoryStatus, MemoryStatus(enabled: true, threads: 3)))

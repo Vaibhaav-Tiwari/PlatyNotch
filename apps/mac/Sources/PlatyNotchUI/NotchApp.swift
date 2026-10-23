@@ -181,7 +181,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// `config.reload` does not reopen memory, so memory changes restart the supervised
-    /// core (debounced; an external core only gets the reload).
+    /// core (debounced; an external core only gets the reload). Settings also calls this
+    /// after a Keychain key the config already refers to is replaced: the core gets
+    /// secrets on stdin only at launch.
     private func scheduleCoreRestart() {
         guard let supervisor else { return }
         restartTask?.cancel()
@@ -198,6 +200,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         memory.onOpenSettings = { [weak self] in self?.openSettings(section: "memory") }
         today.calendar.onOpenSettings = { [weak self] in self?.openSettings(section: "permissions") }
         settingsServices.showOnboarding = { [weak self] in self?.onboarding.show() }
+        settingsServices.restartCore = { [weak self] in self?.scheduleCoreRestart() }
     }
 
     private func openSettings(section: String?) {

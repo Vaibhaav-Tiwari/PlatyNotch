@@ -214,3 +214,41 @@ public enum InheritedSecrets {
         return OrderedJSON.object(pairs).data
     }
 }
+
+/// What saving an API key to the Keychain takes before the core uses it. Secrets reach
+/// the core only on stdin at launch, so a replaced Keychain item changes nothing until
+/// the core restarts.
+public enum KeySaveEffect: Equatable, Sendable {
+    /// config.json already refers to this Keychain item: the ref (and so the draft) is
+    /// unchanged, and the running core holds the old secret. Restart it now.
+    case restartCore
+    /// config.json does not refer to it yet: saving the settings writes the ref and
+    /// restarts the core.
+    case saveSettings
+
+    /// `savedRef`: the provider's `api_key_ref` in config.json; `newRef`: what `Keychain.save` returned.
+    public static func after(savedRef: String, newRef: String) -> KeySaveEffect {
+        savedRef == newRef ? .restartCore : .saveSettings
+    }
+
+    public func note(account: String) -> String {
+        let saved = "Saved in Keychain (service PlatyNotch, account \(account))."
+        switch self {
+        case .restartCore: return "\(saved) The core restarts to use it."
+        case .saveSettings: return "\(saved) Click Save below to use it."
+        }
+    }
+
+    /// Only a restart drops pending approvals (they go back to the agent's terminal).
+    public func warnsAboutApprovals(pending: Int) -> Bool {
+        self == .restartCore && pending > 0
+    }
+}
+
+/// The warning shown wherever a change restarts the core while approvals are pending.
+public enum CoreRestartWarning {
+    /// `action`: what restarts it, e.g. "Saving" or "Changing this".
+    public static func text(action: String) -> String {
+        "\(action) restarts the core: pending approvals go back to the agent's terminal."
+    }
+}
