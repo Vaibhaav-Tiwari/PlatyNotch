@@ -211,3 +211,37 @@ func TestEscapedPayloadTooBigNoDecisionRequest(t *testing.T) {
 		t.Fatalf("forwarded want=%v payload=%d bytes", got.WantDecision, len(got.Payload))
 	}
 }
+
+func TestAgentPID(t *testing.T) {
+	names := map[int]string{100: "/bin/zsh", 101: "-zsh", 102: "node", 103: "bash", 104: "claude", 105: "fish", 106: "/usr/local/bin/codex", 107: "-sh", 108: "dash"}
+	parents := map[int]int{100: 900, 101: 901, 103: 903, 105: 905, 107: 907, 108: 908}
+	name := func(p int) string { return names[p] }
+	parent := func(p int) int { return parents[p] }
+	rows := []struct {
+		claude string
+		ppid   int
+		want   int
+	}{
+		{"4242", 100, 4242}, // CLAUDE_PID wins
+		{"", 102, 102},      // parent is the agent (sh -c exec'd it)
+		{"", 104, 104},
+		{"", 106, 106},
+		{"", 100, 900}, // parent is a shell: step up one
+		{"", 101, 901}, // login shell form
+		{"", 103, 903},
+		{"", 105, 905},
+		{"", 107, 907},
+		{"", 108, 908},
+		{"x", 102, 102}, // junk CLAUDE_PID ignored
+		{"", 1, 0},      // orphaned under launchd: unknown
+	}
+	for _, r := range rows {
+		if got := agentPID(r.claude, r.ppid, name, parent); got != r.want {
+			t.Errorf("agentPID(%q,%d)=%d want %d", r.claude, r.ppid, got, r.want)
+		}
+	}
+	// A shell whose parent is unknown keeps the shell rather than 0.
+	if got := agentPID("", 100, name, func(int) int { return 0 }); got != 100 {
+		t.Errorf("unknown grandparent: got %d", got)
+	}
+}

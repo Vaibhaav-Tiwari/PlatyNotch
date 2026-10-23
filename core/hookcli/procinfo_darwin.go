@@ -35,3 +35,6 @@ func ttyOf(pid int) string {
 	}
 	return t
 }
+
+// procName is the process's command name (`ps -o comm=`), e.g. "/bin/zsh" or "-zsh".
+func procName(pid int) string { return psOut("-o", "comm=", "-p", strconv.Itoa(pid)) }

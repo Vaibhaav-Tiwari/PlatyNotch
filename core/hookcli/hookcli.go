@@ -9,7 +9,9 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/platynotch/platynotch/core/agents"
@@ -137,14 +139,37 @@ func needsProcInfo(event string) bool {
 
 // fillProcInfo sets PID and TTY. Failures leave the fields empty.
 func fillProcInfo(ev *protocol.HookEvent, claudePID string) {
-	pid := 0
-	if n, err := strconv.Atoi(claudePID); err == nil && n > 0 {
-		pid = n
-	} else if p := parentOf(os.Getppid()); p > 0 {
-		pid = p
-	}
+	pid := agentPID(claudePID, os.Getppid(), procName, parentOf)
 	ev.PID = pid
 	if pid > 0 {
 		ev.TTY = ttyOf(pid)
 	}
+}
+
+// agentPID picks the agent's PID: CLAUDE_PID when set, else our parent. Hook
+// runners use `sh -c`, which execs the command, so the parent is normally the
+// agent itself; when it is still a shell (a compound hook command), the agent
+// is one level further up.
+func agentPID(claudePID string, ppid int, name func(int) string, parent func(int) int) int {
+	if n, err := strconv.Atoi(claudePID); err == nil && n > 0 {
+		return n
+	}
+	if ppid <= 1 {
+		return 0 // orphaned (reparented to launchd): unknown
+	}
+	if isShell(name(ppid)) {
+		if p := parent(ppid); p > 1 {
+			return p
+		}
+	}
+	return ppid
+}
+
+func isShell(comm string) bool {
+	comm = strings.TrimPrefix(filepath.Base(strings.TrimSpace(comm)), "-")
+	switch comm {
+	case "sh", "bash", "zsh", "dash", "fish":
+		return true
+	}
+	return false
 }
