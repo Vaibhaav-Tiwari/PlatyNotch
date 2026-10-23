@@ -51,7 +51,7 @@ The first message on every connection is `hello`. Roles: `hook`, `ui`,
 | `capture.text` | capture → core | `CaptureText` |
 | `memory.search` | any → core | `MemorySearch` |
 | `memory.results` | core → requester | `MemoryResults` |
-| `ext.request` | ext/ui → core → extension handler | `ExtMessage` |
+| `ext.request` | ext/ui → core → extension handler; reply core → requester (same type and `id`) | `ExtMessage` |
 | `ext.event` | extension → ui/ext subscribers | `ExtMessage` |
 
 ## Payloads
@@ -92,14 +92,19 @@ Session states: `active`, `idle`, `waiting_input`, `blocked`, `exited`.
 - A hook connection carries exactly one `hook.event`. The core always replies
   `hook.ack` (same `id`). With `wait: true` it then sends one `hook.decision`
   (same `id`) and closes the connection. Closing the hook connection while
-  waiting expires the approval (`approval.resolved` with behavior `none`).
+  waiting expires the approval (`approval.resolved` with behavior `none`,
+  source `hook-gone`).
 - Approvals reach deciders only when the event wants a decision, the adapter
   treats the event as a permission request and supports approvals, and
   approvals are enabled for that agent. A policy `allow`/`deny` verdict
   answers immediately (`source` is the policy's, e.g. `local`); `ask` or no
   verdict shows the approval to deciders (subscribed `ui` clients and
   extension deciders). With no decider the hook gets `wait: false`. When the
-  last decider disconnects, pending approvals expire.
+  last decider disconnects, pending approvals survive a 5 s grace period, so a
+  restarting UI finds them in its `snapshot` and can still answer; if no
+  decider is back by then they expire with source `no-decider`.
+- An expired approval resolves with behavior `none` and a source naming the
+  reason: `timeout`, `hook-gone`, `no-decider` or `shutdown`.
 - `approval.decide` accepts behavior `allow` or `deny` only; anything else, an
   unknown id or an already-resolved approval gets an `error` with the same `id`.
 - `memory.search` and `loop.set_status` reply `error` "memory is off" when

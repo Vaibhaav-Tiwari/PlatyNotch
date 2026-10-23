@@ -40,6 +40,14 @@ const queueSize = 256
 // before treating it as stale.
 const staleDialTimeout = 200 * time.Millisecond
 
+// NoDeciderGrace is how long pending approvals survive after the last decider
+// (UI subscriber or registered extension decider) goes away, e.g. while the
+// Mac app restarts or updates.
+const NoDeciderGrace = 5 * time.Second
+
+// noDeciderGrace is NoDeciderGrace, overridable by tests before New.
+var noDeciderGrace = NoDeciderGrace
+
 type Options struct {
 	Socket, Edition string
 	Config          config.Config
@@ -57,16 +65,19 @@ type Server struct {
 	store *session.Store
 	mgr   *approval.Manager
 
-	mu       sync.Mutex
-	cfg      config.Config
-	usage    protocol.Usage
-	subs     map[*conn]struct{}   // subscribed connections
-	extSubs  map[*extSub]struct{} // Host.Subscribe callbacks
-	conns    map[*conn]struct{}   // every open connection
-	deciders int                  // RegisterDecider registrations
-	policies []policy.Provider    // extension policies, before local rules
-	auditors []ext.Auditor
-	serving  bool
+	mu         sync.Mutex
+	cfg        config.Config
+	usage      protocol.Usage
+	subs       map[*conn]struct{}   // subscribed connections
+	extSubs    map[*extSub]struct{} // Host.Subscribe callbacks
+	conns      map[*conn]struct{}   // every open connection
+	deciders   int                  // RegisterDecider registrations
+	policies   []policy.Provider    // extension policies, before local rules
+	auditors   []ext.Auditor
+	serving    bool
+	closed     bool          // Serve is shutting down
+	grace      time.Duration // copy of noDeciderGrace taken in New
+	graceTimer *time.Timer   // armed while there are no deciders
 
 	wg sync.WaitGroup
 }
@@ -97,6 +108,7 @@ func New(o Options) (*Server, error) {
 		subs:    map[*conn]struct{}{},
 		extSubs: map[*extSub]struct{}{},
 		conns:   map[*conn]struct{}{},
+		grace:   noDeciderGrace,
 	}
 	if s.mem != nil {
 		s.mem.OnLoopsChanged(func(loops []protocol.Loop) {
@@ -168,6 +180,11 @@ func (s *Server) Serve(ctx context.Context) error {
 
 	cancel()
 	s.mu.Lock()
+	s.closed = true
+	if s.graceTimer != nil {
+		s.graceTimer.Stop()
+		s.graceTimer = nil
+	}
 	for c := range s.conns {
 		c.close()
 	}
@@ -250,16 +267,39 @@ func (s *Server) decidersLocked() int {
 	return n
 }
 
-// expireIfNoDecidersLocked expires every pending approval once nobody is
-// left to answer, so waiting hooks fall back to the agent's own prompt now
-// instead of at the timeout.
-func (s *Server) expireIfNoDecidersLocked() {
+// checkDecidersLocked runs after any change to the set of deciders. When the
+// count drops to zero it arms a grace timer; a decider (re)appearing before it
+// fires cancels it, so a Mac-app restart keeps in-flight approvals (the new
+// UI sees them in its snapshot). If the timer fires with still nobody able to
+// answer, pending approvals expire and the hooks fall back to the agent's own
+// prompt instead of waiting for the full approval timeout.
+func (s *Server) checkDecidersLocked() {
 	if s.decidersLocked() > 0 {
+		if s.graceTimer != nil {
+			s.graceTimer.Stop()
+			s.graceTimer = nil
+		}
 		return
 	}
-	for _, a := range s.mgr.Pending() {
-		s.mgr.Expire(a.ID)
+	if s.graceTimer != nil || s.closed {
+		return
 	}
+	var t *time.Timer
+	t = time.AfterFunc(s.grace, func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.graceTimer != t {
+			return // cancelled (and possibly re-armed) meanwhile
+		}
+		s.graceTimer = nil
+		if s.decidersLocked() > 0 {
+			return
+		}
+		for _, a := range s.mgr.Pending() {
+			s.mgr.ExpireWith(a.ID, "no-decider")
+		}
+	})
+	s.graceTimer = t
 }
 
 // memView reads memory state for a snapshot. It never runs under s.mu.
@@ -346,6 +386,7 @@ func (s *Server) Decide(d protocol.ApprovalDecide) error {
 func (s *Server) RegisterDecider(name string) (unregister func()) {
 	s.mu.Lock()
 	s.deciders++
+	s.checkDecidersLocked()
 	s.mu.Unlock()
 	s.logf("decider %s registered", name)
 	var once sync.Once
@@ -353,7 +394,7 @@ func (s *Server) RegisterDecider(name string) (unregister func()) {
 		once.Do(func() {
 			s.mu.Lock()
 			s.deciders--
-			s.expireIfNoDecidersLocked()
+			s.checkDecidersLocked()
 			s.mu.Unlock()
 		})
 	}

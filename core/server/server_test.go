@@ -337,7 +337,7 @@ func TestHookDisconnectExpires(t *testing.T) {
 	ui.waitFor(protocol.TypeApprovalAdded)
 	h.conn.Close()
 	res := decode[protocol.ApprovalResolved](t, ui.waitFor(protocol.TypeApprovalResolved))
-	if res.ID != ack.ApprovalID || res.Behavior != protocol.BehaviorNone {
+	if res.ID != ack.ApprovalID || res.Behavior != protocol.BehaviorNone || res.Source != "hook-gone" {
 		t.Fatalf("resolved %+v", res)
 	}
 	if p := s.Snapshot().Approvals; len(p) != 0 {
@@ -357,7 +357,7 @@ func TestApprovalTimeoutExpires(t *testing.T) {
 	if d := readDecision(t, h); d.Behavior != protocol.BehaviorNone {
 		t.Fatalf("decision %+v", d)
 	}
-	if res := decode[protocol.ApprovalResolved](t, ui.waitFor(protocol.TypeApprovalResolved)); res.Behavior != protocol.BehaviorNone {
+	if res := decode[protocol.ApprovalResolved](t, ui.waitFor(protocol.TypeApprovalResolved)); res.Behavior != protocol.BehaviorNone || res.Source != "timeout" {
 		t.Fatalf("resolved %+v", res)
 	}
 	if n := decode[protocol.Notice](t, ui.waitFor(protocol.TypeNotice)); n.Kind != "approval-timeout" {
@@ -712,8 +712,20 @@ func TestSlowSubscriberDisconnected(t *testing.T) {
 	fresh.waitFor(protocol.TypePong)
 }
 
+// withGrace shortens the no-decider grace period for one test.
+func withGrace(t *testing.T, d time.Duration) {
+	t.Helper()
+	old := noDeciderGrace
+	noDeciderGrace = d
+	t.Cleanup(func() { noDeciderGrace = old })
+}
+
 func TestLastDeciderGoneExpires(t *testing.T) {
+	withGrace(t, 50*time.Millisecond)
+	var mu sync.Mutex
+	var audits []ext.AuditEvent
 	s := start(t, Options{Config: config.Default()})
+	s.AddAuditor(auditFunc(func(e ext.AuditEvent) { mu.Lock(); audits = append(audits, e); mu.Unlock() }))
 	ui, _ := subscribe(t, s.sock)
 	h := hook(t, s.sock, permission("s1", "npm test"))
 	readAck(t, h)
@@ -723,7 +735,51 @@ func TestLastDeciderGoneExpires(t *testing.T) {
 	if err != nil || env.Type != protocol.TypeHookDecision {
 		t.Fatalf("got %v %v", env.Type, err)
 	}
-	if d := decode[protocol.HookDecision](t, env); d.Behavior != protocol.BehaviorNone {
+	if d := decode[protocol.HookDecision](t, env); d.Behavior != protocol.BehaviorNone || d.Source != "no-decider" {
 		t.Fatalf("decision %+v", d)
+	}
+	deadline := time.Now().Add(time.Second)
+	for {
+		mu.Lock()
+		n := len(audits)
+		mu.Unlock()
+		if n == 1 || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(audits) != 1 || audits[0].Source != "no-decider" || audits[0].Decision != protocol.BehaviorNone {
+		t.Fatalf("audits %+v", audits)
+	}
+}
+
+func TestDeciderReconnectWithinGrace(t *testing.T) {
+	withGrace(t, 2*time.Second)
+	s := start(t, Options{Config: config.Default()})
+	ui, _ := subscribe(t, s.sock)
+	h := hook(t, s.sock, permission("s1", "npm test"))
+	ack := readAck(t, h)
+	ui.waitFor(protocol.TypeApprovalAdded)
+	ui.conn.Close() // the Mac app restarts
+	time.Sleep(100 * time.Millisecond)
+
+	ui2, snap := subscribe(t, s.sock)
+	if len(snap.Approvals) != 1 || snap.Approvals[0].ID != ack.ApprovalID {
+		t.Fatalf("snapshot approvals %+v", snap.Approvals)
+	}
+	ui2.send(protocol.TypeApprovalDecide, "d", protocol.ApprovalDecide{ID: ack.ApprovalID, Behavior: protocol.BehaviorAllow})
+	if d := readDecision(t, h); d.Behavior != protocol.BehaviorAllow {
+		t.Fatalf("decision %+v", d)
+	}
+	// The cancelled grace timer must not expire later approvals.
+	h2 := hook(t, s.sock, permission("s2", "npm run build"))
+	ack2 := readAck(t, h2)
+	if !ack2.Wait {
+		t.Fatal("hook did not wait with a UI connected")
+	}
+	if _, err := h2.next(2500 * time.Millisecond); !errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatalf("approval resolved without an answer: %v", err)
 	}
 }

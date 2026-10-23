@@ -90,7 +90,7 @@ func (s *Server) handleHook(ctx context.Context, c *conn, env protocol.Envelope)
 	var d protocol.HookDecision
 	timedOut, hookGone := false, ackErr != nil
 	if hookGone {
-		s.mgr.Expire(appr.ID)
+		s.mgr.ExpireWith(appr.ID, "hook-gone")
 		d = <-ch
 	} else {
 		timer := time.NewTimer(timeout)
@@ -106,9 +106,16 @@ func (s *Server) handleHook(ctx context.Context, c *conn, env protocol.Envelope)
 		}
 		timer.Stop()
 		if !decided {
-			// Expire loses only to a decision that raced in; either way
+			reason := "shutdown"
+			switch {
+			case timedOut:
+				reason = "timeout"
+			case hookGone:
+				reason = "hook-gone"
+			}
+			// Expiry loses only to a decision that raced in; either way
 			// exactly one decision is now buffered on ch.
-			s.mgr.Expire(appr.ID)
+			s.mgr.ExpireWith(appr.ID, reason)
 			d = <-ch
 		}
 	}

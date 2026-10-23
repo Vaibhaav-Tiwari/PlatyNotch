@@ -28,6 +28,7 @@ func (s *Server) handleUI(ctx context.Context, c *conn, env protocol.Envelope) {
 		}
 		s.mu.Lock()
 		c.role = h.Role
+		s.checkDecidersLocked()
 		s.mu.Unlock()
 
 	case protocol.TypePing:
@@ -39,6 +40,7 @@ func (s *Server) handleUI(ctx context.Context, c *conn, env protocol.Envelope) {
 		snap := s.snapshotLocked(loops, ms)
 		if c.send(protocol.MustNew(protocol.TypeSnapshot, id, snap)) {
 			s.subs[c] = struct{}{}
+			s.checkDecidersLocked()
 		}
 		s.mu.Unlock()
 

@@ -110,7 +110,7 @@ func (c *conn) serve(ctx context.Context) {
 		c.s.mu.Lock()
 		delete(c.s.subs, c)
 		delete(c.s.conns, c)
-		c.s.expireIfNoDecidersLocked()
+		c.s.checkDecidersLocked()
 		c.s.mu.Unlock()
 		c.close()
 	}()

@@ -108,7 +108,13 @@ func (m *Manager) Decide(d protocol.ApprovalDecide) error {
 // Expire resolves a still-pending approval with BehaviorNone so the agent
 // falls back to asking in its own terminal. It reports whether it did.
 func (m *Manager) Expire(id string) bool {
-	return m.resolve(id, protocol.HookDecision{Behavior: protocol.BehaviorNone, Source: "timeout"}) == nil
+	return m.ExpireWith(id, "timeout")
+}
+
+// ExpireWith is Expire with an explicit reason in the decision's Source
+// (e.g. "hook-gone", "shutdown", "no-decider").
+func (m *Manager) ExpireWith(id, source string) bool {
+	return m.resolve(id, protocol.HookDecision{Behavior: protocol.BehaviorNone, Source: source}) == nil
 }
 
 // Pending lists unresolved approvals, oldest first.

@@ -91,3 +91,17 @@ func TestExpireDeliversNone(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestExpireWithSource(t *testing.T) {
+	m := NewManager(nil)
+	a, ch := m.Open(protocol.Approval{})
+	if !m.ExpireWith(a.ID, "hook-gone") {
+		t.Fatal("ExpireWith failed")
+	}
+	if d := <-ch; d.Behavior != protocol.BehaviorNone || d.Source != "hook-gone" {
+		t.Fatalf("decision %+v", d)
+	}
+	if m.ExpireWith(a.ID, "x") {
+		t.Fatal("second ExpireWith succeeded")
+	}
+}
