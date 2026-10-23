@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {"command": "./audit.sh", "timeout": 3}
+    ]
+  }
+}

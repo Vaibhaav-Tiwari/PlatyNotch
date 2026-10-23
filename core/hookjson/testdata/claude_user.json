@@ -1,0 +1,15 @@
+{
+  "theme": "dark",
+  "zeta": {"b": 1, "a": [3, 2, 1]},
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {"type": "command", "command": "echo hook", "async": true}
+        ]
+      }
+    ]
+  },
+  "alpha": null
+}
