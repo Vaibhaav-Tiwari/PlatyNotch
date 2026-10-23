@@ -396,3 +396,38 @@ func TestThreadTitleAndURLSanitized(t *testing.T) {
 		}
 	}
 }
+
+func TestRedactTokens(t *testing.T) {
+	gh := "ghp_" + strings.Repeat("A1b2", 9)
+	ghs := "ghs_" + strings.Repeat("Z9", 20)
+	pat := "github_pat_" + strings.Repeat("a_B1", 14)
+	slack := "xoxb-123456789012-abcdefABCDEF"
+	slackP := "xoxp-1-2-3-abcdef0123"
+	gkey := "AIza" + strings.Repeat("Ab1_-", 7)
+	for _, tok := range []string{gh, ghs, pat, slack, slackP, gkey} {
+		in := "tok " + tok + " end"
+		if got := Redact(in); got != "tok [redacted] end" {
+			t.Errorf("Redact(%q) = %q", in, got)
+		}
+	}
+	for _, keep := range []string{"ghp_short", "xoxb-short", "AIzaShort", "github_pat_tooShort"} {
+		if got := Redact(keep); got != keep {
+			t.Errorf("Redact(%q) changed to %q", keep, got)
+		}
+	}
+}
+
+func TestRedactCardSeparators(t *testing.T) {
+	for _, sep := range []string{" ", "  ", "\t", " ", " ", " ", "-", " -", "  "} {
+		in := "card 4242" + sep + "4242" + sep + "4242" + sep + "4242 end"
+		if got := Redact(in); got != "card [redacted] end" {
+			t.Errorf("sep %q: Redact(%q) = %q", sep, in, got)
+		}
+	}
+	// Three spaces or a newline break the run; digits far apart are not one card.
+	for _, keep := range []string{"4242   4242   4242   4242", "4242\n4242\n4242\n4242"} {
+		if got := Redact(keep); got != keep {
+			t.Errorf("Redact(%q) changed to %q", keep, got)
+		}
+	}
+}

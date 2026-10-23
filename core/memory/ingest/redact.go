@@ -13,16 +13,27 @@ var (
 	jwt        = regexp.MustCompile(`eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`)
 	skKey      = regexp.MustCompile(`sk-[A-Za-z0-9_-]{20,}`)
 	awsKey     = regexp.MustCompile(`AKIA[0-9A-Z]{16}`)
-	cardRun    = regexp.MustCompile(`[0-9](?:[ -]?[0-9])*`)
+	ghToken    = regexp.MustCompile(`gh[pousr]_[A-Za-z0-9]{36,}`)
+	ghPAT      = regexp.MustCompile(`github_pat_[A-Za-z0-9_]{50,}`)
+	slackToken = regexp.MustCompile(`xox[abprs]-[A-Za-z0-9-]{10,}`)
+	googleKey  = regexp.MustCompile(`AIza[0-9A-Za-z_-]{35}`)
+	// Digit groups separated by 1-2 of space, tab, NBSP, figure space, narrow
+	// NBSP or dash (how card numbers are typed and rendered).
+	cardRun = regexp.MustCompile(`[0-9](?:[ \t\x{00A0}\x{2007}\x{202F}-]{0,2}[0-9])*`)
 )
 
 // Redact replaces secrets with "[redacted]": private key blocks, JWTs,
-// sk- API keys, AWS access key ids and Luhn-valid 13-19 digit card numbers.
+// sk- API keys, AWS access key ids, GitHub tokens, Slack tokens, Google API
+// keys and Luhn-valid 13-19 digit card numbers.
 func Redact(s string) string {
 	s = privateKey.ReplaceAllString(s, redacted)
 	s = jwt.ReplaceAllString(s, redacted)
 	s = skKey.ReplaceAllString(s, redacted)
 	s = awsKey.ReplaceAllString(s, redacted)
+	s = ghToken.ReplaceAllString(s, redacted)
+	s = ghPAT.ReplaceAllString(s, redacted)
+	s = slackToken.ReplaceAllString(s, redacted)
+	s = googleKey.ReplaceAllString(s, redacted)
 	return redactCards(s)
 }
 
@@ -33,7 +44,7 @@ type digitGroup struct{ start, end int }
 type cardWin struct{ start, end int }
 
 // redactCards finds Luhn-valid 13-19 digit card numbers. Within each maximal
-// run of digit groups (single space/dash separators) every window that starts
+// run of digit groups (cardRun separators) every window that starts
 // and ends on a group boundary is a candidate; valid windows are merged.
 func redactCards(s string) string {
 	runs := cardRun.FindAllStringIndex(s, -1)
