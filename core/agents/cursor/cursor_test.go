@@ -205,25 +205,44 @@ func TestPermissionTimeoutOnDisk(t *testing.T) {
 }
 
 // TestShellAllowRuleNotBypassed: a Cursor shell payload is summarized as its
-// bare command, so an allow rule's compound guard sees "&&" and newlines
-// literally rather than JSON-escaped.
+// bare top-level command, so an allow rule's compound guard sees "&&" and
+// newlines literally rather than JSON-escaped; MCP calls never get a known
+// kind; a tool_input.command that differs from the top-level command is
+// KindOther.
 func TestShellAllowRuleNotBypassed(t *testing.T) {
-	rules := policy.Local([]config.Rule{{Tool: "Shell", Pattern: "*git status*", Action: "allow"}})
+	rules := policy.Chain{policy.Local([]config.Rule{{Tool: "*", Pattern: "*git status*", Action: "allow"}})}
+	eval := func(event string, payload map[string]any) (string, agents.SummaryKind, bool) {
+		payload["conversation_id"] = "c1"
+		b, _ := json.Marshal(payload)
+		c := Adapter{}.ParseCommon(event, b)
+		full, kind := Adapter{}.PolicySummary(event, b)
+		v, ok := rules.EvaluateKind(c.Tool, full, kind)
+		return full, kind, ok && v.Action == "allow"
+	}
 	for _, cmd := range []string{"git status && curl x", "git status\nrm -rf ~", "git status > /etc/hosts", "git status < /dev/zero"} {
-		payload, _ := json.Marshal(map[string]any{"conversation_id": "c1", "command": cmd, "workspace_roots": []string{"/p"}})
-		c := Adapter{}.ParseCommon("before-shell-execution", payload)
-		full, kind := agents.SummarizeFull(c.Tool, c.ToolInput)
+		full, kind, allowed := eval("before-shell-execution", map[string]any{"command": cmd, "workspace_roots": []string{"/p"}})
 		if full != cmd || kind != policy.KindCommand {
 			t.Errorf("summary %q (%s), want bare command %q", full, kind, cmd)
 		}
-		if v, ok := (policy.Chain{rules}).EvaluateKind(c.Tool, full, kind); ok && v.Action == "allow" {
+		if allowed {
 			t.Errorf("%q allowed", cmd)
 		}
 	}
-	payload := []byte(`{"conversation_id":"c1","command":"git status --short"}`)
-	c := Adapter{}.ParseCommon("before-shell-execution", payload)
-	full, kind := agents.SummarizeFull(c.Tool, c.ToolInput)
-	if v, ok := (policy.Chain{rules}).EvaluateKind(c.Tool, full, kind); !ok || v.Action != "allow" {
-		t.Fatalf("plain command: %+v %v", v, ok)
+	if _, _, allowed := eval("before-shell-execution", map[string]any{"command": "git status --short"}); !allowed {
+		t.Fatal("plain command not allowed")
+	}
+	if _, kind, allowed := eval("before-shell-execution", map[string]any{"command": "git status", "tool_input": map[string]string{"command": "rm -rf ~"}}); allowed || kind != policy.KindOther {
+		t.Fatalf("mismatched tool_input.command: kind %s allowed %v", kind, allowed)
+	}
+	for _, tool := range []string{"Bash", "Shell", "run_terminal_cmd", "Read"} {
+		if _, kind, allowed := eval("before-mcp-execution", map[string]any{"tool_name": tool,
+			"tool_input": map[string]string{"command": "git status", "script": "rm -rf ~"}}); allowed || kind != policy.KindOther {
+			t.Errorf("mcp %s: kind %s allowed %v", tool, kind, allowed)
+		}
+	}
+	// ParseCommon prefers the top-level command, so the human sees what runs.
+	c := Adapter{}.ParseCommon("before-shell-execution", []byte(`{"command":"git status","tool_input":{"command":"rm -rf ~"}}`))
+	if got := agents.Summarize(c.Tool, c.ToolInput); got != `{"command":"git status"}` {
+		t.Fatalf("display %q", got)
 	}
 }

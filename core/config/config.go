@@ -47,6 +47,13 @@ type Policy struct {
 // whole, untruncated summary of the call (the command, file path or URL), not
 // the shortened text shown on the approval card.
 //
+// An "allow" rule only ever approves a call whose summary has a known kind,
+// decided by the agent adapter from the hook event and payload: Claude Code
+// Bash commands, file-tool paths and WebFetch URLs (with only the inputs
+// those tools expect, and for URLs http(s) without credentials or "..");
+// Cursor shell commands. MCP tools, unknown tools, other agents and
+// unexpected inputs always go to a person (or a deny/ask rule).
+//
 // An "allow" rule never approves a compound command: it is skipped when the
 // summary contains any of ; && || | & ` $( > < or a newline, unless that
 // exact sequence also appears literally in Pattern. So "git status*" allows

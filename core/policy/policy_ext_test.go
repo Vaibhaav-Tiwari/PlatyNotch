@@ -54,7 +54,7 @@ func TestKindGatesAllow(t *testing.T) {
 	if v, ok := eval("mcp__fs__run", `{"command":"ls","path":"/etc/shadow"}`); !ok || v.Action != "deny" {
 		t.Errorf("deny must still apply to other kinds: %+v %v", v, ok)
 	}
-	for _, tool := range []string{"Bash", "Shell", "run_terminal_cmd"} {
+	for _, tool := range []string{"Bash"} {
 		if v, ok := eval(tool, `{"command":"git status --short"}`); !ok || v.Action != "allow" {
 			t.Errorf("%s: %+v %v", tool, v, ok)
 		}

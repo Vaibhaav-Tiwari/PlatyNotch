@@ -21,7 +21,8 @@ type Provider interface {
 	Evaluate(tool, summary string) (Verdict, bool)
 }
 
-// Kind says what a summary is (see agents.SummarizeFull).
+// Kind says what a summary is. The agent adapter decides it from the hook
+// event and payload (see agents.PolicySummary), never from the tool name.
 type Kind string
 
 const (
@@ -30,23 +31,6 @@ const (
 	KindURL     Kind = "url"     // WebFetch's URL
 	KindOther   Kind = "other"   // anything else, including fallbacks
 )
-
-// shellTools run their "command" input in a shell.
-var shellTools = map[string]bool{"Bash": true, "Shell": true, "run_terminal_cmd": true}
-
-// KindFor is the kind a tool's summary has when its input carries the
-// expected field.
-func KindFor(tool string) Kind {
-	switch {
-	case shellTools[tool]:
-		return KindCommand
-	case fileTools[tool]:
-		return KindPath
-	case tool == "WebFetch":
-		return KindURL
-	}
-	return KindOther
-}
 
 // KindProvider is implemented by providers that take the summary's kind
 // into account.
@@ -57,9 +41,9 @@ type KindProvider interface {
 // Chain evaluates providers in order; the first match wins.
 type Chain []Provider
 
-// Evaluate is EvaluateKind with KindFor(tool).
+// Evaluate is EvaluateKind with KindOther: no local allow rule applies.
 func (c Chain) Evaluate(tool, summary string) (Verdict, bool) {
-	return c.EvaluateKind(tool, summary, KindFor(tool))
+	return c.EvaluateKind(tool, summary, KindOther)
 }
 
 // EvaluateKind passes kind to providers implementing KindProvider.
@@ -97,9 +81,10 @@ func Local(rules []config.Rule) Provider {
 
 func (local) Name() string { return "local" }
 
-// Evaluate is EvaluateKind with KindFor(tool).
+// Evaluate is EvaluateKind with KindOther: deny and ask rules apply, allow
+// rules never do. Callers that know the kind use EvaluateKind.
 func (l local) Evaluate(tool, summary string) (Verdict, bool) {
-	return l.EvaluateKind(tool, summary, KindFor(tool))
+	return l.EvaluateKind(tool, summary, KindOther)
 }
 
 // EvaluateKind never applies an allow rule unless kind is command, path or

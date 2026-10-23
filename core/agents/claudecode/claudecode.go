@@ -33,6 +33,7 @@ import (
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/agents"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/hookjson"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/paths"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/policy"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
 
@@ -133,6 +134,18 @@ func (Adapter) ParseCommon(_ string, payload []byte) agents.Common {
 }
 
 func (Adapter) Approvals() agents.ApprovalSupport { return agents.ApprovalsVerified }
+
+// PolicySummary gives the permission-request event a known kind through
+// agents.SummarizeFull (Bash, file tools, WebFetch); every other event and
+// tool, including mcp__*, is KindOther.
+func (a Adapter) PolicySummary(event string, payload []byte) (string, agents.SummaryKind) {
+	c := a.ParseCommon(event, payload)
+	s, kind := agents.SummarizeFull(c.Tool, c.ToolInput)
+	if event != permissionEvent {
+		kind = policy.KindOther
+	}
+	return s, kind
+}
 
 func (Adapter) IsPermissionEvent(event string) bool { return event == permissionEvent }
 

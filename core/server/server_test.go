@@ -970,3 +970,63 @@ func TestAllowOnlyForKnownSummaryKinds(t *testing.T) {
 		t.Fatalf("bash: decision %+v", d)
 	}
 }
+
+// TestSummaryKindByAdapterAndEvent: the adapter and event, not the tool
+// name, decide whether an allow rule may apply; extra arguments, mismatched
+// commands and odd URLs fall through to a human.
+func TestSummaryKindByAdapterAndEvent(t *testing.T) {
+	cfg := config.Default()
+	cfg.Approvals.Agents["cursor"] = true
+	cfg.Policy.Rules = append([]config.Rule{
+		{Tool: "*", Pattern: "*git status*", Action: "allow"},
+		{Tool: "*", Pattern: "/proj/*", Action: "allow"},
+		{Tool: "*", Pattern: "https://*", Action: "allow"},
+	}, cfg.Policy.Rules...)
+	s := start(t, Options{Config: cfg})
+	subscribe(t, s.sock)
+	claude := func(sid, tool string, input any) protocol.HookEvent {
+		p, _ := json.Marshal(map[string]any{"session_id": sid, "cwd": "/tmp/proj", "tool_name": tool, "tool_use_id": "tu", "tool_input": input})
+		return claudeEvent("permission-request", sid, string(p), true)
+	}
+	cursor := func(event, sid string, payload map[string]any) protocol.HookEvent {
+		payload["conversation_id"] = sid
+		p, _ := json.Marshal(payload)
+		return protocol.HookEvent{Agent: "cursor", Event: event, Payload: p, CWD: "/tmp/proj", WantDecision: true, At: time.Now().UTC()}
+	}
+	human := map[string]protocol.HookEvent{
+		"cursor mcp Bash+script": cursor("before-mcp-execution", "c1", map[string]any{"tool_name": "Bash",
+			"tool_input": map[string]string{"command": "git status", "script": "rm -rf ~"}}),
+		"cursor mcp Shell": cursor("before-mcp-execution", "c2", map[string]any{"tool_name": "Shell",
+			"tool_input": map[string]string{"command": "git status"}}),
+		"claude Read+also":      claude("s1", "Read", map[string]string{"file_path": "/proj/a", "also": "/etc/shadow"}),
+		"claude WebFetch+POST":  claude("s2", "WebFetch", map[string]string{"url": "https://x.dev/a", "prompt": "p", "method": "POST", "body": "secrets"}),
+		"claude Bash+extra key": claude("s3", "Bash", map[string]string{"command": "git status", "script": "rm -rf ~"}),
+		"claude url userinfo":   claude("s4", "WebFetch", map[string]string{"url": "https://u:p@x.dev/a"}),
+		"claude url dotdot":     claude("s5", "WebFetch", map[string]string{"url": "https://x.dev/a/../b"}),
+		"cursor shell mismatch": cursor("before-shell-execution", "c3", map[string]any{"command": "git status",
+			"tool_input": map[string]string{"command": "rm -rf ~"}}),
+	}
+	for name, ev := range human {
+		h := hook(t, s.sock, ev)
+		if ack := readAck(t, h); !ack.Wait || ack.ApprovalID == "" {
+			t.Errorf("%s: decided by policy, ack %+v", name, ack)
+		}
+	}
+	allowed := map[string]protocol.HookEvent{
+		"claude Bash":       claude("a1", "Bash", map[string]any{"command": "git status --short", "description": "d", "timeout": 5}),
+		"claude Read":       claude("a2", "Read", map[string]any{"file_path": "/proj/a.go", "offset": 1, "limit": 10}),
+		"claude WebFetch":   claude("a3", "WebFetch", map[string]string{"url": "https://x.dev/a", "prompt": "p"}),
+		"cursor shell":      cursor("before-shell-execution", "a4", map[string]any{"command": "git status"}),
+		"cursor shell same": cursor("before-shell-execution", "a5", map[string]any{"command": "git status", "tool_input": map[string]string{"command": "git status"}}),
+	}
+	for name, ev := range allowed {
+		h := hook(t, s.sock, ev)
+		if ack := readAck(t, h); !ack.Wait || ack.ApprovalID != "" {
+			t.Errorf("%s: ack %+v", name, ack)
+			continue
+		}
+		if d := readDecision(t, h); d.Behavior != protocol.BehaviorAllow {
+			t.Errorf("%s: decision %+v", name, d)
+		}
+	}
+}

@@ -54,8 +54,8 @@ func TestSummarize(t *testing.T) {
 		{"WebFetch", `{"url":"https://x.dev","prompt":"p"}`, "https://x.dev"},
 		{"Mystery", `{"a": 1,  "b": "x"}`, `{"a":1,"b":"x"}`},
 		{"NotebookEdit", `{"notebook_path":"/a/n.ipynb"}`, "/a/n.ipynb"},
-		{"Shell", `{"command":"a && b"}`, "a && b"},
-		{"run_terminal_cmd", `{"command":"ls\nrm x","is_background":false}`, "ls\nrm x"},
+		{"Shell", `{"command":"a && b"}`, `{"command":"a && b"}`},
+		{"Bash", `{"command":"ls","script":"rm -rf ~"}`, `{"command":"ls","script":"rm -rf ~"}`},
 		{"Mystery", `{"command":42}`, `{"command":42}`},
 	}
 	for _, c := range cases {
@@ -86,9 +86,18 @@ func TestSummarizeFullNeverTruncates(t *testing.T) {
 		tool, in string
 		kind     policy.Kind
 	}{
-		{"Shell", `{"command":"ls"}`, policy.KindCommand},
-		{"run_terminal_cmd", `{"command":"ls"}`, policy.KindCommand},
+		{"Bash", `{"command":"ls","description":"d","timeout":5,"run_in_background":false}`, policy.KindCommand},
+		{"Shell", `{"command":"ls"}`, policy.KindOther},
+		{"run_terminal_cmd", `{"command":"ls"}`, policy.KindOther},
+		{"Bash", `{"command":"ls","script":"rm -rf ~"}`, policy.KindOther},
 		{"Write", `{"file_path":"/a"}`, policy.KindPath},
+		{"Edit", `{"file_path":"/a","old_string":"x","new_string":"y","replace_all":true}`, policy.KindPath},
+		{"Read", `{"file_path":"/proj/a","also":"/etc/shadow"}`, policy.KindOther},
+		{"WebFetch", `{"url":"https://x/a","prompt":"p","method":"POST","body":"b"}`, policy.KindOther},
+		{"WebFetch", `{"url":"https://u:p@x/a"}`, policy.KindOther},
+		{"WebFetch", `{"url":"https://x/a/../b"}`, policy.KindOther},
+		{"WebFetch", `{"url":"file:///etc/passwd"}`, policy.KindOther},
+		{"WebFetch", `{"url":"https://x"}`, policy.KindURL},
 		{"NotebookEdit", `{"notebook_path":"/a.ipynb"}`, policy.KindPath},
 		{"WebFetch", `{"url":"https://x"}`, policy.KindURL},
 		{"Bash", `"{\"command\":\"ls\"}"`, policy.KindOther},
@@ -98,6 +107,22 @@ func TestSummarizeFullNeverTruncates(t *testing.T) {
 	} {
 		if _, k := SummarizeFull(c.tool, json.RawMessage(c.in)); k != c.kind {
 			t.Errorf("%s %s: kind %s want %s", c.tool, c.in, k, c.kind)
+		}
+	}
+	for _, c := range []struct {
+		cmd, input string
+		kind       policy.Kind
+	}{
+		{"git status", ``, policy.KindCommand},
+		{"git status", `null`, policy.KindCommand},
+		{"git status", `{"command":"git status"}`, policy.KindCommand},
+		{"git status", `{"command":"rm -rf ~"}`, policy.KindOther},
+		{"git status", `{"command":"git status","script":"x"}`, policy.KindOther},
+		{"git status", `"git status"`, policy.KindOther},
+		{"", `{"command":"git status"}`, policy.KindOther},
+	} {
+		if _, k := ShellSummary(c.cmd, json.RawMessage(c.input)); k != c.kind {
+			t.Errorf("ShellSummary(%q, %s) kind %s want %s", c.cmd, c.input, k, c.kind)
 		}
 	}
 	if got := Summarize("mcp__x__y", json.RawMessage(`{"command":"ls","path":"/etc/shadow"}`)); !strings.Contains(got, "/etc/shadow") {
