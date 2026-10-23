@@ -44,7 +44,16 @@ func quoteInner(s string) string {
 // double-quoted path or a bare path) has basename "notch" or "notch-pro" and is
 // followed by " hook ". The data directory is deliberately not checked so
 // relocated installs (PLATYNOTCH_HOME) are still recognised and cleaned up.
-func IsOurs(command string) bool {
+func IsOurs(command string) bool { return isOursSub(command, "hook") }
+
+// StatuslineCommand builds the Claude Code statusLine command: `"<bin>" statusline`.
+func StatuslineCommand(bin string) string { return `"` + quoteInner(bin) + `" statusline` }
+
+// IsOursStatusline reports whether command is PlatyNotch's statusLine wrapper:
+// basename notch/notch-pro followed by " statusline" (optionally with args).
+func IsOursStatusline(command string) bool { return isOursSub(command, "statusline") }
+
+func isOursSub(command, sub string) bool {
 	command = strings.TrimLeft(command, " \t")
 	var path, rest string
 	if strings.HasPrefix(command, `"`) {
@@ -76,7 +85,7 @@ func IsOurs(command string) bool {
 		}
 		path, rest = command[:sp], command[sp:]
 	}
-	if !strings.HasPrefix(rest, " hook ") {
+	if !strings.HasPrefix(rest, " "+sub+" ") && !(sub == "statusline" && rest == " statusline") {
 		return false
 	}
 	base := path
