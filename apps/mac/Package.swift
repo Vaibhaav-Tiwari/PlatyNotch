@@ -26,5 +26,6 @@ let package = Package(
             dependencies: ["PlatyNotchKit", "PlatyNotchUI"]
         ),
         .testTarget(name: "PlatyNotchKitTests", dependencies: ["PlatyNotchKit"]),
+        .testTarget(name: "PlatyNotchUITests", dependencies: ["PlatyNotchUI"]),
     ]
 )
