@@ -155,3 +155,36 @@ func TestLargeFileReadsTail(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+// Codex's session_meta line can carry the full base instructions and exceed
+// the 64 KB head window; it must still be read.
+func TestCodexHugeSessionMeta(t *testing.T) {
+	for _, total := range []int{0, 1 << 20} { // small and windowed files
+		dir := t.TempDir()
+		var b strings.Builder
+		b.WriteString(`{"timestamp":"2026-01-02T03:04:05Z","type":"session_meta","payload":{"id":"cx-big","cwd":"/work/huge","instructions":"` +
+			strings.Repeat("i", 200<<10) + `"}}` + "\n")
+		filler := `{"timestamp":"2026-01-02T03:04:06Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"` + strings.Repeat("f", 500) + `"}]}}` + "\n"
+		for b.Len() < total {
+			b.WriteString(filler)
+		}
+		b.WriteString(`{"timestamp":"2026-01-02T03:05:00Z","type":"event_msg","payload":{"type":"user_message","message":"huge meta prompt"}}` + "\n")
+		write(t, filepath.Join(dir, "2026", "01", "02", "rollout-x.jsonl"), b.String(), time.Now())
+		got := Codex(dir, time.Time{})
+		if len(got) != 1 || got[0].SessionID != "cx-big" || got[0].CWD != "/work/huge" || got[0].Title != "huge meta prompt" {
+			t.Fatalf("total=%d: got %+v", total, got)
+		}
+	}
+}
+
+// A first line over the 4 MB bound is not read whole; nothing breaks.
+func TestFirstLineBounded(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "x.jsonl")
+	write(t, p, strings.Repeat("a", maxFirstLine+10)+"\n"+`{"k":1}`+"\n", time.Now())
+	for _, l := range readLines(p) {
+		if len(l) > maxFirstLine {
+			t.Fatalf("line of %d bytes returned", len(l))
+		}
+	}
+}

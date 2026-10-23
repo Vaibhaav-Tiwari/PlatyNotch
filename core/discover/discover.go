@@ -19,6 +19,7 @@ const (
 	headBytes    = 64 << 10
 	tailBytes    = 256 << 10
 	maxTitleRune = 80
+	maxFirstLine = 4 << 20 // the first line is read whole up to this size
 )
 
 // Claude returns idle sessions found under projectsDir/*/*.jsonl that were
@@ -250,8 +251,10 @@ func parseTime(s string) time.Time {
 	return t
 }
 
-// readLines returns complete lines from the first 64 KB and last 256 KB of the
-// file, in order, without duplicates. Partial lines at window edges are dropped.
+// readLines returns complete lines from the head and the last 256 KB of the
+// file, in order, without duplicates. The head is the first 64 KB, extended to
+// cover the whole first line (up to maxFirstLine) so a large Codex
+// session_meta is never lost. Partial lines at window edges are dropped.
 func readLines(path string) [][]byte {
 	f, err := os.Open(path)
 	if err != nil {
@@ -263,14 +266,18 @@ func readLines(path string) [][]byte {
 		return nil
 	}
 	size := fi.Size()
-	if size <= headBytes+tailBytes {
+	headLen := int64(headBytes)
+	if end := firstLineEnd(f, size); end > headLen {
+		headLen = end
+	}
+	if size <= headLen+tailBytes {
 		buf, err := io.ReadAll(f)
 		if err != nil {
 			return nil
 		}
 		return bytes.Split(buf, []byte("\n"))
 	}
-	head := make([]byte, headBytes)
+	head := make([]byte, headLen)
 	n, _ := f.ReadAt(head, 0)
 	head = head[:n]
 	if i := bytes.LastIndexByte(head, '\n'); i >= 0 {
@@ -287,4 +294,23 @@ func readLines(path string) [][]byte {
 		tail = nil
 	}
 	return append(bytes.Split(head, []byte("\n")), bytes.Split(tail, []byte("\n"))...)
+}
+
+// firstLineEnd returns the offset just past the first newline, or 0 when
+// there is none within maxFirstLine bytes.
+func firstLineEnd(f *os.File, size int64) int64 {
+	buf := make([]byte, headBytes)
+	for off := int64(0); off < size && off < maxFirstLine; off += int64(len(buf)) {
+		n, _ := f.ReadAt(buf, off)
+		if n <= 0 {
+			return 0
+		}
+		if i := bytes.IndexByte(buf[:n], '\n'); i >= 0 {
+			if end := off + int64(i) + 1; end <= maxFirstLine+1 {
+				return end
+			}
+			return 0
+		}
+	}
+	return 0
 }
