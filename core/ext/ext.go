@@ -54,7 +54,8 @@ type Extension interface {
 }
 
 // RequestHandler is optionally implemented by an Extension to answer
-// ext.request messages whose ext field equals its Name.
+// ext.request messages whose ext field equals its Name. HandleRequest must
+// return promptly once ctx is cancelled: server shutdown waits for it.
 type RequestHandler interface {
 	HandleRequest(ctx context.Context, kind string, data json.RawMessage) (any, error)
 }
