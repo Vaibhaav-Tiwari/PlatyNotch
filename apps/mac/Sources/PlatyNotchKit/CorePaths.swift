@@ -20,6 +20,11 @@ public enum CorePaths {
         home(env: env, userHome: userHome).appendingPathComponent("logs/core.log")
     }
 
+    public static func config(env: [String: String] = ProcessInfo.processInfo.environment,
+                              userHome: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+        home(env: env, userHome: userHome).appendingPathComponent("config.json")
+    }
+
     /// `PLATYNOTCH_CORE_BIN`, else `name` next to the running executable
     /// (`Contents/MacOS/notch` in the bundle, `.build/debug/notch` under `swift run`).
     public static func coreBinary(name: String,

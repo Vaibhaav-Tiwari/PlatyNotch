@@ -33,6 +33,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var responder = ApprovalResponder(client: client)
     /// Now playing, calendar, focus and loop actions, shared by every display.
     private lazy var today = TodayServices(client: client)
+    /// On-screen text capture (runs only while memory is on) and the Memory tab's search.
+    private lazy var capture = CaptureService(client: client)
+    private lazy var memory = MemoryServices(client: client, capture: capture)
     private var supervisor: CoreSupervisor?
     private var controllers: [NotchController] = []
     private var pump: Task<Void, Never>?
@@ -59,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             for await event in client.events { store.apply(event) }
         }
         Task { await client.start() }
+        capture.watchConfig()
 
         rebuildControllers()
         screenObserver = NotificationCenter.default.addObserver(
@@ -114,7 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controllers = screens.enumerated().map { index, screen in
             let state = screen.displayID.flatMap { carry[$0] } ?? (index == 0 ? fallback : nil)
             let c = NotchController(store: store, client: client, plugins: plugins, responder: responder,
-                                    today: today,
+                                    today: today, memory: memory,
                                     onOpenTerminal: { TerminalFocus.focus(session: $0) },
                                     carryOver: state)
             c.attach(to: screen)

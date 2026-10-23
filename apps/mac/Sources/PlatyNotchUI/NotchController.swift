@@ -19,6 +19,7 @@ public final class NotchController {
     private let onOpenTerminal: (Session) -> Void
     private let responder: ApprovalResponder
     private let today: TodayServices
+    private let memory: MemoryServices
 
     private var machine: PanelStateMachine
     private let model = PanelViewModel()
@@ -41,10 +42,11 @@ public final class NotchController {
     /// Without it, notices already in the store count as shown.
     /// `extraTabs` follow the built-in tabs (plugin tabs); `onOpenTerminal` focuses a session's terminal.
     /// Pass one `responder` and one `today` to every display's controller so answers,
-    /// the focus session and loop changes are shared.
+    /// the focus session and loop changes are shared; likewise one `memory`.
     public init(store: AppStore, client: CoreClient, plugins: [NotchPlugin],
                 responder: ApprovalResponder? = nil,
                 today: TodayServices? = nil,
+                memory: MemoryServices? = nil,
                 extraTabs: [PanelTab] = [],
                 onOpenTerminal: @escaping (Session) -> Void = { _ in },
                 minimal: Bool = UserDefaults.standard.bool(forKey: NotchSettings.minimal),
@@ -56,6 +58,7 @@ public final class NotchController {
         self.onOpenTerminal = onOpenTerminal
         self.responder = responder ?? ApprovalResponder(client: client)
         self.today = today ?? TodayServices(client: client)
+        self.memory = memory ?? MemoryServices(client: client)
         if let carryOver {
             machine = carryOver.machine
             machine.minimal = minimal
@@ -125,7 +128,7 @@ public final class NotchController {
     private func makePanel(frame: CGRect) -> NotchPanel {
         let p = NotchPanel(frame: frame)
         let host = NotchHostingView(rootView: PanelRootView(model: model, store: store, responder: responder,
-                                                            today: today, extraTabs: extraTabs, onOpenTerminal: onOpenTerminal))
+                                                            today: today, memory: memory, extraTabs: extraTabs, onOpenTerminal: onOpenTerminal))
         host.sizingOptions = []
         host.frame = CGRect(origin: .zero, size: frame.size)
         host.autoresizingMask = [.width, .height]

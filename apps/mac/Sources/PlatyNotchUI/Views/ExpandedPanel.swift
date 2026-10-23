@@ -29,6 +29,7 @@ struct ExpandedPanel: View {
     let responder: ApprovalResponder
     let arming: ApprovalArming
     let today: TodayServices
+    let memory: MemoryServices
     let extraTabs: [PanelTab]
     @Binding var selectedTab: String
     let onCollapse: () -> Void
@@ -75,6 +76,7 @@ struct ExpandedPanel: View {
         let store = self.store
         let open = onOpenTerminal
         let today = self.today
+        let memory = self.memory
         return [
             PanelTab(id: BuiltinTab.agents, title: "Agents") {
                 AgentsTab(sessions: store.sessions, usage: store.usage, onOpenTerminal: open)
@@ -86,7 +88,7 @@ struct ExpandedPanel: View {
                 FocusTab(focus: today.focus)
             },
             PanelTab(id: BuiltinTab.memory, title: "Memory") {
-                ComingSoon(text: "Search what you have read and written.")
+                MemoryTab(store: store, memory: memory)
             },
         ] + extraTabs
     }
@@ -125,17 +127,5 @@ struct ExpandedPanel: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Close panel")
         }
-    }
-}
-
-private struct ComingSoon: View {
-    let text: String
-
-    var body: some View {
-        VStack(spacing: 4) {
-            Text("Coming soon").font(.system(size: 12, weight: .medium))
-            Text(text).font(.system(size: 11)).foregroundStyle(.secondary).multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

@@ -21,6 +21,7 @@ struct PanelRootView: View {
     let store: AppStore
     let responder: ApprovalResponder
     let today: TodayServices
+    let memory: MemoryServices
     let extraTabs: [PanelTab]
     let onOpenTerminal: (Session) -> Void
 
@@ -68,7 +69,7 @@ struct PanelRootView: View {
             .onTapGesture { model.onClick() }
         case .expanded:
             ExpandedPanel(store: store, responder: responder, arming: model.arming, today: today,
-                          extraTabs: extraTabs,
+                          memory: memory, extraTabs: extraTabs,
                           selectedTab: Binding(get: { model.selectedTab }, set: { model.selectedTab = $0 }),
                           onCollapse: model.onClick, onDecide: decide, onOpenTerminal: onOpenTerminal)
                 .padding(EdgeInsets(top: top, leading: 12, bottom: 10, trailing: 12))

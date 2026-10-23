@@ -321,6 +321,12 @@ public struct CaptureText: Codable, Sendable, Equatable {
     public var text: String
     public var capturedAt: Date
 
+    public init(appBundle: String, appName: String, windowTitle: String? = nil, url: String? = nil,
+                text: String, capturedAt: Date) {
+        self.appBundle = appBundle; self.appName = appName; self.windowTitle = windowTitle
+        self.url = url; self.text = text; self.capturedAt = capturedAt
+    }
+
     enum CodingKeys: String, CodingKey {
         case appBundle = "app_bundle"
         case appName = "app_name"
@@ -364,6 +370,7 @@ public struct MemoryHit: Codable, Sendable, Equatable {
 
 public struct MemoryResults: Codable, Sendable, Equatable {
     public var hits: [MemoryHit]
+    public init(hits: [MemoryHit]) { self.hits = hits }
 }
 
 public struct Notice: Codable, Sendable, Equatable {
