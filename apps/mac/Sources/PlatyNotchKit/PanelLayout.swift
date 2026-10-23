@@ -7,7 +7,10 @@ public struct PanelLayout: Equatable, Sendable {
     public static let compactEar: CGFloat = 64
     /// Compact pill width on screens without a notch.
     public static let pillWidth: CGFloat = 200
-    public static let peekSize = CGSize(width: 380, height: 150)
+    /// Room for an approval card below the notch: header, a few summary lines, buttons.
+    public static let peekSize = CGSize(width: 420, height: 210)
+    /// Height of a notice peek below the notch (or the menu bar).
+    public static let noticeHeight: CGFloat = 64
     public static let expandedSize = CGSize(width: 560, height: 380)
     /// Height of the top-edge strip that reveals a hidden panel on screens without a notch.
     public static let revealDepth: CGFloat = 3
@@ -51,7 +54,11 @@ public struct PanelLayout: Equatable, Sendable {
     public func contentRect(for mode: PanelMode) -> CGRect {
         switch mode {
         case .hidden, .compact: compactRect
-        case .peek: NotchGeometry.panelFrame(anchor: anchor, size: Self.peekSize, screenFrame: usable)
+        case .peek(.approval): NotchGeometry.panelFrame(anchor: anchor, size: Self.peekSize, screenFrame: usable)
+        case .peek(.notice):
+            NotchGeometry.panelFrame(anchor: anchor, size: CGSize(width: Self.peekSize.width,
+                                                                  height: (hasNotch ? anchor.height : 0) + Self.noticeHeight),
+                                     screenFrame: usable)
         case .expanded: NotchGeometry.panelFrame(anchor: anchor, size: Self.expandedSize, screenFrame: usable)
         }
     }

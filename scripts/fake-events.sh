@@ -9,8 +9,9 @@ usage: scripts/fake-events.sh [--auto] [--help]
 
 Builds the core to /tmp/pn-notch, serves it from a throwaway PLATYNOTCH_HOME with
 a short socket path, prints the command that starts the app against it, then sends
-Claude Code hook events: an active session, a permission request, a second session
-with its own permission request, and a stop for both.
+Claude Code hook events: an active session, a permission request, two more sessions
+with their own permission requests (one a long multi-line command with a Unicode
+path), and a stop for all three.
 
   --auto    no prompts; short pauses between steps (PN_FAKE_HOLD=<s> keeps the core
             up that long at the end, default 5)
@@ -148,13 +149,26 @@ start_session fake-1 'Refactor the "notch" panel'
 step "2/5 permission request from fake-1 (panel peeks with the approval and stays)" 2
 permission fake-1 'npm test -- --grep "panel \"peek\""'
 
-step "3/5 second permission request from fake-2 (two approvals, oldest first)" 2
+step "3/5 permission requests from fake-2 and fake-3 (three approvals, oldest first; fake-3 is long, multi-line, Unicode)" 2
 start_session fake-2 "Fix the flaky test"
 permission fake-2 "git status"
+start_session fake-3 "Tidy the café exports"
+LONG_CMD='cd "/tmp/données/日本語 フォルダ/café ☕" && \
+  for f in *.csv; do
+    printf "%s\n" "$f"
+    iconv -f latin1 -t utf-8 "$f" > "../out/${f%.csv}.utf8.csv"
+  done
+echo "1"; echo "2"; echo "3"; echo "4"; echo "5"
+echo "6"; echo "7"; echo "8"; echo "9"; echo "10"
+echo "11 — the summary is longer than twelve lines, so the card scrolls"
+echo "12"
+echo "13: last line, only visible after scrolling"'
+permission fake-3 "$LONG_CMD"
 
-step "4/5 stop both sessions (sessions idle; approvals stay until answered or expired)" 4
+step "4/5 stop all sessions (sessions idle; approvals stay until answered or expired)" 4
 stop_session fake-1
 stop_session fake-2
+stop_session fake-3
 
 if [[ $AUTO == 1 ]]; then
   echo

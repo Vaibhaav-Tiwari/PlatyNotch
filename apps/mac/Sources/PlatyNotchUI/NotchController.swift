@@ -15,6 +15,9 @@ public final class NotchController {
     public let store: AppStore
     public let client: CoreClient
     private let plugins: [NotchPlugin]
+    private let extraTabs: [PanelTab]
+    private let onOpenTerminal: (Session) -> Void
+    private let responder: ApprovalResponder
 
     private var machine: PanelStateMachine
     private let model = PanelViewModel()
@@ -35,12 +38,18 @@ public final class NotchController {
 
     /// `carryOver` restores the panel state of the controller this one replaces (display change).
     /// Without it, notices already in the store count as shown.
+    /// `extraTabs` follow the built-in tabs (plugin tabs); `onOpenTerminal` focuses a session's terminal.
     public init(store: AppStore, client: CoreClient, plugins: [NotchPlugin],
+                extraTabs: [PanelTab] = [],
+                onOpenTerminal: @escaping (Session) -> Void = { _ in },
                 minimal: Bool = UserDefaults.standard.bool(forKey: NotchSettings.minimal),
                 carryOver: PanelCarryOver? = nil) {
         self.store = store
         self.client = client
         self.plugins = plugins
+        self.extraTabs = extraTabs
+        self.onOpenTerminal = onOpenTerminal
+        self.responder = ApprovalResponder(client: client)
         if let carryOver {
             machine = carryOver.machine
             machine.minimal = minimal
@@ -109,7 +118,8 @@ public final class NotchController {
 
     private func makePanel(frame: CGRect) -> NotchPanel {
         let p = NotchPanel(frame: frame)
-        let host = NotchHostingView(rootView: PanelRootView(model: model, store: store))
+        let host = NotchHostingView(rootView: PanelRootView(model: model, store: store, responder: responder,
+                                                            extraTabs: extraTabs, onOpenTerminal: onOpenTerminal))
         host.sizingOptions = []
         host.frame = CGRect(origin: .zero, size: frame.size)
         host.autoresizingMask = [.width, .height]
@@ -207,6 +217,7 @@ public final class NotchController {
     }
 
     private func syncFromStore() {
+        responder.sync(store: store)
         machine.setLive(PanelMode.hasLive(sessions: store.sessions))
         for event in feed.update(approvalCount: store.approvals.count, latestNotice: store.notices.last) {
             machine.handle(event)

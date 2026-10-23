@@ -70,7 +70,7 @@ public final class AppStore {
     }
 
     private static func oldestFirst(_ a: Approval, _ b: Approval) -> Bool {
-        a.createdAt != b.createdAt ? a.createdAt < b.createdAt : a.id < b.id
+        ApprovalFormat.isOlder(a, b)
     }
 
     /// Approvals stay visible while reconnecting, but cannot be answered.

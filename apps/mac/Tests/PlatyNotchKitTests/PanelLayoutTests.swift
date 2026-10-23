@@ -56,6 +56,18 @@ final class PanelLayoutTests: XCTestCase {
         XCTAssertEqual(ext.hitRect(for: .expanded), ext.contentRect(for: .expanded))
     }
 
+    func testNoticePeekIsShortAndClearsTheNotch() {
+        let n = mbp.contentRect(for: .peek(.notice))
+        XCTAssertEqual(n.maxY, 982)
+        XCTAssertEqual(n.width, PanelLayout.peekSize.width)
+        XCTAssertEqual(n.height, mbp.anchor.height + PanelLayout.noticeHeight)
+        XCTAssertEqual(n.midX, 756)
+        let e = ext.contentRect(for: .peek(.notice))
+        XCTAssertEqual(e.maxY, 1055)
+        XCTAssertEqual(e.height, PanelLayout.noticeHeight)
+        XCTAssertLessThan(n.height, mbp.contentRect(for: .peek(.approval)).height)
+    }
+
     func testWindowContainsEveryModeContent() {
         for l in [mbp, ext] {
             for m: PanelMode in [.hidden, .compact, .peek(.approval), .peek(.notice), .expanded] {

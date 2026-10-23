@@ -1,13 +1,21 @@
 # Notch panel: manual verification
 
-Checks the notch panel window (Plan 3 Task 5) on real displays. Automated checks
+Checks the notch panel window (Plan 3 Task 5) and its content (Task 6) on real displays. Automated checks
 cover the logic (`swift test`) and the launch (`swift run PlatyNotch --smoke`);
 this list covers what only a person looking at the screen can confirm.
 
-The panel content is still a placeholder (Task 6 replaces it): a black shape that
-shows the mode (`hidden`, `compact`, `peek(approval)`, `expanded`, ...) and the core
-connection (`connecting`, `connected`, `reconnecting`). On a notch Mac the compact
-label sits behind the notch; you will see the green/orange connection dot on the left ear.
+What each mode shows:
+
+- **Compact**: up to three agent dots on the left (green pulsing = working, amber =
+  waiting or needs approval, grey = idle) and `+n` for more; on the right a count of
+  pending approvals, or an amber bolt while the core is not connected. On a notch Mac
+  the dots sit in the left ear and the badge in the right ear.
+- **Peek (approval)**: the oldest approval card, and "n more waiting — show all" when
+  there are several. **Peek (notice)**: a short toast ("Claude Code finished").
+- **Expanded**: tabs Agents, Today, Focus, Memory (the last three say "Coming soon"),
+  pending approvals above the tab, the Agents list and Claude/Codex usage bars, and a
+  chevron close button. An amber "Reconnecting…" shows in the tab bar while the core
+  is down.
 
 ## Setup
 
@@ -39,7 +47,8 @@ Tick each on the hardware you have; note the Mac model and macOS version.
   over the notch, extending ~64 pt on each side, top corners square against the
   screen edge, no shadow. Hovering the notch for a moment expands the panel
   downward from the notch; moving away collapses it after ~⅓ s. Clicking the
-  compact panel expands it; clicking again collapses. Clicks on the menu bar left
+  compact panel expands it; the chevron at the top right collapses it (clicks inside
+  the open panel go to its content and do not collapse it). Clicks on the menu bar left
   and right of the panel's ears still reach the menu bar / status items. By design
   the compact ears (~64 pt each side of the notch) cover menu-bar items that sit
   right next to the notch; those items are not clickable through the panel. With the panel
@@ -82,7 +91,51 @@ Tick each on the hardware you have; note the Mac model and macOS version.
   not compact.
 - [ ] **8. Core restart.** Without `PLATYNOTCH_EXTERNAL_CORE` (the app supervises
   its own core; set `PLATYNOTCH_CORE_BIN=/tmp/pn-notch`), `pkill -f 'pn-notch serve'`:
-  the label shows `reconnecting`, then `connected` again within a few seconds.
+  the compact pill shows the amber bolt (the open panel says "Reconnecting…"), then
+  returns to normal within a few seconds.
+
+## Approval card
+
+Use `fake-events.sh` (step 2 adds one approval, step 3 two more: `git status` and a
+long multi-line command with a Unicode path). The core default expiry is 100 s.
+
+- [ ] **9. Card content.** The card shows the agent icon and name, the project, the
+  tool tag (`Bash`) and the summary exactly as sent: monospaced, quotes and
+  backslashes intact (`npm test -- --grep "panel \"peek\""`). Drag-select part of the
+  summary and ⌘C: the pasted text matches. The countdown in the top right ticks down
+  once a second.
+- [ ] **10. Several approvals at once.** After step 3 the peek shows the oldest
+  (fake-1) with "2 more waiting — show all". Clicking it opens the panel: "3 approvals
+  waiting · oldest first", cards ordered fake-1, fake-2, fake-3, and the list scrolls.
+  Answer the middle one: only it disappears and its hook in terminal A prints the
+  decision; the others keep their own countdowns and buttons.
+- [ ] **11. Long multi-line command, Unicode path.** fake-3's summary shows every line
+  with the Unicode path (`/tmp/données/日本語 フォルダ/café ☕`) rendered correctly, no
+  `\n` escapes, long lines wrapped. In the open panel with one approval the summary
+  grows to 12 lines, then scrolls (line 13 only after scrolling); with several
+  approvals, and in the peek, it scrolls after about 5 lines.
+- [ ] **12. Keyboard.** With the approval peeking and the panel *not* clicked, typing
+  in another app (including Return, ⌘↩, ⌘⌫) goes to that app and answers nothing.
+  Click into the card (e.g. on the summary): Return does nothing; ⌘⌫ denies the
+  oldest card, ⌘↩ allows it; one keystroke answers one approval. The buttons show the
+  shortcut hints. VoiceOver reads "Allow" / "Deny" with the shortcut as hint, and the
+  summary text.
+- [ ] **13. Sending.** Click Allow: the countdown changes to "Sending…" and both
+  buttons disable until the card disappears (normally at once). Terminal A prints
+  `decision: ... allow`.
+- [ ] **14. Reconnecting.** With approvals pending (app supervising its own core, as in
+  case 8), kill the core: the cards stay, show "Reconnecting… m:ss" in amber and the
+  buttons are disabled; "Open terminal" still works. When the core is back (its
+  approvals are lost with it, so the cards disappear) nothing is stuck in "Sending…".
+  A send failure shows a red message under the summary and re-enables the buttons.
+- [ ] **15. Expiry.** Let an approval run out: at 0:00 the card reads "Expired —
+  answer in the terminal" and the buttons disable; the card goes away when the core
+  resolves it, and the hook in terminal A falls back to the terminal prompt.
+- [ ] **16. Open terminal.** "Open terminal" shows when the approval's session is
+  known; clicking it does nothing yet (terminal focus is Task 7). Agents tab rows
+  highlight on hover and are clickable the same way.
+- [ ] **17. Light and dark.** Switch System Settings › Appearance between Light and
+  Dark: the panel stays black with legible text and colors in both.
 
 ## Automated equivalents
 

@@ -7,6 +7,8 @@ final class PanelViewModel {
     var mode: PanelMode = .compact
     var visible = false
     var layout: PanelLayout?
+    var selectedTab = BuiltinTab.agents
+    /// Toggles expanded / collapsed (the state machine's `.click`).
     var onClick: () -> Void = {}
 }
 
@@ -14,79 +16,90 @@ final class PanelViewModel {
 struct PanelRootView: View {
     let model: PanelViewModel
     let store: AppStore
+    let responder: ApprovalResponder
+    let extraTabs: [PanelTab]
+    let onOpenTerminal: (Session) -> Void
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             if let layout = model.layout {
                 let r = PanelLayout.localRect(layout.contentRect(for: model.mode), in: layout.windowFrame)
-                PanelPlaceholderView(mode: model.mode, connection: store.connection, hasNotch: layout.hasNotch)
+                content(layout)
                     .frame(width: r.width, height: r.height)
-                    .contentShape(Rectangle())
-                    .onTapGesture { model.onClick() }
+                    .background(Theme.surface)
+                    .clipShape(Theme.panelShape(hasNotch: layout.hasNotch))
                     .offset(x: r.minX, y: r.minY)
                     .opacity(model.visible ? 1 : 0)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .environment(\.colorScheme, .dark)
         .animation(.spring(duration: 0.25), value: model.mode)
         .animation(.easeOut(duration: 0.15), value: model.visible)
     }
+
+    @ViewBuilder private func content(_ layout: PanelLayout) -> some View {
+        // Open content starts below the camera housing on a notch.
+        let top: CGFloat = layout.hasNotch ? layout.anchor.height + 4 : 10
+        switch model.mode {
+        case .hidden:
+            Color.clear
+        case .compact:
+            CompactPill(dots: PillDots(sessions: store.sessions), approvalCount: store.approvals.count,
+                        connection: store.connection, hasNotch: layout.hasNotch,
+                        notchWidth: layout.hasNotch ? layout.anchor.width : 0)
+                .contentShape(Rectangle())
+                .onTapGesture { model.onClick() }
+        case .peek(.approval):
+            ApprovalPeek(store: store, responder: responder, onExpand: model.onClick, onOpenTerminal: onOpenTerminal)
+                .padding(EdgeInsets(top: top, leading: 12, bottom: 10, trailing: 12))
+        case .peek(.notice):
+            Group {
+                if let notice = store.notices.last { NoticeToast(notice: notice) } else { Color.clear }
+            }
+            .padding(EdgeInsets(top: top, leading: 14, bottom: 10, trailing: 14))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .contentShape(Rectangle())
+            .onTapGesture { model.onClick() }
+        case .expanded:
+            ExpandedPanel(store: store, responder: responder, extraTabs: extraTabs,
+                          selectedTab: Binding(get: { model.selectedTab }, set: { model.selectedTab = $0 }),
+                          onCollapse: model.onClick, onOpenTerminal: onOpenTerminal)
+                .padding(EdgeInsets(top: top, leading: 12, bottom: 10, trailing: 12))
+        }
+    }
 }
 
-/// Temporary content until Plan 3 Task 6: shows the panel mode and core connection.
-struct PanelPlaceholderView: View {
-    let mode: PanelMode
-    let connection: ConnectionState
-    let hasNotch: Bool
+/// The approval peek: the oldest approval, plus a way to see the rest in the open panel.
+struct ApprovalPeek: View {
+    let store: AppStore
+    let responder: ApprovalResponder
+    let onExpand: () -> Void
+    let onOpenTerminal: (Session) -> Void
 
     var body: some View {
-        ZStack {
-            shape.fill(.black)
-            switch mode {
-            case .hidden, .compact:
-                HStack {
-                    Circle().fill(dotColor).frame(width: 8, height: 8)
-                    Spacer(minLength: 0)
-                    if !hasNotch { label }
-                    Spacer(minLength: 0)
-                    Text(mode == .hidden ? "" : "•").foregroundStyle(.white.opacity(0.6))
+        let ordered = ApprovalFormat.ordered(store.approvals)
+        VStack(alignment: .leading, spacing: 4) {
+            if let first = ordered.first {
+                ApprovalCard(approval: first,
+                             session: store.sessions.first { $0.key == first.sessionKey },
+                             canAnswer: store.canAnswerApprovals,
+                             phase: responder.phase(for: first.id),
+                             maxLines: 6,
+                             shortcuts: true,
+                             onDecide: { responder.decide(first, $0) },
+                             onOpenTerminal: onOpenTerminal)
+            }
+            if ordered.count > 1 {
+                Button(action: onExpand) {
+                    Text("\(ordered.count - 1) more waiting — show all")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Theme.color(.attention))
                 }
-                .padding(.horizontal, 14)
-            case .peek, .expanded:
-                VStack(spacing: 6) {
-                    Text("PlatyNotch").font(.headline)
-                    label
-                }
-                .foregroundStyle(.white)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Show all \(ordered.count) approvals")
             }
         }
-    }
-
-    private var label: some View {
-        Text("\(mode.description) · \(connectionText)")
-            .font(.system(size: 11, weight: .medium, design: .monospaced))
-            .foregroundStyle(.white)
-    }
-
-    /// Square top corners against the notch; a fully rounded pill otherwise.
-    private var shape: some Shape {
-        let top: CGFloat = hasNotch ? 0 : 14
-        return UnevenRoundedRectangle(topLeadingRadius: top, bottomLeadingRadius: 14,
-                                      bottomTrailingRadius: 14, topTrailingRadius: top, style: .continuous)
-    }
-
-    private var connectionText: String {
-        switch connection {
-        case .connecting: "connecting"
-        case .connected: "connected"
-        case .reconnecting: "reconnecting"
-        }
-    }
-
-    private var dotColor: Color {
-        switch connection {
-        case .connected: .green
-        case .connecting, .reconnecting: .orange
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
