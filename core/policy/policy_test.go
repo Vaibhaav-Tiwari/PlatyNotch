@@ -192,21 +192,54 @@ func TestAllowSkipsShellCompounds(t *testing.T) {
 	}
 }
 
-// TestAmpersandInURLDocumented: allow rules for WebFetch (or any tool) apply
-// only when the summary has no shell control operators, so a URL with a
-// query string ("&") falls through to a human unless the pattern spells "&"
-// out. This is deliberate and documented on config.Rule.
-func TestAmpersandInURLDocumented(t *testing.T) {
-	p := Local([]config.Rule{{Tool: "WebFetch", Pattern: "https://docs.example.com/*", Action: "allow"}})
-	if v, ok := evalAs(p, "WebFetch", "https://docs.example.com/a?b=1"); !ok || v.Action != "allow" {
-		t.Fatalf("plain URL: %+v %v", v, ok)
+// TestURLAllowIsHostAware: url-kind allow rules match scheme, host and path
+// separately; "*" in the host never crosses "/", "?", "#", "@" or ":", and
+// the query and fragment are not part of the matched text.
+func TestURLAllowIsHostAware(t *testing.T) {
+	wild := Local([]config.Rule{{Tool: "WebFetch", Pattern: "https://*.example.com/*", Action: "allow"}})
+	for _, u := range []string{
+		"https://evil.com/.example.com/x", "https://evil.com#.example.com/x", "https://evil.com?.example.com/x",
+		"https://evil.com:443/.example.com/x", "http://docs.example.com/a", "https://example.com/a",
+	} {
+		if v, ok := evalAs(wild, "WebFetch", u); ok && v.Action == "allow" {
+			t.Errorf("%s allowed", u)
+		}
 	}
-	if v, ok := evalAs(p, "WebFetch", "https://docs.example.com/a?b=1&c=2"); ok {
-		t.Fatalf("URL with & auto-allowed: %+v", v)
+	for _, u := range []string{"https://docs.example.com/a", "https://a.b.example.com", "HTTPS://Docs.Example.com/a"} {
+		if v, ok := evalAs(wild, "WebFetch", u); !ok || v.Action != "allow" {
+			t.Errorf("%s: %+v %v", u, v, ok)
+		}
 	}
-	p = Local([]config.Rule{{Tool: "WebFetch", Pattern: "https://docs.example.com/*&*", Action: "allow"}})
-	if v, ok := evalAs(p, "WebFetch", "https://docs.example.com/a?b=1&c=2"); !ok || v.Action != "allow" {
-		t.Fatalf("pattern with literal &: %+v %v", v, ok)
+	docs := Local([]config.Rule{{Tool: "WebFetch", Pattern: "https://docs.example.com/docs/*", Action: "allow"}})
+	for _, u := range []string{"https://docs.example.com/docs/a?x=1", "https://docs.example.com/docs/a?b=1&c=2#f"} {
+		if v, ok := evalAs(docs, "WebFetch", u); !ok || v.Action != "allow" {
+			t.Errorf("%s: %+v %v", u, v, ok)
+		}
+	}
+	for _, u := range []string{"https://docs.example.com/private?/docs/x", "https://docs.example.com/x#/docs/a", "https://docs.example.com.evil.com/docs/a"} {
+		if v, ok := evalAs(docs, "WebFetch", u); ok && v.Action == "allow" {
+			t.Errorf("%s allowed", u)
+		}
+	}
+	// A pattern that is not scheme://host[/path] never allows a URL.
+	for _, pat := range []string{"*", "*example.com*", "docs.example.com/*"} {
+		p := Local([]config.Rule{{Tool: "*", Pattern: pat, Action: "allow"}})
+		if v, ok := evalAs(p, "WebFetch", "https://docs.example.com/a"); ok && v.Action == "allow" {
+			t.Errorf("pattern %q allowed a URL", pat)
+		}
+	}
+	// Host-only pattern: path "/" or empty.
+	root := Local([]config.Rule{{Tool: "WebFetch", Pattern: "https://docs.example.com", Action: "allow"}})
+	if v, ok := evalAs(root, "WebFetch", "https://docs.example.com"); !ok || v.Action != "allow" {
+		t.Errorf("host-only: %+v %v", v, ok)
+	}
+	if v, ok := evalAs(root, "WebFetch", "https://docs.example.com/a"); ok && v.Action == "allow" {
+		t.Errorf("host-only pattern allowed a path")
+	}
+	// deny/ask still glob the whole URL.
+	d := Local([]config.Rule{{Tool: "WebFetch", Pattern: "*token=*", Action: "deny"}})
+	if v, ok := evalAs(d, "WebFetch", "https://x.com/a?token=1"); !ok || v.Action != "deny" {
+		t.Errorf("deny on query: %+v %v", v, ok)
 	}
 }
 

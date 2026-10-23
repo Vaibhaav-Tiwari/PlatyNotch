@@ -65,11 +65,16 @@ type Policy struct {
 // "make build && make test" allows exactly that chain. "deny" and "ask"
 // rules match compounds as usual.
 //
-// The same guard applies to every tool, including WebFetch URLs: an allow
-// rule "https://docs.example.com/*" allows "https://docs.example.com/a?b=1"
-// but not "…?b=1&c=2" (it contains "&"), which goes to a person instead.
-// Write the "&" into the pattern ("https://docs.example.com/*&*") to allow
-// query strings with several parameters.
+// URL allow rules are host-aware. The pattern must be "scheme://host" or
+// "scheme://host/path" (anything else never allows a URL). Scheme and host
+// are compared case-insensitively; "*" and "?" in the host never match "/",
+// "?", "#", "@" or ":", so "https://*.example.com/*" allows
+// "https://docs.example.com/a" but not "https://evil.com/.example.com/x".
+// The path is globbed as usual ("/" when the URL or pattern has none, so
+// "https://docs.example.com" allows only the root). The query string and
+// fragment are ignored: "https://docs.example.com/docs/*" allows
+// "https://docs.example.com/docs/a?x=1&y=2". "deny" and "ask" rules glob the
+// whole URL, query included.
 type Rule struct {
 	Tool    string `json:"tool"`
 	Pattern string `json:"pattern"`

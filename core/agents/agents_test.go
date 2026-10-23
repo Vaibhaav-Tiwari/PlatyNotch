@@ -104,6 +104,8 @@ func TestSummarizeFullNeverTruncates(t *testing.T) {
 		{"WebFetch", `{"url":"https://x/docs/%2E./private"}`, policy.KindOther},
 		{"WebFetch", `{"url":"https://x/docs%2fprivate"}`, policy.KindOther},
 		{"WebFetch", `{"url":"https://x/docs%5Cprivate"}`, policy.KindOther},
+		{"WebFetch", `{"url":"https://x/{%2e%2e/private"}`, policy.KindOther},
+		{"WebFetch", `{"url":"https://x/a%2E%2e?q=1"}`, policy.KindOther},
 		{"WebFetch", `{"url":"https://x/a?next=%2Fb"}`, policy.KindURL},
 		{"WebFetch", `{"url":" https://x/a"}`, policy.KindOther},
 		{"WebFetch", `{"url":"https://x/a\n"}`, policy.KindOther},

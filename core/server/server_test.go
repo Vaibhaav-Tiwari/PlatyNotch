@@ -980,7 +980,7 @@ func TestSummaryKindByAdapterAndEvent(t *testing.T) {
 	cfg.Policy.Rules = append([]config.Rule{
 		{Tool: "*", Pattern: "*git status*", Action: "allow"},
 		{Tool: "*", Pattern: "/proj/*", Action: "allow"},
-		{Tool: "*", Pattern: "https://*", Action: "allow"},
+		{Tool: "*", Pattern: "https://*/*", Action: "allow"},
 	}, cfg.Policy.Rules...)
 	s := start(t, Options{Config: cfg})
 	subscribe(t, s.sock)

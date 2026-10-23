@@ -2,6 +2,7 @@
 package policy
 
 import (
+	"net/url"
 	"path"
 	"strings"
 
@@ -105,6 +106,13 @@ func (l local) EvaluateKind(tool, summary string, kind Kind) (Verdict, bool) {
 		if r.Pattern == "" || (r.Tool != "*" && r.Tool != tool) {
 			continue
 		}
+		if r.Action == "allow" && kind == KindURL {
+			// Host-aware: never a plain glob over the whole URL.
+			if !noAllow && urlAllow(r.Pattern, summary) {
+				return Verdict{Action: r.Action, Reason: r.Reason, Source: "local"}, true
+			}
+			continue
+		}
 		if r.Action == "allow" && (noAllow || compoundBeyond(r.Pattern, summary)) {
 			continue
 		}
@@ -134,6 +142,68 @@ func compoundBeyond(pattern, summary string) bool {
 		}
 	}
 	return false
+}
+
+// urlAllow reports whether an allow pattern approves a url-kind summary.
+// The pattern must be "scheme://hostpat" or "scheme://hostpat/pathpat";
+// anything else never allows a URL. The summary is reduced to scheme, host
+// and path (query and fragment are not matched). The scheme is compared
+// case-insensitively, the host (lowercased, with any port) against hostpat
+// with a glob whose "*" and "?" never match "/", "?", "#", "@" or ":", and
+// the path ("/" when empty) against pathpat ("/" when absent) with Match.
+// The compound guard applies to the reduced text.
+func urlAllow(pattern, summary string) bool {
+	i := strings.Index(pattern, "://")
+	if i <= 0 {
+		return false
+	}
+	sp, rest := strings.ToLower(pattern[:i]), pattern[i+3:]
+	hp, pp := rest, "/"
+	if j := strings.IndexByte(rest, '/'); j >= 0 {
+		hp, pp = rest[:j], rest[j:]
+	}
+	if hp == "" || strings.ContainsAny(hp, "?#@") {
+		return false
+	}
+	u, err := url.Parse(summary)
+	if err != nil || u.Host == "" || u.User != nil || u.Opaque != "" {
+		return false
+	}
+	p := u.Path
+	if p == "" {
+		p = "/"
+	}
+	host := strings.ToLower(u.Host)
+	reduced := strings.ToLower(u.Scheme) + "://" + host + p
+	if compoundBeyond(pattern, reduced) {
+		return false
+	}
+	return Match(sp, strings.ToLower(u.Scheme)) && hostMatch(strings.ToLower(hp), host) && Match(pp, p)
+}
+
+// hostMatch is a whole-string glob where "*" matches any run and "?" one
+// character, neither including '/', '?', '#', '@' or ':'.
+func hostMatch(pattern, s string) bool {
+	p, t := []rune(pattern), []rune(s)
+	ok := func(r rune) bool { return !strings.ContainsRune("/?#@:", r) }
+	// m[j] reports whether p[:i] matches t[:j] for the current i.
+	m := make([]bool, len(t)+1)
+	m[0] = true
+	for i := range p {
+		next := make([]bool, len(t)+1)
+		for j := 0; j <= len(t); j++ {
+			switch p[i] {
+			case '*':
+				next[j] = m[j] || (j > 0 && next[j-1] && ok(t[j-1]))
+			case '?':
+				next[j] = j > 0 && m[j-1] && ok(t[j-1])
+			default:
+				next[j] = j > 0 && m[j-1] && p[i] == t[j-1]
+			}
+		}
+		m = next
+	}
+	return m[len(t)]
 }
 
 // fileTools take a path as their summary.

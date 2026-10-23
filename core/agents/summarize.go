@@ -129,8 +129,7 @@ func cleanURL(s string) bool {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || u.Host == "" || u.Opaque != "" {
 		return false
 	}
-	ep := strings.ToLower(u.EscapedPath())
-	if strings.Contains(ep, "%5c") || strings.Contains(ep, "%2f") || strings.Contains(ep, "%2e") {
+	if rp := strings.ToLower(rawPath(s)); strings.Contains(rp, "%5c") || strings.Contains(rp, "%2f") || strings.Contains(rp, "%2e") {
 		return false
 	}
 	return u.Path == "" || path.Clean(u.Path) == u.Path
@@ -157,6 +156,21 @@ func ShellSummary(command string, toolInput json.RawMessage) (string, SummaryKin
 		}
 	}
 	return command, policy.KindCommand
+}
+
+// rawPath is the path text of raw URL s as written: after the authority,
+// before any '?' or '#'.
+func rawPath(s string) string {
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	}
+	if i := strings.IndexAny(s, "?#"); i >= 0 {
+		s = s[:i]
+	}
+	if i := strings.IndexByte(s, '/'); i >= 0 {
+		return s[i:]
+	}
+	return ""
 }
 
 func compact(input json.RawMessage) string {
