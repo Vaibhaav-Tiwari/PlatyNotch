@@ -275,3 +275,27 @@ func TestResetSkipped(t *testing.T) {
 		t.Fatal("want error for unknown kind")
 	}
 }
+
+func TestThreadReaders(t *testing.T) {
+	s, _ := open(t)
+	now := time.Now()
+	th, _ := seed(t, s, "hello", now)
+	got, ok, err := s.GetThread(th.ID)
+	if err != nil || !ok || got.Title != "Inbox" {
+		t.Fatalf("GetThread = %+v %v %v", got, ok, err)
+	}
+	if _, ok, _ := s.GetThread("nope"); ok {
+		t.Fatal("expected missing thread")
+	}
+	vs, err := s.ThreadVersions(th.ID, now.Add(-time.Hour))
+	if err != nil || len(vs) != 1 || vs[0].Content != "hello" {
+		t.Fatalf("ThreadVersions = %+v %v", vs, err)
+	}
+	if vs, _ := s.ThreadVersions(th.ID, now.Add(time.Hour)); len(vs) != 0 {
+		t.Fatalf("window not applied: %+v", vs)
+	}
+	ts, err := s.ThreadsUpdatedSince(now.Add(-time.Hour), 10)
+	if err != nil || len(ts) != 1 {
+		t.Fatalf("ThreadsUpdatedSince = %+v %v", ts, err)
+	}
+}

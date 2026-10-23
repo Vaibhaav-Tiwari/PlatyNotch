@@ -132,3 +132,46 @@ func (s *Store) VisitVectors(model string, f Filter, limit int, fn func(chunkID 
 	}
 	return rows.Err()
 }
+
+// ThreadVersions returns the thread's versions created at or after since,
+// oldest first.
+func (s *Store) ThreadVersions(threadID string, since time.Time) ([]Version, error) {
+	rows, err := s.db.Query(`SELECT id,thread_id,hour_bucket,content,content_hash,chars,created_at
+		FROM versions WHERE thread_id=? AND created_at>=? ORDER BY created_at, hour_bucket`, threadID, ms(since))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Version
+	for rows.Next() {
+		var v Version
+		var c int64
+		if err := rows.Scan(&v.ID, &v.ThreadID, &v.HourBucket, &v.Content, &v.ContentHash, &v.Chars, &c); err != nil {
+			return nil, err
+		}
+		v.CreatedAt = fromMs(c)
+		out = append(out, v)
+	}
+	return out, rows.Err()
+}
+
+// ThreadsUpdatedSince returns threads updated at or after since, newest first.
+func (s *Store) ThreadsUpdatedSince(since time.Time, limit int) ([]Thread, error) {
+	rows, err := s.db.Query(`SELECT id,app_bundle,app_name,key,title,url,created_at,updated_at
+		FROM threads WHERE updated_at>=? ORDER BY updated_at DESC LIMIT ?`, ms(since), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Thread
+	for rows.Next() {
+		var t Thread
+		var c, u int64
+		if err := rows.Scan(&t.ID, &t.AppBundle, &t.AppName, &t.Key, &t.Title, &t.URL, &c, &u); err != nil {
+			return nil, err
+		}
+		t.CreatedAt, t.UpdatedAt = fromMs(c), fromMs(u)
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
