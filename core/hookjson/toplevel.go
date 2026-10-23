@@ -11,6 +11,15 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+//
+// Ported from agent-orchestrator (https://github.com/OrchestratorInc/agent-orchestrator,
+// Apache-2.0, commit 60202ba): backend/internal/adapters/agent/hooksjson
+// (readHooksFile/writeHooksFile).
+//
+// Modified for PlatyNotch: generalized from the "hooks" key to reading,
+// setting or deleting any one top-level key; keeps key order and the file
+// mode, resolves symlinks, writes a write-once .platynotch-backup, and skips
+// the write when the value is unchanged.
 
 package hookjson
 

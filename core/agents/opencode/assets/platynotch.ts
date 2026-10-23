@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Ported from agent-orchestrator (https://github.com/aoagents/agent-orchestrator,
+// Ported from agent-orchestrator (https://github.com/OrchestratorInc/agent-orchestrator,
 // Apache-2.0, commit 60202ba): backend/internal/adapters/agent/opencode/assets/ao-activity.ts.
 //
 // Modified for PlatyNotch: shells `notch hook opencode <event>` (binary path injected at install); fire-and-forget with a short timeout; AO env/launch id removed.

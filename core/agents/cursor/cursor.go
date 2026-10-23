@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Ported from agent-orchestrator (https://github.com/aoagents/agent-orchestrator,
+// Ported from agent-orchestrator (https://github.com/OrchestratorInc/agent-orchestrator,
 // Apache-2.0, commit 60202ba): backend/internal/adapters/agent/cursor/hooks.go, activity.go; internal/cli/hooks.go (cursor permission hook).
 //
 // Modified for PlatyNotch: installs into the user-level ~/.cursor/hooks.json through hookjson; commands are `notch hook cursor <event>`; failClosed is NOT set on any entry (a broken hook must never block the agent); adds approve-from-the-notch output (experimental).

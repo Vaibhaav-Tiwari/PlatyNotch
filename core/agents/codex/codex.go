@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Ported from agent-orchestrator (https://github.com/aoagents/agent-orchestrator,
+// Ported from agent-orchestrator (https://github.com/OrchestratorInc/agent-orchestrator,
 // Apache-2.0, commit 60202ba): backend/internal/adapters/agent/codex/hooks.go, activity.go.
 //
 // Modified for PlatyNotch: installs into the user-level ~/.codex/hooks.json through hookjson (AO passes hooks as `-c` launch flags instead); commands are `notch hook codex <event>`; DeriveActivityState returns protocol.State.

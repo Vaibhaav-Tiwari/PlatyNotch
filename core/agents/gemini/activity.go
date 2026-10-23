@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Ported from agent-orchestrator (https://github.com/aoagents/agent-orchestrator,
+// Ported from agent-orchestrator (https://github.com/OrchestratorInc/agent-orchestrator,
 // Apache-2.0, commit 60202ba): backend/internal/adapters/agent/gemini/hooks.go (DeriveActivityState).
 //
 // Modified for PlatyNotch: returns protocol.State instead of AO's domain.ActivityState.

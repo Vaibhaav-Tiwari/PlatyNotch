@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// Ported from agent-orchestrator (https://github.com/aoagents/agent-orchestrator,
+// Ported from agent-orchestrator (https://github.com/OrchestratorInc/agent-orchestrator,
 // Apache-2.0, commit 60202ba): backend/internal/adapters/agent/qwen/hooks.go; activitystate/activitystate.go (StandardDeriveActivityState, used for qwen in activitydispatch).
 //
 // Modified for PlatyNotch: installs into the user-level ~/.qwen/settings.json through hookjson; commands are `notch hook qwen <event>`; returns protocol.State.
