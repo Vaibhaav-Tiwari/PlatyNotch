@@ -306,3 +306,10 @@ func (s *Store) PurgeBefore(t time.Time) (int, error) {
 	}
 	return n, tx.Commit()
 }
+
+// CountChunks returns how many chunks belong to the version.
+func (s *Store) CountChunks(versionID string) (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT count(*) FROM chunks WHERE version_id=?`, versionID).Scan(&n)
+	return n, err
+}

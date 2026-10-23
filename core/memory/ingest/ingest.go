@@ -1,0 +1,104 @@
+package ingest
+
+import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory/store"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
+)
+
+const (
+	minChars     = 40
+	maxChars     = 200_000
+	chunkSize    = 1200
+	chunkOverlap = 150
+)
+
+type Ingester struct {
+	store *store.Store
+	cfg   config.Memory
+	now   func() time.Time
+}
+
+func New(s *store.Store, cfg config.Memory, now func() time.Time) *Ingester {
+	if now == nil {
+		now = time.Now
+	}
+	return &Ingester{store: s, cfg: cfg, now: now}
+}
+
+// Ingest stores one capture and returns how many new chunks it produced.
+// Excluded apps and captures under 40 chars are dropped (0, nil).
+func (i *Ingester) Ingest(c protocol.CaptureText) (int, error) {
+	for _, a := range i.cfg.ExcludeApps {
+		if a == c.AppBundle {
+			return 0, nil
+		}
+	}
+	if utf8.RuneCountInString(strings.TrimSpace(c.Text)) < minChars {
+		return 0, nil
+	}
+	text := c.Text
+	if utf8.RuneCountInString(text) > maxChars {
+		text = string([]rune(text)[:maxChars])
+	}
+	text = Redact(text)
+
+	at := c.CapturedAt
+	if at.IsZero() {
+		at = i.now()
+	}
+	th, err := i.store.UpsertThread(store.Thread{
+		AppBundle: c.AppBundle, AppName: c.AppName, Key: ThreadKey(c),
+		Title: c.WindowTitle, URL: c.URL,
+	})
+	if err != nil {
+		return 0, err
+	}
+	sum := sha256.Sum256([]byte(text))
+	hash := hex.EncodeToString(sum[:])
+	vid := make([]byte, 16)
+	if _, err := rand.Read(vid); err != nil {
+		return 0, err
+	}
+	v := store.Version{
+		ID: hex.EncodeToString(vid), ThreadID: th.ID, HourBucket: i.now().Unix() / 3600,
+		Content: text, ContentHash: hash, Chars: utf8.RuneCountInString(text), CreatedAt: at,
+	}
+	prev, err := i.store.PutVersion(v)
+	if err != nil {
+		return 0, err
+	}
+	prevContent, versionID := "", v.ID
+	if prev != nil {
+		if prev.ContentHash == hash {
+			return 0, nil
+		}
+		prevContent, versionID = prev.Content, prev.ID
+	}
+	pieces := Chunk(NewText(prevContent, text), chunkSize, chunkOverlap)
+	if len(pieces) == 0 {
+		return 0, nil
+	}
+	idx := 0
+	if prev != nil {
+		if idx, err = i.store.CountChunks(versionID); err != nil {
+			return 0, err
+		}
+	}
+	cs := make([]store.Chunk, len(pieces))
+	for k, p := range pieces {
+		cs[k] = store.Chunk{VersionID: versionID, ThreadID: th.ID, Idx: idx + k, Text: p,
+			CapturedAt: at, EmbedStatus: "pending", ExtractStatus: "pending"}
+	}
+	if _, err := i.store.AddChunks(cs); err != nil {
+		return 0, err
+	}
+	return len(cs), nil
+}
