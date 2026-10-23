@@ -44,7 +44,8 @@ The first message on every connection is `hello`. Roles: `hook`, `ui`,
 | `approval.decide` | ui → core | `ApprovalDecide` |
 | `usage.updated` | core → ui | `Usage` |
 | `loops.updated` | core → ui | `[]Loop` |
-| `loop.set_status` | ui → core | `LoopSetStatus` |
+| `loop.set_status` | ui/cli → core | `LoopSetStatus` |
+| `loop.set_status` | core → requester | none (acknowledgement) |
 | `notice` | core → ui | `Notice` |
 | `memory.status` | core → ui | `MemoryStatus` |
 | `config.reload` | ui/cli → core | none |
@@ -114,6 +115,12 @@ Session states: `active`, `idle`, `waiting_input`, `blocked`, `exited`.
   unknown id or an already-resolved approval gets an `error` with the same `id`.
 - `memory.search` and `loop.set_status` reply `error` "memory is off" when
   memory is disabled; `capture.text` is then dropped silently.
+- `loop.set_status` always replies, asynchronously: on success a `loop.set_status`
+  envelope with the same `id` and no data; on failure (unknown loop, invalid
+  status, memory off, or `resolved` for a loop that is not `open`: "loop is
+  not open") an `error` with the same `id`. Clients that need the
+  outcome wait for the reply carrying their `id`; ping/pong ordering does not
+  cover it.
 - `config.reload` replies with a `notice` of kind `info` (same `id`) on success.
 - `ext.request` is answered with an `ext.request` envelope carrying the same
   `id`, whose `ExtMessage.data` is the extension's result; an unknown

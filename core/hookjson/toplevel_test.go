@@ -99,3 +99,60 @@ func TestStatuslineCommandAndIsOurs(t *testing.T) {
 		}
 	}
 }
+
+const nestedDoc = `{"globalShortcut":"x","mcpServers":{"other":{"command":"o","args":[]},"zz":{"command":"z"}},"tail":true}`
+
+func TestSetNestedKeepsSiblingsOrderAndBackup(t *testing.T) {
+	p := writeTemp(t, "cfg.json", []byte(nestedDoc))
+	changed, err := SetNested(p, "mcpServers", "platynotch", []byte(`{"command":"/b","args":["mcp"]}`))
+	if err != nil || !changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	b, _ := os.ReadFile(p)
+	s := string(b)
+	order := []string{`"globalShortcut"`, `"mcpServers"`, `"other"`, `"zz"`, `"platynotch"`, `"tail"`}
+	for i := 1; i < len(order); i++ {
+		if strings.Index(s, order[i-1]) >= strings.Index(s, order[i]) {
+			t.Fatalf("order lost at %s:\n%s", order[i], s)
+		}
+	}
+	raw, ok, err := GetNested(p, "mcpServers", "platynotch")
+	if err != nil || !ok || canon(t, raw) != canon(t, []byte(`{"command":"/b","args":["mcp"]}`)) {
+		t.Fatalf("%s %v %v", raw, ok, err)
+	}
+	if bak, _ := os.ReadFile(p + ".platynotch-backup"); string(bak) != nestedDoc {
+		t.Fatalf("backup %q", bak)
+	}
+	if changed, _ := SetNested(p, "mcpServers", "platynotch", []byte(`{"command":"/b","args":["mcp"]}`)); changed {
+		t.Fatal("same value should be a no-op")
+	}
+	if changed, err := SetNested(p, "mcpServers", "platynotch", nil); err != nil || !changed {
+		t.Fatalf("delete: %v %v", changed, err)
+	}
+	if _, ok, _ := GetNested(p, "mcpServers", "platynotch"); ok {
+		t.Fatal("not deleted")
+	}
+	if _, ok, _ := GetNested(p, "mcpServers", "other"); !ok {
+		t.Fatal("sibling lost")
+	}
+}
+
+func TestSetNestedCreatesAndRejectsNonObject(t *testing.T) {
+	p := t.TempDir() + "/sub/mcp.json"
+	if changed, err := SetNested(p, "mcpServers", "k", nil); changed || err != nil {
+		t.Fatalf("%v %v", changed, err)
+	}
+	if changed, err := SetNested(p, "mcpServers", "k", []byte(`1`)); !changed || err != nil {
+		t.Fatalf("%v %v", changed, err)
+	}
+	if st, _ := os.Stat(p); st.Mode().Perm() != 0o600 {
+		t.Fatalf("mode %v", st.Mode())
+	}
+	bad := writeTemp(t, "bad.json", []byte(`{"mcpServers":[1]}`))
+	if _, err := SetNested(bad, "mcpServers", "k", []byte(`1`)); err == nil {
+		t.Fatal("expected error for non-object parent")
+	}
+	if b, _ := os.ReadFile(bad); string(b) != `{"mcpServers":[1]}` {
+		t.Fatal("file modified")
+	}
+}

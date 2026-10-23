@@ -1,0 +1,51 @@
+{
+  "approvals": {
+    "enabled": true,
+    "timeout_seconds": 100,
+    "agents": {
+      "claude-code": true
+    }
+  },
+  "policy": {
+    "rules": [
+      {
+        "tool": "Bash",
+        "pattern": "rm -rf /*",
+        "action": "deny",
+        "reason": "Deletes from the filesystem root."
+      },
+      {
+        "tool": "Bash",
+        "pattern": "rm -rf ~*",
+        "action": "deny",
+        "reason": "Deletes the home directory."
+      },
+      {
+        "tool": "Bash",
+        "pattern": "*git push*--force*",
+        "action": "ask",
+        "reason": "Force push rewrites shared history."
+      }
+    ]
+  },
+  "memory": {
+    "enabled": false,
+    "capture_interval_seconds": 20,
+    "exclude_apps": [
+      "com.1password.1password",
+      "com.agilebits.onepassword7",
+      "com.apple.keychainaccess",
+      "com.bitwarden.desktop",
+      "com.apple.Passwords",
+      "com.lastpass.LastPass"
+    ],
+    "retention_days": 90,
+    "embedder": {
+      "name": "none"
+    },
+    "extractor": {
+      "name": "none"
+    }
+  },
+  "statusline": {}
+}

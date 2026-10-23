@@ -30,6 +30,7 @@ import (
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/agents"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/hookjson"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/paths"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/policy"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
 
@@ -136,10 +137,9 @@ func (Adapter) ParseCommon(event string, payload []byte) agents.Common {
 	}
 	switch event {
 	case "before-shell-execution", "after-shell-execution":
-		if c.Tool == "" {
-			c.Tool = "Shell"
-		}
-		if len(c.ToolInput) == 0 && p.Command != "" {
+		c.Tool = "Shell" // whatever tool_name the payload claims
+		// The top-level command is what Cursor runs; prefer it.
+		if p.Command != "" {
 			c.ToolInput, _ = json.Marshal(map[string]string{"command": p.Command})
 		}
 	}
@@ -147,6 +147,23 @@ func (Adapter) ParseCommon(event string, payload []byte) agents.Common {
 }
 
 func (Adapter) Approvals() agents.ApprovalSupport { return agents.ApprovalsExperimental }
+
+// PolicySummary: before-shell-execution is KindCommand from the top-level
+// "command" (see agents.ShellSummary: a differing tool_input.command or an
+// unexpected tool_input key makes it KindOther); before-mcp-execution and
+// every other event are always KindOther, whatever the tool is named.
+func (Adapter) PolicySummary(event string, payload []byte) (string, agents.SummaryKind) {
+	var p struct {
+		Command   string          `json:"command"`
+		ToolInput json.RawMessage `json:"tool_input"`
+	}
+	_ = json.Unmarshal(payload, &p)
+	if event == "before-shell-execution" {
+		return agents.ShellSummary(p.Command, p.ToolInput)
+	}
+	s, _ := agents.SummarizeFull("", p.ToolInput)
+	return s, policy.KindOther
+}
 
 func (Adapter) IsPermissionEvent(event string) bool {
 	return event == "before-shell-execution" || event == "before-mcp-execution"

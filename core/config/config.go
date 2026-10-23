@@ -44,7 +44,19 @@ type Policy struct {
 
 // Rule matches a tool call. Tool is an exact tool name ("Bash", "Write") or "*".
 // Pattern is a glob ("*" any run incl. "/" and spaces, "?" one char) against the
-// approval summary (the command or file path).
+// whole, untruncated summary of the call (the command, file path or URL), not
+// the shortened text shown on the approval card.
+//
+// An "allow" rule only ever approves a call whose summary has a known kind,
+// decided by the agent adapter from the hook event and payload: Claude Code
+// Bash commands, file-tool paths and WebFetch URLs (with only the inputs
+// those tools expect, and for URLs http(s) without credentials or "..");
+// Cursor shell commands. MCP tools, unknown tools, other agents and
+// unexpected inputs always go to a person (or a deny/ask rule).
+//
+// A path rule approves the whole call, including what is written: Write's
+// content, Edit's new_string, NotebookEdit's new_source. Allow file tools only
+// on paths you would let the agent write anything to.
 //
 // An "allow" rule never approves a compound command: it is skipped when the
 // summary contains any of ; && || | & ` $( > < or a newline, unless that
@@ -52,6 +64,17 @@ type Policy struct {
 // "git status --short" but not "git status && curl x | sh", while
 // "make build && make test" allows exactly that chain. "deny" and "ask"
 // rules match compounds as usual.
+//
+// URL allow rules are host-aware. The pattern must be "scheme://host" or
+// "scheme://host/path" (anything else never allows a URL). Scheme and host
+// are compared case-insensitively; "*" and "?" in the host never match "/",
+// "?", "#", "@" or ":", so "https://*.example.com/*" allows
+// "https://docs.example.com/a" but not "https://evil.com/.example.com/x".
+// The path is globbed as usual ("/" when the URL or pattern has none, so
+// "https://docs.example.com" allows only the root). The query string and
+// fragment are ignored: "https://docs.example.com/docs/*" allows
+// "https://docs.example.com/docs/a?x=1&y=2". "deny" and "ask" rules glob the
+// whole URL, query included.
 type Rule struct {
 	Tool    string `json:"tool"`
 	Pattern string `json:"pattern"`
@@ -99,15 +122,19 @@ func Default() Config {
 			Enabled:                false,
 			CaptureIntervalSeconds: 20,
 			RetentionDays:          90,
-			ExcludeApps: []string{
-				"com.1password.1password", "com.agilebits.onepassword7",
-				"com.apple.keychainaccess", "com.bitwarden.desktop",
-				"com.apple.Passwords", "com.lastpass.LastPass",
-			},
-			Embedder:  Provider{Name: "none"},
-			Extractor: Provider{Name: "none"},
+			ExcludeApps:            append([]string(nil), AlwaysExcludedApps...),
+			Embedder:               Provider{Name: "none"},
+			Extractor:              Provider{Name: "none"},
 		},
 	}
+}
+
+// AlwaysExcludedApps are password managers that are never captured, whatever
+// exclude_apps a client supplies (a user list replaces the defaults).
+var AlwaysExcludedApps = []string{
+	"com.1password.1password", "com.agilebits.onepassword7",
+	"com.apple.keychainaccess", "com.bitwarden.desktop",
+	"com.apple.Passwords", "com.lastpass.LastPass",
 }
 
 // DefaultRules deny a few commands nobody should approve by accident.
