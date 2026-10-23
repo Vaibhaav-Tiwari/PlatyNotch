@@ -188,3 +188,50 @@ func TestArchiveStale(t *testing.T) {
 		t.Fatalf("second archive n=%d", n)
 	}
 }
+
+func TestStaleLoopReopensOnNewMention(t *testing.T) {
+	s := openStore(t)
+	for _, title := range []string{"Old thing", "Dismissed thing", "Resolved thing"} {
+		Apply(s, provider.ExtractResult{Loops: []protocol.Loop{newLoop(title)}}, "Mail", "th1", t0)
+	}
+	for _, l := range mustList(t, s, "open") {
+		switch l.Title {
+		case "Dismissed thing":
+			SetStatus(s, protocol.LoopSetStatus{ID: l.ID, Status: "dismissed"}, t0)
+		case "Resolved thing":
+			SetStatus(s, protocol.LoopSetStatus{ID: l.ID, Status: "resolved"}, t0)
+		}
+	}
+	now := t0.Add(15 * 24 * time.Hour)
+	if n, _ := ArchiveStale(s, 14*24*time.Hour, now); n != 1 {
+		t.Fatalf("archived %d", n)
+	}
+	again := func(title string) bool {
+		l := newLoop(title)
+		l.DetectedAt = now
+		changed, err := Apply(s, provider.ExtractResult{Loops: []protocol.Loop{l}}, "Slack", "th2", now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return changed
+	}
+	if !again("old thing!") {
+		t.Fatal("reopening a stale loop reported no change")
+	}
+	o := mustList(t, s, "open")
+	if len(o) != 1 || o[0].Title != "Old thing" || !o[0].DetectedAt.Equal(now) || o[0].ResolvedAt != nil {
+		t.Fatalf("open=%+v", o)
+	}
+	if n, _ := ArchiveStale(s, 14*24*time.Hour, now); n != 0 {
+		t.Fatal("reopened loop re-staled immediately")
+	}
+	if again("dismissed thing") || again("Resolved thing.") {
+		t.Fatal("closed loop reported a change")
+	}
+	if d := mustList(t, s, "dismissed"); len(d) != 1 {
+		t.Fatalf("dismissed=%+v", d)
+	}
+	if r := mustList(t, s, "resolved"); len(r) != 1 {
+		t.Fatalf("resolved=%+v", r)
+	}
+}

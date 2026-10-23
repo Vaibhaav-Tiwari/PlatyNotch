@@ -171,9 +171,23 @@ func ids(cs []store.Chunk) []int64 {
 
 func (w *Worker) embedOnce(ctx context.Context) error {
 	now := w.now()
-	cs, err := w.s.DueChunks("embed", "", now, embedBatch)
-	if err != nil || len(cs) == 0 {
-		return err
+	// A chunk that already failed in a batch is retried on its own, so one
+	// bad chunk cannot keep failing (and eventually fail) its neighbours.
+	var cs []store.Chunk
+	if w.e != nil {
+		c, ok, err := w.s.DueRetryChunk("embed", now)
+		if err != nil {
+			return err
+		}
+		if ok {
+			cs = []store.Chunk{c}
+		}
+	}
+	if cs == nil {
+		var err error
+		if cs, err = w.s.DueChunks("embed", "", now, embedBatch); err != nil || len(cs) == 0 {
+			return err
+		}
 	}
 	if w.e == nil {
 		return w.s.SetChunkStatus("embed", ids(cs), "skipped")
@@ -272,9 +286,10 @@ func (w *Worker) extractOnce(ctx context.Context) (changed bool, err error) {
 		w.setErr("extract", err)
 		return false, w.s.FailChunks("extract", bids, err.Error(), w.retryAt(now))
 	}
-	// The thread may have been purged while the provider was working: drop
-	// the result rather than resurrect loops from deleted text.
-	if _, ok, err := w.s.GetThread(tid); err != nil || !ok {
+	// Some of the batch may have been purged while the provider was working:
+	// drop the result rather than keep loops from deleted text. Surviving
+	// chunks stay pending and are extracted again without the purged text.
+	if ok, err := w.s.ChunksExist(bids); err != nil || !ok {
 		return false, err
 	}
 	changed, err = loops.Apply(w.s, res, app, tid, now)

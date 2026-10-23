@@ -30,9 +30,10 @@ func nullMs(t *time.Time) any {
 
 // ApplyLoops inserts add (new random ids, status "open") merging by
 // TitleHash, then resolves open loops in res, in one transaction. A merge into
-// an existing open loop only fills a missing due date or details; existing
-// loops in any other status are left alone. changed is true when any row was
-// inserted or updated.
+// an existing open loop only fills a missing due date or details; a merge into
+// a stale loop reopens it with the new detection time and source; resolved and
+// dismissed loops are left alone. changed is true when any row was inserted or
+// updated.
 func (s *Store) ApplyLoops(add []Loop, res []LoopResolution, now time.Time) (changed bool, err error) {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -43,9 +44,15 @@ func (s *Store) ApplyLoops(add []Loop, res []LoopResolution, now time.Time) (cha
 		r, err := tx.Exec(`INSERT INTO loops(id,title,details,kind,status,source_app,source_thread,quote,due_at,detected_at,title_hash)
 			VALUES(?,?,?,?,'open',?,?,?,?,?,?)
 			ON CONFLICT(title_hash) DO UPDATE SET
-			  due_at=COALESCE(loops.due_at, excluded.due_at),
+			  status='open',
+			  detected_at=CASE WHEN loops.status='stale' THEN excluded.detected_at ELSE loops.detected_at END,
+			  source_app=CASE WHEN loops.status='stale' THEN excluded.source_app ELSE loops.source_app END,
+			  source_thread=CASE WHEN loops.status='stale' THEN excluded.source_thread ELSE loops.source_thread END,
+			  quote=CASE WHEN loops.status='stale' THEN excluded.quote ELSE loops.quote END,
+			  due_at=CASE WHEN loops.status='stale' THEN COALESCE(excluded.due_at, loops.due_at) ELSE COALESCE(loops.due_at, excluded.due_at) END,
 			  details=CASE WHEN loops.details='' THEN excluded.details ELSE loops.details END
-			WHERE loops.status='open' AND ((loops.due_at IS NULL AND excluded.due_at IS NOT NULL) OR (loops.details='' AND excluded.details<>''))`,
+			WHERE loops.status='stale'
+			   OR (loops.status='open' AND ((loops.due_at IS NULL AND excluded.due_at IS NOT NULL) OR (loops.details='' AND excluded.details<>'')))`,
 			newID(), l.Title, l.Details, l.Kind, l.SourceApp, l.SourceThread, l.Quote, nullMs(l.DueAt), ms(l.DetectedAt), l.TitleHash)
 		if err != nil {
 			return false, err

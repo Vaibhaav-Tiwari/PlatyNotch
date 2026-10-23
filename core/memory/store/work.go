@@ -30,6 +30,41 @@ func idArgs(ids []int64) (string, []any) {
 	return strings.TrimSuffix(strings.Repeat("?,", len(ids)), ","), args
 }
 
+// DueRetryChunk returns the oldest pending chunk for kind that has failed
+// before and whose retry is due at now; ok is false when there is none.
+func (s *Store) DueRetryChunk(kind string, now time.Time) (c Chunk, ok bool, err error) {
+	col, err := statusCol(kind)
+	if err != nil {
+		return Chunk{}, false, err
+	}
+	var at int64
+	err = s.db.QueryRow(`SELECT c.id,c.version_id,c.thread_id,c.idx,c.text,c.captured_at,c.embed_status,c.extract_status
+		FROM chunks c JOIN retry_queue r ON r.kind=? AND r.chunk_id=c.id
+		WHERE c.`+col+`='pending' AND r.next_at <= ? ORDER BY r.next_at, c.id LIMIT 1`, kind, ms(now)).
+		Scan(&c.ID, &c.VersionID, &c.ThreadID, &c.Idx, &c.Text, &at, &c.EmbedStatus, &c.ExtractStatus)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Chunk{}, false, nil
+	}
+	if err != nil {
+		return Chunk{}, false, err
+	}
+	c.CapturedAt = fromMs(at)
+	return c, true, nil
+}
+
+// ChunksExist reports whether every id still names a chunk.
+func (s *Store) ChunksExist(ids []int64) (bool, error) {
+	if len(ids) == 0 {
+		return true, nil
+	}
+	ph, args := idArgs(ids)
+	var n int
+	if err := s.db.QueryRow(`SELECT count(*) FROM chunks WHERE id IN (`+ph+`)`, args...).Scan(&n); err != nil {
+		return false, err
+	}
+	return n == len(ids), nil
+}
+
 // DueChunks returns pending chunks for kind whose retry time (if any) is not
 // after now, oldest first. A non-empty threadID restricts to that thread.
 func (s *Store) DueChunks(kind, threadID string, now time.Time, limit int) ([]Chunk, error) {

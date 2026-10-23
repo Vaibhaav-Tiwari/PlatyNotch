@@ -33,6 +33,7 @@ type fakeEmb struct {
 	sizes []int
 	err   error
 	hook  func(ctx context.Context) error // runs inside Embed; non-nil error is returned
+	bad   string                          // any batch containing this text fails
 }
 
 func (f *fakeEmb) Name() string  { return "fake" }
@@ -50,6 +51,11 @@ func (f *fakeEmb) Embed(ctx context.Context, texts []string) ([][]float32, error
 	if f.err != nil {
 		return nil, f.err
 	}
+	for _, t := range texts {
+		if f.bad != "" && t == f.bad {
+			return nil, errors.New("cannot embed bad chunk")
+		}
+	}
 	out := make([][]float32, len(texts))
 	for i := range out {
 		out[i] = []float32{1, 0, 0}
@@ -63,16 +69,18 @@ type fakeExt struct {
 	reqs []provider.ExtractRequest
 	res  provider.ExtractResult
 	err  error
-	hook func()
+	hook func(ctx context.Context) error
 }
 
 func (f *fakeExt) Name() string { return "fake" }
-func (f *fakeExt) Extract(_ context.Context, r provider.ExtractRequest) (provider.ExtractResult, error) {
+func (f *fakeExt) Extract(ctx context.Context, r provider.ExtractRequest) (provider.ExtractResult, error) {
 	f.mu.Lock()
 	f.reqs = append(f.reqs, r)
 	f.mu.Unlock()
 	if f.hook != nil {
-		f.hook()
+		if err := f.hook(ctx); err != nil {
+			return provider.ExtractResult{}, err
+		}
 	}
 	return f.res, f.err
 }
@@ -403,7 +411,7 @@ func TestPurgedMidFlightSkipped(t *testing.T) {
 	}
 
 	chunk(t, s, thread(t, s, "Inbox2"), "I'll call the bank.", t0)
-	ext := &fakeExt{res: provider.ExtractResult{Loops: []protocol.Loop{{Title: "Call the bank", Kind: "task", Status: "open", DetectedAt: t0}}}, hook: purge}
+	ext := &fakeExt{res: provider.ExtractResult{Loops: []protocol.Loop{{Title: "Call the bank", Kind: "task", Status: "open", DetectedAt: t0}}}, hook: func(context.Context) error { purge(); return nil }}
 	w = New(s, nil, ext, clk.now)
 	w.tick(context.Background())
 	if w.LastError() != "" || len(ext.requests()) != 1 {
@@ -442,6 +450,101 @@ func TestRunStopsOnCancel(t *testing.T) {
 	}
 	if e, _ := status(t, s, id); e != "pending" || w.LastError() != "" {
 		t.Fatalf("cancellation counted as failure: status=%q LastError=%q", e, w.LastError())
+	}
+	if n, err := s.RetryCount(); err != nil || n != 0 {
+		t.Fatalf("retry rows=%d err=%v", n, err)
+	}
+}
+
+func TestBadChunkRetriedAlone(t *testing.T) {
+	s := openStore(t)
+	clk := &clock{t: t0}
+	th := thread(t, s, "Inbox")
+	good1 := chunk(t, s, th, "good one", t0)
+	bad := chunk(t, s, th, "bad", t0)
+	good2 := chunk(t, s, th, "good two", t0)
+	emb := &fakeEmb{clk: clk, bad: "bad"}
+	w := New(s, emb, nil, clk.now)
+	w.tick(context.Background())
+	if emb.sizes[0] != 3 {
+		t.Fatalf("first call size=%d", emb.sizes[0])
+	}
+	for i := 1; i <= 400; i++ { // one tick per minute, well past the last backoff
+		clk.set(t0.Add(time.Duration(i) * time.Minute))
+		w.tick(context.Background())
+	}
+	for _, sz := range emb.sizes[1:] {
+		if sz != 1 {
+			t.Fatalf("retries not single-chunk: sizes=%v", emb.sizes)
+		}
+	}
+	for id, want := range map[int64]string{good1: "done", good2: "done", bad: "failed"} {
+		if e, _ := status(t, s, id); e != want {
+			t.Fatalf("chunk %d embed_status=%q want %q", id, e, want)
+		}
+	}
+	if n, _ := s.RetryCount(); n != 0 {
+		t.Fatalf("retry rows=%d", n)
+	}
+}
+
+func TestExtractSkipsWhenBatchChunkPurged(t *testing.T) {
+	s := openStore(t)
+	clk := &clock{t: t0.Add(time.Hour)}
+	th := thread(t, s, "Inbox")
+	chunk(t, s, th, "I'll call the bank.", t0)
+	b := chunk(t, s, th, "And pay rent.", t0.Add(10*time.Minute))
+	ext := &fakeExt{
+		res: provider.ExtractResult{Loops: []protocol.Loop{{Title: "Call the bank", Kind: "task", Status: "open", DetectedAt: t0}}},
+		hook: func(context.Context) error {
+			_, err := s.PurgeBefore(t0.Add(5 * time.Minute)) // removes the first chunk only
+			return err
+		},
+	}
+	w := New(s, nil, ext, clk.now)
+	w.tick(context.Background())
+	if len(ext.requests()) != 1 || w.LastError() != "" {
+		t.Fatalf("calls=%d LastError=%q", len(ext.requests()), w.LastError())
+	}
+	if _, ok, _ := s.GetThread(th.ID); !ok {
+		t.Fatal("thread should survive a partial purge")
+	}
+	if all, _ := loops.List(s, ""); len(all) != 0 {
+		t.Fatalf("applied result from partly purged batch: %+v", all)
+	}
+	if _, x := status(t, s, b); x != "pending" {
+		t.Fatalf("surviving chunk extract_status=%q want pending", x)
+	}
+}
+
+func TestRunStopsOnCancelDuringExtract(t *testing.T) {
+	s := openStore(t)
+	clk := &clock{t: t0.Add(time.Hour)}
+	id := chunk(t, s, thread(t, s, "Inbox"), "hello", t0)
+	started := make(chan struct{})
+	var once sync.Once
+	ext := &fakeExt{hook: func(ctx context.Context) error {
+		once.Do(func() { close(started) })
+		<-ctx.Done()
+		return ctx.Err()
+	}}
+	w := New(s, nil, ext, clk.now)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { w.Run(ctx); close(done) }()
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("extractor never called")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not stop after cancel")
+	}
+	if _, x := status(t, s, id); x != "pending" || w.LastError() != "" {
+		t.Fatalf("cancellation counted as failure: status=%q LastError=%q", x, w.LastError())
 	}
 	if n, err := s.RetryCount(); err != nil || n != 0 {
 		t.Fatalf("retry rows=%d err=%v", n, err)
