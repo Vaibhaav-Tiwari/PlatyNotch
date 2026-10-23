@@ -12,6 +12,7 @@ private final class FakeWidget: NotchWidget {
     let defaultEnabled: Bool
     var starts = 0
     var stops = 0
+    var disables = 0
     var live: [LiveActivity] = []
     var liveActivities: [LiveActivity] { live }
 
@@ -23,6 +24,7 @@ private final class FakeWidget: NotchWidget {
 
     func start(context: WidgetContext) { starts += 1 }
     func stop() { stops += 1 }
+    func disabled() { disables += 1 }
     func tileView() -> AnyView { AnyView(Text(verbatim: title)) }
 }
 
@@ -167,7 +169,8 @@ final class WidgetRegistryTests: XCTestCase {
         XCTAssertFalse(n.isAvailable)
         let granted = await n.requestAuthorization()
         XCTAssertFalse(granted)
-        n.schedule(id: "x", title: "t", body: "b", at: nil)
+        let added = await n.schedule(id: "x", title: "t", body: "b", at: nil)
+        XCTAssertFalse(added)
         n.cancel(id: "x")
         // `swift test` runs unbundled, so the app picks the no-op notifier.
         XCTAssertFalse(Notifiers.make().isAvailable)
@@ -179,5 +182,22 @@ final class WidgetRegistryTests: XCTestCase {
         BuiltInWidgets.register(in: registry, store: AppStore(), today: today, persist: false)
         XCTAssertEqual(registry.orderedWidgets.map(\.id), ["music", "meeting", "focus", "loops", "time"])
         XCTAssertEqual(registry.visibleWidgets.count, 5)
+    }
+
+    /// Turning a widget off calls `disabled()` after `stop`; quitting (`stopAll`) does not.
+    func testDisableCallsDisabledButQuitDoesNot() {
+        let registry = WidgetRegistry(defaults: defaults())
+        let a = FakeWidget("a")
+        let b = FakeWidget("b")
+        registry.register(a)
+        registry.register(b)
+        registry.start(context: context())
+        registry.setEnabled("a", false)
+        XCTAssertEqual(a.stops, 1)
+        XCTAssertEqual(a.disables, 1)
+        registry.stopAll()
+        XCTAssertEqual(b.stops, 1)
+        XCTAssertEqual(b.disables, 0)
+        XCTAssertEqual(a.disables, 1)
     }
 }

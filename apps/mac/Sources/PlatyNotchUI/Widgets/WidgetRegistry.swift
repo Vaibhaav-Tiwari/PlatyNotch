@@ -57,13 +57,16 @@ public final class WidgetRegistry {
 
     public func widget(_ id: String) -> (any NotchWidget)? { widgets.first { $0.id == id } }
 
-    /// Turns a widget on (starts it) or off (stops it).
+    /// Turns a widget on (starts it) or off (stops it, then `disabled()`).
     public func setEnabled(_ id: String, _ on: Bool) {
         guard isEnabled(id) != on else { return }
         update { $0.setEnabled(id, on) }
         guard let w = widget(id) else { return }
         if on, context != nil { start(w) }
-        if !on, running.contains(id) { stop(w) }
+        if !on {
+            if running.contains(id) { stop(w) }
+            w.disabled()
+        }
     }
 
     public func move(_ id: String, to index: Int) {

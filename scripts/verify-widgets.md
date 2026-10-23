@@ -159,8 +159,13 @@ bundled app (`scripts/build-app.sh`), since notifications need a bundle.
 - [ ] **29. Permission only on use.** Fresh install (`tccutil reset All dev.platynotch.app`
   and delete `time.notificationsAsked`): launching and turning the Time widget off and on
   ask nothing; the first timer or alarm you add shows the notification prompt, once.
+  Allow it: that first timer or alarm still gets its backup (quit and wait for it).
 - [ ] **30. Disabled mid-ring.** While an alarm rings, turn Time off in Settings › Widgets:
-  the sound stops at once and no ringing card or chip is left behind.
+  the sound stops at once and no ringing card or chip is left behind. Bundled app, with a
+  timer running and an alarm set: turn Time off, wait past both times: no system
+  notification shows. Turn it on again: the timer shows Done (no ring), a once alarm whose
+  time passed while off is still on for its next day, and its notification is back
+  (`Notification Center` shows it at that time).
 - [ ] **31. Packaged sounds.** `scripts/build-app.sh` ends without error (it checks the
   sounds in `Contents/Resources/PlatyNotch_PlatyNotchUI.bundle` and verifies its
   signature); the alarm and chime are audible in the bundled app (not the system "Glass").

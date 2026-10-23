@@ -67,7 +67,15 @@ final class TimeWidget: NotchWidget {
     @ObservationIgnored private var wakeTask: Task<Void, Never>?
     @ObservationIgnored private var soundTask: Task<Void, Never>?
     @ObservationIgnored private var ringTimeouts: [String: Task<Void, Never>] = [:]
-    @ObservationIgnored private var scheduled: [TimeBackup] = []
+    /// Backups Notification Center accepted (an id is recorded only after `schedule` succeeded).
+    @ObservationIgnored private var scheduled: [String: TimeBackup] = [:]
+    /// Backup changes run one after another (each awaits the one before).
+    @ObservationIgnored private var syncTask: Task<Void, Never>?
+    @ObservationIgnored private var authTask: Task<Void, Never>?
+    /// Kept after `stop` so `disabled()` can cancel the backups.
+    @ObservationIgnored private var notifier: Notifier?
+    /// The sound looping now (nil when silent).
+    @ObservationIgnored private var playing: TimeSound?
     @ObservationIgnored private var observers: [(NotificationCenter, NSObjectProtocol)] = []
     @ObservationIgnored private var watchGeneration = 0
 
@@ -86,9 +94,12 @@ final class TimeWidget: NotchWidget {
 
     func start(context: WidgetContext) {
         self.context = context
+        notifier = context.notify
         let t = clock()
         now = t
-        // Launch (or turned back on): what came due meanwhile is shown, never rung.
+        // Launch: what came due meanwhile (the backup showed it) is shown, never rung; a once
+        // alarm that came due turns off. After `disabled()` `lastCheck` is nil, so turning the
+        // widget back on handles nothing from the time it was off (alarms keep their next ring).
         let events = store.update { $0.advance(to: t, calendar: calendar(), announce: false) }
         for e in events { handle(e) }
         state = store.state
@@ -100,7 +111,7 @@ final class TimeWidget: NotchWidget {
 
     /// Stops all work, including a ringing sound (the panel may show a generic Stop card).
     /// Backup notifications stay scheduled: `stop` also runs when the app quits, and they
-    /// are what fires then.
+    /// are what fires then. Turning the widget off also calls `disabled()`, which cancels them.
     func stop() {
         watchGeneration += 1   // our own stopRinging below is not a user's Stop
         wakeTask?.cancel()
@@ -109,13 +120,30 @@ final class TimeWidget: NotchWidget {
         soundTask = nil
         for t in ringTimeouts.values { t.cancel() }
         ringTimeouts = [:]
-        sound.stop()
+        silence()
         for r in ringing { context?.stopRinging(id: r.id) }
         ringing = []
         for (center, o) in observers { center.removeObserver(o) }
         observers = []
         store.save()
         context = nil
+    }
+
+    /// Turned off by the user (after `stop`): a disabled widget does no work, so every
+    /// backup notification is cancelled, and the scheduler forgets where it was: on re-enable
+    /// `start` reschedules from the saved state and nothing that came due while off fires
+    /// or turns a once alarm off (it keeps its next occurrence).
+    func disabled() {
+        var ids = Set(scheduled.keys)
+        ids.formUnion(store.state.timers.map { TimeBackup.timerID($0.id) })
+        ids.formUnion(store.state.alarms.map { TimeBackup.alarmID($0.id) })
+        store.update { $0.lastCheck = nil }
+        finished = [:]
+        authTask?.cancel()
+        enqueue { w in
+            for id in ids.sorted() { w.notifier?.cancel(id: id) }
+            w.scheduled = [:]
+        }
     }
 
     // MARK: - Scheduler
@@ -186,42 +214,75 @@ final class TimeWidget: NotchWidget {
 
     private func storedTimer(_ timer: UUID) -> CountdownTimer? { store.state.timers.first { $0.id == timer } }
 
-    /// `FocusModel` publishes the end of a running session as "focusUntil".
+    /// `FocusModel` publishes the end of a running session under `untilKey`.
     private func focusSessionActive(at t: Date) -> Bool {
-        (defaults.object(forKey: "focusUntil") as? Date).map { $0 > t } ?? false
+        (defaults.object(forKey: FocusModel.untilKey) as? Date).map { $0 > t } ?? false
     }
 
     // MARK: - Backups (system notifications)
 
-    /// Schedules / cancels backups to match the state. Events found late (`ring == false`)
-    /// had their backup delivered already: it is forgotten, never cancelled (which would
-    /// also remove it from Notification Center).
+    /// Schedules / cancels backups to match the state (queued; see `applyBackups`). Events
+    /// found late (`ring == false`) had their backup delivered already: it is forgotten,
+    /// never cancelled (which would also remove it from Notification Center).
     private func syncBackups(forgetting events: [TimeEvent] = []) {
-        guard let notify = context?.notify else { return }
-        let late = Set(events.filter { !$0.ring }.map { e -> String in
+        guard context != nil else { return }
+        for e in events where !e.ring {
             switch e.kind {
-            case .timer(let id): TimeBackup.timerID(id)
-            case .alarm(let id): TimeBackup.alarmID(id)
-            }
-        })
-        let old = scheduled.filter { !late.contains($0.id) }
-        let new = store.state.backups(now: clock(), calendar: calendar())
-        let diff = TimeBackup.diff(old: old, new: new)
-        for id in diff.cancel { notify.cancel(id: id) }
-        for b in diff.schedule {
-            switch b.trigger {
-            case .interval: notify.schedule(id: b.id, title: b.title, body: b.body, at: b.fireAt)
-            case .calendar(let comps): notify.schedule(id: b.id, title: b.title, body: b.body, matching: comps)
+            case .timer(let id): scheduled[TimeBackup.timerID(id)] = nil
+            case .alarm(let id): scheduled[TimeBackup.alarmID(id)] = nil
             }
         }
-        scheduled = new
+        enqueue { await $0.applyBackups() }
     }
 
-    /// Asks for notification permission the first time a timer or alarm is made.
+    /// Runs `op` after every backup change queued before it.
+    private func enqueue(_ op: @escaping @MainActor (TimeWidget) async -> Void) {
+        let previous = syncTask
+        syncTask = Task { @MainActor [weak self] in
+            await previous?.value
+            guard let self else { return }
+            await op(self)
+        }
+    }
+
+    /// Diffs the wanted backups (from the state as it is now) against those Notification
+    /// Center accepted. A refused add (no permission yet) stays unrecorded, so the next
+    /// sync, e.g. right after permission is granted, adds it again.
+    private func applyBackups() async {
+        guard context != nil, let notify = notifier else { return }
+        let new = store.state.backups(now: clock(), calendar: calendar())
+        let diff = TimeBackup.diff(old: Array(scheduled.values), new: new)
+        for id in diff.cancel {
+            notify.cancel(id: id)
+            scheduled[id] = nil
+        }
+        for b in diff.schedule {
+            scheduled[b.id] = nil
+            let ok: Bool = switch b.trigger {
+            case .interval: await notify.schedule(id: b.id, title: b.title, body: b.body, at: b.fireAt)
+            case .calendar(let comps): await notify.schedule(id: b.id, title: b.title, body: b.body, matching: comps)
+            }
+            if ok { scheduled[b.id] = b }
+        }
+    }
+
+    /// Waits until queued backup changes (and a pending permission answer) are done.
+    func backupsSettled() async {
+        await authTask?.value
+        await syncTask?.value
+    }
+
+    /// Asks for notification permission the first time a timer or alarm is made. When it is
+    /// granted, every backup is scheduled again (adds before the answer were refused).
     private func askForNotificationsOnce() {
-        guard let notify = context?.notify, notify.isAvailable, !defaults.bool(forKey: Self.askedKey) else { return }
+        guard let notify = notifier, notify.isAvailable, !defaults.bool(forKey: Self.askedKey) else { return }
         defaults.set(true, forKey: Self.askedKey)
-        Task { _ = await notify.requestAuthorization() }
+        authTask = Task { @MainActor [weak self] in
+            let granted = await notify.requestAuthorization()
+            guard granted, !Task.isCancelled, let self, self.context != nil else { return }
+            self.scheduled = [:]
+            self.syncBackups()
+        }
     }
 
     // MARK: - Ringing
@@ -234,12 +295,12 @@ final class TimeWidget: NotchWidget {
             return
         }
         // The alarm sound wins over a timer's chime.
-        sound.play(ringing.contains(where: \.isAlarm) ? .alarm : kind)
+        play(ringing.contains(where: \.isAlarm) ? .alarm : kind)
         soundTask?.cancel()
         soundTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(Self.soundLimit))
             guard !Task.isCancelled else { return }
-            self?.sound.stop()
+            self?.silence()
         }
         if !r.isAlarm {
             ringTimeouts[r.id] = Task { @MainActor [weak self] in
@@ -248,6 +309,17 @@ final class TimeWidget: NotchWidget {
                 self?.endRing(r.id, dismiss: false)   // becomes a "Done" notice
             }
         }
+    }
+
+    private func play(_ kind: TimeSound) {
+        guard playing != kind else { return }
+        sound.play(kind)
+        playing = kind
+    }
+
+    private func silence() {
+        sound.stop()
+        playing = nil
     }
 
     /// Stop: the ring ends; a stopped timer is reset (and its notice dismissed).
@@ -268,7 +340,10 @@ final class TimeWidget: NotchWidget {
         if ringing.isEmpty {
             soundTask?.cancel()
             soundTask = nil
-            sound.stop()
+            silence()
+        } else if playing != nil {
+            // Still within the sound limit: follow what still rings (an alarm, else the chime).
+            play(ringing.contains(where: \.isAlarm) ? .alarm : .chime)
         }
         if dismiss, case .timer(let timerID) = r.kind {
             finished[timerID] = nil

@@ -23,6 +23,9 @@ public protocol NotchWidget: AnyObject {
     var liveActivities: [LiveActivity] { get }
     func start(context: WidgetContext)
     func stop()
+    /// The user turned the widget off (after `stop`). Undo work that outlives the process,
+    /// e.g. scheduled system notifications. Not called when the app quits (`stop` alone).
+    func disabled()
     func tileView() -> AnyView
     /// Shown in Settings › Widgets under the widget's name while it is enabled.
     func settingsView() -> AnyView?
@@ -41,6 +44,7 @@ extension NotchWidget {
     public var liveActivities: [LiveActivity] { [] }
     public func start(context: WidgetContext) {}
     public func stop() {}
+    public func disabled() {}
     public func settingsView() -> AnyView? { nil }
     public func peekView(id: String) -> AnyView? { nil }
     public func hudView(kind: HUDKind, level: Double) -> AnyView? { nil }

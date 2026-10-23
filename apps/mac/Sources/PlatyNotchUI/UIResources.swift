@@ -15,13 +15,19 @@ enum UIResources {
     /// The resource bundle, or nil when it is not shipped (then `Bundle.main` is tried).
     static let bundle: Bundle? = {
         let main = Bundle.main
-        let candidates = [main.resourceURL, main.bundleURL, main.executableURL?.deletingLastPathComponent()]
+        // The bundle holding this code: the app itself, or the test bundle under `swift
+        // test`, whose resource bundle sits next to it in .build/<config>.
+        let code = Bundle(for: Marker.self)
+        let candidates = [main.resourceURL, main.bundleURL, main.executableURL?.deletingLastPathComponent(),
+                          code.resourceURL, code.bundleURL.deletingLastPathComponent()]
             .compactMap { $0?.appendingPathComponent(bundleName) }
         for url in candidates {
             if let b = Bundle(url: url) { return b }
         }
         return nil
     }()
+
+    private final class Marker {}
 
     /// A resource by name, from the resource bundle (flat or under `subdirectory`), else `Bundle.main`.
     static func url(_ name: String, ext: String, subdirectory: String? = nil) -> URL? {
