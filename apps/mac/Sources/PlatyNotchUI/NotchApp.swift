@@ -110,6 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controllers = screens.enumerated().map { index, screen in
             let state = screen.displayID.flatMap { carry[$0] } ?? (index == 0 ? fallback : nil)
             let c = NotchController(store: store, client: client, plugins: plugins, responder: responder,
+                                    onOpenTerminal: { TerminalFocus.focus(session: $0) },
                                     carryOver: state)
             c.attach(to: screen)
             return c
