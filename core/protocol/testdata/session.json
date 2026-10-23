@@ -1,0 +1,18 @@
+{
+  "key": "claude-code:abc123",
+  "agent": "claude-code",
+  "agent_name": "Claude Code",
+  "session_id": "abc123",
+  "cwd": "/Users/dev/platynotch",
+  "project": "platynotch",
+  "state": "waiting_input",
+  "title": "Fix the failing test",
+  "tool": "Bash",
+  "message": "Waiting for approval",
+  "pid": 4242,
+  "tty": "ttys004",
+  "term_program": "Apple_Terminal",
+  "subagents": 1,
+  "started_at": "2026-10-23T10:00:00Z",
+  "updated_at": "2026-10-23T10:05:00Z"
+}

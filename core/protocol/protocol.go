@@ -51,6 +51,10 @@ const (
 	TypeCaptureText   = "capture.text"   // capture → core
 	TypeMemorySearch  = "memory.search"  // any → core
 	TypeMemoryResults = "memory.results" // core → requester
+
+	// Extensions (Pro and third-party): opaque, namespaced messages.
+	TypeExtRequest = "ext.request" // ext/ui → core → extension handler
+	TypeExtEvent   = "ext.event"   // extension → ui/ext subscribers
 )
 
 // Client roles sent in Hello.
@@ -187,7 +191,7 @@ type Loop struct {
 	ID           string     `json:"id"`
 	Title        string     `json:"title"`
 	Details      string     `json:"details,omitempty"`
-	Kind         string     `json:"kind"` // "commitment" | "request" | "followup" | "task"
+	Kind         string     `json:"kind"`   // "commitment" | "request" | "followup" | "task"
 	Status       string     `json:"status"` // "open" | "resolved" | "dismissed"
 	SourceApp    string     `json:"source_app,omitempty"`
 	SourceThread string     `json:"source_thread,omitempty"`
@@ -261,6 +265,14 @@ type Snapshot struct {
 	Loops     []Loop       `json:"loops"`
 	Memory    MemoryStatus `json:"memory"`
 	Edition   string       `json:"edition"` // "free" or "pro"
+}
+
+// ExtMessage is the payload of ext.request and ext.event. The core routes by
+// Ext (the extension id) and never interprets Kind or Data.
+type ExtMessage struct {
+	Ext  string          `json:"ext"`            // extension id, e.g. "platynotch-cloud"
+	Kind string          `json:"kind"`           // extension-defined message kind
+	Data json.RawMessage `json:"data,omitempty"` // extension-defined payload
 }
 
 // New builds an envelope with a marshalled payload.

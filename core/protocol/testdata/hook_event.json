@@ -1,0 +1,17 @@
+{
+  "agent": "claude-code",
+  "event": "permission-request",
+  "payload": {
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "npm test"
+    }
+  },
+  "pid": 4242,
+  "ppid": 4200,
+  "tty": "ttys004",
+  "cwd": "/Users/dev/platynotch",
+  "term_program": "Apple_Terminal",
+  "want_decision": true,
+  "at": "2026-10-23T10:05:00Z"
+}

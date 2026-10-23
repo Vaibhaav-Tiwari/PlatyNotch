@@ -1,0 +1,7 @@
+{
+  "ext": "example-ext",
+  "kind": "ping",
+  "data": {
+    "n": 1
+  }
+}

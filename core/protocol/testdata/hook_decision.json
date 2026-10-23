@@ -1,0 +1,5 @@
+{
+  "behavior": "deny",
+  "message": "Blocked by policy",
+  "source": "policy"
+}

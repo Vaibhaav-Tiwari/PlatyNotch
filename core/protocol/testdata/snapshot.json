@@ -1,0 +1,87 @@
+{
+  "sessions": [
+    {
+      "key": "claude-code:abc123",
+      "agent": "claude-code",
+      "agent_name": "Claude Code",
+      "session_id": "abc123",
+      "cwd": "/Users/dev/platynotch",
+      "project": "platynotch",
+      "state": "waiting_input",
+      "title": "Fix the failing test",
+      "tool": "Bash",
+      "message": "Waiting for approval",
+      "pid": 4242,
+      "tty": "ttys004",
+      "term_program": "Apple_Terminal",
+      "subagents": 1,
+      "started_at": "2026-10-23T10:00:00Z",
+      "updated_at": "2026-10-23T10:05:00Z"
+    }
+  ],
+  "approvals": [
+    {
+      "id": "apr_1",
+      "session_key": "claude-code:abc123",
+      "agent": "claude-code",
+      "agent_name": "Claude Code",
+      "project": "platynotch",
+      "cwd": "/Users/dev/platynotch",
+      "tool": "Bash",
+      "summary": "npm test",
+      "input": {
+        "command": "npm test"
+      },
+      "created_at": "2026-10-23T10:05:00Z",
+      "expires_at": "2026-10-23T10:06:40Z"
+    }
+  ],
+  "usage": {
+    "claude": {
+      "five_hour": {
+        "used_percent": 42.5,
+        "resets_at": "2026-10-23T14:00:00Z"
+      },
+      "weekly": {
+        "used_percent": 12,
+        "resets_at": "2026-10-27T00:00:00Z"
+      },
+      "extra": {
+        "seven_day_opus": {
+          "used_percent": 3.5
+        }
+      },
+      "updated_at": "2026-10-23T10:05:00Z"
+    },
+    "codex": {
+      "five_hour": {
+        "used_percent": 8
+      },
+      "updated_at": "2026-10-23T10:05:00Z"
+    }
+  },
+  "loops": [
+    {
+      "id": "loop_1",
+      "title": "Send the budget draft to Sam",
+      "details": "Promised in Slack",
+      "kind": "commitment",
+      "status": "open",
+      "source_app": "Slack",
+      "source_thread": "thr_9",
+      "quote": "I'll send it over tomorrow",
+      "due_at": "2026-10-24T17:00:00Z",
+      "detected_at": "2026-10-23T10:00:00Z"
+    }
+  ],
+  "memory": {
+    "enabled": true,
+    "threads": 3,
+    "versions": 5,
+    "chunks": 20,
+    "pending": 2,
+    "embedder": "ollama",
+    "extractor": "none"
+  },
+  "edition": "free"
+}

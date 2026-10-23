@@ -1,0 +1,24 @@
+{
+  "claude": {
+    "five_hour": {
+      "used_percent": 42.5,
+      "resets_at": "2026-10-23T14:00:00Z"
+    },
+    "weekly": {
+      "used_percent": 12,
+      "resets_at": "2026-10-27T00:00:00Z"
+    },
+    "extra": {
+      "seven_day_opus": {
+        "used_percent": 3.5
+      }
+    },
+    "updated_at": "2026-10-23T10:05:00Z"
+  },
+  "codex": {
+    "five_hour": {
+      "used_percent": 8
+    },
+    "updated_at": "2026-10-23T10:05:00Z"
+  }
+}

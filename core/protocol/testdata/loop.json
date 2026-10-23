@@ -1,0 +1,12 @@
+{
+  "id": "loop_1",
+  "title": "Send the budget draft to Sam",
+  "details": "Promised in Slack",
+  "kind": "commitment",
+  "status": "open",
+  "source_app": "Slack",
+  "source_thread": "thr_9",
+  "quote": "I'll send it over tomorrow",
+  "due_at": "2026-10-24T17:00:00Z",
+  "detected_at": "2026-10-23T10:00:00Z"
+}
