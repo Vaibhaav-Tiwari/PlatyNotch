@@ -31,6 +31,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var client = CoreClient(socketPath: socketPath)
     /// Shared by every display's panel: one answer per approval, "Sending…" everywhere.
     private lazy var responder = ApprovalResponder(client: client)
+    /// Now playing, calendar, focus and loop actions, shared by every display.
+    private lazy var today = TodayServices(client: client)
     private var supervisor: CoreSupervisor?
     private var controllers: [NotchController] = []
     private var pump: Task<Void, Never>?
@@ -75,6 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        today.nowPlaying.stop()
         supervisor?.stop()
     }
 
@@ -111,6 +114,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controllers = screens.enumerated().map { index, screen in
             let state = screen.displayID.flatMap { carry[$0] } ?? (index == 0 ? fallback : nil)
             let c = NotchController(store: store, client: client, plugins: plugins, responder: responder,
+                                    today: today,
                                     onOpenTerminal: { TerminalFocus.focus(session: $0) },
                                     carryOver: state)
             c.attach(to: screen)

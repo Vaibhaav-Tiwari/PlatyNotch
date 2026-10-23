@@ -262,6 +262,14 @@ public struct Loop: Codable, Sendable, Equatable, Identifiable {
     public var resolvedAt: Date?
     public var evidence: String?
 
+    public init(id: String, title: String, details: String? = nil, kind: String, status: String,
+                sourceApp: String? = nil, sourceThread: String? = nil, quote: String? = nil, dueAt: Date? = nil,
+                detectedAt: Date, resolvedAt: Date? = nil, evidence: String? = nil) {
+        self.id = id; self.title = title; self.details = details; self.kind = kind; self.status = status
+        self.sourceApp = sourceApp; self.sourceThread = sourceThread; self.quote = quote; self.dueAt = dueAt
+        self.detectedAt = detectedAt; self.resolvedAt = resolvedAt; self.evidence = evidence
+    }
+
     enum CodingKeys: String, CodingKey {
         case id, title, details, kind, status
         case sourceApp = "source_app"

@@ -28,6 +28,7 @@ struct ExpandedPanel: View {
     let store: AppStore
     let responder: ApprovalResponder
     let arming: ApprovalArming
+    let today: TodayServices
     let extraTabs: [PanelTab]
     @Binding var selectedTab: String
     let onCollapse: () -> Void
@@ -73,15 +74,16 @@ struct ExpandedPanel: View {
     private var allTabs: [PanelTab] {
         let store = self.store
         let open = onOpenTerminal
+        let today = self.today
         return [
             PanelTab(id: BuiltinTab.agents, title: "Agents") {
                 AgentsTab(sessions: store.sessions, usage: store.usage, onOpenTerminal: open)
             },
             PanelTab(id: BuiltinTab.today, title: "Today") {
-                ComingSoon(text: "Your next meeting and open loops will show here.")
+                TodayTab(store: store, today: today)
             },
             PanelTab(id: BuiltinTab.focus, title: "Focus") {
-                ComingSoon(text: "A focus timer will live here.")
+                FocusTab(focus: today.focus)
             },
             PanelTab(id: BuiltinTab.memory, title: "Memory") {
                 ComingSoon(text: "Search what you have read and written.")

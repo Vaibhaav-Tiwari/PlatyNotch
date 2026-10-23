@@ -18,6 +18,7 @@ public final class NotchController {
     private let extraTabs: [PanelTab]
     private let onOpenTerminal: (Session) -> Void
     private let responder: ApprovalResponder
+    private let today: TodayServices
 
     private var machine: PanelStateMachine
     private let model = PanelViewModel()
@@ -39,9 +40,11 @@ public final class NotchController {
     /// `carryOver` restores the panel state of the controller this one replaces (display change).
     /// Without it, notices already in the store count as shown.
     /// `extraTabs` follow the built-in tabs (plugin tabs); `onOpenTerminal` focuses a session's terminal.
-    /// Pass one `responder` to every display's controller so answers are shared.
+    /// Pass one `responder` and one `today` to every display's controller so answers,
+    /// the focus session and loop changes are shared.
     public init(store: AppStore, client: CoreClient, plugins: [NotchPlugin],
                 responder: ApprovalResponder? = nil,
+                today: TodayServices? = nil,
                 extraTabs: [PanelTab] = [],
                 onOpenTerminal: @escaping (Session) -> Void = { _ in },
                 minimal: Bool = UserDefaults.standard.bool(forKey: NotchSettings.minimal),
@@ -52,6 +55,7 @@ public final class NotchController {
         self.extraTabs = extraTabs
         self.onOpenTerminal = onOpenTerminal
         self.responder = responder ?? ApprovalResponder(client: client)
+        self.today = today ?? TodayServices(client: client)
         if let carryOver {
             machine = carryOver.machine
             machine.minimal = minimal
@@ -121,7 +125,7 @@ public final class NotchController {
     private func makePanel(frame: CGRect) -> NotchPanel {
         let p = NotchPanel(frame: frame)
         let host = NotchHostingView(rootView: PanelRootView(model: model, store: store, responder: responder,
-                                                            extraTabs: extraTabs, onOpenTerminal: onOpenTerminal))
+                                                            today: today, extraTabs: extraTabs, onOpenTerminal: onOpenTerminal))
         host.sizingOptions = []
         host.frame = CGRect(origin: .zero, size: frame.size)
         host.autoresizingMask = [.width, .height]
@@ -236,7 +240,9 @@ public final class NotchController {
     private func syncFromStore() {
         responder.sync(store: store)
         machine.setLive(PanelMode.hasLive(sessions: store.sessions))
-        for event in feed.update(approvalCount: store.approvals.count, latestNotice: store.notices.last) {
+        // During focus, notices are consumed without peeking; approvals still peek.
+        for event in feed.update(approvalCount: store.approvals.count, latestNotice: store.notices.last,
+                                 holdNotices: today.focus.focusActive) {
             machine.handle(event)
             if event == .notice { scheduleNoticeTimeout() }
         }

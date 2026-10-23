@@ -10,7 +10,9 @@ public struct PanelFeed: Equatable, Sendable {
         self.lastNotice = lastNotice
     }
 
-    public mutating func update(approvalCount n: Int, latestNotice: Notice?) -> [PanelEvent] {
+    /// With `holdNotices` (a focus session is running) a new notice is consumed without a
+    /// `.notice` event, so it neither peeks now nor replays when focus ends. Approvals still pass.
+    public mutating func update(approvalCount n: Int, latestNotice: Notice?, holdNotices: Bool = false) -> [PanelEvent] {
         var events: [PanelEvent] = []
         if n != approvalCount {
             approvalCount = n
@@ -18,7 +20,7 @@ public struct PanelFeed: Equatable, Sendable {
         }
         if let latestNotice, latestNotice != lastNotice {
             lastNotice = latestNotice
-            events.append(.notice)
+            if !holdNotices { events.append(.notice) }
         }
         return events
     }
