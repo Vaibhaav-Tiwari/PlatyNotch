@@ -14,6 +14,9 @@ enum AXTextReader {
         var title: String?
         var url: String?
         var text: String
+        /// The window's `AXDocument` and `AXDescription`, checked for private-browsing markers.
+        var document: String? = nil
+        var windowDescription: String? = nil
     }
 
     /// The frontmost app's focused window.
@@ -23,47 +26,74 @@ enum AXTextReader {
         return (r.title, r.url, r.text)
     }
 
+    /// Sets the process-wide default messaging timeout once (the system-wide element's
+    /// timeout applies to every element that has none of its own).
+    private static let globalTimeout: Void = {
+        AXUIElementSetMessagingTimeout(AXUIElementCreateSystemWide(), messagingTimeout)
+    }()
+
     /// Depth-first over `kAXChildrenAttribute` from the focused window, collecting values,
     /// titles and descriptions, within 4 000 elements, `maxChars` (capped at 200 000) and a
-    /// 150 ms deadline. Secure text fields are never read; nil when a secure text field has
-    /// focus or the app has no window.
+    /// 150 ms deadline checked before every AX call site. Every element gets the 0.25 s
+    /// messaging timeout before it is read. Secure text fields are never read (their
+    /// value is not even requested); nil when a secure text field has focus, the app has
+    /// no window, or the deadline passes before the window is known.
     static func focusedWindowText(pid: pid_t, maxChars: Int = maxChars) -> Result? {
+        _ = globalTimeout
         let deadline = ContinuousClock.now.advanced(by: budget)
+        func inTime() -> Bool { ContinuousClock.now < deadline }
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, messagingTimeout)
 
-        if let focused = element(app, kAXFocusedUIElementAttribute),
-           AXTextCollector.isSecure(role: attribute(focused, kAXRoleAttribute),
-                                    subrole: attribute(focused, kAXSubroleAttribute)) {
-            return nil
+        guard inTime() else { return nil }
+        if let focused = element(app, kAXFocusedUIElementAttribute) {
+            AXUIElementSetMessagingTimeout(focused, messagingTimeout)
+            guard inTime() else { return nil }
+            let head = values(focused, [kAXRoleAttribute, kAXSubroleAttribute])
+            if AXTextCollector.isSecure(role: head?[0] as? String, subrole: head?[1] as? String) { return nil }
         }
-        guard let window = element(app, kAXFocusedWindowAttribute) ?? element(app, kAXMainWindowAttribute)
-        else { return nil }
-        let title: String? = attribute(window, kAXTitleAttribute)
+        guard inTime(), let window = element(app, kAXFocusedWindowAttribute)
+                ?? (inTime() ? element(app, kAXMainWindowAttribute) : nil) else { return nil }
+        AXUIElementSetMessagingTimeout(window, messagingTimeout)
+        guard inTime() else { return nil }
+        let info = values(window, [kAXTitleAttribute, kAXDocumentAttribute, kAXDescriptionAttribute])
+        var result = Result(title: info?[0] as? String, url: nil, text: "",
+                            document: info?[1] as? String, windowDescription: info?[2] as? String)
 
         var collector = AXTextCollector(maxChars: min(maxChars, Self.maxChars), maxElements: maxElements)
-        var url: String?
         var stack: [AXUIElement] = [window]
-        let names = [kAXRoleAttribute, kAXSubroleAttribute, kAXValueAttribute, kAXTitleAttribute,
-                     kAXDescriptionAttribute, kAXChildrenAttribute] as CFArray
-        while let element = stack.popLast(), !collector.isFull, ContinuousClock.now < deadline, collector.visit() {
+        while let element = stack.popLast(), !collector.isFull, inTime(), collector.visit() {
             AXUIElementSetMessagingTimeout(element, messagingTimeout)   // per element, not inherited
-            var raw: CFArray?
-            guard AXUIElementCopyMultipleAttributeValues(element, names, AXCopyMultipleAttributeOptions(), &raw)
-                    == .success, let values = raw as? [AnyObject], values.count == 6 else { continue }
-            let role = values[0] as? String
-            if AXTextCollector.isSecure(role: role, subrole: values[1] as? String) { continue }
-            if url == nil, role == "AXWebArea", let u: URL = attribute(element, kAXURLAttribute) {
-                url = u.absoluteString
-            }
-            for v in values[2...4] {
+            // Role first: a secure field's value is never requested.
+            guard let head = values(element, [kAXRoleAttribute, kAXSubroleAttribute, kAXTitleAttribute,
+                                              kAXDescriptionAttribute, kAXChildrenAttribute]) else { continue }
+            let role = head[0] as? String
+            if AXTextCollector.isSecure(role: role, subrole: head[1] as? String) { continue }
+            guard inTime() else { break }
+            if let value: String = attribute(element, kAXValueAttribute) { collector.add(value) }
+            for v in head[2...3] {
                 if let s = v as? String { collector.add(s) }
             }
-            if let children = values[5] as? [AnyObject] {
-                stack.append(contentsOf: children.reversed().compactMap(asElement))   // keep document order
+            if result.url == nil, role == "AXWebArea", inTime(), let u: URL = attribute(element, kAXURLAttribute) {
+                result.url = u.absoluteString
+            }
+            // Never queue more than the element cap.
+            let room = maxElements - collector.visited - stack.count
+            if room > 0, let children = head[4] as? [AnyObject] {
+                let elements = children.prefix(room).compactMap(asElement)
+                stack.append(contentsOf: elements.reversed())   // keep document order
             }
         }
-        return Result(title: title, url: url, text: collector.text)
+        result.text = collector.text
+        return result
+    }
+
+    /// Several attributes in one round trip; missing ones come back as non-matching values.
+    private static func values(_ element: AXUIElement, _ names: [String]) -> [AnyObject]? {
+        var raw: CFArray?
+        guard AXUIElementCopyMultipleAttributeValues(element, names as CFArray, AXCopyMultipleAttributeOptions(), &raw)
+                == .success, let values = raw as? [AnyObject], values.count == names.count else { return nil }
+        return values
     }
 
     private static func asElement(_ value: AnyObject) -> AXUIElement? {

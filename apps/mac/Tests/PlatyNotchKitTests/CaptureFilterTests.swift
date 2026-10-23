@@ -171,3 +171,43 @@ final class MemoryFormatTests: XCTestCase {
         XCTAssertEqual(MemoryFormat.when(now - 600, now: now), "10m ago")
     }
 }
+
+final class CapturePrivacyTests: XCTestCase {
+    let text = "Meeting notes: send the deck to Priya by Friday."
+
+    func testPasswordManagersAreAHardFloor() {
+        let custom = CaptureFilter(excluded: ["com.example.only"])   // exclude_apps without the defaults
+        for id in CaptureSettings.defaultExcludeApps {
+            XCTAssertFalse(custom.shouldCapture(bundleID: id, secureInput: false, text: text, lastHash: nil), id)
+        }
+        XCTAssertEqual(CaptureFilter.passwordManagers, Set(CaptureSettings.defaultExcludeApps))
+        XCTAssertTrue(CaptureFilter.alwaysExcluded.isSuperset(of: CaptureFilter.passwordManagers))
+    }
+
+    func testPrivateWindowMarkers() {
+        let cases: [(String?, String?)] = [
+            ("com.google.Chrome", "Inbox - Gmail - Google Chrome (Incognito)"),
+            ("com.microsoft.edgemac", "New tab - [InPrivate] - Microsoft Edge"),
+            ("org.mozilla.firefox", "Mozilla Firefox Private Browsing"),
+            ("com.apple.Safari", "Start Page — Private"),
+            ("com.brave.Browser", "Private Window - Brave"),
+            ("com.example.app", "PRIVATE BROWSING notes"),
+        ]
+        for (id, title) in cases {
+            XCTAssertTrue(CaptureFilter.isPrivateWindow(bundleID: id, title: title), title ?? "")
+        }
+        XCTAssertTrue(CaptureFilter.isPrivateWindow(bundleID: "com.apple.Safari", title: "Docs",
+                                                    details: [nil, "Private Browsing window"]))
+        XCTAssertFalse(CaptureFilter.isPrivateWindow(bundleID: "com.google.Chrome", title: "Inbox - Gmail"))
+        XCTAssertFalse(CaptureFilter.isPrivateWindow(bundleID: "com.apple.Notes", title: "Privacy policy draft"))
+    }
+
+    func testBrowserWithoutTitleIsTreatedAsPrivate() {
+        for id in ["com.apple.Safari", "com.google.Chrome", "company.thebrowser.Browser", "org.mozilla.firefox",
+                   "com.vivaldi.Vivaldi", "com.operasoftware.Opera", "com.microsoft.edgemac", "com.brave.Browser"] {
+            XCTAssertTrue(CaptureFilter.isPrivateWindow(bundleID: id, title: nil), id)
+            XCTAssertTrue(CaptureFilter.isPrivateWindow(bundleID: id, title: "  "), id)
+        }
+        XCTAssertFalse(CaptureFilter.isPrivateWindow(bundleID: "com.apple.TextEdit", title: nil))
+    }
+}

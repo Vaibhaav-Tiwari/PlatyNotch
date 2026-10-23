@@ -128,7 +128,7 @@ struct MemoryTab: View {
                 Text("Memory is off").font(.system(size: 12, weight: .medium))
                 Text("Turn it on to search what you read and write. Text stays on this Mac.")
                     .font(.system(size: 11)).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                Button("Open Memory Settings", action: memory.onOpenSettings)
+                Button("Open Memory Settings") { memory.onOpenSettings() }
                     .controlSize(.small)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -149,7 +149,7 @@ struct MemoryTab: View {
                     }
                     ScrollView(.vertical) {
                         LazyVStack(alignment: .leading, spacing: 4) {
-                            ForEach(Array(hits.enumerated()), id: \.offset) { MemoryHitRow(hit: $0.element) }
+                            ForEach(hits, id: \.threadID) { MemoryHitRow(hit: $0) }
                         }
                     }
                 }

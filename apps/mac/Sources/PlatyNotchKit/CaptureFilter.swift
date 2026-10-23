@@ -4,8 +4,27 @@ import Foundation
 public struct CaptureFilter: Sendable {
     /// Shorter captures (after trimming) carry nothing worth remembering.
     public static let minChars = 20
-    /// Never captured, whatever the config says: PlatyNotch itself and the login window.
-    public static let alwaysExcluded: Set<String> = ["dev.platynotch.app", "com.apple.loginwindow"]
+    /// Password managers: never captured, even if `exclude_apps` drops them.
+    public static let passwordManagers: Set<String> = [
+        "com.1password.1password", "com.agilebits.onepassword7",
+        "com.apple.keychainaccess", "com.bitwarden.desktop",
+        "com.apple.Passwords", "com.lastpass.LastPass",
+    ]
+    /// Never captured, whatever the config says: PlatyNotch itself, the login window and
+    /// password managers.
+    public static let alwaysExcluded: Set<String> = passwordManagers
+        .union(["dev.platynotch.app", "com.apple.loginwindow"])
+    /// Browsers whose window title must be readable (to rule out a private window).
+    public static let browsers: Set<String> = [
+        "com.apple.Safari", "com.apple.SafariTechnologyPreview",
+        "com.google.Chrome", "com.google.Chrome.beta", "com.google.Chrome.canary",
+        "com.microsoft.edgemac", "com.brave.Browser", "company.thebrowser.Browser",
+        "org.mozilla.firefox", "org.mozilla.firefoxdeveloperedition", "com.vivaldi.Vivaldi",
+        "com.operasoftware.Opera",
+    ]
+    /// Case-insensitive markers of private / incognito windows in titles and AX descriptions.
+    public static let privateMarkers = ["incognito", "inprivate", "private browsing", "private window",
+                                        " — private", " - private"]
 
     public let excluded: Set<String>
 
@@ -33,6 +52,21 @@ public struct CaptureFilter: Sendable {
     public static func isSensitiveWindow(bundleID: String?, title: String?) -> Bool {
         guard bundleID == "com.apple.systempreferences", let title else { return false }
         return title.range(of: "password", options: .caseInsensitive) != nil
+    }
+
+    /// Private or incognito browser windows (heuristic: browsers do not always expose it,
+    /// Safari Private in particular). A browser window without a readable title is
+    /// treated as private.
+    public static func isPrivateWindow(bundleID: String?, title: String?, details: [String?] = []) -> Bool {
+        for text in [title] + details {
+            guard let text else { continue }
+            let lower = text.lowercased()
+            if privateMarkers.contains(where: { lower.contains($0) }) { return true }
+        }
+        if let bundleID, browsers.contains(bundleID) {
+            return (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return false
     }
 
     public static func envelope(appBundle: String, appName: String, windowTitle: String?, url: String?,
@@ -106,6 +140,7 @@ public enum CaptureStatus: Sendable, Equatable {
 /// Go `config.Memory` defaults; replaced by the full config store in the Settings task.
 public struct CaptureSettings: Sendable, Equatable {
     public static let defaultIntervalSeconds = 20
+    /// Go's default `exclude_apps` (the password managers, in Go's order).
     public static let defaultExcludeApps = [
         "com.1password.1password", "com.agilebits.onepassword7",
         "com.apple.keychainaccess", "com.bitwarden.desktop",

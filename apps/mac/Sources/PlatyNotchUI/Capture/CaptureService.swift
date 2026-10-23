@@ -117,11 +117,10 @@ public final class CaptureService {
 
     private func tick() {
         refreshStatus()
-        guard status == .capturing, !walking, !IsSecureEventInputEnabled(),
+        guard status == .capturing, !walking, !IsSecureEventInputEnabled(), Self.sessionIsActive(),
               let app = NSWorkspace.shared.frontmostApplication,
               app.processIdentifier != getpid() else { return }
-        let filter = CaptureFilter(excluded: Set(settings.excludeApps)
-            .union([Bundle.main.bundleIdentifier].compactMap { $0 }))
+        let filter = currentFilter()
         let bundleID = app.bundleIdentifier
         guard !filter.isExcluded(bundleID), let bundleID else { return }
         let appName = app.localizedName ?? bundleID
@@ -130,17 +129,21 @@ public final class CaptureService {
         walkQueue.async { [weak self] in
             let result = AXTextReader.focusedWindowText(pid: pid)
             Task { @MainActor [weak self] in
-                self?.finish(result, bundleID: bundleID, appName: appName, pid: pid, filter: filter)
+                self?.finish(result, bundleID: bundleID, appName: appName, pid: pid)
             }
         }
     }
 
-    private func finish(_ result: AXTextReader.Result?, bundleID: String, appName: String, pid: pid_t,
-                        filter: CaptureFilter) {
+    private func finish(_ result: AXTextReader.Result?, bundleID: String, appName: String, pid: pid_t) {
         walking = false
-        guard status == .capturing, let result,
+        // Settings may have changed during the walk (an app newly excluded, memory off).
+        let filter = currentFilter()
+        guard status == .capturing, let result, Self.sessionIsActive(),
               NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
-              !CaptureFilter.isSensitiveWindow(bundleID: bundleID, title: result.title) else { return }
+              !CaptureFilter.isSensitiveWindow(bundleID: bundleID, title: result.title),
+              !CaptureFilter.isPrivateWindow(bundleID: bundleID, title: result.title,
+                                             details: [result.document, result.windowDescription])
+        else { return }
         let key = bundleID + "\u{1F}" + (result.title ?? "")
         guard filter.shouldCapture(bundleID: bundleID, secureInput: IsSecureEventInputEnabled(),
                                    text: result.text, lastHash: lastHashes[key]) else { return }
@@ -153,6 +156,20 @@ public final class CaptureService {
         Task { [weak self] in
             do { try await send(env) } catch { self?.lastHashes[key] = nil }   // resend when reconnected
         }
+    }
+}
+
+extension CaptureService {
+    private func currentFilter() -> CaptureFilter {
+        CaptureFilter(excluded: Set(settings.excludeApps).union([Bundle.main.bundleIdentifier].compactMap { $0 }))
+    }
+
+    /// False while the screen is locked or this login session is not on the console
+    /// (fast user switching, screen sharing to another session).
+    static func sessionIsActive() -> Bool {
+        guard let dict = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }
+        if (dict["CGSSessionScreenIsLocked"] as? Bool) == true { return false }
+        return (dict[kCGSessionOnConsoleKey as String] as? Bool) ?? false
     }
 }
 
