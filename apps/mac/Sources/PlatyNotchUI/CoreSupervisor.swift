@@ -4,17 +4,9 @@ import PlatyNotchKit
 /// Launches `notch serve`, appends its output to `logs/core.log`, and restarts it on unexpected exit.
 @MainActor
 public final class CoreSupervisor {
-    public static var defaultBinaryURL: URL {
-        if let p = ProcessInfo.processInfo.environment["PLATYNOTCH_CORE_BIN"], !p.isEmpty {
-            return URL(fileURLWithPath: p)
-        }
-        return Bundle.main.bundleURL.appendingPathComponent("Contents/MacOS/notch")
-    }
+    public static var defaultBinaryURL: URL { CorePaths.coreBinary(name: "notch") }
 
-    public static var defaultLogURL: URL {
-        FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/PlatyNotch/logs/core.log")
-    }
+    public static var defaultLogURL: URL { CorePaths.coreLog() }
 
     public static let killGrace: Duration = .seconds(3)
 

@@ -15,11 +15,8 @@ public enum CoreClientError: Error, Equatable {
 
 /// Newline-delimited JSON client for the `notch serve` Unix socket, with reconnect and request/reply matching.
 public actor CoreClient {
-    public static var defaultSocketPath: String {
-        if let p = ProcessInfo.processInfo.environment["PLATYNOTCH_SOCKET"], !p.isEmpty { return p }
-        return FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/PlatyNotch/notch.sock").path
-    }
+    /// `PLATYNOTCH_SOCKET`, else `$PLATYNOTCH_HOME/notch.sock`, as the Go core resolves it.
+    public static var defaultSocketPath: String { CorePaths.socketPath() }
 
     public static let reconnectDelays: [Double] = [0.25, 0.5, 1, 2]
 
