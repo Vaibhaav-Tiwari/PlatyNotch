@@ -1,0 +1,228 @@
+# Builds, packages and publishes a release for a pushed v* tag.
+#
+# Without secrets the release is ad-hoc signed (v0.1): users open it with
+# System Settings › Privacy & Security › Open Anyway (see README › Install).
+#
+# Optional secrets:
+#   Developer ID + notarization (all five, or none is used):
+#     DEVELOPER_ID_CERT_P12       base64 of a "Developer ID Application" .p12
+#     DEVELOPER_ID_CERT_PASSWORD  its password
+#     AC_API_KEY_ID, AC_API_ISSUER, AC_API_KEY (base64 of the AuthKey_<id>.p8)
+#   Sparkle updates:
+#     SPARKLE_ED_PRIVATE_KEY      Sparkle private key (contents of `generate_keys -x <file>`)
+#   plus the repository variable SPARKLE_ED_PUBLIC_KEY (Settings › Variables), which is
+#   embedded as SUPublicEDKey only when the private key secret exists too. The appcast is
+#   pushed to the gh-pages branch (serve it with GitHub Pages from that branch).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-15
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0   # tags and the commit count (CFBundleVersion)
+          persist-credentials: false   # only the appcast step gets a token, for its push
+
+      - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          xcode-version: latest-stable
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: core/go.mod
+          cache-dependency-path: core/go.sum
+
+      - name: Version
+        run: |
+          read -r version build < <(scripts/version.sh)
+          if [[ "v$version" != "$TAG" ]]; then
+            echo "::error::tag $TAG does not give version $version (tags must be vMAJOR.MINOR.PATCH)"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "PlatyNotch $version (build $build)"
+
+      - name: Developer ID certificate and notary key (optional)
+        id: devid
+        env:
+          DEVELOPER_ID_CERT_P12: ${{ secrets.DEVELOPER_ID_CERT_P12 }}
+          DEVELOPER_ID_CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+          AC_API_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
+          AC_API_ISSUER: ${{ secrets.AC_API_ISSUER }}
+          AC_API_KEY: ${{ secrets.AC_API_KEY }}
+        run: |
+          if [[ -z "$DEVELOPER_ID_CERT_P12" || -z "$DEVELOPER_ID_CERT_PASSWORD" || -z "$AC_API_KEY_ID" \
+                || -z "$AC_API_ISSUER" || -z "$AC_API_KEY" ]]; then
+            echo "Developer ID signing and notarization: skipped (secrets DEVELOPER_ID_CERT_P12," \
+                 "DEVELOPER_ID_CERT_PASSWORD, AC_API_KEY_ID, AC_API_ISSUER and AC_API_KEY are not all set)." \
+                 "This release is ad-hoc signed."
+            exit 0
+          fi
+          umask 077
+          # The decoded certificate never outlives this step; the .p8 is removed on failure
+          # here and by the clean-up step after the release.
+          trap 'rm -f "$RUNNER_TEMP/devid.p12"; [[ -n "${ok:-}" ]] || rm -f "$RUNNER_TEMP/AuthKey.p8"' EXIT
+          keychain="$RUNNER_TEMP/release.keychain-db"
+          kc_pass="$(openssl rand -hex 24)"
+          security create-keychain -p "$kc_pass" "$keychain"
+          echo "keychain=$keychain" >> "$GITHUB_OUTPUT"   # so clean-up runs even if a later line fails
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$kc_pass" "$keychain"
+          printf '%s' "$DEVELOPER_ID_CERT_P12" | base64 --decode > "$RUNNER_TEMP/devid.p12"
+          security import "$RUNNER_TEMP/devid.p12" -k "$keychain" -P "$DEVELOPER_ID_CERT_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$kc_pass" "$keychain" > /dev/null
+          # Search the temporary keychain first (this runner's keychain list only).
+          existing=()
+          while IFS= read -r k; do existing+=("$(echo "$k" | tr -d ' "')"); done < <(security list-keychains -d user)
+          security list-keychains -d user -s "$keychain" "${existing[@]}"
+          identity="$(security find-identity -v -p codesigning "$keychain" \
+            | awk -F'"' '/Developer ID Application/ { print $2; exit }')"
+          if [[ -z "$identity" ]]; then
+            echo "::error::no Developer ID Application identity in DEVELOPER_ID_CERT_P12"
+            exit 1
+          fi
+          printf '%s' "$AC_API_KEY" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          {
+            echo "AC_API_KEY_PATH=$RUNNER_TEMP/AuthKey.p8"
+            echo "AC_API_KEY_ID=$AC_API_KEY_ID"
+            echo "AC_API_ISSUER=$AC_API_ISSUER"
+          } >> "$GITHUB_ENV"
+          echo "identity=$identity" >> "$GITHUB_OUTPUT"
+          ok=1
+          echo "Signing with: $identity"
+
+      - name: Build PlatyNotch.app
+        env:
+          IDENTITY: ${{ steps.devid.outputs.identity }}
+          SPARKLE_ED_PUBLIC_KEY: ${{ vars.SPARKLE_ED_PUBLIC_KEY }}
+          HAS_SPARKLE: ${{ secrets.SPARKLE_ED_PRIVATE_KEY != '' }}
+        run: |
+          if [[ "$HAS_SPARKLE" != "true" ]]; then
+            [[ -n "$SPARKLE_ED_PUBLIC_KEY" ]] && echo "::warning::SPARKLE_ED_PUBLIC_KEY is set but the SPARKLE_ED_PRIVATE_KEY secret is not; updates stay off"
+            echo "Sparkle updates: off (no SPARKLE_ED_PRIVATE_KEY secret); users update from GitHub Releases."
+            unset SPARKLE_ED_PUBLIC_KEY
+          fi
+          if [[ -n "$IDENTITY" ]]; then
+            scripts/build-app.sh --sign "$IDENTITY"
+          else
+            scripts/build-app.sh
+          fi
+          build/PlatyNotch.app/Contents/MacOS/notch version
+
+      - name: Make DMG
+        env:
+          IDENTITY: ${{ steps.devid.outputs.identity }}
+        run: |
+          if [[ -n "$IDENTITY" ]]; then
+            dmg="$(scripts/make-dmg.sh --sign "$IDENTITY" | tail -n 1)"
+          else
+            dmg="$(scripts/make-dmg.sh | tail -n 1)"
+          fi
+          echo "DMG=$dmg" >> "$GITHUB_ENV"
+
+      - name: Notarize (optional)
+        if: steps.devid.outputs.identity != ''
+        run: |
+          scripts/notarize.sh "$DMG"
+          spctl -a -t open --context context:primary-signature -vv "$DMG"
+
+      - name: Notarize skipped
+        if: steps.devid.outputs.identity == ''
+        run: |
+          echo "Notarization: skipped (no Developer ID secrets); the DMG is not notarized."
+
+      - name: Checksum
+        run: |
+          cd "$(dirname "$DMG")"
+          shasum -a 256 "$(basename "$DMG")" | tee "$(basename "$DMG").sha256"
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SIGNED: ${{ steps.devid.outputs.identity != '' }}
+        run: |
+          if [[ "$SIGNED" == "true" ]]; then
+            notes="Download the DMG and drag PlatyNotch to Applications."
+          else
+            notes="Download the DMG and drag PlatyNotch to Applications. This build is not signed with a Developer ID: the first time, open it from System Settings › Privacy & Security › Open Anyway, or run \`xattr -dr com.apple.quarantine /Applications/PlatyNotch.app\`. See the README's Install section."
+          fi
+          gh release create "$TAG" "$DMG" "$DMG.sha256" --verify-tag \
+            --title "PlatyNotch $VERSION" --notes "$notes" --generate-notes
+
+      - name: Appcast (optional)
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Neither secret stays in the environment: make-appcast.sh and every other
+          # command run here inherit neither. The token lives on only in an unexported
+          # shell variable and reaches git alone (see gitauth).
+          token="$GITHUB_TOKEN"
+          unset GITHUB_TOKEN
+          if [[ -z "$SPARKLE_ED_PRIVATE_KEY" ]]; then
+            echo "Appcast: skipped (no SPARKLE_ED_PRIVATE_KEY secret)."
+            exit 0
+          fi
+          umask 077
+          key="$RUNNER_TEMP/sparkle_ed_key"
+          trap 'rm -f "$key"' EXIT
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$key"
+          unset SPARKLE_ED_PRIVATE_KEY
+          pages="$RUNNER_TEMP/gh-pages"
+          # checkout ran with persist-credentials: false. Only the git calls that talk to
+          # GitHub get the token, as an http.extraheader passed through GIT_CONFIG_*
+          # environment variables on that one command: never in argv (ps), a URL or
+          # .git/config. Actions masks it in the log.
+          auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$token" | base64 | tr -d '\n')"
+          echo "::add-mask::${auth#AUTHORIZATION: basic }"
+          gitauth() {
+            GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" \
+              GIT_CONFIG_VALUE_0="$auth" git "$@"
+          }
+          # Exit 2 means no gh-pages branch yet; any other failure (auth, network) stops here.
+          found=0
+          gitauth ls-remote --exit-code --heads origin gh-pages > /dev/null || found=$?
+          if [[ "$found" -eq 0 ]]; then
+            gitauth fetch --depth 1 origin gh-pages
+            git worktree add --detach "$pages" FETCH_HEAD
+          elif [[ "$found" -eq 2 ]]; then
+            echo "No gh-pages branch yet; creating it."
+            git worktree add --detach "$pages"
+            git -C "$pages" switch --orphan "appcast-$TAG"
+          else
+            echo "::error::git ls-remote origin gh-pages failed (exit $found)"
+            exit "$found"
+          fi
+          touch "$pages/.nojekyll"
+          scripts/make-appcast.sh --dmg "$DMG" --key-file "$key" --appcast "$pages/appcast.xml" \
+            --url "https://github.com/$REPO/releases/download/$TAG/$(basename "$DMG")" \
+            --notes-url "https://github.com/$REPO/releases/tag/$TAG"
+          git -C "$pages" add appcast.xml .nojekyll
+          git -C "$pages" -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -m "appcast: $TAG"
+          gitauth -C "$pages" push origin HEAD:refs/heads/gh-pages
+
+      - name: Clean up signing keychain
+        if: always() && steps.devid.outputs.keychain != ''
+        env:
+          KEYCHAIN: ${{ steps.devid.outputs.keychain }}
+        run: |
+          security delete-keychain "$KEYCHAIN" || true
+          rm -f "$RUNNER_TEMP/AuthKey.p8"

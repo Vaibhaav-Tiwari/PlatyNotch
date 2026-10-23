@@ -210,6 +210,9 @@ func (c Config) ApprovalsOn(agent string) bool {
 }
 
 // Secret resolves an APIKeyRef. Empty ref → empty string, no error.
+// A "keychain:<account>" ref is looked up first in the secrets the Mac app
+// handed over at startup (LoadInheritedSecrets), then with /usr/bin/security.
+// Errors name the account, never the secret.
 func Secret(ref string) (string, error) {
 	switch {
 	case ref == "":
@@ -218,13 +221,26 @@ func Secret(ref string) (string, error) {
 		return os.Getenv(strings.TrimPrefix(ref, "env:")), nil
 	case strings.HasPrefix(ref, "keychain:"):
 		account := strings.TrimPrefix(ref, "keychain:")
-		out, err := exec.Command("/usr/bin/security", "find-generic-password",
-			"-s", "PlatyNotch", "-a", account, "-w").Output()
+		if s, ok := inheritedSecret(account); ok {
+			return s, nil
+		}
+		s, err := keychainLookup(account)
 		if err != nil {
 			return "", errors.New("keychain item PlatyNotch/" + account + " not found")
 		}
-		return strings.TrimSpace(string(out)), nil
+		return s, nil
 	default:
 		return "", errors.New("unknown secret reference " + ref)
 	}
+}
+
+// keychainLookup reads a generic password (service "PlatyNotch") with the
+// security tool. Tests replace it.
+var keychainLookup = func(account string) (string, error) {
+	out, err := exec.Command("/usr/bin/security", "find-generic-password",
+		"-s", "PlatyNotch", "-a", account, "-w").Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
 }

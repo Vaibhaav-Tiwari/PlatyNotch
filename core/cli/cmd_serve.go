@@ -42,6 +42,13 @@ func (a *app) serve(ctx context.Context, args []string) int {
 	logger := log.New(logFile, "", log.LstdFlags|log.Lmicroseconds)
 	logf := logger.Printf
 
+	// The Mac app hands over the Keychain secrets config refers to (never logged).
+	if err := config.LoadInheritedSecrets(); err != nil {
+		logf("secrets: %v", err)
+	} else if n := config.InheritedSecretCount(); n > 0 {
+		logf("secrets: %d handed over by the app", n)
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		logf("config: %v (using defaults)", err)

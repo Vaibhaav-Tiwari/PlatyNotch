@@ -1,0 +1,3 @@
+import PlatyNotchUI
+
+NotchApp.run()
