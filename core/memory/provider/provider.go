@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -107,6 +109,29 @@ const (
 	maxErrBody   = 300
 	maxRespBytes = 32 << 20
 )
+
+// checkBase refuses base URLs that would send screen text in the clear to
+// another machine: only https, or http to a loopback host, is allowed.
+func checkBase(base string) error {
+	u, err := url.Parse(base)
+	if err != nil {
+		return fmt.Errorf("invalid base URL: %w", err)
+	}
+	switch u.Scheme {
+	case "https":
+		return nil
+	case "http":
+		h := u.Hostname()
+		if h == "localhost" {
+			return nil
+		}
+		if ip := net.ParseIP(h); ip != nil && ip.IsLoopback() {
+			return nil
+		}
+		return fmt.Errorf("use https for remote providers")
+	}
+	return fmt.Errorf("unsupported base URL scheme %q (use https)", u.Scheme)
+}
 
 func newClient() *http.Client { return &http.Client{Timeout: 30 * time.Second} }
 
@@ -238,6 +263,10 @@ func firstJSONObject(s string) (string, bool) {
 	return "", false
 }
 
+// normQuote lowercases and collapses whitespace so a quote matches its
+// source despite reflowed lines or changed case.
+func normQuote(s string) string { return strings.ToLower(strings.Join(strings.Fields(s), " ")) }
+
 func parseExtract(content string, req ExtractRequest) (ExtractResult, error) {
 	obj, ok := firstJSONObject(content)
 	if !ok {
@@ -265,9 +294,15 @@ func parseExtract(content string, req ExtractRequest) (ExtractResult, error) {
 		known[l.ID] = true
 	}
 	var res ExtractResult
+	srcText := normQuote(req.Text)
 	for _, l := range raw.Loops {
 		title := truncRunes(strings.Join(strings.Fields(l.Title), " "), 80)
 		if title == "" {
+			continue
+		}
+		// The quote must be from the screen text: a loop the model invented,
+		// or was told to add by text it was shown, has no real source.
+		if q := normQuote(l.Quote); q == "" || !strings.Contains(srcText, q) {
 			continue
 		}
 		kind := strings.ToLower(strings.TrimSpace(l.Kind))
@@ -295,7 +330,7 @@ func parseExtract(content string, req ExtractRequest) (ExtractResult, error) {
 }
 
 func init() {
-	RegisterEmbedder("ollama", func(p config.Provider) (Embedder, error) { return newOllamaEmbedder(p), nil })
+	RegisterEmbedder("ollama", func(p config.Provider) (Embedder, error) { return newOllamaEmbedder(p) })
 	RegisterExtractor("ollama", func(p config.Provider) (Extractor, error) { return newOllamaExtractor(p) })
 	RegisterEmbedder("openai", func(p config.Provider) (Embedder, error) { return newOpenAIEmbedder(p) })
 	RegisterExtractor("openai", func(p config.Provider) (Extractor, error) { return newOpenAIExtractor(p) })

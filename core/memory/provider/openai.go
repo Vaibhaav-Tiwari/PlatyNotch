@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
@@ -32,18 +31,8 @@ func newOpenAI(p config.Provider) (openAI, error) {
 	if base == "" {
 		base = openAIBase
 	}
-	if key != "" {
-		u, err := url.Parse(base)
-		if err != nil {
-			return openAI{}, fmt.Errorf("invalid base URL: %w", err)
-		}
-		if u.Scheme == "http" {
-			switch u.Hostname() {
-			case "localhost", "127.0.0.1", "::1":
-			default:
-				return openAI{}, fmt.Errorf("use https for remote providers")
-			}
-		}
+	if err := checkBase(base); err != nil {
+		return openAI{}, err
 	}
 	return openAI{base, p.Model, key, newClient()}, nil
 }

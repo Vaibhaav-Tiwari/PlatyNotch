@@ -29,19 +29,27 @@ func ollamaBaseURL(p config.Provider) string {
 type ollamaEmbedder struct{ ollama }
 type ollamaExtractor struct{ ollama }
 
-func newOllamaEmbedder(p config.Provider) Embedder {
+func newOllamaEmbedder(p config.Provider) (Embedder, error) {
 	m := p.Model
 	if m == "" {
 		m = ollamaEmbedModel
 	}
-	return &ollamaEmbedder{ollama{ollamaBaseURL(p), m, newClient()}}
+	base := ollamaBaseURL(p)
+	if err := checkBase(base); err != nil {
+		return nil, err
+	}
+	return &ollamaEmbedder{ollama{base, m, newClient()}}, nil
 }
 
 func newOllamaExtractor(p config.Provider) (Extractor, error) {
 	if p.Model == "" {
 		return nil, fmt.Errorf("ollama extractor requires a model")
 	}
-	return &ollamaExtractor{ollama{ollamaBaseURL(p), p.Model, newClient()}}, nil
+	base := ollamaBaseURL(p)
+	if err := checkBase(base); err != nil {
+		return nil, err
+	}
+	return &ollamaExtractor{ollama{base, p.Model, newClient()}}, nil
 }
 
 func (o ollama) Name() string  { return "ollama" }
