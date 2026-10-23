@@ -13,14 +13,16 @@ final class SettingsServices {
     let permissions: Permissions
     let agents: AgentsModel
     let updater: AppUpdater
+    let widgets: WidgetRegistry
     var showOnboarding: () -> Void = {}
     /// Debounced restart of the supervised core (the app's `scheduleCoreRestart`), for
     /// changes config.json does not see, such as a rotated Keychain key.
     var restartCore: () -> Void = {}
 
     init(config: ConfigFileStore, runner: CoreRunner, store: AppStore, capture: CaptureService?, calendar: CalendarService,
-         updater: AppUpdater) {
+         widgets: WidgetRegistry, updater: AppUpdater) {
         self.config = config
+        self.widgets = widgets
         self.updater = updater
         self.runner = runner
         self.store = store
@@ -91,6 +93,7 @@ final class SettingsModel {
         ("policy", "Policy", "list.bullet.rectangle"),
         ("memory", "Memory", "brain"),
         ("permissions", "Permissions", "hand.raised"),
+        ("widgets", "Widgets", "square.grid.2x2"),
         ("appearance", "Appearance", "macwindow"),
         ("about", "About", "info.circle"),
     ]
@@ -193,6 +196,7 @@ struct SettingsRootView: View {
         case "policy": PolicySection(config: services.config)
         case "memory": MemorySection(services: services)
         case "permissions": PermissionsSection(services: services)
+        case "widgets": WidgetsSection(widgets: services.widgets)
         case "appearance": AppearanceSection()
         case "about": AboutSection(updater: services.updater)
         default:

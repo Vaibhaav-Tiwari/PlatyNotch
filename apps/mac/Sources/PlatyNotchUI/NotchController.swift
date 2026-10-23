@@ -19,6 +19,7 @@ public final class NotchController {
     private let onOpenTerminal: (Session) -> Void
     private let responder: ApprovalResponder
     private let today: TodayServices
+    private let widgets: WidgetRegistry
     private let memory: MemoryServices
 
     private var machine: PanelStateMachine
@@ -41,11 +42,12 @@ public final class NotchController {
     /// `carryOver` restores the panel state of the controller this one replaces (display change).
     /// Without it, notices already in the store count as shown.
     /// `extraTabs` follow the built-in tabs (plugin tabs); `onOpenTerminal` focuses a session's terminal.
-    /// Pass one `responder` and one `today` to every display's controller so answers,
-    /// the focus session and loop changes are shared; likewise one `memory`.
+    /// Pass one `responder`, one `today` and one `widgets` to every display's controller so
+    /// answers, the focus session, loop changes and live activities are shared; likewise one `memory`.
     public init(store: AppStore, client: CoreClient, plugins: [NotchPlugin],
                 responder: ApprovalResponder? = nil,
                 today: TodayServices? = nil,
+                widgets: WidgetRegistry? = nil,
                 memory: MemoryServices? = nil,
                 extraTabs: [PanelTab] = [],
                 onOpenTerminal: @escaping (Session) -> Void = { _ in },
@@ -58,6 +60,7 @@ public final class NotchController {
         self.onOpenTerminal = onOpenTerminal
         self.responder = responder ?? ApprovalResponder(client: client)
         self.today = today ?? TodayServices(client: client)
+        self.widgets = widgets ?? WidgetRegistry(persist: false)
         self.memory = memory ?? MemoryServices(client: client)
         if let carryOver {
             machine = carryOver.machine
@@ -111,8 +114,10 @@ public final class NotchController {
         sampleCursor()
     }
 
-    /// Opens the panel (menu bar "Open PlatyNotch", `platynotch://open`).
-    public func expand() {
+    /// Opens the panel (menu bar "Open PlatyNotch", `platynotch://open`, a widget), at a
+    /// tab id when given.
+    public func expand(tab: String? = nil) {
+        if let tab { model.selectedTab = tab }
         guard machine.mode != .expanded else { return }
         handle(.click)
     }
@@ -134,7 +139,7 @@ public final class NotchController {
     private func makePanel(frame: CGRect) -> NotchPanel {
         let p = NotchPanel(frame: frame)
         let host = NotchHostingView(rootView: PanelRootView(model: model, store: store, responder: responder,
-                                                            today: today, memory: memory, extraTabs: extraTabs, onOpenTerminal: onOpenTerminal))
+                                                            today: today, widgets: widgets, memory: memory, extraTabs: extraTabs, onOpenTerminal: onOpenTerminal))
         host.sizingOptions = []
         host.frame = CGRect(origin: .zero, size: frame.size)
         host.autoresizingMask = [.width, .height]
@@ -237,6 +242,8 @@ public final class NotchController {
             _ = store.sessions
             _ = store.noticeSequence
             _ = store.connection
+            _ = widgets.liveActivities   // Minimal mode: music, focus, timers keep the pill up
+            _ = widgets.layout
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self, self.panel != nil else { return }
@@ -248,10 +255,12 @@ public final class NotchController {
 
     private func syncFromStore() {
         responder.sync(store: store)
-        machine.setLive(PanelMode.hasLive(sessions: store.sessions))
+        machine.setLive(PanelMode.hasLive(sessions: store.sessions, activities: widgets.liveActivities, now: Date()))
         // During focus, notices are consumed without peeking; approvals still peek.
+        // A session left running while the focus widget is off holds nothing.
+        let holdNotices = today.focus.focusActive && widgets.isEnabled(FocusWidget.widgetID)
         for event in feed.update(approvalCount: store.approvals.count, noticeSequence: store.noticeSequence,
-                                 holdNotices: today.focus.focusActive) {
+                                 holdNotices: holdNotices) {
             machine.handle(event)
             if event == .notice { scheduleNoticeTimeout() }
         }

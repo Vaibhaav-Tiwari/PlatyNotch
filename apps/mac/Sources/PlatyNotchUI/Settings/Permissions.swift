@@ -102,9 +102,12 @@ final class Permissions {
     // MARK: - Notifications
 
     /// Notification Center needs a bundled app (`swift run` has no bundle identity).
-    private var canUseNotifications: Bool {
+    /// Also picks the widgets' notifier (`Notifiers.make`).
+    nonisolated static var canUseNotifications: Bool {
         Bundle.main.bundleIdentifier != nil && Bundle.main.bundleURL.pathExtension == "app"
     }
+
+    private var canUseNotifications: Bool { Self.canUseNotifications }
 
     private func refreshNotifications() {
         guard canUseNotifications else { notifications = .unavailable("Needs the installed app."); return }

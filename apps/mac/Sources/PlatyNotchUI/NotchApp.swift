@@ -1,11 +1,14 @@
 import AppKit
 import os
 import PlatyNotchKit
+import SwiftUI
 
 /// UserDefaults keys for panel settings (Settings › Appearance).
 public enum NotchSettings {
     public static let minimal = "appearance.minimal"
     public static let showOnAllDisplays = "appearance.showOnAllDisplays"
+    /// "left" or "right" (default): the pill ear that shows live activities.
+    public static let liveSide = "appearance.liveSide"
 }
 
 /// App entry point.
@@ -40,6 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var responder = ApprovalResponder(client: client)
     /// Now playing, calendar, focus and loop actions, shared by every display.
     private lazy var today = TodayServices(client: client)
+    /// Built-in and plugin widgets. Smoke runs read the saved layout but never write it.
+    private lazy var widgets = WidgetRegistry(persist: !options.smoke && !options.smokeSettings)
     /// On-screen text capture (runs only while memory is on) and the Memory tab's search.
     private lazy var capture = CaptureService(client: client)
     private lazy var memory = MemoryServices(client: client, capture: capture)
@@ -47,7 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var updater = AppUpdater(start: !options.smoke && !options.smokeSettings)
     private lazy var settingsServices = SettingsServices(config: config, runner: runner, store: store,
                                                          capture: capture, calendar: today.calendar,
-                                                         updater: updater)
+                                                         widgets: widgets, updater: updater)
     private lazy var settings = SettingsWindowController(services: settingsServices,
                                                          pluginSections: plugins.flatMap { $0.settingsSections() })
     private lazy var onboarding = OnboardingWindowController(services: settingsServices)
@@ -104,7 +109,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         watchConfig()
         wireSettingsEntryPoints()
+        BuiltInWidgets.register(in: widgets, store: store, today: today)
         startPlugins()
+        startWidgets()
 
         rebuildControllers()
         screenObserver = NotificationCenter.default.addObserver(
@@ -119,7 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         menuBar = MenuBarController(capture: capture, updater: updater,
-                                    onOpen: { [weak self] in self?.openPanel() },
+                                    onOpen: { [weak self] in self?.openPanel(tab: nil) },
                                     onSettings: { [weak self] in self?.openSettings(section: nil) })
 
         if options.smokeSettings {
@@ -136,7 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        today.nowPlaying.stop()
+        widgets.stopAll()
         supervisor?.stop()
     }
 
@@ -146,7 +153,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             switch AppURL.route(url) {
             case .settings(let section): openSettings(section: section)
             case .onboarding: onboarding.show()
-            case .open: openPanel()
+            case .open: openPanel(tab: nil)
             case .plugin(let u): _ = plugins.first { $0.handle(url: u) }
             case nil: break
             }
@@ -207,16 +214,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings.show(section: section)
     }
 
-    private func openPanel() {
+    private func openPanel(tab: String?) {
         let primary = NSScreen.screens.first?.displayID
-        (controllers.first { $0.displayID == primary } ?? controllers.first)?.expand()
+        (controllers.first { $0.displayID == primary } ?? controllers.first)?.expand(tab: tab)
     }
 
     private func startPlugins() {
         let context = PluginContext(store: store, client: client, config: config, events: events, runner: runner,
+                                    widgets: widgets,
                                     openSettings: { [weak self] in self?.openSettings(section: $0) })
         for p in plugins { p.start(context: context) }
         pluginTabs = plugins.flatMap { $0.panelTabs() }
+    }
+
+    /// Starts every enabled widget (built-ins and those plugins registered), so live
+    /// activities such as music feed the pill from launch.
+    private func startWidgets() {
+        let context = WidgetContext(store: store, client: client, config: config, events: events,
+                                    defaults: .standard, notify: Notifiers.make(),
+                                    openPanel: { [weak self] in self?.openPanel(tab: $0) })
+        widgets.start(context: context)
     }
 
     // MARK: - Panels
@@ -271,7 +288,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controllers = screens.enumerated().map { index, screen in
             let state = screen.displayID.flatMap { carry[$0] } ?? (index == 0 ? fallback : nil)
             let c = NotchController(store: store, client: client, plugins: plugins, responder: responder,
-                                    today: today, memory: memory, extraTabs: pluginTabs,
+                                    today: today, widgets: widgets, memory: memory, extraTabs: pluginTabs,
                                     onOpenTerminal: { TerminalFocus.focus(session: $0) },
                                     minimal: appearance.minimal,
                                     carryOver: state)
@@ -293,6 +310,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             failure = "core not connected at \(socketPath)"
         }
         let mode = controllers.first.map { $0.mode.description } ?? "none"
+        let built = buildEnabledWidgets()
+        if failure == nil, built.failed.first != nil {
+            failure = "widget \(built.failed[0]) did not build"
+        }
+        widgets.stopAll()
         await client.stop()
         supervisor?.stop()
         if let failure {
@@ -301,9 +323,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             exit(1)
         }
         print("SMOKE OK panels=\(controllers.count) mode=\(mode) menubar=\(menuBar != nil)"
-              + " updates=\(updater.isEnabled ? "on" : "off") hooklink=\(Self.describe(hookLink))")
+              + " updates=\(updater.isEnabled ? "on" : "off") hooklink=\(Self.describe(hookLink))"
+              + " widgets=\(built.count)")
         fflush(stdout)
         exit(0)
+    }
+
+    /// Lays out every enabled widget's tile and settings view off screen (no window, so
+    /// nothing appears and no tile's `.task` runs). Returns how many built and which did not.
+    private func buildEnabledWidgets() -> (count: Int, failed: [String]) {
+        var count = 0
+        var failed: [String] = []
+        for w in widgets.visibleWidgets {
+            let tile = NSHostingView(rootView: w.tileView().frame(width: 360).environment(\.colorScheme, .dark))
+            tile.layoutSubtreeIfNeeded()
+            if let settings = w.settingsView() {
+                NSHostingView(rootView: settings.frame(width: 480)).layoutSubtreeIfNeeded()
+            }
+            guard widgets.running.contains(w.id), tile.fittingSize.width > 0 else { failed.append(w.id); continue }
+            count += 1
+        }
+        return (count, failed)
     }
 
     /// `--smoke-settings`: builds the Settings window (every section) and the onboarding

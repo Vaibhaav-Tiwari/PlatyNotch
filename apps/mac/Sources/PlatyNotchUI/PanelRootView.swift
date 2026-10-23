@@ -21,9 +21,12 @@ struct PanelRootView: View {
     let store: AppStore
     let responder: ApprovalResponder
     let today: TodayServices
+    let widgets: WidgetRegistry
     let memory: MemoryServices
     let extraTabs: [PanelTab]
     let onOpenTerminal: (Session) -> Void
+    /// Which ear holds live activities (Appearance; right by default).
+    @AppStorage(NotchSettings.liveSide) private var liveSide = LiveSide.right.rawValue
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -50,9 +53,12 @@ struct PanelRootView: View {
         case .hidden:
             Color.clear
         case .compact:
+            let live = LiveArbiter.pickForEar(widgets.liveActivities, now: Date())
             CompactPill(dots: PillDots(sessions: store.sessions), approvalCount: store.approvals.count,
                         connection: store.connection, hasNotch: layout.hasNotch,
-                        notchWidth: layout.hasNotch ? layout.anchor.width : 0)
+                        notchWidth: layout.hasNotch ? layout.anchor.width : 0,
+                        primary: live.primary, bubble: live.bubble,
+                        liveSide: LiveSide(rawValue: liveSide) ?? .right)
                 .contentShape(Rectangle())
                 .onTapGesture { model.onClick() }
         case .peek(.approval):
@@ -69,7 +75,7 @@ struct PanelRootView: View {
             .onTapGesture { model.onClick() }
         case .expanded:
             ExpandedPanel(store: store, responder: responder, arming: model.arming, today: today,
-                          memory: memory, extraTabs: extraTabs,
+                          widgets: widgets, memory: memory, extraTabs: extraTabs,
                           selectedTab: Binding(get: { model.selectedTab }, set: { model.selectedTab = $0 }),
                           onCollapse: model.onClick, onDecide: decide, onOpenTerminal: onOpenTerminal)
                 .padding(EdgeInsets(top: top, leading: 12, bottom: 10, trailing: 12))

@@ -53,7 +53,9 @@ final class PluginAPITests: XCTestCase {
         let hub = CoreEventHub()
         let ctx = PluginContext(store: AppStore(), client: CoreClient(socketPath: "/nonexistent"),
                                 config: ConfigFileStore(url: bin.deletingLastPathComponent().appendingPathComponent("config.json")),
-                                events: hub, runner: CoreRunner(binaryURL: bin), openSettings: { _ in })
+                                events: hub, runner: CoreRunner(binaryURL: bin),
+                                widgets: WidgetRegistry(defaults: UserDefaults(suiteName: "PluginAPITests-\(UUID().uuidString)")!),
+                                openSettings: { _ in })
         let plugin = RecordingPlugin()
         plugin.start(context: ctx)
         let r = await ctx.runCore(["hooks", "status"])

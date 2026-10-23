@@ -5,7 +5,9 @@ import os
 
 /// What is playing system-wide. Reads mediaremote-adapter's `stream` (run with /usr/bin/perl,
 /// which may use MediaRemote on macOS 15.4+); if the adapter is missing or will not start,
-/// falls back to AppleScript polling of Spotify and Music every 2 s.
+/// falls back to AppleScript polling of Spotify and Music: every 2 s while the tile is on
+/// screen or music plays, else every 6 s and only for players whose Automation permission
+/// is already granted (so the pill sees music start without ever prompting at launch).
 ///
 /// The adapter (BSD-3-Clause) is not in the repo: `scripts/fetch-mediaremote-adapter.sh` builds
 /// it into `Contents/Resources/mediaremote-adapter/` (or set `PLATYNOTCH_MEDIAREMOTE_DIR`).
@@ -28,10 +30,14 @@ public final class NowPlaying {
     @ObservationIgnored private var polling = false
     @ObservationIgnored private var viewers = 0
     @ObservationIgnored private var started = false
+    /// Fallback ticks since the last idle poll (idle polls run every `idlePollTicks`).
+    @ObservationIgnored private var idleTicks = 0
+    static let idlePollTicks = 3
 
     public init() {}
 
-    /// Starts reading (idempotent). Called when the Today tab is first shown.
+    /// Starts reading (idempotent). Called by the music widget when it starts (at launch
+    /// when the widget is enabled).
     public func start() {
         guard !started else { return }
         started = true
@@ -50,10 +56,11 @@ public final class NowPlaying {
         pollTask?.cancel()
         pollTask = nil
         source = .none
+        update(nil)   // a stopped reader shows nothing (and the pill drops the music bars)
     }
 
-    /// The Today tab reports when it is on screen; the AppleScript fallback polls only then
-    /// (or while music was playing at the last poll).
+    /// The music tile reports when it is on screen; the AppleScript fallback polls every 2 s
+    /// only then (or while music was playing at the last poll), else at the idle rate.
     public func setVisible(_ visible: Bool) {
         viewers = max(0, viewers + (visible ? 1 : -1))
     }
@@ -121,12 +128,22 @@ public final class NowPlaying {
     }
 
     private func pollIfWanted() {
-        guard source == .appleScript, !polling, viewers > 0 || isPlaying else { return }
+        guard source == .appleScript, !polling else { return }
+        let wanted = viewers > 0 || isPlaying
+        if !wanted {
+            idleTicks += 1
+            guard idleTicks >= Self.idlePollTicks else { return }
+        }
+        idleTicks = 0
         let running = AppleScriptPlayer.allCases.filter(\.isRunning)   // never launch a player
         guard !running.isEmpty else { update(nil); return }
         polling = true
         AppleScriptPlayer.queue.async {
-            let infos = running.compactMap { $0.read() }
+            // Idle polls never prompt: only players already allowed (checked without asking).
+            let readable = wanted ? running : running.filter {
+                Permissions.automationStatus(bundleID: $0.rawValue, ask: false) == .granted
+            }
+            let infos = readable.compactMap { $0.read() }
             let best = infos.first(where: \.isPlaying) ?? infos.first
             Task { @MainActor [weak self] in
                 self?.polling = false

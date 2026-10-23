@@ -81,13 +81,19 @@ public struct PluginContext {
     /// Every core event. Subscribe here; never read `client.events` (single consumer).
     public let events: CoreEventHub
     let runner: CoreRunner
+    let widgets: WidgetRegistry
     let openSettingsHandler: (String?) -> Void
 
     init(store: AppStore, client: CoreClient, config: ConfigFileStore, events: CoreEventHub,
-         runner: CoreRunner, openSettings: @escaping (String?) -> Void) {
+         runner: CoreRunner, widgets: WidgetRegistry, openSettings: @escaping (String?) -> Void) {
         self.store = store; self.client = client; self.config = config; self.events = events
-        self.runner = runner; self.openSettingsHandler = openSettings
+        self.runner = runner; self.widgets = widgets; self.openSettingsHandler = openSettings
     }
+
+    /// Adds a widget (Today tile, pill activity, Settings › Widgets entry). Call from
+    /// `start(context:)`. A new id is on only when `defaultEnabled`; the user can turn it
+    /// off and reorder it, and a disabled widget is never started.
+    public func register(widget: any NotchWidget) { widgets.register(widget) }
 
     /// Runs the bundled core binary (`notch <args>`) and returns its exit status and
     /// combined stdout + stderr.

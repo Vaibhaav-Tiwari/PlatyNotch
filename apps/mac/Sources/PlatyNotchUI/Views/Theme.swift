@@ -25,6 +25,15 @@ enum Theme {
         }
     }
 
+    static func tint(_ tint: LiveTint) -> Color {
+        switch tint {
+        case .neutral: Color(nsColor: .labelColor)
+        case .accent: Color(nsColor: .systemGreen)
+        case .warning: Color(nsColor: .systemOrange)
+        case .critical: Color(nsColor: .systemRed)
+        }
+    }
+
     static func color(_ level: UsageLevel) -> Color {
         switch level {
         case .normal: Color(nsColor: .systemGreen)

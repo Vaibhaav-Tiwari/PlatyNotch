@@ -14,6 +14,12 @@ public enum LiveGlyph: Equatable, Sendable {
     case text(String)
 }
 
+/// Which ear of the compact pill holds live activities (the other holds the agent dots).
+/// Stored as `appearance.liveSide` ("left" / "right"); right by default.
+public enum LiveSide: String, Sendable {
+    case left, right
+}
+
 /// The pill's color for an activity (the view maps it to a real color).
 public enum LiveTint: Equatable, Sendable {
     case neutral, accent, warning, critical
@@ -36,9 +42,12 @@ public struct LiveActivity: Identifiable, Equatable, Sendable {
     /// When set, the pill shows a live countdown to this date (m:ss) instead of `trailing`,
     /// updating once a second only while it is shown.
     public let countdownTo: Date?
+    /// What VoiceOver says for it in the pill, e.g. "Music playing".
+    public let accessibilityLabel: String?
 
     public init(id: String, widgetID: String, priority: Int, glyph: LiveGlyph, trailing: String? = nil,
-                tint: LiveTint = .neutral, expiresAt: Date? = nil, countdownTo: Date? = nil) {
+                tint: LiveTint = .neutral, expiresAt: Date? = nil, countdownTo: Date? = nil,
+                accessibilityLabel: String? = nil) {
         self.id = id
         self.widgetID = widgetID
         self.priority = priority
@@ -47,6 +56,7 @@ public struct LiveActivity: Identifiable, Equatable, Sendable {
         self.tint = tint
         self.expiresAt = expiresAt
         self.countdownTo = countdownTo
+        self.accessibilityLabel = accessibilityLabel
     }
 
     /// Ambient activities show only when nothing else is live and never keep the pill up
@@ -98,6 +108,7 @@ public enum AgentsLive {
         let blocked = states.contains(.blocked)
         return [LiveActivity(id: "agents", widgetID: widgetID,
                              priority: blocked ? LivePriority.agentBlocked : LivePriority.agentActive,
-                             glyph: .agentDots(states), tint: blocked ? .warning : .accent)]
+                             glyph: .agentDots(states), tint: blocked ? .warning : .accent,
+                             accessibilityLabel: blocked ? "An agent needs you" : "Agents working")]
     }
 }
