@@ -73,6 +73,12 @@ func (w *Worker) Run(ctx context.Context) {
 	}
 }
 
+// Tick does one round of work (at most one embed batch, one extract batch
+// and the hourly stale-loop sweep). For callers that drive the worker on
+// their own schedule instead of Run; never call it concurrently with itself
+// or Run.
+func (w *Worker) Tick(ctx context.Context) { w.tick(ctx) }
+
 // OnLoopsChanged registers fn, called (outside any lock, on the worker
 // goroutine) with the current open loops whenever loops change.
 func (w *Worker) OnLoopsChanged(fn func([]protocol.Loop)) {

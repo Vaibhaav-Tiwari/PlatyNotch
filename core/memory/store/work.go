@@ -214,3 +214,19 @@ func (s *Store) GetThread(id string) (t Thread, ok bool, err error) {
 	t.CreatedAt, t.UpdatedAt = fromMs(c), fromMs(u)
 	return t, true, nil
 }
+
+// ResetSkipped sets every chunk whose kind status is "skipped" (no provider
+// was configured when it was processed) back to "pending" and returns how
+// many changed.
+func (s *Store) ResetSkipped(kind string) (int, error) {
+	col, err := statusCol(kind)
+	if err != nil {
+		return 0, err
+	}
+	res, err := s.db.Exec(`UPDATE chunks SET ` + col + `='pending' WHERE ` + col + `='skipped'`)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	return int(n), err
+}

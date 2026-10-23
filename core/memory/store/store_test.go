@@ -241,3 +241,37 @@ func TestPurgeRetryQueueAndCascadeCount(t *testing.T) {
 		t.Fatalf("secure_delete=%d", sd)
 	}
 }
+
+func TestResetSkipped(t *testing.T) {
+	s, _ := open(t)
+	_, ids := seed(t, s, "some text", time.Now())
+	if err := s.SetChunkStatus("embed", ids, "skipped"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetChunkStatus("extract", ids, "skipped"); err != nil {
+		t.Fatal(err)
+	}
+	n, err := s.ResetSkipped("embed")
+	if err != nil || n != 1 {
+		t.Fatalf("ResetSkipped(embed) = %d, %v", n, err)
+	}
+	if e, x, _ := s.ChunkStatus(ids[0]); e != "pending" || x != "skipped" {
+		t.Fatalf("after embed reset: embed=%q extract=%q", e, x)
+	}
+	if n, err := s.ResetSkipped("extract"); err != nil || n != 1 {
+		t.Fatalf("ResetSkipped(extract) = %d, %v", n, err)
+	}
+	if e, x, _ := s.ChunkStatus(ids[0]); e != "pending" || x != "pending" {
+		t.Fatalf("after extract reset: embed=%q extract=%q", e, x)
+	}
+	// done/failed chunks are left alone; unknown kinds are errors.
+	if err := s.SetChunkStatus("embed", ids, "done"); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := s.ResetSkipped("embed"); err != nil || n != 0 {
+		t.Fatalf("second reset = %d, %v", n, err)
+	}
+	if _, err := s.ResetSkipped("bogus"); err == nil {
+		t.Fatal("want error for unknown kind")
+	}
+}
