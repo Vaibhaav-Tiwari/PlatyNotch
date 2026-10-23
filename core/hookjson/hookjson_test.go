@@ -367,3 +367,58 @@ func TestCodexFormat(t *testing.T) {
 }
 
 func mustJSON(s string) string { b, _ := json.Marshal(s); return string(b) }
+
+// One malformed user-owned event must not block install, uninstall or the
+// installed check; it is passed through untouched.
+func TestMalformedForeignEventTolerated(t *testing.T) {
+	for _, foreign := range []string{`{}`, `"x"`, `3`, `null`, `[1,"s",null,{"hooks":"nope"}]`} {
+		body := `{"hooks":{"Foo":` + foreign + `,"PreToolUse":[{"hooks":[{"type":"command","command":"echo hook"}]}]}}`
+		p := writeTemp(t, "settings.json", []byte(body))
+		spec := claudeSpec(p)
+		if ok, err := Installed(spec); err != nil || ok {
+			t.Fatalf("%s: Installed before = %v, %v", foreign, ok, err)
+		}
+		if changed, err := Install(spec); err != nil || !changed {
+			t.Fatalf("%s: Install = %v, %v", foreign, changed, err)
+		}
+		if ok, err := Installed(spec); err != nil || !ok {
+			t.Fatalf("%s: Installed after = %v, %v", foreign, ok, err)
+		}
+		if ok, err := Installed(Spec{Path: p, Format: FormatClaude}); err != nil || !ok {
+			t.Fatalf("%s: Installed(any) = %v, %v", foreign, ok, err)
+		}
+		got, _ := os.ReadFile(p)
+		var top struct{ Hooks map[string]json.RawMessage }
+		json.Unmarshal(got, &top)
+		if canon(t, top.Hooks["Foo"]) != canon(t, []byte(foreign)) {
+			t.Fatalf("%s: Foo changed: %s", foreign, top.Hooks["Foo"])
+		}
+		if changed, err := Uninstall(spec); err != nil || !changed {
+			t.Fatalf("%s: Uninstall = %v, %v", foreign, changed, err)
+		}
+		got, _ = os.ReadFile(p)
+		if canon(t, got) != canon(t, []byte(body)) {
+			t.Fatalf("%s: not restored:\n%s", foreign, got)
+		}
+	}
+}
+
+// Install still refuses to overwrite one of its own events when that event
+// holds a non-array value, and leaves the file untouched.
+func TestInstallRejectsMalformedOwnEvent(t *testing.T) {
+	body := `{"hooks":{"Stop":{"x":1}}}`
+	p := writeTemp(t, "settings.json", []byte(body))
+	if _, err := Install(claudeSpec(p)); err == nil {
+		t.Fatal("expected error")
+	}
+	if got, _ := os.ReadFile(p); string(got) != body {
+		t.Fatalf("modified: %s", got)
+	}
+	// Uninstall and Installed have nothing of ours to find there.
+	if changed, err := Uninstall(claudeSpec(p)); err != nil || changed {
+		t.Fatalf("Uninstall = %v, %v", changed, err)
+	}
+	if ok, err := Installed(claudeSpec(p)); err != nil || ok {
+		t.Fatalf("Installed = %v, %v", ok, err)
+	}
+}

@@ -76,16 +76,22 @@ const (
 
 // Install merges Spec.Entries into the file, creating it (0600) if absent.
 // Every existing PlatyNotch entry (by IsOurs) in an affected event is replaced,
-// so a moved binary never leaves stale or duplicate hooks. It reports whether
-// the file changed. Invalid JSON is an error and leaves the file untouched.
+// so a moved binary never leaves stale or duplicate hooks. Only the events it
+// writes are parsed: other events pass through verbatim, however malformed,
+// while one of its own events holding a non-array value is an error. It
+// reports whether the file changed. Invalid JSON is an error and leaves the
+// file untouched.
 func Install(s Spec) (bool, error) { return apply(s, false) }
 
 // Uninstall removes every PlatyNotch entry from the file, leaving user hooks
-// and unrelated settings untouched. A missing file is a no-op.
+// and unrelated settings untouched. A missing file is a no-op. Events whose
+// value is not an array (and array items that are not objects) cannot hold
+// PlatyNotch entries and are passed through as they are.
 func Uninstall(s Spec) (bool, error) { return apply(s, true) }
 
 // Installed reports whether each event in Spec.Entries has a PlatyNotch entry
-// (or, with no entries, whether any event does). A missing file means no.
+// (or, with no entries, whether any event does). A missing file means no;
+// events whose value is not an array are skipped.
 func Installed(s Spec) (bool, error) {
 	data, err := os.ReadFile(resolve(s.Path))
 	if errors.Is(err, os.ErrNotExist) {
@@ -102,7 +108,7 @@ func Installed(s Spec) (bool, error) {
 	for _, ev := range hooks.keys {
 		items, err := parseArray(hooks.m[ev], ev)
 		if err != nil {
-			return false, err
+			continue // a malformed user-owned event holds nothing of ours
 		}
 		has[ev] = len(oursIn(items, s.Format.flat())) > 0
 	}
@@ -146,7 +152,7 @@ func apply(s Spec, uninstall bool) (bool, error) {
 		for _, ev := range append([]string(nil), hooks.keys...) {
 			items, err := parseArray(hooks.m[ev], ev)
 			if err != nil {
-				return false, err
+				continue // not an array: nothing of ours; pass it through
 			}
 			kept, removed, err := stripOurs(items, flat)
 			if err != nil {
