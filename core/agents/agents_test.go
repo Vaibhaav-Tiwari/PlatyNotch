@@ -52,6 +52,10 @@ func TestSummarize(t *testing.T) {
 		{"Read", `{"file_path":"/a/e.go"}`, "/a/e.go"},
 		{"WebFetch", `{"url":"https://x.dev","prompt":"p"}`, "https://x.dev"},
 		{"Mystery", `{"a": 1,  "b": "x"}`, `{"a":1,"b":"x"}`},
+		{"NotebookEdit", `{"notebook_path":"/a/n.ipynb"}`, "/a/n.ipynb"},
+		{"Shell", `{"command":"a && b"}`, "a && b"},
+		{"run_terminal_cmd", `{"command":"ls\nrm x","is_background":false}`, "ls\nrm x"},
+		{"Mystery", `{"command":42}`, `{"command":42}`},
 	}
 	for _, c := range cases {
 		if got := Summarize(c.tool, json.RawMessage(c.in)); got != c.want {

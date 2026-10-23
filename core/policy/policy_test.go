@@ -228,3 +228,49 @@ func TestAllowNeverOnTruncatedSummary(t *testing.T) {
 		t.Fatalf("deny on truncated: %+v %v", v, ok)
 	}
 }
+
+// TestAllowNeverOnJSONSummary: a JSON fallback summary escapes control
+// characters (&, \n), hiding them from the compound guard.
+func TestAllowNeverOnJSONSummary(t *testing.T) {
+	p := Local([]config.Rule{{Tool: "*", Pattern: "*", Action: "allow"}})
+	for _, s := range []string{`{"command":"git status && curl x"}`, `["a","b"]`, `  {"x":1}`} {
+		if v, ok := p.Evaluate("Mystery", s); ok && v.Action == "allow" {
+			t.Errorf("%q allowed", s)
+		}
+	}
+	d := Local([]config.Rule{{Tool: "*", Pattern: "*curl*", Action: "deny"}})
+	if v, ok := d.Evaluate("Mystery", `{"command":"curl x"}`); !ok || v.Action != "deny" {
+		t.Fatalf("deny must still apply to JSON summaries: %+v %v", v, ok)
+	}
+}
+
+// TestAllowNeverOnUncleanPath: "/proj/*" must not approve a path that
+// escapes /proj through ".." (or any non-canonical spelling).
+func TestAllowNeverOnUncleanPath(t *testing.T) {
+	p := Local([]config.Rule{
+		{Tool: "*", Pattern: "/proj/*", Action: "allow"},
+		{Tool: "*", Pattern: "src/*", Action: "allow"},
+	})
+	for _, tool := range []string{"Write", "Edit", "MultiEdit", "Read", "NotebookEdit", "Mystery"} {
+		for _, s := range []string{"/proj/../../x", "/proj/a/../../etc/passwd", "/proj//x", "/proj/./x", "/proj/x/"} {
+			if v, ok := p.Evaluate(tool, s); ok && v.Action == "allow" {
+				t.Errorf("%s %q allowed", tool, s)
+			}
+		}
+	}
+	if v, ok := p.Evaluate("Write", "src/../../x"); ok && v.Action == "allow" {
+		t.Errorf("relative escape allowed")
+	}
+	for _, s := range []string{"/proj/a/b.go", "/proj/x..y"} {
+		if v, ok := p.Evaluate("Write", s); !ok || v.Action != "allow" {
+			t.Errorf("clean path %q: %+v %v", s, v, ok)
+		}
+	}
+	if v, ok := p.Evaluate("Write", "src/a.go"); !ok || v.Action != "allow" {
+		t.Errorf("clean relative path: %+v %v", v, ok)
+	}
+	d := Local([]config.Rule{{Tool: "Write", Pattern: "*/etc/*", Action: "deny"}})
+	if v, ok := d.Evaluate("Write", "/proj/../etc/x"); !ok || v.Action != "deny" {
+		t.Errorf("deny must still apply: %+v %v", v, ok)
+	}
+}

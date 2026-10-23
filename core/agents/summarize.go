@@ -15,7 +15,10 @@ func Summarize(tool string, input json.RawMessage) string {
 }
 
 // SummarizeFull is the untruncated summary (the whole command, path or URL,
-// else the compacted input) that policy rules are evaluated against.
+// else the compacted input) that policy rules are evaluated against. Any
+// tool whose input carries a string "command" (Bash, Cursor's Shell,
+// run_terminal_cmd, ...) is summarized as that bare command, so policy sees
+// its control operators unescaped.
 func SummarizeFull(tool string, input json.RawMessage) string {
 	var m map[string]any
 	_ = json.Unmarshal(input, &m)
@@ -25,6 +28,8 @@ func SummarizeFull(tool string, input json.RawMessage) string {
 		key = "command"
 	case "Write", "Edit", "MultiEdit", "Read":
 		key = "file_path"
+	case "NotebookEdit":
+		key = "notebook_path"
 	case "WebFetch":
 		key = "url"
 	}
@@ -32,6 +37,9 @@ func SummarizeFull(tool string, input json.RawMessage) string {
 		if s, ok := m[key].(string); ok && s != "" {
 			return s
 		}
+	}
+	if s, ok := m["command"].(string); ok && s != "" {
+		return s
 	}
 	var buf bytes.Buffer
 	if err := json.Compact(&buf, input); err != nil {

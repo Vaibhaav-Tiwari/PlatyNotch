@@ -2,6 +2,7 @@
 package policy
 
 import (
+	"path"
 	"strings"
 
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
@@ -38,7 +39,9 @@ type local struct{ rules []config.Rule }
 // Rules are tried in order; empty patterns and unknown actions are skipped,
 // and so is an allow rule when the summary contains a shell control sequence
 // the pattern does not contain literally (see config.Rule), or when the
-// summary looks truncated (ends in TruncationMark). Callers pass the
+// summary looks truncated (ends in TruncationMark), is a JSON fallback
+// (starts with '{' or '['; JSON escaping hides control operators), or is a
+// file path that is not canonical (see uncleanPath). Callers pass the
 // untruncated summary (agents.SummarizeFull); the truncation check is a
 // defensive backstop.
 func Local(rules []config.Rule) Provider {
@@ -49,7 +52,9 @@ func (local) Name() string { return "local" }
 
 func (l local) Evaluate(tool, summary string) (Verdict, bool) {
 	summary = strings.TrimSpace(summary)
-	truncated := strings.HasSuffix(summary, TruncationMark)
+	noAllow := strings.HasSuffix(summary, TruncationMark) ||
+		strings.HasPrefix(summary, "{") || strings.HasPrefix(summary, "[") ||
+		uncleanPath(tool, summary)
 	for _, r := range l.rules {
 		switch r.Action {
 		case "allow", "deny", "ask":
@@ -59,7 +64,7 @@ func (l local) Evaluate(tool, summary string) (Verdict, bool) {
 		if r.Pattern == "" || (r.Tool != "*" && r.Tool != tool) {
 			continue
 		}
-		if r.Action == "allow" && (truncated || compoundBeyond(r.Pattern, summary)) {
+		if r.Action == "allow" && (noAllow || compoundBeyond(r.Pattern, summary)) {
 			continue
 		}
 		if Match(r.Pattern, summary) {
@@ -84,6 +89,40 @@ var shellControl = []string{";", "&&", "||", "|", "&", "`", "$(", ">", "<", "\n"
 func compoundBeyond(pattern, summary string) bool {
 	for _, op := range shellControl {
 		if strings.Contains(summary, op) && !strings.Contains(pattern, op) {
+			return true
+		}
+	}
+	return false
+}
+
+// fileTools take a path as their summary.
+var fileTools = map[string]bool{"Write": true, "Edit": true, "MultiEdit": true, "Read": true, "NotebookEdit": true}
+
+// uncleanPath reports whether summary is a path (a file tool's summary, or
+// any summary that looks like a path) that is not in canonical form or has a
+// ".." segment, so "/proj/*" cannot approve "/proj/../../x". Over-strict on
+// purpose: "./a", "a//b" and "a/" fall through to a human.
+func uncleanPath(tool, summary string) bool {
+	if !fileTools[tool] && !looksLikePath(summary) {
+		return false
+	}
+	if path.Clean(summary) != summary {
+		return true
+	}
+	for _, seg := range strings.Split(summary, "/") {
+		if seg == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+func looksLikePath(s string) bool {
+	if strings.ContainsAny(s, " \t") {
+		return false
+	}
+	for _, p := range []string{"/", "~/", "./", "../"} {
+		if strings.HasPrefix(s, p) {
 			return true
 		}
 	}

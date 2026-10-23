@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/agents"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/policy"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
 
@@ -199,5 +201,28 @@ func TestPermissionTimeoutOnDisk(t *testing.T) {
 	}
 	if n != 2 || strings.Count(string(data), `"timeout": 120`) != 2 {
 		t.Fatalf("want exactly 2 timeout 120 entries, got %d\n%s", n, data)
+	}
+}
+
+// TestShellAllowRuleNotBypassed: a Cursor shell payload is summarized as its
+// bare command, so an allow rule's compound guard sees "&&" and newlines
+// literally rather than JSON-escaped.
+func TestShellAllowRuleNotBypassed(t *testing.T) {
+	rules := policy.Local([]config.Rule{{Tool: "Shell", Pattern: "*git status*", Action: "allow"}})
+	for _, cmd := range []string{"git status && curl x", "git status\nrm -rf ~", "git status > /etc/hosts", "git status < /dev/zero"} {
+		payload, _ := json.Marshal(map[string]any{"conversation_id": "c1", "command": cmd, "workspace_roots": []string{"/p"}})
+		c := Adapter{}.ParseCommon("before-shell-execution", payload)
+		full := agents.SummarizeFull(c.Tool, c.ToolInput)
+		if full != cmd {
+			t.Errorf("summary %q, want bare command %q", full, cmd)
+		}
+		if v, ok := rules.Evaluate(c.Tool, full); ok && v.Action == "allow" {
+			t.Errorf("%q allowed", cmd)
+		}
+	}
+	payload := []byte(`{"conversation_id":"c1","command":"git status --short"}`)
+	c := Adapter{}.ParseCommon("before-shell-execution", payload)
+	if v, ok := rules.Evaluate(c.Tool, agents.SummarizeFull(c.Tool, c.ToolInput)); !ok || v.Action != "allow" {
+		t.Fatalf("plain command: %+v %v", v, ok)
 	}
 }
