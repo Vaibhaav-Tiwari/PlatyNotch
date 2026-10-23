@@ -1,0 +1,1 @@
+{"session_id":"sess-1","cwd":"/Users/me/proj","hook_event_name":"X","tool_name":"run_shell_command","tool_input":{"command":"ls"},"tool_use_id":"t1","prompt":"hi","message":"m","notification_type":"ToolPermission","transcript_path":"/tmp/t.jsonl"}
