@@ -2,10 +2,13 @@ package cli
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
+	"strings"
 	"syscall"
 	"time"
 
@@ -17,9 +20,10 @@ import (
 // mcp runs the stdio MCP server that AI apps launch. stdout carries the
 // protocol, so every log line goes to logs/mcp.log. Memory is read straight
 // from a read-only memory.db; loop changes go through the core socket.
+// `mcp install|uninstall <client>` registers the server with an AI client.
 func (a *app) mcp(ctx context.Context, args []string) int {
 	if len(args) != 0 {
-		return a.usageErr("mcp", "takes no arguments")
+		return a.mcpInstall(ctx, args)
 	}
 	if err := paths.EnsureHome(); err != nil {
 		return a.fail("mcp", err)
@@ -43,6 +47,37 @@ func (a *app) mcp(ctx context.Context, args []string) int {
 		return 1
 	}
 	logger.Printf("mcp server stopped")
+	return 0
+}
+
+// mcpInstall handles `mcp install|uninstall <client>`. The registered command
+// is the stable hook binary path, so it survives app moves and updates.
+func (a *app) mcpInstall(ctx context.Context, args []string) int {
+	if args[0] != "install" && args[0] != "uninstall" {
+		return a.usageErr("mcp", "unknown subcommand "+args[0])
+	}
+	if len(args) != 2 {
+		return a.usageErr("mcp", "expected one client")
+	}
+	client := args[1]
+	if !slices.Contains(mcpserver.Clients, client) {
+		return a.usageErr("mcp", fmt.Sprintf("unknown client %q (one of: %s)", client, strings.Join(mcpserver.Clients, ", ")))
+	}
+	var msg string
+	var err error
+	if args[0] == "install" {
+		var bin string
+		if bin, err = ensureHookBinary(); err != nil {
+			return a.fail("mcp", err)
+		}
+		msg, err = mcpserver.Install(ctx, client, bin, mcpserver.ExecRunner)
+	} else {
+		msg, err = mcpserver.Uninstall(ctx, client, mcpserver.ExecRunner)
+	}
+	if err != nil {
+		return a.fail("mcp", err)
+	}
+	fmt.Fprintln(a.stdout, msg)
 	return 0
 }
 

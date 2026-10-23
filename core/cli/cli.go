@@ -101,7 +101,7 @@ func Run(ctx context.Context, args []string, opts ...Option) int {
 		"hooks":      {"manage agent hooks: hooks install|uninstall|status [agent|all] [--json]", a.hooks},
 		"status":     {"show sessions, pending approvals and usage [--json]", a.status},
 		"approve":    {"answer an approval: approve <id> allow|deny [--message m]", a.approve},
-		"mcp":        {"stdio MCP server for AI apps (search memory, open loops)", a.mcp},
+		"mcp":        {"stdio MCP server for AI apps; mcp install|uninstall <claude-desktop|claude-code|cursor>", a.mcp},
 		"doctor":     {"check the core, agent hooks, status line and config", a.doctor},
 		"version":    {"print the version", a.version},
 	}
@@ -148,7 +148,7 @@ var synopsis = map[string]string{
 	"hooks":      "hooks install|uninstall|status [agent|all] [--json]",
 	"status":     "status [--json]",
 	"approve":    "approve <id> allow|deny [--message m]",
-	"mcp":        "mcp",
+	"mcp":        "mcp [install|uninstall <claude-desktop|claude-code|cursor>]",
 	"doctor":     "doctor",
 	"version":    "version",
 }

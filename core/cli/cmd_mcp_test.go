@@ -188,3 +188,63 @@ func (l *lockedBuf) Write(p []byte) (int, error) {
 	return l.b.Write(p)
 }
 func (l *lockedBuf) String() string { l.mu.Lock(); defer l.mu.Unlock(); return l.b.String() }
+
+func TestMCPInstallUninstallCursor(t *testing.T) {
+	_, user, _ := env(t)
+	t.Setenv("PATH", t.TempDir())
+	r := run(t, "", []string{"mcp", "install", "cursor"})
+	if r.code != 0 {
+		t.Fatalf("exit %d: %s", r.code, r.stderr)
+	}
+	p := filepath.Join(user, ".cursor", "mcp.json")
+	b, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		MCPServers map[string]struct {
+			Command string   `json:"command"`
+			Args    []string `json:"args"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	e := doc.MCPServers["platynotch"]
+	if e.Command != paths.HookBinary() || len(e.Args) != 1 || e.Args[0] != "mcp" {
+		t.Fatalf("entry %+v", e)
+	}
+	if _, err := os.Lstat(paths.HookBinary()); err != nil {
+		t.Fatalf("hook binary not linked: %v", err)
+	}
+	if r := run(t, "", []string{"mcp", "uninstall", "cursor"}); r.code != 0 {
+		t.Fatalf("uninstall %d: %s", r.code, r.stderr)
+	}
+	b, _ = os.ReadFile(p)
+	if strings.Contains(string(b), "platynotch") {
+		t.Fatalf("not removed:\n%s", b)
+	}
+}
+
+func TestMCPInstallClaudeCodeWithoutCLI(t *testing.T) {
+	env(t)
+	t.Setenv("PATH", t.TempDir())
+	r := run(t, "", []string{"mcp", "install", "claude-code"})
+	if r.code != 0 || !strings.Contains(r.stdout, "claude mcp add --scope user platynotch --") || !strings.Contains(r.stdout, "not run") {
+		t.Fatalf("%d %q %q", r.code, r.stdout, r.stderr)
+	}
+}
+
+func TestMCPInstallUsageErrors(t *testing.T) {
+	env(t)
+	for _, args := range [][]string{
+		{"mcp", "install"},
+		{"mcp", "install", "vscode"},
+		{"mcp", "frob", "cursor"},
+		{"mcp", "install", "cursor", "extra"},
+	} {
+		if r := run(t, "", args); r.code != 2 || !strings.Contains(r.stderr, "usage: notch mcp") {
+			t.Errorf("%v: %d %q", args, r.code, r.stderr)
+		}
+	}
+}

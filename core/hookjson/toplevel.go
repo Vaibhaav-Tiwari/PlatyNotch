@@ -19,7 +19,8 @@
 // Modified for PlatyNotch: generalized from the "hooks" key to reading,
 // setting or deleting any one top-level key; keeps key order and the file
 // mode, resolves symlinks, writes a write-once .platynotch-backup, and skips
-// the write when the value is unchanged.
+// the write when the value is unchanged; SetNested/GetNested do the same for
+// one key inside a top-level object.
 
 package hookjson
 
@@ -91,6 +92,81 @@ func SetTopLevel(path, key string, value json.RawMessage) (bool, error) {
 		}
 		top.set(key, value)
 	}
+	return writeTop(path, data, exists, top)
+}
+
+// GetNested returns the raw value of parent.key, where parent is a top-level
+// object. A missing file, parent or key reports ok=false without error.
+func GetNested(path, parent, key string) (json.RawMessage, bool, error) {
+	raw, ok, err := GetTopLevel(path, parent)
+	if err != nil || !ok || isNull(raw) {
+		return nil, false, err
+	}
+	inner, err := parseObj(raw)
+	if err != nil {
+		return nil, false, fmt.Errorf("parse %s in %s: %w", parent, path, err)
+	}
+	v, ok := inner.m[key]
+	return v, ok, nil
+}
+
+// SetNested sets (or, with a nil value, deletes) key inside the top-level
+// object parent, creating parent when needed. Like SetTopLevel it keeps every
+// other key at both levels in order, the file mode (0600 for a new file), a
+// write-once .platynotch-backup, and writes atomically. A parent that is not
+// an object is an error and leaves the file untouched. An emptied parent is
+// kept as {}.
+func SetNested(path, parent, key string, value json.RawMessage) (bool, error) {
+	if path == "" || parent == "" || key == "" {
+		return false, errors.New("hookjson: path, parent and key are required")
+	}
+	if value != nil && !json.Valid(value) {
+		return false, errors.New("hookjson: value is not valid JSON")
+	}
+	path = resolve(path)
+	data, err := os.ReadFile(path)
+	exists := err == nil
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	if value == nil && !exists {
+		return false, nil
+	}
+	top := newObj()
+	if len(bytes.TrimSpace(data)) > 0 {
+		if top, err = parseObj(data); err != nil {
+			return false, fmt.Errorf("parse %s: %w", path, err)
+		}
+	}
+	inner := newObj()
+	if raw, ok := top.m[parent]; ok && !isNull(raw) {
+		if inner, err = parseObj(raw); err != nil {
+			return false, fmt.Errorf("parse %s in %s: %w", parent, path, err)
+		}
+	} else if value == nil {
+		return false, nil
+	}
+	old, had := inner.m[key]
+	if value == nil {
+		if !had {
+			return false, nil
+		}
+		inner.del(key)
+	} else {
+		if had && compactEq(old, value) {
+			return false, nil
+		}
+		inner.set(key, value)
+	}
+	top.set(parent, inner.marshal())
+	return writeTop(path, data, exists, top)
+}
+
+func isNull(raw json.RawMessage) bool { return string(bytes.TrimSpace(raw)) == "null" }
+
+// writeTop writes top over path (whose previous contents were data), keeping
+// the mode of an existing file and backing it up once.
+func writeTop(path string, data []byte, exists bool, top *obj) (bool, error) {
 	var out bytes.Buffer
 	if err := json.Indent(&out, top.marshal(), "", "  "); err != nil {
 		return false, err
