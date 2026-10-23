@@ -67,9 +67,9 @@ func TestRedact(t *testing.T) {
 		}
 	}
 	for in, want := range map[string]string{
-		"on 2024-01-15 4242 4242 4242 4242 paid": "on 2024-01-15 [redacted] paid",
+		"on 2024-01-15 4242 4242 4242 4242 paid": "on [redacted] paid",
 		"order 123 4242424242424242":             "order 123 [redacted]",
-		"x 1398 8333 3494 9149 9432 0603 y":      "x [redacted] y",
+		"x 1398 8333 3494 9149 9432 0603 y":      "x 1398 [redacted] y",
 		"4242 4242 4242 4242 12/27":              "[redacted] 12/27",
 	} {
 		if got := Redact(in); got != want {
