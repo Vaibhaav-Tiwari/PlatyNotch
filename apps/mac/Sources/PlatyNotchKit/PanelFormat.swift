@@ -288,9 +288,12 @@ public struct ApprovalArming: Sendable, Equatable {
     }
 
     /// True when an answer may go ahead; otherwise shows "Look first…" for a moment.
+    /// `slot` is the approval's position at decide time (nil if no longer pending); it
+    /// must still be the slot the card was armed in, so a card that has just moved is
+    /// never answered even before the view re-notes positions.
     @discardableResult
-    public mutating func attempt(_ id: String, at now: Date) -> Bool {
-        if isArmed(id, at: now) { return true }
+    public mutating func attempt(_ id: String, slot: Int?, at now: Date) -> Bool {
+        if let slot, shown[id]?.slot == slot, isArmed(id, at: now) { return true }
         lookFirstUntil[id] = now.addingTimeInterval(Self.lookFirstDuration)
         return false
     }
@@ -302,8 +305,10 @@ public struct ApprovalArming: Sendable, Equatable {
 }
 
 /// Makes characters that could hide or disguise part of a command visible:
-/// bidi overrides and isolates, zero-width characters, BOM, C0/C1 controls (except
-/// newline and tab) and DEL become `⟨U+XXXX⟩`; ESC (ANSI sequences) becomes `⟨ESC⟩`
+/// bidi overrides and isolates, zero-width and other format characters (general
+/// category Cf: soft hyphen, word joiner, tag characters, BOM, ...), line and paragraph
+/// separators, variation selectors, C0/C1 controls (except newline and tab, unless
+/// `singleLine`) and DEL become `⟨U+XXXX⟩`; ESC (ANSI sequences) becomes `⟨ESC⟩`
 /// with the rest of the sequence left as text.
 public enum SummarySanitizer {
     public struct Result: Sendable, Equatable {
@@ -311,14 +316,14 @@ public enum SummarySanitizer {
         public var hadHidden: Bool
     }
 
-    public static func visible(_ summary: String) -> Result {
+    public static func visible(_ summary: String, singleLine: Bool = false) -> Result {
         var out = String.UnicodeScalarView()
         var hidden = false
         for scalar in summary.unicodeScalars {
             if scalar.value == 0x1B {
                 out.append(contentsOf: "⟨ESC⟩".unicodeScalars)
                 hidden = true
-            } else if isHidden(scalar.value) {
+            } else if isHidden(scalar, singleLine: singleLine) {
                 out.append(contentsOf: String(format: "⟨U+%04X⟩", scalar.value).unicodeScalars)
                 hidden = true
             } else {
@@ -328,12 +333,45 @@ public enum SummarySanitizer {
         return Result(text: String(out), hadHidden: hidden)
     }
 
-    static func isHidden(_ v: UInt32) -> Bool {
-        switch v {
-        case 0x0A, 0x09: false
-        case 0x00...0x1F, 0x7F, 0x80...0x9F: true
-        case 0x200B...0x200F, 0x202A...0x202E, 0x2066...0x2069, 0xFEFF: true
-        default: false
+    static func isHidden(_ scalar: Unicode.Scalar, singleLine: Bool) -> Bool {
+        switch scalar.properties.generalCategory {
+        case .format, .lineSeparator, .paragraphSeparator: return true
+        default: break
         }
+        switch scalar.value {
+        case 0x0A, 0x09: return singleLine
+        case 0x00...0x1F, 0x7F, 0x80...0x9F: return true
+        case 0x200B...0x200F, 0x202A...0x202E, 0x2066...0x2069, 0xFEFF: return true
+        case 0xFE00...0xFE0F, 0xE0100...0xE01EF: return true   // variation selectors
+        case 0xE0000...0xE007F: return true                     // tags (Cf, listed for clarity)
+        default: return false
+        }
+    }
+}
+
+/// An approval's displayed text with hidden characters made visible: the summary in
+/// multi-line form, header fields in single-line form. `hadHidden` covers every field.
+public struct VisibleApproval: Sendable, Equatable {
+    public let agentName: String
+    public let tool: String
+    public let project: String?
+    public let cwd: String?
+    public let summary: String
+    public let hadHidden: Bool
+
+    public init(_ approval: Approval) {
+        var hidden = false
+        func line(_ s: String) -> String {
+            let r = SummarySanitizer.visible(s, singleLine: true)
+            hidden = hidden || r.hadHidden
+            return r.text
+        }
+        agentName = line(approval.agentName)
+        tool = line(approval.tool)
+        project = approval.project.map(line)
+        cwd = approval.cwd.map(line)
+        let body = SummarySanitizer.visible(approval.summary)
+        summary = body.text
+        hadHidden = hidden || body.hadHidden
     }
 }

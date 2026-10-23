@@ -76,12 +76,14 @@ struct PanelRootView: View {
 
 extension PanelRootView {
     /// Every Allow / Deny goes through here: auto-repeat keys and double-clicks are
-    /// dropped, a card not yet armed shows "Look first…", and the shared responder
+    /// dropped, a card not yet armed (or no longer in the slot it was armed in) shows
+    /// "Look first…", and the shared responder
     /// refuses expired, in-flight or reconnecting answers.
     func decide(_ approval: Approval, _ behavior: ApprovalBehavior) {
         guard DecisionInput.accepts(NSApp.currentEvent) else { return }
         let now = Date()
-        guard model.arming.attempt(approval.id, at: now) else { return }
+        let slot = ApprovalFormat.ordered(store.approvals).firstIndex { $0.id == approval.id }
+        guard model.arming.attempt(approval.id, slot: slot, at: now) else { return }
         responder.decide(approval, behavior, now: now, canAnswer: store.canAnswerApprovals)
     }
 }

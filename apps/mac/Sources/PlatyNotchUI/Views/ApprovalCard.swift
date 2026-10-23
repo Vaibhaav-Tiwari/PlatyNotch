@@ -25,44 +25,44 @@ struct ApprovalCard: View {
     let onOpenTerminal: (Session) -> Void
 
     var body: some View {
-        let visible = SummarySanitizer.visible(approval.summary)
+        let visible = VisibleApproval(approval)
         TimelineView(.periodic(from: .now, by: 1)) { ctx in
             let status = ApprovalCardStatus(approval: approval, now: ctx.date, canAnswer: canAnswer, phase: phase)
             let lookFirst = status.canAnswer && arming.showsLookFirst(approval.id, at: ctx.date)
             VStack(alignment: .leading, spacing: 6) {
-                header(status, lookFirst: lookFirst)
+                header(visible, status, lookFirst: lookFirst)
                 if visible.hadHidden {
                     Label("Contains hidden characters", systemImage: "exclamationmark.triangle.fill")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(Theme.color(.attention))
                 }
-                SummaryView(summary: visible.text, maxLines: maxLines)
+                SummaryView(summary: visible.summary, maxLines: maxLines)
                 footer(status)
             }
         }
         .padding(8)
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("\(approval.agentName) asks to run \(approval.tool)")
+        .accessibilityLabel("\(visible.agentName) asks to run \(visible.tool)")
     }
 
-    private func header(_ status: ApprovalCardStatus, lookFirst: Bool) -> some View {
+    private func header(_ visible: VisibleApproval, _ status: ApprovalCardStatus, lookFirst: Bool) -> some View {
         HStack(spacing: 6) {
             Image(systemName: Theme.agentSymbol(approval.agent))
                 .foregroundStyle(Theme.color(.attention))
                 .accessibilityHidden(true)
-            Text(verbatim: approval.agentName)
+            Text(verbatim: visible.agentName)
                 .font(.system(size: 12, weight: .semibold))
                 .lineLimit(1)
-            if let project = approval.project, !project.isEmpty {
+            if let project = visible.project, !project.isEmpty {
                 Text(verbatim: project)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                    .help(approval.cwd ?? project)
+                    .help(visible.cwd ?? project)
             }
-            Tag(text: approval.tool)
+            Tag(text: visible.tool)
                 .layoutPriority(1)
             Spacer(minLength: 4)
             statusLabel(status, lookFirst: lookFirst)
@@ -195,11 +195,18 @@ struct ApprovalRow: View {
     let onOpen: () -> Void
 
     var body: some View {
+        let visible = VisibleApproval(approval)
         HStack(spacing: 6) {
             Image(systemName: Theme.agentSymbol(approval.agent))
                 .foregroundStyle(Theme.color(.attention))
                 .accessibilityHidden(true)
-            Text(verbatim: "\(approval.agentName) · \(approval.tool)")
+            if visible.hadHidden {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(Theme.color(.attention))
+                    .help("Contains hidden characters")
+                    .accessibilityLabel("Contains hidden characters")
+            }
+            Text(verbatim: "\(visible.agentName) · \(visible.tool)")
                 .font(.system(size: 11, weight: .semibold))
                 .lineLimit(1)
                 .layoutPriority(1)
@@ -215,7 +222,7 @@ struct ApprovalRow: View {
             Button("Open", action: onOpen)
                 .controlSize(.small)
                 .buttonStyle(.bordered)
-                .accessibilityLabel("Open the panel to answer \(approval.agentName)'s \(approval.tool) request")
+                .accessibilityLabel("Open the panel to answer \(visible.agentName)'s \(visible.tool) request")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)

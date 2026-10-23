@@ -12,7 +12,7 @@ final class ApprovalSafetyTests: XCTestCase {
         XCTAssertTrue(arm.noteVisible(["a"], at: t0))
         XCTAssertFalse(arm.isArmed("a", at: t0))
         XCTAssertFalse(arm.isArmed("a", at: t0.addingTimeInterval(0.69)))
-        XCTAssertFalse(arm.attempt("a", at: t0.addingTimeInterval(0.3)))
+        XCTAssertFalse(arm.attempt("a", slot: 0, at: t0.addingTimeInterval(0.3)))
         XCTAssertTrue(arm.showsLookFirst("a", at: t0.addingTimeInterval(0.5)))
         XCTAssertFalse(arm.isArmed("never-shown", at: t0.addingTimeInterval(100)), "a card never shown is never armed")
     }
@@ -20,7 +20,7 @@ final class ApprovalSafetyTests: XCTestCase {
     func testDecideAfterArmTimeAccepted() {
         var arm = ApprovalArming()
         arm.noteVisible(["a"], at: t0)
-        XCTAssertTrue(arm.attempt("a", at: t0.addingTimeInterval(ApprovalArming.delay)))
+        XCTAssertTrue(arm.attempt("a", slot: 0, at: t0.addingTimeInterval(ApprovalArming.delay)))
         XCTAssertFalse(arm.showsLookFirst("a", at: t0.addingTimeInterval(ApprovalArming.delay)))
         XCTAssertFalse(arm.noteVisible(["a"], at: t0.addingTimeInterval(5)), "unchanged positions change nothing")
         XCTAssertTrue(arm.isArmed("a", at: t0.addingTimeInterval(5)))
@@ -50,12 +50,84 @@ final class ApprovalSafetyTests: XCTestCase {
     func testLookFirstFades() {
         var arm = ApprovalArming()
         arm.noteVisible(["a"], at: t0)
-        arm.attempt("a", at: t0)
+        arm.attempt("a", slot: 0, at: t0)
         XCTAssertTrue(arm.showsLookFirst("a", at: t0.addingTimeInterval(1)))
         XCTAssertFalse(arm.showsLookFirst("a", at: t0.addingTimeInterval(ApprovalArming.lookFirstDuration + 0.01)))
     }
 
+    func testDecideRechecksSlotAtDecideTime() {
+        var arm = ApprovalArming()
+        arm.noteVisible(["a", "b"], at: t0)
+        let later = t0.addingTimeInterval(5)
+        XCTAssertTrue(arm.attempt("b", slot: 1, at: later))
+        // "a" was resolved but the view has not re-noted positions yet: "b" now sits in
+        // slot 0, which is not where it was armed, so the answer is refused.
+        XCTAssertFalse(arm.attempt("b", slot: 0, at: later))
+        XCTAssertTrue(arm.showsLookFirst("b", at: later))
+        XCTAssertFalse(arm.attempt("b", slot: nil, at: later), "an approval no longer pending is never answered")
+    }
+
     // MARK: Hidden characters
+
+    func testTagCharactersAndFormatCategoryShown() {
+        // "hi" spelled in Unicode tag characters (invisible), plus U+E007F CANCEL TAG.
+        let v = SummarySanitizer.visible("ls\u{E0068}\u{E0069}\u{E007F}")
+        XCTAssertEqual(v.text, "ls⟨U+E0068⟩⟨U+E0069⟩⟨U+E007F⟩")
+        XCTAssertTrue(v.hadHidden)
+        for scalar: UInt32 in [0x061C, 0x2060, 0x2061, 0x2064, 0x00AD, 0x180E, 0xFE00, 0xFE0F, 0xE0100, 0xE01EF] {
+            let c = String(UnicodeScalar(scalar)!)
+            XCTAssertEqual(SummarySanitizer.visible("a\(c)b").text, "a⟨U+\(String(format: "%04X", scalar))⟩b",
+                           String(format: "U+%04X", scalar))
+        }
+    }
+
+    func testLineAndParagraphSeparatorsShown() {
+        let v = SummarySanitizer.visible("echo safe\u{2028}rm -rf ~\u{2029}")
+        XCTAssertEqual(v.text, "echo safe⟨U+2028⟩rm -rf ~⟨U+2029⟩")
+        XCTAssertTrue(v.hadHidden)
+        XCTAssertEqual(ApprovalFormat.lineCount(v.text), 1)
+    }
+
+    func testSingleLineFormMarksNewlinesAndTabs() {
+        XCTAssertEqual(SummarySanitizer.visible("a\nb\tc", singleLine: true).text, "a⟨U+000A⟩b⟨U+0009⟩c")
+        XCTAssertTrue(SummarySanitizer.visible("a\nb", singleLine: true).hadHidden)
+        XCTAssertEqual(SummarySanitizer.visible("a\nb").text, "a\nb")
+    }
+
+    func testVisibleApprovalSanitizesHeaderFields() {
+        let clean = Approval(id: "1", sessionKey: "s", agent: "claude-code", agentName: "Claude Code",
+                             project: "données", cwd: "/tmp/日本語", tool: "Bash", summary: "ls",
+                             createdAt: t0, expiresAt: t0.addingTimeInterval(100))
+        let v = VisibleApproval(clean)
+        XCTAssertEqual(v.agentName, "Claude Code")
+        XCTAssertEqual(v.project, "données")
+        XCTAssertEqual(v.cwd, "/tmp/日本語")
+        XCTAssertEqual(v.tool, "Bash")
+        XCTAssertEqual(v.summary, "ls")
+        XCTAssertFalse(v.hadHidden)
+
+        var dirty = clean
+        dirty.agentName = "Claude\u{202E}edoC"
+        dirty.tool = "Bash\nRead"
+        dirty.project = "p\u{200B}"
+        dirty.cwd = "/tmp/\u{E0041}"
+        let d = VisibleApproval(dirty)
+        XCTAssertEqual(d.agentName, "Claude⟨U+202E⟩edoC")
+        XCTAssertEqual(d.tool, "Bash⟨U+000A⟩Read")
+        XCTAssertEqual(d.project, "p⟨U+200B⟩")
+        XCTAssertEqual(d.cwd, "/tmp/⟨U+E0041⟩")
+        XCTAssertEqual(d.summary, "ls")
+        XCTAssertTrue(d.hadHidden, "a hidden character in any header field sets the warning")
+
+        var onlyCwd = clean
+        onlyCwd.cwd = "/tmp/\u{FEFF}"
+        XCTAssertTrue(VisibleApproval(onlyCwd).hadHidden)
+        var noProject = clean
+        noProject.project = nil
+        noProject.cwd = nil
+        XCTAssertNil(VisibleApproval(noProject).project)
+        XCTAssertNil(VisibleApproval(noProject).cwd)
+    }
 
     func testPlainSummaryUnchanged() {
         let s = "cd \"/tmp/données/日本語\" && ls\n\tgrep -n 'x' *.swift"
