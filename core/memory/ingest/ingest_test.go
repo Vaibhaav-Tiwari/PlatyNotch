@@ -1,6 +1,8 @@
 package ingest
 
 import (
+	"fmt"
+	"math/rand"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -67,6 +69,7 @@ func TestRedact(t *testing.T) {
 	for in, want := range map[string]string{
 		"on 2024-01-15 4242 4242 4242 4242 paid": "on 2024-01-15 [redacted] paid",
 		"order 123 4242424242424242":             "order 123 [redacted]",
+		"x 1398 8333 3494 9149 9432 0603 y":      "x [redacted] y",
 		"4242 4242 4242 4242 12/27":              "[redacted] 12/27",
 	} {
 		if got := Redact(in); got != want {
@@ -311,5 +314,44 @@ func TestHourBucketFollowsCapturedAt(t *testing.T) {
 	}
 	if _, v, _, _, _ := s.Counts(); v != 2 {
 		t.Fatalf("versions=%d", v)
+	}
+}
+
+func TestRedactCardNeverLeaks(t *testing.T) {
+	rng := rand.New(rand.NewSource(42))
+	group := func() string { return fmt.Sprintf("%04d", rng.Intn(10000)) }
+	for n := 0; n < 2000; n++ {
+		var d []int
+		for k := 0; k < 15; k++ {
+			d = append(d, rng.Intn(10))
+		}
+		for c := 0; c < 10; c++ { // append check digit
+			if luhn(append(append([]int{}, d...), c)) {
+				d = append(d, c)
+				break
+			}
+		}
+		var card strings.Builder
+		for k, x := range d {
+			if k > 0 && k%4 == 0 {
+				card.WriteByte(' ')
+			}
+			card.WriteByte(byte('0' + x))
+		}
+		var parts []string
+		for k := rng.Intn(3); k > 0; k-- {
+			parts = append(parts, group())
+		}
+		parts = append(parts, card.String())
+		if rng.Intn(2) == 0 {
+			parts = append(parts, group())
+		}
+		in := "x " + strings.Join(parts, " ") + " y"
+		out := Redact(in)
+		for _, g := range strings.Fields(card.String()) {
+			if strings.Contains(out, g) {
+				t.Fatalf("leak: %q -> %q", in, out)
+			}
+		}
 	}
 }

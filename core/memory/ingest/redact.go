@@ -30,15 +30,11 @@ func isDigit(b byte) bool { return b >= '0' && b <= '9' }
 
 type digitGroup struct{ start, end int }
 
-type cardWin struct {
-	start, end, digits int
-	cardLike           bool // grouped like a printed card, preferred on ties
-}
+type cardWin struct{ start, end int }
 
 // redactCards finds Luhn-valid 13-19 digit card numbers. Within each maximal
 // run of digit groups (single space/dash separators) every window that starts
-// and ends on a group boundary is a candidate; longest windows win and
-// redacted windows never overlap.
+// and ends on a group boundary is a candidate; valid windows are merged.
 func redactCards(s string) string {
 	runs := cardRun.FindAllStringIndex(s, -1)
 	var wins []cardWin
@@ -72,7 +68,7 @@ func redactCards(s string) string {
 					}
 				}
 				if luhn(d) {
-					wins = append(wins, cardWin{gs[i].start, gs[j].end, n, cardLike(gs[i : j+1])})
+					wins = append(wins, cardWin{gs[i].start, gs[j].end})
 				}
 			}
 		}
@@ -80,29 +76,21 @@ func redactCards(s string) string {
 	if wins == nil {
 		return s
 	}
-	sort.Slice(wins, func(a, b int) bool {
-		if wins[a].cardLike != wins[b].cardLike {
-			return wins[a].cardLike
-		}
-		if wins[a].digits != wins[b].digits {
-			return wins[a].digits > wins[b].digits
-		}
-		return wins[a].start < wins[b].start
-	})
-	var picked []cardWin
-	for _, w := range wins {
-		ok := true
-		for _, p := range picked {
-			if w.start < p.end && p.start < w.end {
-				ok = false
-				break
+	// Redact the union of all valid windows: overlapping or adjacent windows
+	// merge into one span, so a spurious earlier window cannot leave part of
+	// the real card in the clear.
+	sort.Slice(wins, func(a, b int) bool { return wins[a].start < wins[b].start })
+	picked := []cardWin{wins[0]}
+	for _, w := range wins[1:] {
+		last := &picked[len(picked)-1]
+		if w.start <= last.end+1 {
+			if w.end > last.end {
+				last.end = w.end
 			}
-		}
-		if ok {
+		} else {
 			picked = append(picked, w)
 		}
 	}
-	sort.Slice(picked, func(a, b int) bool { return picked[a].start < picked[b].start })
 	var out strings.Builder
 	last := 0
 	for _, w := range picked {
@@ -112,24 +100,6 @@ func redactCards(s string) string {
 	}
 	out.WriteString(s[last:])
 	return out.String()
-}
-
-// cardLike reports a single group, or 4-digit groups ending in a group of up
-// to 4 digits, or the Amex 4-6-5 layout.
-func cardLike(gs []digitGroup) bool {
-	size := func(g digitGroup) int { return g.end - g.start }
-	if len(gs) == 1 {
-		return true
-	}
-	if len(gs) == 3 && size(gs[0]) == 4 && size(gs[1]) == 6 && size(gs[2]) == 5 {
-		return true
-	}
-	for _, g := range gs[:len(gs)-1] {
-		if size(g) != 4 {
-			return false
-		}
-	}
-	return size(gs[len(gs)-1]) <= 4
 }
 
 func luhn(d []int) bool {
