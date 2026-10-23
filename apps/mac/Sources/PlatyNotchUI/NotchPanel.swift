@@ -25,6 +25,10 @@ final class NotchPanel: NSPanel {
         animationBehavior = .none
     }
 
+    /// AppKit normally pushes windows below the menu bar. The notch panel must sit
+    /// over the camera housing, so keep exactly the frame we ask for.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+
     override var canBecomeKey: Bool { allowsKey }
     override var canBecomeMain: Bool { false }
 
