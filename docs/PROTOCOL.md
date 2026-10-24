@@ -82,9 +82,9 @@ Session states: `active`, `idle`, `waiting_input`, `blocked`, `exited`.
 - `MemorySearch`: `query`, `limit?`, `since?`, `until?`, `app?`
 - `MemoryHit`: `thread_id`, `title`, `source_app`, `snippet`, `score`, `at`
 - `MemoryResults`: `hits` (`[]MemoryHit`)
-- `MemoryGraphQuery`: `since?`, `hours?` (default 168, ignored when `since` is set), `app?`, `max_nodes?` (default 100, at most 500)
+- `MemoryGraphQuery`: `since?`, `hours?` (default 168, ignored when `since` is set), `app?`, `max_nodes?` (default 100, at most 500). The window is at most 2160 hours (90 days, the default retention); an earlier `since` is moved up to that. The graph is built per request from versions, threads and loops; longer windows would need edges precomputed at ingest (a `thread_edges` table, a follow-up).
 - `GraphNode`: `id`, `kind` (`app|thread|site|loop|topic`; `topic` is reserved and not sent yet), `label` (captured text for threads and loops: untrusted), `weight`. Thread ids are thread ids; the others are prefixed `app:`, `site:`, `loop:`.
-- `GraphEdge`: `from`, `to`, `kind` (`in` app→thread, `on` thread→site, `detected_in` loop→thread, `from_app` loop→app when its thread is gone or outside the window, `together` thread↔thread switched between), `weight`
+- `GraphEdge`: `from`, `to`, `kind` (`in` app→thread, `on` thread→site, `detected_in` loop→thread, `from_app` loop→app when its thread is gone, outside the window or cut by `max_nodes`, `together` thread↔thread active one after another (hourly: consecutive versions at most 45 minutes apart), `weight`
 - `MemoryGraph`: `nodes` (`[]GraphNode`, heaviest first), `edges` (`[]GraphEdge`, both ends always in `nodes`)
 - `Notice`: `kind` (`session-done|session-failed|approval-timeout|info`), `title`, `body?`, `session_key?`
 - `Snapshot`: `sessions`, `approvals`, `usage`, `loops`, `memory`, `edition` (`free|pro`)

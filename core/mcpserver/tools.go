@@ -86,8 +86,8 @@ type activityOut struct {
 }
 
 type graphIn struct {
-	Since    string `json:"since,omitempty" jsonschema:"only activity at or after this RFC 3339 time; overrides hours"`
-	Hours    int    `json:"hours,omitempty" jsonschema:"look-back window in hours, default 168"`
+	Since    string `json:"since,omitempty" jsonschema:"only activity at or after this RFC 3339 time (at most 90 days back); overrides hours"`
+	Hours    int    `json:"hours,omitempty" jsonschema:"look-back window in hours, default 168, at most 2160"`
 	App      string `json:"app,omitempty" jsonschema:"restrict to one app, by name or bundle id"`
 	MaxNodes int    `json:"max_nodes,omitempty" jsonschema:"keep only the heaviest nodes, default 100, at most 500"`
 }
@@ -124,7 +124,7 @@ func registerTools(s *mcp.Server, d Deps) {
 			return nil, out, err
 		})
 	mcp.AddTool(s, &mcp.Tool{Name: "memory_graph", Description: "The user's memory as a graph for a time window: nodes are apps, threads (windows, documents, conversations), sites and open loops, weighted by activity; " +
-		"edges are app→thread (in), thread→site (on), loop→thread (detected_in), loop→app (from_app) and thread↔thread (together: switched between). Thread node ids work with get_thread." + untrusted},
+		"edges are app→thread (in), thread→site (on), loop→thread (detected_in), loop→app (from_app) and thread↔thread (together: active one after another, by the hour). Thread node ids work with get_thread." + untrusted},
 		func(ctx context.Context, _ *mcp.CallToolRequest, in graphIn) (*mcp.CallToolResult, any, error) {
 			out, err := doGraph(d, in)
 			return nil, out, err

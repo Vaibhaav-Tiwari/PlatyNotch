@@ -61,6 +61,8 @@ func addLoop(t *testing.T, s *store.Store, title, app, thread string, detected t
 
 func h(n int) time.Duration { return time.Duration(n) * time.Hour }
 
+func ptr(t time.Time) *time.Time { return &t }
+
 // render is a compact text form of a graph: sorted "kind:label=weight" lines
 // for the nodes, then sorted "from>to kind=weight" lines for the edges, with
 // ids (random for threads) replaced by labels.
@@ -153,9 +155,9 @@ app:Mail>thread:Inbox in=3
 			},
 			want: `app:Mail=3
 app:Safari=3
-loop:Call bank=1
-loop:Reply to Sam=4
-loop:Send deck=1
+loop:Call bank=0.5
+loop:Reply to Sam=2
+loop:Send deck=0.5
 site:github.com=3
 thread:Inbox=3
 thread:Issues=1
@@ -163,7 +165,7 @@ thread:PR 12=2
 app:Mail>thread:Inbox in=3
 app:Safari>thread:Issues in=1
 app:Safari>thread:PR 12 in=2
-loop:Reply to Sam>thread:Inbox detected_in=4
+loop:Reply to Sam>thread:Inbox detected_in=2
 loop:Send deck>app:Mail from_app=1
 thread:Issues>site:github.com on=1
 thread:PR 12>site:github.com on=2
@@ -175,15 +177,15 @@ thread:PR 12>site:github.com on=2
 				addLoop(t, s, "Read docs", "Safari", "gone", now.Add(-h(1)))        // dangling: to Safari
 			},
 			want: `app:Safari=3
-loop:Read docs=1
-loop:Review PR=3
+loop:Read docs=0.5
+loop:Review PR=1.5
 site:github.com=3
 thread:Issues=1
 thread:PR 12=2
 app:Safari>thread:Issues in=1
 app:Safari>thread:PR 12 in=2
 loop:Read docs>app:Safari from_app=1
-loop:Review PR>thread:PR 12 detected_in=3
+loop:Review PR>thread:PR 12 detected_in=1.5
 thread:Issues>site:github.com on=1
 thread:PR 12>site:github.com on=2
 `},
@@ -231,14 +233,17 @@ func has(g protocol.MemoryGraph, id string) bool {
 	return false
 }
 
+func m(n int) time.Duration { return time.Duration(n) * time.Minute }
+
 // TestTogetherCountsWindowSwitches: consecutive versions of different threads
-// link them, weighted by how often the user switched between them.
+// at most TogetherGap apart link them, weighted by how often that happened.
 func TestTogetherCountsWindowSwitches(t *testing.T) {
 	s := newStore(t)
 	ids := seed(t, s, []seedThread{
-		{"a", "A", "a", "A1", "", []time.Duration{h(5), h(3), h(1)}},
-		{"b", "B", "b", "B1", "", []time.Duration{h(4), h(2)}},
-		{"c", "C", "c", "C1", "", []time.Duration{h(0)}},
+		{"a", "A", "a", "A1", "", []time.Duration{m(300), m(240), m(180)}},
+		{"b", "B", "b", "B1", "", []time.Duration{m(270), m(210)}},
+		{"c", "C", "c", "C1", "", []time.Duration{m(150)}},
+		{"d", "D", "d", "D1", "", []time.Duration{m(60)}}, // 90 minutes after c: not together
 	})
 	g, err := Build(s, protocol.MemoryGraphQuery{Hours: 24}, now)
 	if err != nil {
@@ -250,10 +255,93 @@ func TestTogetherCountsWindowSwitches(t *testing.T) {
 			got[[2]string{e.From, e.To}] = e.Weight
 		}
 	}
-	// a b a b a c: a–b four times, a–c once.
+	// a b a b a c (30 minutes apart each), then d: a–b four times, a–c once.
 	want := map[[2]string]float64{pair(ids["a"], ids["b"]): 4, pair(ids["a"], ids["c"]): 1}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Fatalf("together = %v, want %v", got, want)
+	}
+}
+
+// TestAppLabelIsTheNewestThreadsName: two names for one bundle (an app
+// renamed, or localised) give the name on the most recently updated thread,
+// in every fresh database; a loop's app name resolves the same way.
+func TestAppLabelIsTheNewestThreadsName(t *testing.T) {
+	for i := range 6 {
+		s := newStore(t)
+		old, newer := "Old Name", "New Name"
+		if i%2 == 1 {
+			old, newer = newer, old
+		}
+		seed(t, s, []seedThread{{"com.x.app", old, "k1", "First", "", []time.Duration{h(2)}}})
+		time.Sleep(3 * time.Millisecond) // a later updated_at
+		seed(t, s, []seedThread{{"com.x.app", newer, "k2", "Second", "", []time.Duration{h(1)}}})
+		addLoop(t, s, "Loop", old, "gone", now.Add(-h(1)))
+		g, err := Build(s, protocol.MemoryGraphQuery{Hours: 24}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var label string
+		for _, n := range g.Nodes {
+			if n.Kind == protocol.GraphApp {
+				label = n.Label
+			}
+		}
+		if label != newer {
+			t.Fatalf("db %d: app label %q, want %q", i, label, newer)
+		}
+		if !strings.Contains(render(g), "loop:Loop>app:"+newer+" from_app=1") {
+			t.Fatalf("db %d: loop not linked to its app by either name:\n%s", i, render(g))
+		}
+	}
+}
+
+// TestCapNeverOrphansALoop: under any cap, every kept loop has an edge
+// whenever its app is kept, and no loop outranks its own thread.
+func TestCapNeverOrphansALoop(t *testing.T) {
+	s := newStore(t)
+	var ts []seedThread
+	for i := range 12 {
+		var ago []time.Duration
+		for j := range i%4 + 1 {
+			ago = append(ago, h(j*3+i%3))
+		}
+		ts = append(ts, seedThread{fmt.Sprint("b", i%3), fmt.Sprint("App", i%3), fmt.Sprint(i), fmt.Sprint("T", i), "", ago})
+	}
+	ids := seed(t, s, ts)
+	for i := range 12 {
+		addLoop(t, s, fmt.Sprint("L", i), fmt.Sprint("App", i%3), ids[fmt.Sprint(i)], now.Add(-h(1)))
+	}
+	addLoop(t, s, "Dangling", "App1", "purged", now.Add(-h(1)))
+	for cap := 1; cap <= 30; cap++ {
+		g, err := Build(s, protocol.MemoryGraphQuery{Hours: 24, MaxNodes: cap}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		weight := map[string]float64{}
+		for _, n := range g.Nodes {
+			weight[n.ID] = n.Weight
+		}
+		linked := map[string]bool{}
+		for _, e := range g.Edges {
+			linked[e.From] = true
+		}
+		for _, n := range g.Nodes {
+			if n.Kind != protocol.GraphLoop {
+				continue
+			}
+			app := "app:b1" // Dangling's
+			if n.Label != "Dangling" {
+				var i int
+				fmt.Sscan(strings.TrimPrefix(n.Label, "L"), &i)
+				app = fmt.Sprint("app:b", i%3)
+				if tw, ok := weight[ids[fmt.Sprint(i)]]; ok && n.Weight > tw {
+					t.Fatalf("cap %d: loop %s (%g) outweighs its thread (%g)", cap, n.Label, n.Weight, tw)
+				}
+			}
+			if _, appKept := weight[app]; appKept && !linked[n.ID] {
+				t.Fatalf("cap %d: loop %s kept with its app but no edge:\n%s", cap, n.Label, render(g))
+			}
+		}
 	}
 }
 
@@ -296,6 +384,8 @@ func TestEmptyAndDefaults(t *testing.T) {
 		{protocol.MemoryGraphQuery{}, now.Add(-h(168))},
 		{protocol.MemoryGraphQuery{Hours: -3}, now.Add(-h(168))},
 		{protocol.MemoryGraphQuery{Hours: 1 << 40}, now.Add(-h(MaxHours))},
+		{protocol.MemoryGraphQuery{Since: ptr(now.Add(-h(5000)))}, now.Add(-h(MaxHours))},
+		{protocol.MemoryGraphQuery{Since: ptr(now.Add(-h(3))), Hours: 1}, now.Add(-h(3))},
 		{protocol.MemoryGraphQuery{Hours: 24}, now.Add(-h(24))},
 	} {
 		if got := Window(c.q, now); !got.Equal(c.want) {

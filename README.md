@@ -185,7 +185,8 @@ notch mcp uninstall claude-desktop
 
 The server reads `memory.db` on your Mac, but the results go to the AI app
 that asked, and that app may send them to its own model provider. Connect
-only apps you trust with your screen history.
+only apps you trust with your screen history. `memory_graph` also shares the
+sites you visited and which windows you used one after another.
 
 ### On-screen capture (Mac app)
 
@@ -212,7 +213,9 @@ tab.
 documents, conversations), sites and open loops from the last 24 hours, 7 days
 or 30 days, linked by where you saw them and what you switched between. It is
 built on your Mac from `memory.db`, with no AI involved, and AI apps can read
-the same graph through the `memory_graph` MCP tool.
+the same graph through the `memory_graph` MCP tool. It covers at most the last
+90 days and is computed when you open it; precomputed links for longer
+histories are a follow-up.
 
 ## License
 

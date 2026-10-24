@@ -257,7 +257,7 @@ type MemoryResults struct {
 }
 
 // MemoryGraphQuery asks for the graph of threads, apps, sites and open loops
-// active in a window: since, else the last Hours (default 168).
+// active in a window: since, else the last Hours (default 168); at most 90 days.
 type MemoryGraphQuery struct {
 	Since    *time.Time `json:"since,omitempty"`
 	Hours    int        `json:"hours,omitempty"`
@@ -280,8 +280,8 @@ const (
 	EdgeIn         = "in"          // app → thread
 	EdgeOn         = "on"          // thread → site
 	EdgeDetectedIn = "detected_in" // loop → thread
-	EdgeFromApp    = "from_app"    // loop → app, when its thread is not in the graph
-	EdgeTogether   = "together"    // thread ↔ thread: switched between, weight = switches
+	EdgeFromApp    = "from_app"    // loop → app, when its thread is gone, outside the window or cut
+	EdgeTogether   = "together"    // thread ↔ thread: active one after another (hourly versions ≤ 45 min apart)
 )
 
 type GraphNode struct {
