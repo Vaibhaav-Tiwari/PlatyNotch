@@ -1307,5 +1307,7 @@ screen). Turn on Settings › Widgets › Power features › Baskets.
   enter a full-screen app on that display: the basket hides (one on another display
   stays); shake a file drag or press ⌃⌥B: it shows. At the default sensitivity a
   brisk shake (about 3 per second) is enough; a slow wiggle never is.
+  On a display that shows no notch panel (Appearance › Displays set to the main one
+  only), baskets there do not hide for a full-screen app: hiding follows the panels.
 - [ ] **258. Off means off.** Turn Baskets off: every basket closes (unpinned ones cleared),
   ⌃⌥B does nothing and shaking a drag makes nothing.
