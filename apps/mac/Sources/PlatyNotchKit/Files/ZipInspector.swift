@@ -8,10 +8,14 @@ public enum ZipInspector {
     public struct Summary: Equatable, Sendable {
         public var entries: Int
         public var uncompressedBytes: UInt64
+        /// Some entry's name is absolute or climbs out with `..` (a "zip slip"): such an
+        /// archive is never unzipped.
+        public var hasUnsafeNames: Bool
 
-        public init(entries: Int, uncompressedBytes: UInt64) {
+        public init(entries: Int, uncompressedBytes: UInt64, hasUnsafeNames: Bool = false) {
             self.entries = entries
             self.uncompressedBytes = uncompressedBytes
+            self.hasUnsafeNames = hasUnsafeNames
         }
     }
 
@@ -50,6 +54,7 @@ public enum ZipInspector {
         var at = 0
         var total: UInt64 = 0
         var count = 0
+        var unsafe = false
         while count < entries {
             guard at + 46 <= dir.count, dir.u32(at) == 0x0201_4B50 else { return nil }
             var size = UInt64(dir.u32(at + 24))
@@ -57,6 +62,8 @@ public enum ZipInspector {
             let commentLength = Int(dir.u16(at + 32))
             let extraStart = at + 46 + nameLength
             guard extraStart + extraLength + commentLength <= dir.count else { return nil }
+            let nameStart = dir.startIndex + at + 46
+            if isUnsafe(String(decoding: dir[nameStart..<(nameStart + nameLength)], as: UTF8.self)) { unsafe = true }
             if size == 0xFFFF_FFFF {
                 guard let big = zip64Size(dir, from: extraStart, length: extraLength) else { return nil }
                 size = big
@@ -67,7 +74,13 @@ public enum ZipInspector {
             count += 1
             at = extraStart + extraLength + commentLength
         }
-        return Summary(entries: count, uncompressedBytes: total)
+        return Summary(entries: count, uncompressedBytes: total, hasUnsafeNames: unsafe)
+    }
+
+    /// An entry name that would land outside the folder it is unzipped into.
+    public static func isUnsafe(_ name: String) -> Bool {
+        let parts = name.replacingOccurrences(of: "\\", with: "/").split(separator: "/", omittingEmptySubsequences: false)
+        return name.hasPrefix("/") || name.hasPrefix("\\") || name.contains("\0") || parts.contains("..")
     }
 
     /// The uncompressed size in the zip64 extra field (id 1; it comes first in it).

@@ -34,4 +34,11 @@ protocol ItemListHost: AnyObject {
     func refreshMissing()
     /// A drag out of the list starts (before the drag pasteboard changes) or ends.
     func outgoingDragChanged(_ active: Bool)
+    /// The "Actions ›" menu and what runs (Task 2); nil while File actions is off (the
+    /// menu is left out). Default nil.
+    var fileActions: FileActionCenter? { get }
+}
+
+extension ItemListHost {
+    var fileActions: FileActionCenter? { nil }
 }

@@ -160,6 +160,16 @@ final class FileActionsTests: DefaultsTestCase {
         XCTAssertGreaterThanOrEqual(summary.uncompressedBytes, 12_345)
         XCTAssertLessThan(summary.uncompressedBytes, 12_345 + 16_384)
         XCTAssertGreaterThanOrEqual(summary.entries, 3, "the folder and both files")
+        XCTAssertFalse(summary.hasUnsafeNames)
+    }
+
+    func testZipSlipNames() {
+        XCTAssertTrue(ZipInspector.isUnsafe("../evil.sh"))
+        XCTAssertTrue(ZipInspector.isUnsafe("a/../../evil.sh"))
+        XCTAssertTrue(ZipInspector.isUnsafe("/etc/passwd"))
+        XCTAssertTrue(ZipInspector.isUnsafe("a\\..\\..\\evil"))
+        XCTAssertFalse(ZipInspector.isUnsafe("folder/a..b.txt"))
+        XCTAssertFalse(ZipInspector.isUnsafe("folder/"))
     }
 
     func testZipSummaryRefusesWhatIsNotAZip() throws {

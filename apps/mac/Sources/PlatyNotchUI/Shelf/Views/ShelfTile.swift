@@ -13,8 +13,24 @@ struct ShelfTile: View {
         VStack(alignment: .leading, spacing: 6) {
             header
             items
+            if let status = host.fileActions?.status { statusLine(status) }
         }
         .onAppear { host.refreshMissing() }
+    }
+
+    /// The last file action's outcome (a few seconds).
+    private func statusLine(_ text: String) -> some View {
+        HStack(spacing: 4) {
+            Text(verbatim: text)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            Spacer(minLength: 0)
+            Button { host.fileActions?.dismissStatus() } label: { Image(systemName: "xmark") }
+                .buttonStyle(.borderless)
+                .font(.system(size: 9))
+                .accessibilityLabel("Dismiss")
+        }
     }
 
     // Split out of `body`: one expression was slow for the type checker (25 ms probe).
@@ -42,7 +58,8 @@ struct ShelfTile: View {
                 HStack(spacing: 6) {
                     ForEach(host.items) { item in
                         ShelfCard(host: host, item: item, missing: host.missing.contains(item.id),
-                                  selected: host.selection.contains(item.id))
+                                  selected: host.selection.contains(item.id),
+                                  run: host.fileActions?.running[item.id])
                     }
                 }
             }
@@ -57,8 +74,31 @@ struct ShelfCard: View {
     let item: ShelfItem
     let missing: Bool
     let selected: Bool
+    /// A file action working on this item (progress and Cancel on the card).
+    var run: FileActionCenter.Run?
 
     var body: some View {
+        content
+            .overlay {
+                if let run { progress(run) }
+            }
+    }
+
+    private func progress(_ run: FileActionCenter.Run) -> some View {
+        VStack(spacing: 4) {
+            ProgressView().controlSize(.small)
+            Text(verbatim: run.title).font(.system(size: 9)).lineLimit(1)
+            Button("Cancel") { host.fileActions?.cancel(item.id) }
+                .buttonStyle(.borderless)
+                .font(.system(size: 9))
+        }
+        .frame(width: Self.size.width, height: Self.size.height)
+        .background(RoundedRectangle(cornerRadius: 8).fill(.background.opacity(0.85)))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(run.title) \(item.title)")
+    }
+
+    private var content: some View {
         VStack(spacing: 3) {
             ZStack(alignment: .topTrailing) {
                 ShelfThumbnail(item: item, missing: missing).frame(width: 40, height: 40)
@@ -251,6 +291,7 @@ final class ShelfItemView: NSView {
             return (pair.1 as? NSString).map { $0 as String } ?? ""
         }
         let ids = targets.map(\.id)
+        let item = self.item
         let menu = NSMenu()
         menu.autoenablesItems = false
         func add(_ title: String, enabled: Bool = true, _ action: @escaping @MainActor () -> Void) {
@@ -270,10 +311,51 @@ final class ShelfItemView: NSView {
         menu.addItem(.separator())
         add("Copy", enabled: !writers.isEmpty) { ShelfActions.copy(writers.map(\.1)) }
         add("Copy Path", enabled: !fileURLs.isEmpty) { ShelfActions.copyPaths(fileURLs) }
+        // An owned copy or action result lives in the shelf's folder: Save As… puts a copy
+        // where the user chooses (R11).
+        if targets.count == 1, item.ownsFile, let url = fileURLs.first {
+            add("Save As…") { ShelfActions.saveAs(url) }
+        }
         menu.addItem(.separator())
-        let item = self.item
+        if let center = host.fileActions {
+            let pairs: [(item: ShelfItem, url: URL?)] = writers.map { pair in
+                (pair.0, (pair.1 as? NSURL).flatMap { $0.isFileURL ? $0 as URL : nil })
+            }
+            let entries = center.entries(for: pairs)
+            if !entries.isEmpty {
+                let actions = NSMenuItem(title: "Actions", action: nil, keyEquivalent: "")
+                actions.submenu = Self.actionsMenu(entries, center: center, host: host, pairs: pairs)
+                menu.addItem(actions)
+                menu.addItem(.separator())
+            }
+        }
         add(item.pinned ? "Unpin" : "Pin") { host.togglePin(item) }
         add(ids.count > 1 ? "Remove \(ids.count) Items" : "Remove") { host.remove(ids) }
+        return menu
+    }
+
+    /// "Actions ›": the entries the center offers for this selection.
+    static func actionsMenu(_ entries: [FileActionCenter.Entry], center: FileActionCenter, host: any ItemListHost,
+                            pairs: [(item: ShelfItem, url: URL?)]) -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let files: [(item: ShelfItem, url: URL)] = pairs.compactMap { p in p.url.map { (p.item, $0) } }
+        for entry in entries {
+            switch entry {
+            case .action(let title, let action):
+                menu.addItem(ClosureMenuItem(title: title) { center.run(action, on: files) })
+            case .submenu(let title, let children):
+                let mi = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+                mi.submenu = actionsMenu(children, center: center, host: host, pairs: pairs)
+                menu.addItem(mi)
+            case .rename:
+                let title = files.count > 1 ? "Batch Rename…" : "Rename…"
+                menu.addItem(ClosureMenuItem(title: title) { BatchRenameDialog.run(files, center: center) })
+            case .undoRename:
+                menu.addItem(.separator())
+                menu.addItem(ClosureMenuItem(title: "Undo Rename") { center.undoRename() })
+            }
+        }
         return menu
     }
 
