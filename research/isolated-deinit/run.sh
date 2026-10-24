@@ -35,10 +35,11 @@ for t in test_sync_noTaskLocal test_sync_taskLocal test_sync_plainDeinit test_as
   summary+=("test $t rc=$rc $(verdict $rc)$(grep -q 'pointer being freed was not allocated' t.log && echo ' malloc:pointer-being-freed-not-allocated')")
 done
 echo "== lldb backtrace: exe a_noTask_taskLocal"
-lldb --batch -o run -o "bt 12" -- "$BIN/Repro" a_noTask_taskLocal 2>&1 | grep -E "frame #|stop reason|malloc|RESULT" | head -20
+lldb --batch -o run -k "bt 14" -k "image list -b libswift_Concurrency.dylib" -k "quit 1" -- "$BIN/Repro" a_noTask_taskLocal 2>&1 \
+  | grep -E "frame #|stop reason|malloc|RESULT|libswift_Concurrency" | head -24
 echo "== lldb: who pushes task-locals during a synchronous XCTest (test_sync_noTaskLocal)?"
 XCT=$(ls -d "$BIN"/*.xctest)
-lldb --batch -o "breakpoint set -n swift_task_localValuePush" -o "run" -o "bt 8" -o "continue" -o "bt 8" \
+lldb --batch -o "breakpoint set -n swift_task_localValuePush" -o "run" -o "bt 8" -o "continue" -o "bt 8" -k "quit 1" \
   -- "$(xcrun --find xctest)" -XCTest "ReproTests.ReproTests/test_sync_noTaskLocal" "$XCT" 2>&1 \
   | grep -E "frame #|stop reason|malloc|passed|failed" | head -40
 echo "== SUMMARY"

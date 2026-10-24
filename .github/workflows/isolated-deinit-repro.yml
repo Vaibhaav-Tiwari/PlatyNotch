@@ -21,6 +21,7 @@ jobs:
           - { os: macos-15, xcode: '26.3', deploy: '14.0' }   # PlatyNotch's toolchain; shim path
           - { os: macos-15, xcode: '26.3', deploy: '15.4' }   # direct swift_task_deinitOnExecutor
           - { os: macos-15, xcode: 'latest-stable', deploy: '14.0' }
+          - { os: macos-15, xcode: '26.0', deploy: '14.0' }   # oldest Xcode that accepts isolated deinit (Swift 6.2.0)
           - { os: macos-15, xcode: '16.4', deploy: '15.4' }   # Swift 6.1 (experimental flag)
           - { os: macos-15, xcode: '16.4', deploy: '14.0' }
           - { os: macos-15, xcode: '16.0', deploy: '15.4' }   # oldest Xcode on the image
