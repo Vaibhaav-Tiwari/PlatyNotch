@@ -2,14 +2,14 @@ import AppKit
 import PlatyNotchKit
 
 /// A left-button event from the monitors.
-public enum DragButtonEvent: Equatable, Sendable {
+enum DragButtonEvent: Equatable, Sendable {
     case down, dragged, up
 }
 
 /// The raw signals the drag monitor reads: left-button events and a few cheap values.
 /// A seam so tests and smoke runs never install real event monitors.
 @MainActor
-public protocol DragSignals: AnyObject {
+protocol DragSignals: AnyObject {
     /// Installs the monitors for left mouse down / dragged / up.
     func start(_ onButton: @escaping @MainActor (DragButtonEvent) -> Void)
     func stop()
@@ -26,23 +26,18 @@ public protocol DragSignals: AnyObject {
     func repeatEvery(_ interval: TimeInterval, _ tick: @escaping @MainActor () -> Void) -> () -> Void
 }
 
-extension DragSignals {
-    public var mouseLocation: CGPoint { .zero }
-    public var dragTypes: [String] { [] }
-}
-
 /// NSEvent monitors for the left button, the drag pasteboard and a run-loop timer.
 ///
 /// Mouse-button monitors need no permission: `addGlobalMonitorForEvents` asks for
 /// Accessibility only for key events, so there is no degraded mode and never a prompt.
 /// A global monitor sees events sent to other apps; the local one sees our own windows.
 @MainActor
-public final class SystemDragSignals: DragSignals {
+final class SystemDragSignals: DragSignals {
     private var monitors: [Any] = []
 
-    public init() {}
+    init() {}
 
-    public func start(_ onButton: @escaping @MainActor (DragButtonEvent) -> Void) {
+    func start(_ onButton: @escaping @MainActor (DragButtonEvent) -> Void) {
         guard monitors.isEmpty else { return }
         let mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseDragged, .leftMouseUp]
         let handle: (NSEvent) -> Void = { event in
@@ -59,17 +54,17 @@ public final class SystemDragSignals: DragSignals {
         }
     }
 
-    public func stop() {
+    func stop() {
         for m in monitors { NSEvent.removeMonitor(m) }
         monitors = []
     }
 
-    public var dragChangeCount: Int { NSPasteboard(name: .drag).changeCount }
-    public var leftButtonDown: Bool { NSEvent.pressedMouseButtons & 1 != 0 }
-    public var mouseLocation: CGPoint { NSEvent.mouseLocation }
-    public var dragTypes: [String] { (NSPasteboard(name: .drag).types ?? []).map(\.rawValue) }
+    var dragChangeCount: Int { NSPasteboard(name: .drag).changeCount }
+    var leftButtonDown: Bool { NSEvent.pressedMouseButtons & 1 != 0 }
+    var mouseLocation: CGPoint { NSEvent.mouseLocation }
+    var dragTypes: [String] { (NSPasteboard(name: .drag).types ?? []).map(\.rawValue) }
 
-    public func repeatEvery(_ interval: TimeInterval, _ tick: @escaping @MainActor () -> Void) -> () -> Void {
+    func repeatEvery(_ interval: TimeInterval, _ tick: @escaping @MainActor () -> Void) -> () -> Void {
         let timer = Timer(timeInterval: interval, repeats: true) { _ in MainActor.assumeIsolated { tick() } }
         // `.common`: also fires while a drag from our own panel runs its tracking loop.
         RunLoop.main.add(timer, forMode: .common)
@@ -79,13 +74,15 @@ public final class SystemDragSignals: DragSignals {
 
 /// Installs nothing and reports nothing (smoke runs, and contexts made without a monitor).
 @MainActor
-public final class NoDragSignals: DragSignals {
-    public init() {}
-    public func start(_ onButton: @escaping @MainActor (DragButtonEvent) -> Void) {}
-    public func stop() {}
-    public var dragChangeCount: Int { 0 }
-    public var leftButtonDown: Bool { false }
-    public func repeatEvery(_ interval: TimeInterval, _ tick: @escaping @MainActor () -> Void) -> () -> Void { {} }
+final class NoDragSignals: DragSignals {
+    init() {}
+    func start(_ onButton: @escaping @MainActor (DragButtonEvent) -> Void) {}
+    func stop() {}
+    var dragChangeCount: Int { 0 }
+    var leftButtonDown: Bool { false }
+    var mouseLocation: CGPoint { .zero }
+    var dragTypes: [String] { [] }
+    func repeatEvery(_ interval: TimeInterval, _ tick: @escaping @MainActor () -> Void) -> () -> Void { {} }
 }
 
 /// Hears about drag sessions anywhere on screen (`DragMonitor.subscribe`).
@@ -153,12 +150,13 @@ public final class DragMonitor {
     private struct Entry {
         let id: Int
         weak var listener: DragMonitorListener?
+        weak var subscription: DragSubscription?
     }
 
-    public var isRunning: Bool { poller != nil }
-    public var isPolling: Bool { cancelPoll != nil }
-    public var isDragging: Bool { poller?.isDragging ?? false }
-    public var subscriberCount: Int { entries.count }
+    var isRunning: Bool { poller != nil }
+    var isPolling: Bool { cancelPoll != nil }
+    var isDragging: Bool { poller?.isDragging ?? false }
+    var subscriberCount: Int { entries.count }
 
     private let signals: DragSignals
     private weak var surfaces: PanelSurfaces?
@@ -170,24 +168,29 @@ public final class DragMonitor {
     private var sessionHolders: Set<Int> = []
 
     /// `surfaces`: where the drag session goes (nil: nowhere, e.g. a headless test).
-    public init(signals: DragSignals, surfaces: PanelSurfaces?) {
+    init(signals: DragSignals, surfaces: PanelSurfaces?) {
         self.signals = signals
         self.surfaces = surfaces
     }
 
     /// Smoke runs and contexts made without one: installs nothing, reports nothing.
-    public static func inert(surfaces: PanelSurfaces? = nil) -> DragMonitor {
+    static func inert(surfaces: PanelSurfaces? = nil) -> DragMonitor {
         DragMonitor(signals: NoDragSignals(), surfaces: surfaces)
     }
 
     /// Adds `listener` (held weakly); the first subscriber starts the monitors. Keep the
-    /// subscription and `cancel` it when the feature stops.
+    /// subscription and `cancel` it when the feature stops. A listener already subscribed
+    /// gets its existing subscription back (it is never counted twice).
     public func subscribe(_ listener: DragMonitorListener) -> DragSubscription {
+        if let e = entries.first(where: { $0.listener === listener }), let existing = e.subscription {
+            return existing
+        }
         let id = nextID
         nextID += 1
-        entries.append(Entry(id: id, listener: listener))
+        let subscription = DragSubscription(monitor: self, id: id)
+        entries.append(Entry(id: id, listener: listener, subscription: subscription))
         if entries.count == 1 { start() }
-        return DragSubscription(monitor: self, id: id)
+        return subscription
     }
 
     /// The drag pasteboard's types (never its contents), only while a drag is in
@@ -258,11 +261,15 @@ public final class DragMonitor {
         switch event {
         case .began:
             sessionHolders = []
+            var asked: Set<Int> = []
             for e in entries {
                 guard let l = e.listener else { continue }
-                if l.dragBegan() { sessionHolders.insert(e.id) }
+                if l.dragBegan() { asked.insert(e.id) }
             }
-            if !sessionHolders.isEmpty { surfaces?.setDragSession(active: true) }
+            // A listener may have left (or stopped the monitor) from inside `dragBegan`.
+            let present = Set(entries.map(\.id))
+            sessionHolders = asked.intersection(present)
+            if isRunning, !sessionHolders.isEmpty { surfaces?.setDragSession(active: true) }
         case .ended:
             sessionHolders = []
             for l in listeners { l.dragEnded() }

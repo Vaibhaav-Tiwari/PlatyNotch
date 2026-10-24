@@ -70,6 +70,19 @@ private final class Listener: DragMonitorListener {
     func dragEnded() { log.append("ended") }
 }
 
+/// Asks for the session, then leaves from inside `dragBegan`.
+@MainActor
+private final class SelfCancelling: DragMonitorListener {
+    var subscription: DragSubscription?
+    var began = 0
+
+    func dragBegan() -> Bool {
+        began += 1
+        subscription?.cancel()
+        return true
+    }
+}
+
 @MainActor
 final class DragMonitorTests: DefaultsTestCase {
     private func rig() -> (DragMonitor, MonitorSignals, PanelSurfaces) {
@@ -217,6 +230,47 @@ final class DragMonitorTests: DefaultsTestCase {
         XCTAssertFalse(signals.polling)
         XCTAssertEqual(signals.stops, 1)
         XCTAssertFalse(monitor.isDragging)
+    }
+
+    /// Fix round 1: a listener that leaves from inside `dragBegan` never holds the session.
+    func testListenerCancellingInsideDragBegan() {
+        let (monitor, signals, surfaces) = rig()
+        let leaving = SelfCancelling()
+        leaving.subscription = monitor.subscribe(leaving)
+        let quiet = Listener(wantsSession: false)
+        let sub = monitor.subscribe(quiet)
+        signals.press()
+        signals.startDrag()
+        XCTAssertEqual(leaving.began, 1)
+        XCTAssertFalse(surfaces.dragActive, "the one that asked has gone")
+        XCTAssertEqual(monitor.subscriberCount, 1)
+        signals.release()
+        sub.cancel()
+
+        // The only listener leaves inside dragBegan: the monitor stopped, no session.
+        let alone = SelfCancelling()
+        alone.subscription = monitor.subscribe(alone)
+        signals.press()
+        signals.startDrag()
+        XCTAssertFalse(monitor.isRunning)
+        XCTAssertFalse(surfaces.dragActive)
+    }
+
+    /// Fix round 1: subscribing the same listener twice returns the same subscription.
+    func testSubscribeIsDeduplicated() {
+        let (monitor, signals, _) = rig()
+        let a = Listener(wantsSession: false)
+        let first = monitor.subscribe(a)
+        let second = monitor.subscribe(a)
+        XCTAssertTrue(first === second)
+        XCTAssertEqual(monitor.subscriberCount, 1)
+        signals.press()
+        signals.startDrag()
+        signals.release()
+        XCTAssertEqual(a.log, ["began", "ended"], "heard once")
+        second.cancel()
+        XCTAssertEqual(signals.stops, 1)
+        XCTAssertFalse(first.isActive)
     }
 
     func testInertMonitorInstallsNothing() {

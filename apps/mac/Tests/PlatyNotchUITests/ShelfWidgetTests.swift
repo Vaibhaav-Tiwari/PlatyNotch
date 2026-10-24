@@ -13,6 +13,8 @@ private final class FakeDragSignals: DragSignals {
     var onButton: (@MainActor (DragButtonEvent) -> Void)?
     var dragChangeCount = 0
     var leftButtonDown = false
+    var mouseLocation: CGPoint = .zero
+    var dragTypes: [String] = []
     var ticks: [Int: @MainActor () -> Void] = [:]
     private var nextTick = 0
     var polling: Bool { !ticks.isEmpty }
