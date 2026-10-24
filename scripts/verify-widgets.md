@@ -734,7 +734,7 @@ Automated: `GamesTests` (engines, seams, determinism, `GameSession` pausing and 
 `HighScores`, board sizes against the expanded panel), `GamesWidgetTests` (approval /
 ringing / collapse / key loss / full screen pause the game through the real `AppStore`
 and `PanelSurfaces`; resume restores the exact state; ⌘ chords are never game keys; the
-tab fits `GameLayout.tabSize`), and `--smoke` (`games=4`: the tile, settings, the tab on
+tab fits `GameLayout.tabSize`), and `--smoke` (`games=5` since Platy Chase: the tile, settings, the tab on
 every game and each board laid out with an inert widget). High scores live in
 `UserDefaults.standard` under `games.highScores` (`defaults delete PlatyNotch games.highScores`).
 
@@ -1003,3 +1003,77 @@ tester: these checks only read what the app says.
   offers Copy Command (`tccutil reset AppleEvents dev.platynotch.app`). After the tester runs
   it, the next click asks again. With Safari's switch simply off (same build), the notice
   gives System Settings › Privacy & Security › Automation › PlatyNotch › Safari instead.
+
+## Games polish (feedback round 1)
+
+Automated: `GamesPolishTests` (Flappy's original-like physics: fall-speed cap, one flap
+hops a tenth of the sky, a simple pilot clears 25 pipes on 8 seeds, gaps in the middle
+60%, wing beat and tilt curve; 2048 move reports agree with the grid over 400 random
+moves and are deterministic; the Tetris ghost is where a hard drop locks; Snake's speed
+curve and crash point). Art and mid-animation frames:
+`.build/debug/PlatyNotch --platy-gallery <dir>` (with `PLATYNOTCH_HOME` set to a temp dir)
+writes `<dir>/games/*.png`.
+
+- [ ] **199. Flappy feels like the original.** Play Flappy: a flap is a short hop, the bird
+  falls at a capped speed (never a plunge), the gap is about four birds tall, pipes come
+  about every 1.4 s. Flying into the top of the sky stops the bird without ending the game.
+  The wing beats while it flies; the bird tilts nose-up after a flap and dives as it falls;
+  the ground's stripes scroll with the pipes. With Reduce Motion the wing is still and
+  the bird stays level.
+- [ ] **200. 2048 slides.** Each move slides the tiles from their old cell to their new
+  one (about a tenth of a second), a merged tile pops, the new tile grows in. Press
+  arrows quickly: every press is one move (none lost, none doubled) and the slide restarts
+  from the latest grid. Starting a new game plays no slide. With Reduce Motion the grid
+  changes at once.
+- [ ] **201. Tetris well.** The well is about 130 × 260 pt with the stats on the left and
+  the next three pieces on the right. Grid lines are faint; the ghost outline shows where
+  the piece will land and a soft lane joins the piece to it, so the column and row are
+  plain near the bottom.
+- [ ] **202. Snake pace and death.** Snake starts slower than before (0.16 s a step) and
+  speeds up a little with every food, topping out at 0.07 s after 33. Run into yourself:
+  the hit cell flashes red three times with a ring, the eyes turn to crosses, the body
+  fades from head to tail, and only then (about 1.1 s) "Game over" appears. Into a wall:
+  the same at the head. A new game starts still (the death animation does not replay).
+  With Reduce Motion the faded snake and the card show at once.
+
+## Platy Chase
+
+Automated: `PlatyChaseTests` (the maze: 28 × 31, 240 dots and 4 pellets in the corner
+regions, symmetric, connected, no dead ends or wide corridors, house, door, tunnel and
+start tiles, no-up tiles that are real junctions, a tunnel slow stretch that stops before
+the side channel's junction, scatter corners outside the maze; every rule table against the Pac-Man Dossier's Table A.1: speeds, Elroy
+thresholds and speeds, fright times and flashes, scatter/chase schedules, bonus values,
+house dot limits and the dot timer; the four targets including the facing-up quirk; the
+up-left-down-right tie-break and no reversal outside a mode change over 6000 frames;
+pre-turn and post-turn cornering and the buffered turn (forgotten when blocked or paused);
+the tunnel's wrap and slowdown; no passing through a chaser when both cross tiles in one
+frame, Elroy 2 included; returning eyes glide onto the door's line;
+frightened scoring 200/400/800/1600 and flashing; the one-frame dot pause; lives, game
+over and the extra life at 10,000; bonus items at 70 and 170 dots; the global counter
+after a lost life; the level clear; determinism). Renders: `--platy-gallery <dir>` writes
+`games/chase-*.png` (start, ready, mid-game, frightened, flashing, points, eyes, bonus,
+caught, death, the art sheet).
+
+- [ ] **203. Play Platy Chase.** Games › Platy Chase: click, Space, "Ready!" for two
+  seconds, then steer Platy with arrows or WASD. A turn pressed early is taken at the next
+  opening and Platy cuts corners. The maze fits the panel with the level and dots on the
+  left, lives and the level's bonus snack on the right.
+- [ ] **204. Chasers.** The maze is a night creek: dark water, sandy banks with a mossy
+  edge, a line of reeds across the house's door. The violet horned one heads straight for
+  Platy, the yellow one aims ahead of it, the blue one flanks, the green one wanders off
+  when it gets close. They
+  scatter to their corners at the start (7 s on level 1) and turn round together whenever
+  the mode changes, never otherwise.
+- [ ] **205. Power pellets.** Eat a corner pellet: the chasers turn muddy brown and
+  reverse, flash pale near the end (5 flashes on level 1), and are worth 200, 400, 800, 1600 in a row;
+  an eaten one shows its points for a second, then its eyes hurry home, slide onto the
+  door (no jump) and it comes out again.
+- [ ] **206. Lives, bonus, levels.** Caught: everything stops for a second, Platy spins
+  away, and play restarts with a life fewer; after the third, "Game over". A snack appears
+  under the house after 70 and 170 dots for 9–10 s (100 on level 1). Clearing every dot
+  flashes the maze and starts level 2 (faster).
+- [ ] **207. Rules shared with the other games.** Keys only after a click; the game pauses
+  for approvals, ringing, collapse, key loss and full screen; no frames while paused; the
+  best score shows on the tile (as "Chase") and in Settings. With Reduce Motion the bill
+  does not chomp, pellets do not blink, the creatures do not step and the death spin is
+  skipped.

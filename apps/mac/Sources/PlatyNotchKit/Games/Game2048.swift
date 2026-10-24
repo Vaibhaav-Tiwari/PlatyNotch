@@ -7,12 +7,51 @@ public struct Game2048: Equatable, Sendable {
     public static let size = 4
     public static let goal = 2048
 
+    /// One tile's journey in a move, for the slide animation.
+    public struct Slide: Equatable, Sendable {
+        public var from: Point
+        public var to: Point
+        /// Its value before the move.
+        public var value: Int
+        /// It ends in a merge at `to` (both tiles of a merge have this set).
+        public var merges: Bool
+
+        public init(from: Point, to: Point, value: Int, merges: Bool) {
+            self.from = from
+            self.to = to
+            self.value = value
+            self.merges = merges
+        }
+    }
+
+    /// What a move did, so the view can animate it: every tile on the grid before the move
+    /// (still ones too, `from == to`), the cells that hold a merged tile after it, and the
+    /// new tile. `serial` counts moves that changed the grid (a new value per move).
+    public struct Move: Equatable, Sendable {
+        public var serial: Int
+        public var direction: Direction
+        public var slides: [Slide]
+        /// Cells holding a tile made by a merge, with its new value.
+        public var merged: [Point]
+        public var spawned: Point?
+        public var spawnedValue: Int
+
+        /// The grid before the move, rebuilt from `slides`.
+        public var before: [[Int]] {
+            var g = Array(repeating: Array(repeating: 0, count: Game2048.size), count: Game2048.size)
+            for s in slides { g[s.from.y][s.from.x] = s.value }
+            return g
+        }
+    }
+
     /// Rows, top first; 0 is empty.
     public private(set) var grid: [[Int]]
     public private(set) var score = 0
     public private(set) var isOver = false
     /// A 2048 tile was made (play may go on).
     public private(set) var won = false
+    /// The last move that changed the grid; nil before the first.
+    public private(set) var lastMove: Move?
     private var rng: SeededRNG
 
     public init(seed: UInt64) {
@@ -33,23 +72,35 @@ public struct Game2048: Equatable, Sendable {
     /// Slides one line towards its start (index 0), merging equal neighbours once each:
     /// `[2, 2, 2, 2]` → `[4, 4, 0, 0]`, `[4, 4, 8, 0]` → `[8, 8, 0, 0]`. C30 test seam.
     public static func slide(row: [Int]) -> (row: [Int], gained: Int) {
-        let tiles = row.filter { $0 != 0 }
+        let r = track(row: row)
+        return (r.row, r.gained)
+    }
+
+    /// `slide(row:)` that also says where each tile went: (from index, to index, merges).
+    public static func track(row: [Int]) -> (row: [Int], gained: Int, moves: [(from: Int, to: Int, merges: Bool)]) {
+        var tiles: [(index: Int, value: Int)] = []
+        for (k, v) in row.enumerated() where v != 0 { tiles.append((k, v)) }
         var out: [Int] = []
+        var moves: [(from: Int, to: Int, merges: Bool)] = []
         var gained = 0
         var i = 0
         while i < tiles.count {
-            if i + 1 < tiles.count, tiles[i] == tiles[i + 1] {
-                let merged = tiles[i] * 2
+            let to = out.count
+            if i + 1 < tiles.count, tiles[i].value == tiles[i + 1].value {
+                let merged = tiles[i].value * 2
                 out.append(merged)
                 gained += merged
+                moves.append((tiles[i].index, to, true))
+                moves.append((tiles[i + 1].index, to, true))
                 i += 2
             } else {
-                out.append(tiles[i])
+                out.append(tiles[i].value)
+                moves.append((tiles[i].index, to, false))
                 i += 1
             }
         }
         while out.count < row.count { out.append(0) }
-        return (out, gained)
+        return (out, gained, moves)
     }
 
     /// Returns whether the grid changed.
@@ -59,17 +110,29 @@ public struct Game2048: Equatable, Sendable {
         let n = Self.size
         var next = grid
         var gained = 0
+        var slides: [Slide] = []
+        var merged: Set<Point> = []
         for line in 0..<n {
             let cells = Self.lineCells(line, d)
             let values = cells.map { grid[$0.y][$0.x] }
-            let slid = Self.slide(row: values)
+            let slid = Self.track(row: values)
             gained += slid.gained
             for (k, c) in cells.enumerated() { next[c.y][c.x] = slid.row[k] }
+            for m in slid.moves {
+                let from = cells[m.from]
+                let to = cells[m.to]
+                slides.append(Slide(from: from, to: to, value: values[m.from], merges: m.merges))
+                if m.merges { merged.insert(to) }
+            }
         }
         guard next != grid else { return false }
         grid = next
         score += gained
-        spawn()
+        let born = spawn()
+        let order = merged.sorted { ($0.y, $0.x) < ($1.y, $1.x) }
+        let serial = (lastMove?.serial ?? 0) + 1
+        lastMove = Move(serial: serial, direction: d, slides: slides, merged: order,
+                        spawned: born, spawnedValue: born.map { grid[$0.y][$0.x] } ?? 0)
         refresh()
         return true
     }
@@ -85,14 +148,17 @@ public struct Game2048: Equatable, Sendable {
         }
     }
 
-    private mutating func spawn() {
+    /// Adds a 2 or a 4 in a random empty cell; returns where (nil when the grid is full).
+    @discardableResult
+    private mutating func spawn() -> Point? {
         var empty: [Point] = []
         for y in 0..<grid.count {
             for x in 0..<grid[y].count where grid[y][x] == 0 { empty.append(Point(x: x, y: y)) }
         }
-        guard !empty.isEmpty else { return }
+        guard !empty.isEmpty else { return nil }
         let cell = empty[rng.below(empty.count)]
         grid[cell.y][cell.x] = rng.below(10) == 0 ? 4 : 2
+        return cell
     }
 
     private mutating func refresh() {
