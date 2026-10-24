@@ -106,20 +106,15 @@ struct EyeBreakRing: View {
 }
 
 /// The Today tile: each nudge's interval and next time, and today's water. While on
-/// screen it redraws once at the next midnight (the count starts again).
+/// screen it redraws at every midnight (the count starts again; C7: every one, not
+/// only the first).
 struct WellbeingTile: View {
     let widget: WellbeingWidget
 
     var body: some View {
-        TimelineView(.explicit([nextMidnight()])) { _ in
+        TimelineView(MidnightSchedule(calendar: widget.calendar)) { _ in
             content
         }
-    }
-
-    private func nextMidnight() -> Date {
-        let cal = widget.calendar
-        let today = cal.startOfDay(for: widget.now())
-        return cal.date(byAdding: .day, value: 1, to: today) ?? today.addingTimeInterval(86_400)
     }
 
     private var content: some View {
@@ -233,5 +228,30 @@ struct WellbeingSettings: View {
     private var goal: Binding<Int> {
         Binding(get: { widget.settings.dailyWaterGoal },
                 set: { v in var s = widget.settings; s.dailyWaterGoal = v; widget.update(s) })
+    }
+}
+
+/// Each local midnight from the start date on (a TimelineView redraw once a day).
+struct MidnightSchedule: TimelineSchedule {
+    let calendar: Calendar
+
+    func entries(from startDate: Date, mode: TimelineScheduleMode) -> Entries {
+        Entries(calendar: calendar, upcoming: Self.midnight(after: startDate, calendar: calendar))
+    }
+
+    static func midnight(after date: Date, calendar: Calendar) -> Date {
+        let today = calendar.startOfDay(for: date)
+        return calendar.date(byAdding: .day, value: 1, to: today) ?? today.addingTimeInterval(86_400)
+    }
+
+    struct Entries: Sequence, IteratorProtocol {
+        let calendar: Calendar
+        var upcoming: Date
+
+        mutating func next() -> Date? {
+            let d = upcoming
+            upcoming = MidnightSchedule.midnight(after: d, calendar: calendar)
+            return d
+        }
     }
 }

@@ -507,6 +507,45 @@ final class WellbeingWidgetTests: DefaultsTestCase {
         XCTAssertEqual(r.widget.nextWake, calendar.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 8)))
     }
 
+    /// Final review C7: during quiet hours the widget wakes at their end at the latest,
+    /// even when the next nudge is due later, so breaks after quiet hours are sampled.
+    func testQuietHoursWakeAtTheirEndEvenWhenDueLater() throws {
+        let d = defaults()
+        var s = NudgeSettings()
+        s.quietStart = 23
+        s.quietEnd = 0
+        s.setMinutes(120, for: .stand)   // every nudge due well after midnight
+        s.setMinutes(120, for: .water)
+        s.setMinutes(0, for: .eyes)
+        d.set(try JSONEncoder().encode(s), forKey: NudgeSettings.key)
+        let clock = Clock(calendar.date(from: DateComponents(year: 2026, month: 10, day: 21, hour: 23, minute: 30))!)
+        let r = rig(overdue: false, defaults: d, clock: clock)
+        r.widget.sample()
+        let midnight = calendar.date(from: DateComponents(year: 2026, month: 10, day: 22, hour: 0))!
+        XCTAssertNotNil(r.widget.nextWake)
+        XCTAssertLessThanOrEqual(r.widget.nextWake!, midnight, "sampled at the end of quiet hours")
+    }
+
+    /// Final review C7: a card on show when the clock goes back ends instead of staying up
+    /// for the hour that was added.
+    func testClockSetBackEndsTheCardOnShow() {
+        let r = rig()
+        r.widget.sample()
+        XCTAssertNotNil(r.widget.nudge)
+        r.clock.advance(-3600)
+        r.widget.clockChanged()
+        XCTAssertNil(r.widget.nudge)
+        XCTAssertNotEqual(r.controller.mode, peek)
+    }
+
+    func testMidnightScheduleRepeatsDaily() {
+        let start = calendar.date(from: DateComponents(year: 2026, month: 10, day: 21, hour: 14))!
+        var it = MidnightSchedule(calendar: calendar).entries(from: start, mode: .normal).makeIterator()
+        let days = (0..<3).compactMap { _ in it.next() }.map { calendar.dateComponents([.day, .hour], from: $0) }
+        XCTAssertEqual(days.map(\.day), [22, 23, 24])
+        XCTAssertEqual(days.map(\.hour), [0, 0, 0])
+    }
+
     func testViewsBuild() {
         let r = rig()
         r.widget.sample()

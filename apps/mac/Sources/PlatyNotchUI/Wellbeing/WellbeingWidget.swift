@@ -196,8 +196,9 @@ final class WellbeingWidget: NotchWidget {
             // Nothing shows and intervals restart at the end: sleep until then.
             wasAway = false
             commit(p)
-            schedule(at: NudgeScheduler.nextWake(settings, lastDone: p.lastDone, snoozedUntil: p.snoozedUntil,
-                                                 now: now, calendar: calendar))
+            let due = NudgeScheduler.nextWake(settings, lastDone: p.lastDone, snoozedUntil: p.snoozedUntil,
+                                              now: now, calendar: calendar)
+            schedule(at: atOrBeforeQuietEnd(due, now: now))
             return
         }
         idleReads += 1
@@ -241,9 +242,13 @@ final class WellbeingWidget: NotchWidget {
         [p.lastCard.map { $0.addingTimeInterval(NudgeScheduler.spacing) }, resumeAt].compactMap { $0 }.max()
     }
 
+    static func cardLength(_ kind: NudgeKind) -> TimeInterval {
+        kind == .eyes ? NudgeScheduler.eyesBreak : NudgeScheduler.peekDuration
+    }
+
     private func show(_ kind: NudgeKind, now: Date) {
         guard let context else { return }
-        let length = kind == .eyes ? NudgeScheduler.eyesBreak : NudgeScheduler.peekDuration
+        let length = Self.cardLength(kind)
         let n = Nudge(kind: kind, shownAt: now, until: now.addingTimeInterval(length))
         nudge = n
         guard context.peek(id: Self.peekID, until: n.until) else {
@@ -325,7 +330,15 @@ final class WellbeingWidget: NotchWidget {
             let s = NudgeScheduler.nextSample(now: now, idleSeconds: 0)
             wake = min(wake ?? s, s)
         }
-        schedule(at: wake)
+        schedule(at: atOrBeforeQuietEnd(wake, now: now))
+    }
+
+    /// During quiet hours: wake no later than their end, so idle breaks after it are sampled
+    /// even when the next nudge falls due well after (C7).
+    private func atOrBeforeQuietEnd(_ wake: Date?, now: Date) -> Date? {
+        guard settings.anyOn, NudgeScheduler.isQuiet(settings, at: now, calendar: calendar),
+              let end = NudgeScheduler.quietEnd(after: now, settings, calendar: calendar) else { return wake }
+        return min(wake ?? end, end)
     }
 
     private func schedule(at wake: Date?, tolerance: Duration = WellbeingWidget.tolerance) {
@@ -380,6 +393,9 @@ final class WellbeingWidget: NotchWidget {
         if let r = resumeAt, r > now.addingTimeInterval(NudgeScheduler.resumeGrace) {
             resumeAt = now.addingTimeInterval(NudgeScheduler.resumeGrace)
         }
+        // A card whose end is now further away than a whole card (the clock went back)
+        // would stay up for that long: it ends, not counted as answered (C7).
+        if let n = nudge, n.until > now.addingTimeInterval(Self.cardLength(n.kind)) { endCard() }
         if !paused, nudge == nil { reschedule(now: now) }
     }
 
