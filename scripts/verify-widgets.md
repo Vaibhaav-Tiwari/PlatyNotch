@@ -964,17 +964,23 @@ tester: these checks only read what the app says.
   with and without a notch, Platy shows first in the agents ear, then the dots that fit and
   "+n" (a badge on Platy at Compact beside a notch); the count adds up to every session.
 - [ ] **193. Music heart.** Play a track in Music and open Today. The heart shows Music's
-  state (filled for a favourite) once PlatyNotch may control Music. Click it: it fills or
+  state (filled for a favourite) once PlatyNotch may control Music; it is read when the
+  tile appears and on a track change while it shows, never while the panel is closed. Click it: it fills or
   empties and Music's heart follows. With Automation › PlatyNotch › Music off, a click says
   so under the controls with the exact path, Open Automation Settings and, if the app was
-  rebuilt, Copy Command (`tccutil reset AppleEvents dev.platynotch.app`). Nothing playing:
+  rebuilt, Copy Command (`tccutil reset AppleEvents dev.platynotch.app`; the message says it
+  clears every Automation permission PlatyNotch has: terminal focus, Music, Spotify, browsers). Nothing playing:
   "Music has no current track to favourite."
 - [ ] **194. HUD after allowing Accessibility.** Turn on the HUD, click Allow Accessibility…,
   allow PlatyNotch in System Settings and come back: within 2 s the tile shows the HUD on,
-  without reopening anything. Rebuild the app (new ad-hoc signature) and relaunch: the tile
-  says "PlatyNotch was rebuilt or updated: … remove PlatyNotch (−) and allow it again"; doing
-  that turns it on. The same text shows in Settings › Permissions › Accessibility and under
-  Settings › Widgets › Clipboard history when ↩ cannot paste.
+  without reopening anything. A first-time user who clicks Allow and leaves System Settings
+  without turning it on sees only "If you already turned PlatyNotch on in Accessibility and
+  this still shows, remove it (−) and allow it again" (never "rebuilt", and nothing on a
+  timer before coming back). Rebuild the app (new ad-hoc signature) and relaunch: the tile
+  says "PlatyNotch was rebuilt or updated: … remove PlatyNotch (−) and allow it again" at
+  once; doing that turns it on. The same texts show in Settings › Permissions ›
+  Accessibility and under Settings › Widgets › Clipboard history when ↩ cannot paste. With
+  Settings minimised or covered, Console shows no trust reads every 2 s.
 - [ ] **195. Calendar from the notch.** With Calendar access never asked (`tccutil reset
   Calendar dev.platynotch.app`, run by the tester), open the notch, Today, and click Allow
   Calendar Access on the meeting tile without opening Settings: macOS asks at once; after
