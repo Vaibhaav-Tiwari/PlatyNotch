@@ -93,8 +93,8 @@ private extension Array {
     subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
 }
 
-/// The real system: NSScreen and the notch layout, NSWorkspace and screen notifications,
-/// NSAlert, and real windows.
+/// The real system: NSScreen and the notch layout, the display-change notification, the
+/// rename field and real windows. Never a modal session, and the app is never activated.
 @MainActor
 final class SystemBasketSystem: BasketSystem {
     /// Appearance (pill width) for the notch layout on each display.
@@ -109,54 +109,37 @@ final class SystemBasketSystem: BasketSystem {
         return NSScreen.screens.map { s in
             let layout = PanelLayout(screenFrame: s.frame, visibleFrame: s.visibleFrame,
                                      auxLeft: s.auxiliaryTopLeftArea, auxRight: s.auxiliaryTopRightArea, pillWidth: width)
-            return BasketScreen(visibleFrame: s.visibleFrame, layout: layout)
+            return BasketScreen(visibleFrame: s.visibleFrame, layout: layout, displayID: s.displayID)
         }
     }
 
     var pointer: CGPoint { NSEvent.mouseLocation }
 
     func observe(_ changed: @escaping @MainActor () -> Void) -> () -> Void {
-        let ws = NSWorkspace.shared.notificationCenter
-        let handler: @Sendable (Notification) -> Void = { _ in MainActor.assumeIsolated { changed() } }
-        let tokens: [(NotificationCenter, NSObjectProtocol)] = [
-            (ws, ws.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main, using: handler)),
-            (ws, ws.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main, using: handler)),
-            (.default, NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
-                                                              object: nil, queue: .main, using: handler)),
-        ]
-        return { for (center, token) in tokens { center.removeObserver(token) } }
+        let token = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
+                                                           object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { changed() }
+        }
+        return { NotificationCenter.default.removeObserver(token) }
     }
 
     func beep() { NSSound.beep() }
 
-    func confirmClose(name: String, count: Int, canMoveToShelf: Bool) -> BasketCloseChoice {
-        let alert = NSAlert()
-        alert.messageText = "Close “\(name)”?"
-        let items = count == 1 ? "1 item" : "\(count) items"
-        alert.informativeText = canMoveToShelf
-            ? "It holds \(items). Move them to the Shelf, or discard them: copies the basket made are deleted, your own files never are."
-            : "It holds \(items). Discarding deletes the copies the basket made; your own files never are. Turn on the Shelf to move them there instead."
-        if canMoveToShelf { alert.addButton(withTitle: "Move to Shelf") }
-        alert.addButton(withTitle: "Discard")
-        alert.addButton(withTitle: "Cancel")
-        NSApp.activate()   // user-initiated: the alert needs the keyboard
-        let r = alert.runModal()
-        let buttons: [BasketCloseChoice] = canMoveToShelf ? [.moveToShelf, .discard, .cancel] : [.discard, .cancel]
-        let i = r.rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
-        return buttons.indices.contains(i) ? buttons[i] : .cancel
-    }
+    /// One rename field at a time.
+    private var rename: BasketRenamePanel?
 
-    func askName(current: String) -> String? {
-        let alert = NSAlert()
-        alert.messageText = "Rename Basket"
-        let field = NSTextField(string: current)
-        field.frame = CGRect(x: 0, y: 0, width: 240, height: 24)
-        alert.accessoryView = field
-        alert.addButton(withTitle: "Rename")
-        alert.addButton(withTitle: "Cancel")
-        NSApp.activate()
-        alert.window.initialFirstResponder = field
-        return alert.runModal() == .alertFirstButtonReturn ? field.stringValue : nil
+    func askName(current: String, near: CGRect, done: @escaping @MainActor (String?) -> Void) {
+        rename?.finish(nil)
+        let size = BasketRenamePanel.size
+        let wanted = CGRect(x: near.minX, y: near.minY - size.height - BasketPlacement.margin,
+                            width: size.width, height: size.height)
+        guard let frame = BasketPlacement.clamp(wanted, screens: screens()) else { return done(nil) }
+        let panel = BasketRenamePanel(name: current, frame: frame) { [weak self] name in
+            self?.rename = nil
+            done(name)
+        }
+        rename = panel
+        panel.present()
     }
 
     func makeWindow(host: BasketHost, frame: CGRect) -> BasketWindowing { BasketPanel(host: host, frame: frame) }
@@ -171,8 +154,7 @@ final class NoBasketSystem: BasketSystem {
     var pointer: CGPoint { .zero }
     func observe(_ changed: @escaping @MainActor () -> Void) -> () -> Void { {} }
     func beep() {}
-    func confirmClose(name: String, count: Int, canMoveToShelf: Bool) -> BasketCloseChoice { .cancel }
-    func askName(current: String) -> String? { nil }
+    func askName(current: String, near: CGRect, done: @escaping @MainActor (String?) -> Void) { done(nil) }
     func makeWindow(host: BasketHost, frame: CGRect) -> BasketWindowing { NoBasketWindow(frame: frame) }
     func makeSwitcher() -> BasketSwitcherShowing { NoBasketSwitcher() }
 }
@@ -191,4 +173,69 @@ final class NoBasketWindow: BasketWindowing {
 final class NoBasketSwitcher: BasketSwitcherShowing {
     func show(_ baskets: [(name: String, color: BasketColor)], selected: Int, screens: [BasketScreen]) {}
     func hide() {}
+}
+
+/// Rename…: a small field beside its basket. Not modal and it does not activate the app:
+/// a non-activating panel that becomes key only to take the typing, placed by
+/// `BasketPlacement` (never over the notch panel or the approval card, which stays
+/// clickable). Return renames; Escape, Cancel or clicking elsewhere cancels.
+@MainActor
+final class BasketRenamePanel: NSPanel {
+    static let size = CGSize(width: 260, height: 64)
+    private var done: (@MainActor (String?) -> Void)?
+    private let field: NSTextField
+
+    init(name: String, frame: CGRect, done: @escaping @MainActor (String?) -> Void) {
+        self.done = done
+        field = NSTextField(string: name)
+        super.init(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        isFloatingPanel = true
+        level = .floating
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle, .transient]
+        hidesOnDeactivate = false
+        isReleasedWhenClosed = false
+        hasShadow = true
+        isOpaque = false
+        backgroundColor = .clear
+        let box = NSVisualEffectView(frame: CGRect(origin: .zero, size: frame.size))
+        box.material = .popover
+        box.state = .active
+        box.wantsLayer = true
+        box.layer?.cornerRadius = 10
+        field.frame = CGRect(x: 10, y: 32, width: frame.width - 20, height: 22)
+        field.target = self
+        field.action = #selector(commit)
+        field.setAccessibilityLabel("Basket name")
+        let rename = NSButton(title: "Rename", target: self, action: #selector(commit))
+        rename.keyEquivalent = "\r"
+        rename.frame = CGRect(x: frame.width - 90, y: 4, width: 80, height: 24)
+        let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancelRename))
+        cancel.frame = CGRect(x: frame.width - 172, y: 4, width: 80, height: 24)
+        for v in [field, rename, cancel] as [NSView] { box.addSubview(v) }
+        contentView = box
+    }
+
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+
+    func present() {
+        makeKeyAndOrderFront(nil)   // a non-activating panel: the app stays in the background
+        makeFirstResponder(field)
+    }
+
+    @objc private func commit() { finish(field.stringValue) }
+    @objc private func cancelRename() { finish(nil) }
+    override func cancelOperation(_ sender: Any?) { finish(nil) }
+
+    override func resignKey() {
+        super.resignKey()
+        finish(nil)
+    }
+
+    func finish(_ name: String?) {
+        guard let done else { return }
+        self.done = nil
+        orderOut(nil)
+        done(name)
+    }
 }

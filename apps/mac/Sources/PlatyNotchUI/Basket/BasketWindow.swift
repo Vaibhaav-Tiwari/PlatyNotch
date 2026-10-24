@@ -99,6 +99,9 @@ struct BasketView: View {
         .padding(8)
         .frame(width: BasketPlacement.size.width, height: BasketPlacement.size.height, alignment: .topLeading)
         .background(background)
+        .overlay {
+            if let ask = host.closeAsk { BasketClosePrompt(host: host, ask: ask) }
+        }
         .onAppear { host.refreshMissing() }
     }
 
@@ -154,6 +157,42 @@ struct BasketView: View {
     }
 }
 
+/// The close question, inside the basket (never a modal alert, R5): Move to Shelf (only
+/// while the shelf runs), Discard, Cancel.
+struct BasketClosePrompt: View {
+    let host: BasketHost
+    let ask: BasketCloseAsk
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Text(verbatim: ask.count == 1 ? "Close with 1 item?" : "Close with \(ask.count) items?")
+                .font(.system(size: 12, weight: .semibold))
+            Text("Discard deletes the copies this basket made, never your own files.")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            buttons
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(RoundedRectangle(cornerRadius: 12).fill(.regularMaterial))
+        .accessibilityElement(children: .contain)
+    }
+
+    // Split out of `body` (type-check time).
+    private var buttons: some View {
+        HStack(spacing: 6) {
+            if ask.canMoveToShelf {
+                Button("Move to Shelf") { host.owner?.resolveClose(host, .moveToShelf) }
+            }
+            Button("Discard") { host.owner?.resolveClose(host, .discard) }
+            Button("Cancel") { host.owner?.resolveClose(host, .cancel) }
+        }
+        .controlSize(.small)
+    }
+}
+
 enum BasketPalette {
     static func color(_ c: BasketColor) -> Color {
         switch c {
@@ -192,8 +231,9 @@ final class BasketHandleView: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) {
-        guard let window else { return }
+        guard let window, let host else { return }
         grab = (NSEvent.mouseLocation, window.frame.origin)
+        host.owner?.beginMove(host)
     }
 
     override func mouseDragged(with event: NSEvent) {

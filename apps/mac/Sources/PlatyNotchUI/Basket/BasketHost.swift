@@ -26,11 +26,18 @@ final class BasketHost: ItemListHost, FileActionResults, Identifiable {
     var highlighted = false
     /// A drag of this basket's items is in progress.
     private(set) var outgoingDrag = false
+    /// The close question shown inside the basket (`BasketController.requestClose`).
+    var closeAsk: BasketCloseAsk?
 
     @ObservationIgnored let store: ShelfStore
     @ObservationIgnored weak var owner: BasketController?
     /// Owned folders a file promise is still being written into (the basket waits to close).
     @ObservationIgnored private(set) var receiving: Set<UUID> = []
+    /// Folders reserved for a file action's result, not yet an item.
+    @ObservationIgnored private(set) var reserved: Set<UUID> = []
+    /// A promise still unfinished after this long no longer holds the basket open (M4).
+    static let promiseTimeout: TimeInterval = 60
+    @ObservationIgnored private let sleep: @MainActor (TimeInterval) async -> Void
     @ObservationIgnored private var refreshGeneration = 0
     @ObservationIgnored private(set) var refreshTask: Task<Void, Never>?
     @ObservationIgnored private(set) var importTask: Task<Void, Never>?
@@ -52,7 +59,9 @@ final class BasketHost: ItemListHost, FileActionResults, Identifiable {
     }()
 
     init(basket: Basket, store: ShelfStore, clock: @escaping () -> Date = Date.init,
-         actions: @escaping @MainActor () -> FileActionCenter = { FileActionCenter() }) {
+         actions: @escaping @MainActor () -> FileActionCenter = { FileActionCenter() },
+         sleep: @escaping @MainActor (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) }) {
+        self.sleep = sleep
         id = basket.id
         name = basket.name
         color = basket.color
@@ -71,8 +80,13 @@ final class BasketHost: ItemListHost, FileActionResults, Identifiable {
         sync()
     }
 
-    /// How many more items it takes.
-    var room: Int { max(0, BasketStore.maxItems - store.items.count) }
+    /// How many more items it takes: promises still arriving and results still being made
+    /// count too (M3).
+    var room: Int {
+        let ids = Set(store.items.map(\.id))
+        let pending = receiving.subtracting(ids).count + reserved.subtracting(ids).count
+        return max(0, BasketStore.maxItems - store.items.count - pending)
+    }
 
     /// A file promise is still being written into it, or a file action runs on one of its
     /// items: it is not closed or merged until that ends (its folders must stay).
@@ -177,18 +191,23 @@ final class BasketHost: ItemListHost, FileActionResults, Identifiable {
     // MARK: - FileActionResults (Task 2: every shelf action works here)
 
     func reserveResultFolder() -> (id: UUID, folder: URL)? {
-        guard room > 0 else { return nil }
-        return store.reserveOwnedFolder()
+        guard room > 0, let r = store.reserveOwnedFolder() else { return nil }
+        reserved.insert(r.id)
+        return r
     }
 
     func addResult(_ url: URL, id: UUID, after source: UUID) -> Bool {
+        reserved.remove(id)
         guard store.addOwnedFile(url, id: id) != nil else { return false }
         if let i = store.items.firstIndex(where: { $0.id == source }) { store.move(id, to: i) }
         afterChange()
         return true
     }
 
-    func discardResult(_ id: UUID) { store.discardReserved(id) }
+    func discardResult(_ id: UUID) {
+        reserved.remove(id)
+        store.discardReserved(id)
+    }
 
     func renamed(_ id: UUID, to url: URL) {
         store.relocate(id, to: url)
@@ -253,7 +272,7 @@ final class BasketHost: ItemListHost, FileActionResults, Identifiable {
         var started = 0
         for receiver in receivers.prefix(room) {
             guard let (folderID, folder) = store.reserveOwnedFolder() else { continue }
-            receiving.insert(folderID)
+            beginReceiving(folderID)
             started += 1
             var remaining = max(receiver.fileNames.count, 1)
             receiver.receivePromisedFiles(atDestination: folder, options: [:],
@@ -276,6 +295,18 @@ final class BasketHost: ItemListHost, FileActionResults, Identifiable {
             }
         }
         return started
+    }
+
+    /// A promise is being written into `folderID`. One that never finishes stops holding
+    /// the basket (room, close) after `promiseTimeout`; its folder is then swept like any
+    /// unlisted one.
+    func beginReceiving(_ folderID: UUID) {
+        receiving.insert(folderID)
+        let sleep = self.sleep
+        Task { [weak self] in
+            await sleep(Self.promiseTimeout)
+            self?.receiving.remove(folderID)
+        }
     }
 
     private func imageName() -> String {

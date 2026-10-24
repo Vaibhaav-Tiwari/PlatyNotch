@@ -81,15 +81,17 @@ private final class FakeSystem: BasketSystem {
     var observing = false
     var changed: (@MainActor () -> Void)?
     var beeps = 0
-    var closeAnswer: BasketCloseChoice = .cancel
-    var closeQuestions: [(name: String, count: Int, canMove: Bool)] = []
-    var nameAnswer: String?
+    var screenReads = 0
+    var nameRequests: [(current: String, near: CGRect, done: @MainActor (String?) -> Void)] = []
     var windows: [FakeWindow] = []
     let switcher = FakeSwitcher()
 
     init(displays: [BasketScreen]) { self.displays = displays }
 
-    func screens() -> [BasketScreen] { displays }
+    func screens() -> [BasketScreen] {
+        screenReads += 1
+        return displays
+    }
     func observe(_ changed: @escaping @MainActor () -> Void) -> () -> Void {
         observers += 1
         observing = true
@@ -97,11 +99,9 @@ private final class FakeSystem: BasketSystem {
         return { [weak self] in MainActor.assumeIsolated { self?.observing = false } }
     }
     func beep() { beeps += 1 }
-    func confirmClose(name: String, count: Int, canMoveToShelf: Bool) -> BasketCloseChoice {
-        closeQuestions.append((name, count, canMoveToShelf))
-        return closeAnswer
+    func askName(current: String, near: CGRect, done: @escaping @MainActor (String?) -> Void) {
+        nameRequests.append((current, near, done))
     }
-    func askName(current: String) -> String? { nameAnswer }
     func makeWindow(host: BasketHost, frame: CGRect) -> BasketWindowing {
         let w = FakeWindow(frame: frame)
         windows.append(w)
@@ -117,6 +117,21 @@ private final class Reg: HotKeyRegistration {
     var active = true
     init(_ combo: KeyCombo, _ handler: @escaping @MainActor () -> Void) { self.combo = combo; self.handler = handler }
     func unregister() { active = false }
+}
+
+@MainActor
+private final class CoveredDisplays {
+    var ids: Set<CGDirectDisplayID> = []
+}
+
+@MainActor
+private final class CoveredSink: PanelSurfaceSink {
+    var covered = false
+    func receive(_ signal: PanelSurfaceSignal) {}
+    var showsHUD: Bool { false }
+    var hudWouldShow: Bool { false }
+    var displayID: CGDirectDisplayID? { 7 }
+    var coveredByFullScreen: Bool { covered }
 }
 
 @MainActor
@@ -367,32 +382,79 @@ final class BasketControllerTests: DefaultsTestCase {
         XCTAssertEqual(r.store.basket(b.id)?.origin, r.controller.window(for: b)?.frame.origin)
     }
 
-    func testCloseAsksOnlyWhenItHoldsItems() throws {
+    func testCloseAsksInsideTheBasketNeverModally() throws {
         let r = rig()
         let empty = try XCTUnwrap(r.controller.summon(at: CGPoint(x: 300, y: 300)))
         r.controller.requestClose(empty)
-        XCTAssertTrue(r.system.closeQuestions.isEmpty)
-        XCTAssertTrue(r.controller.hosts.isEmpty)
+        XCTAssertNil(empty.closeAsk)
+        XCTAssertTrue(r.controller.hosts.isEmpty, "an empty basket just closes")
 
         let full = try XCTUnwrap(r.controller.summon(at: CGPoint(x: 300, y: 300)))
         full.store.addText("x")
         full.afterChange()
-        r.system.closeAnswer = .cancel
         r.controller.requestClose(full)
-        XCTAssertEqual(r.system.closeQuestions.last?.count, 1)
-        XCTAssertEqual(r.system.closeQuestions.last?.canMove, false, "the shelf is off")
+        // The question is asked inside the basket and answered later: nothing modal ran.
+        XCTAssertEqual(full.closeAsk, BasketCloseAsk(count: 1, canMoveToShelf: false), "the shelf is off")
+        XCTAssertNil(NSApp.modalWindow, "no modal session: the approval card stays clickable")
+        XCTAssertEqual(r.controller.hosts.count, 1, "still open until answered")
+        r.controller.resolveClose(full, .cancel)
+        XCTAssertNil(full.closeAsk)
         XCTAssertEqual(r.controller.hosts.count, 1)
 
         // Move to Shelf: transferred, never deleted.
         let shelf = ShelfStore(directory: r.dir.appendingPathComponent("shelf.noindex"))
         r.store.shelf = { shelf }
         let copy = try XCTUnwrap(full.store.addOwnedData(Data("png".utf8), filename: "a.png"))
-        r.system.closeAnswer = .moveToShelf
         r.controller.requestClose(full)
+        XCTAssertEqual(full.closeAsk?.canMoveToShelf, true)
+        r.controller.resolveClose(full, .moveToShelf)
         XCTAssertTrue(r.controller.hosts.isEmpty)
         XCTAssertEqual(Set(shelf.items.map(\.title)), ["x", "a.png"])
         let moved = try XCTUnwrap(shelf.items.first { $0.id == copy.id }?.fileRef?.path)
         XCTAssertTrue(FileManager.default.fileExists(atPath: moved))
+        r.controller.resolveClose(full, .discard)   // a stale answer does nothing
+    }
+
+    func testBasketsCodeNeverStartsAModalSessionOrActivatesTheApp() throws {
+        let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../../Sources/PlatyNotchUI/Basket").standardizedFileURL
+        let files = try FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "swift" }
+        XCTAssertGreaterThanOrEqual(files.count, 5)
+        for f in files {
+            let code = try String(contentsOf: f, encoding: .utf8)
+            for banned in ["runModal", "NSApp.activate", "activate(ignoringOtherApps", "NSAlert"] {
+                XCTAssertFalse(code.contains(banned), "\(f.lastPathComponent) uses \(banned)")
+            }
+        }
+    }
+
+    func testRenameIsAskedBesideTheBasketAndAppliedLater() throws {
+        let r = rig()
+        let host = try XCTUnwrap(r.controller.summon(at: CGPoint(x: 300, y: 300)))
+        r.controller.rename(host)
+        let ask = try XCTUnwrap(r.system.nameRequests.last)
+        XCTAssertEqual(ask.current, "Basket 1")
+        XCTAssertEqual(ask.near, r.controller.window(for: host)?.frame)
+        XCTAssertEqual(host.name, "Basket 1", "nothing until confirmed")
+        ask.done("Invoices")
+        XCTAssertEqual(host.name, "Invoices")
+        r.controller.rename(host)
+        r.system.nameRequests.last?.done(nil)
+        XCTAssertEqual(host.name, "Invoices", "cancelled")
+    }
+
+    func testRenamePanelIsNonActivatingAndPlacedClear() {
+        let panel = BasketRenamePanel(name: "B", frame: CGRect(x: 100, y: 100, width: 260, height: 64)) { _ in }
+        XCTAssertTrue(panel.styleMask.contains(.nonactivatingPanel), "typing never activates the app")
+        XCTAssertTrue(panel.canBecomeKey)
+        XCTAssertFalse(panel.canBecomeMain)
+        XCTAssertLessThan(panel.level.rawValue, NSWindow.Level.statusBar.rawValue)
+        var got: [String?] = []
+        let p2 = BasketRenamePanel(name: "B", frame: .zero) { got.append($0) }
+        p2.finish("X")
+        p2.finish("Y")
+        XCTAssertEqual(got, ["X"], "answers once")
     }
 
     func testMenuAndItsActions() throws {
@@ -404,9 +466,6 @@ final class BasketControllerTests: DefaultsTestCase {
         XCTAssertFalse(menu.items.first { $0.title == "Move All to Shelf" }?.isEnabled ?? true)
         r.controller.setColor(host, .pink)
         XCTAssertEqual(host.color, .pink)
-        r.system.nameAnswer = "Invoices"
-        r.controller.rename(host)
-        XCTAssertEqual(host.name, "Invoices")
         r.controller.setPinned(host, true)
         XCTAssertTrue(host.pinned)
         XCTAssertEqual(r.controller.menu(for: host).items.first?.title, "Unpin Basket")
@@ -499,26 +558,157 @@ final class BasketControllerTests: DefaultsTestCase {
 
     // MARK: - Full screen
 
-    func testHiddenOverFullScreenAndShownForAShake() async throws {
+    func testOnlyBasketsOnACoveredDisplayHideAndAShakeShowsThem() throws {
         let r = rig()
-        var fullScreen = false
-        r.controller.hidesForFullScreen = { fullScreen }
-        let host = try XCTUnwrap(r.controller.summon(at: CGPoint(x: 300, y: 300)))
-        let w = try XCTUnwrap(r.controller.window(for: host) as? FakeWindow)
-        fullScreen = true
-        r.system.changed?()
-        XCTAssertTrue(w.visible, "waits for the notch's own full-screen check")
-        await sleeper.fire()
-        XCTAssertFalse(w.visible)
-        XCTAssertTrue(r.controller.hiddenForFullScreen)
+        let ext = BasketScreen(visibleFrame: CGRect(x: 1512, y: 0, width: 1920, height: 1055), exclusion: nil, displayID: 2)
+        r.system.displays = [BasketScreen(visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 950), layout: mbp, displayID: 1), ext]
+        let covered = CoveredDisplays()
+        r.controller.coveredDisplays = { covered.ids }
+        let a = try XCTUnwrap(r.controller.summon(at: CGPoint(x: 300, y: 300)))
+        let b = try XCTUnwrap(r.controller.summon(at: CGPoint(x: 2400, y: 300)))
+        let wa = try XCTUnwrap(r.controller.window(for: a) as? FakeWindow)
+        let wb = try XCTUnwrap(r.controller.window(for: b) as? FakeWindow)
+        covered.ids = [1]
+        r.controller.fullScreenChanged()   // pushed by the panels, no sleep
+        XCTAssertFalse(wa.visible, "on the covered display")
+        XCTAssertTrue(wb.visible, "the other display's basket stays")
+        XCTAssertEqual(r.controller.hidden, [a.id])
         r.signals.press()
         r.signals.startDrag()
         r.signals.shake(at: CGPoint(x: 900, y: 300))
-        XCTAssertTrue(w.visible, "a shake shows them")
-        XCTAssertEqual(r.controller.hosts.count, 2)
-        fullScreen = false
-        r.controller.recheckFullScreen()
+        XCTAssertTrue(wa.visible, "a shake shows them")
+        XCTAssertEqual(r.controller.hosts.count, 3)
+        r.controller.fullScreenChanged()
+        XCTAssertFalse(wa.visible, "hidden again at the next change")
+        covered.ids = []
+        r.controller.fullScreenChanged()
         XCTAssertTrue(r.system.windows.allSatisfy(\.visible))
+    }
+
+    func testSurfacesPushFullScreenDisplays() {
+        let surfaces = PanelSurfaces()
+        let sink = CoveredSink()
+        surfaces.attach(sink)
+        var pushes: [Set<CGDirectDisplayID>] = []
+        surfaces.onFullScreenChange(owner: self) { pushes.append($0) }
+        sink.covered = true
+        surfaces.sinkStateChanged()
+        XCTAssertEqual(surfaces.fullScreenDisplays, [7])
+        surfaces.sinkStateChanged()
+        sink.covered = false
+        surfaces.sinkStateChanged()
+        XCTAssertEqual(pushes, [[7], []], "only on changes")
+        surfaces.onFullScreenChange(owner: self, nil)
+        sink.covered = true
+        surfaces.sinkStateChanged()
+        XCTAssertEqual(pushes.count, 2)
+    }
+
+    // MARK: - Round 1 fixes
+
+    func testTextSelectionShakenLikeAHandNeverFires() {
+        let r = rig()
+        r.signals.dragTypes = ["public.utf8-plain-text", "public.rtf", "public.html"]
+        r.signals.press()
+        r.signals.startDrag()
+        for i in 0..<60 {   // 3 Hz, 60 pt legs, at 20 Hz for 3 s
+            r.signals.mouseLocation = CGPoint(x: 500 + 30 * sin(2 * .pi * 3 * Double(i) * 0.05), y: 300)
+            r.signals.tick()
+        }
+        XCTAssertTrue(r.controller.hosts.isEmpty)
+        XCTAssertEqual(r.controller.samplesFed, 0)
+    }
+
+    func testDisplayChangesCostNothingWithoutABasketAndRememberThePlace() throws {
+        let r = rig()
+        let reads = r.system.screenReads
+        r.system.changed?()
+        XCTAssertEqual(r.system.screenReads, reads, "no basket: nothing read")
+        let host = try XCTUnwrap(r.controller.summon(at: CGPoint(x: 300, y: 300)))
+        r.system.displays = [BasketScreen(visibleFrame: CGRect(x: 0, y: 0, width: 400, height: 280), exclusion: nil)]
+        r.system.changed?()
+        let f = try XCTUnwrap(r.controller.window(for: host)?.frame)
+        XCTAssertEqual(r.store.basket(host.id)?.origin, f.origin, "the new place is remembered")
+    }
+
+    func testHeaderDragReadsScreensOnce() throws {
+        let r = rig()
+        let host = try XCTUnwrap(r.controller.summon(at: CGPoint(x: 300, y: 300)))
+        r.controller.beginMove(host)
+        let reads = r.system.screenReads
+        for x in stride(from: 300.0, through: 700, by: 10) {
+            r.controller.basketMoved(host, to: CGRect(x: x, y: 300, width: 260, height: 132))
+        }
+        XCTAssertEqual(r.system.screenReads, reads, "cached for the whole drag")
+        r.controller.basketDropped(host, pointer: CGPoint(x: 10, y: 10))
+        r.controller.basketMoved(host, to: CGRect(x: 100, y: 100, width: 260, height: 132))
+        XCTAssertEqual(r.system.screenReads, reads + 1, "read again after the drag")
+    }
+
+    func testRoomCountsPendingResultsAndPromises() async throws {
+        let r = rig()
+        let host = try XCTUnwrap(r.controller.summon(at: CGPoint(x: 300, y: 300)))
+        for i in 0..<(BasketStore.maxItems - 2) { host.store.addText("t\(i)") }
+        XCTAssertEqual(host.room, 2)
+        let reserved = try XCTUnwrap(host.reserveResultFolder())
+        XCTAssertEqual(host.room, 1, "a result being made holds a slot")
+        host.beginReceiving(UUID())
+        XCTAssertEqual(host.room, 0, "so does a promise being written")
+        XCTAssertNil(host.reserveResultFolder(), "full")
+        host.discardResult(reserved.id)
+        XCTAssertEqual(host.room, 1)
+        XCTAssertTrue(host.isBusy)
+        await sleeper.fire()   // the promise never finished: after the timeout it lets go
+        XCTAssertFalse(host.isBusy)
+        XCTAssertEqual(host.room, 2)
+    }
+
+    func testNothingLeaksAfterCloseOrStop() throws {
+        weak var host: BasketHost?
+        weak var store: ShelfStore?
+        weak var window: FakeWindow?
+        let r = rig()
+        try autoreleasepool {
+            let h = try XCTUnwrap(r.controller.summon(at: CGPoint(x: 300, y: 300)))
+            h.store.addText("x")
+            h.afterChange()
+            _ = r.controller.menu(for: h)
+            host = h
+            store = h.store
+            window = r.controller.window(for: h) as? FakeWindow
+            r.controller.close(h, keepItems: false)
+        }
+        r.system.windows.removeAll()
+        XCTAssertNil(host, "the host is released after close")
+        XCTAssertNil(store)
+        XCTAssertNil(window)
+
+        weak var host2: BasketHost?
+        weak var store2: ShelfStore?
+        try autoreleasepool {
+            let h = try XCTUnwrap(r.controller.summon(at: CGPoint(x: 300, y: 300)))
+            host2 = h
+            store2 = h.store
+        }
+        r.controller.stop()
+        r.system.windows.removeAll()
+        XCTAssertNil(host2, "and after stop")
+        XCTAssertNil(store2)
+    }
+
+    func testRealPanelIsReleasedAfterClose() throws {
+        weak var panel: BasketPanel?
+        weak var host: BasketHost?
+        autoreleasepool {
+            let store = ShelfStore(directory: tempDir(), persist: false)
+            let h = BasketHost(basket: Basket(name: "B", color: .blue), store: store)
+            let p = BasketPanel(host: h, frame: CGRect(x: 100, y: 100, width: 260, height: 132))
+            p.close()
+            panel = p
+            host = h
+        }
+        XCTAssertNil(panel)
+        XCTAssertNil(host, "the panel's view does not keep the host")
     }
 
     // MARK: - The window (R5)

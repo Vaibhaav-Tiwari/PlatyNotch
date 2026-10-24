@@ -59,15 +59,30 @@ final class BasketsWidget: NotchWidget {
         sensitivity = BasketSettings.sensitivity(d)
         switcherCombo = BasketSettings.switcherCombo(d)
         controller.store.defaults = d
-        let panel = context.panel
-        controller.hidesForFullScreen = { panel.fullScreen && AppearanceStore.load(from: d).hideInFullScreen }
+        let surfaces = context.surfaces
+        controller.coveredDisplays = {
+            AppearanceStore.load(from: d).hideInFullScreen ? surfaces.fullScreenDisplays : []
+        }
+        // Pushed by the panels when a display's full-screen state changes (no polling).
+        surfaces.onFullScreenChange(owner: self) { [weak self] _ in self?.controller.fullScreenChanged() }
         controller.start(drags: context.drags, sensitivity: sensitivity, switcher: switcherCombo)
+        damagedCount = controller.store.damagedCount
     }
 
     func stop() {
-        guard context != nil else { return }
+        guard let context else { return }
+        context.surfaces.onFullScreenChange(owner: self, nil)
         controller.stop()
-        context = nil
+        self.context = nil
+    }
+
+    /// Basket folders with a damaged index (kept, nothing deleted): Settings shows them.
+    private(set) var damagedCount = 0
+
+    /// Settings › "Delete Kept Copies", after its confirming click.
+    func deleteDamaged() {
+        controller.store.deleteDamaged()
+        damagedCount = controller.store.damagedCount
     }
 
     func setSensitivity(_ value: Int) {
@@ -114,6 +129,7 @@ struct BasketsSettingsView: View {
             """)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+            damagedRow
             Text("""
             Files you drop stay where they are. Images, text and files from apps like Photos are \
             copied into PlatyNotch's private folder. Baskets are cleared when PlatyNotch quits or \
@@ -126,6 +142,35 @@ struct BasketsSettingsView: View {
         }
         .font(.system(size: 11))
     }
+
+    /// Damaged basket indexes: the count, then Delete Kept Copies, then a confirming click.
+    @ViewBuilder private var damagedRow: some View {
+        if widget.damagedCount > 0 {
+            let n = widget.damagedCount
+            Text("""
+            \(n == 1 ? "A basket's list was" : "\(n) baskets' lists were") damaged and set aside with the \
+            copies they may have listed, so nothing was deleted.
+            """)
+            .foregroundStyle(Theme.color(.attention))
+            .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Text(verbatim: n == 1 ? "1 kept" : "\(n) kept").foregroundStyle(.secondary)
+                Button("Show in Finder") { NSWorkspace.shared.open(widget.controller.store.directory) }
+                if confirmingDelete {
+                    Button("Delete \(n == 1 ? "It" : "Them")", role: .destructive) {
+                        widget.deleteDamaged()
+                        confirmingDelete = false
+                    }
+                    Button("Cancel") { confirmingDelete = false }
+                } else {
+                    Button("Delete Kept Copies…") { confirmingDelete = true }
+                        .help("Deletes the set-aside lists and the copies no basket item lists")
+                }
+            }
+        }
+    }
+
+    @State private var confirmingDelete = false
 
     // Split out of `body` (type-check time).
     private var sensitivityRow: some View {
