@@ -62,6 +62,8 @@ enum ShelfActions {
             let dir = ref.url.deletingLastPathComponent()
             if FileManager.default.fileExists(atPath: dir.path) { panel.directoryURL = dir }
         }
+        // User-initiated (the card's Locate button or menu): the open panel needs the app
+        // active to take keystrokes. Nothing else in the shelf activates PlatyNotch.
         NSApp.activate()
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }

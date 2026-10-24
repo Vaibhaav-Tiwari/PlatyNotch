@@ -45,8 +45,18 @@ public final class NotchController {
     /// This panel started the drag session itself: a drag reached its window that the
     /// shelf's detector did not report (it ends the session when the drag ends).
     private var windowStartedSession = false
+    /// The button was released over the drop zone: it stays (and takes mouse events)
+    /// until the drop arrives (`panelDragEnded`) or `dropGrace` passes.
+    private var dropGraceTask: Task<Void, Never>?
+    /// The drop (or the drag's end) reached this panel before the release was seen.
+    private var dropDelivered = false
+    static let dropGrace: Duration = .milliseconds(300)
+    /// True while the drop zone waits for the drop after a release over it.
+    var awaitingDrop: Bool { dropGraceTask != nil }
     /// Whether the left mouse button is down (a drag cannot be in progress otherwise).
     var mouseDown: () -> Bool = { NSEvent.pressedMouseButtons & 1 != 0 }
+    /// Where the cursor is when a drag session ends (tests pin it).
+    var cursorLocation: () -> CGPoint = { NSEvent.mouseLocation }
     private var workspaceObservers: [NSObjectProtocol] = []
 
     /// `carryOver` restores the panel state of the controller this one replaces (display change).
@@ -150,7 +160,8 @@ public final class NotchController {
         tracker.stop()
         for o in workspaceObservers { NSWorkspace.shared.notificationCenter.removeObserver(o) }
         workspaceObservers = []
-        for t in [deadlineTask, noticeTask, recheckTask, expiryTask] { t?.cancel() }
+        for t in [deadlineTask, noticeTask, recheckTask, expiryTask, dropGraceTask] { t?.cancel() }
+        dropGraceTask = nil
         panel?.orderOut(nil)
         panel?.close()
         panel = nil
@@ -307,21 +318,61 @@ public final class NotchController {
         guard dragSession, let layout else { return }
         // A session whose end was missed (button already up) never opens it on hover.
         let down = mouseDown()
+        // A session this window started (the detector missed the drag) ends at the
+        // button-up, so it can never stay stuck and keep the cursor polled.
+        if windowStartedSession, !down {
+            endDrag(at: p, released: true)
+            windowStartedSession = false
+            surfaces.setDragSession(active: false)
+            return
+        }
+        if awaitingDrop, !down { return }   // released on the zone: waiting for the drop
         let near = down && layout.dragHover(p, showing: machine.isDragging)
         guard near != machine.isDragging else { return }
         if near {
+            dropDelivered = false
             handle(.dragBegan)
         } else {
             endDrag(at: p, released: !down)
         }
     }
 
-    /// Closes the drop zone. Released (or dropped) on it: a panel that was open when the
-    /// drag began opens again; left it: the panel rests.
+    /// Closes the drop zone. Left it (button down) or released elsewhere: at once, the
+    /// panel rests. Released on it: the drop zone stays, still taking mouse events, until
+    /// the drop reaches the panel (`panelDragEnded`) or `dropGrace` passes, because the
+    /// button-up is often seen (monitor, poll, cursor sample) before AppKit delivers
+    /// `performDragOperation`. Then a panel that was open when the drag began opens again.
     private func endDrag(at p: CGPoint, released: Bool) {
         guard machine.isDragging else { return }
         let onZone = layout.map { PanelLayout.contains($0.contentRect(for: .peek(.drop)), p) } ?? false
-        handle(released && onZone ? .dragEndedInside : .dragEnded)
+        guard released, onZone else {
+            cancelDropGrace()
+            handle(.dragEnded)
+            return
+        }
+        if dropDelivered {
+            finishDrop()
+            return
+        }
+        guard dropGraceTask == nil else { return }
+        dropGraceTask = Task { [weak self] in
+            try? await Task.sleep(for: NotchController.dropGrace)
+            guard !Task.isCancelled else { return }
+            self?.finishDrop()
+        }
+        updateEngaged()
+    }
+
+    /// The drop arrived or the grace passed: close the drop zone, giving back an open panel.
+    private func finishDrop() {
+        cancelDropGrace()
+        dropDelivered = false
+        if machine.isDragging { handle(.dragEndedInside) }
+    }
+
+    private func cancelDropGrace() {
+        dropGraceTask?.cancel()
+        dropGraceTask = nil
     }
 
     // MARK: - Store
@@ -431,7 +482,7 @@ extension NotchController: PanelSurfaceSink {
                 if panel != nil { sampleCursor() }
             } else {
                 windowStartedSession = false
-                endDrag(at: NSEvent.mouseLocation, released: true)
+                endDrag(at: cursorLocation(), released: true)
             }
             updateEngaged()
         }
@@ -531,11 +582,13 @@ extension NotchController: PanelDropRouting {
         // Our own drags (a shelf item dragged out of the open panel) never open the drop
         // zone over the panel they come from, and are never dropped back.
         guard info.draggingSource == nil else { return [] }
+        // No running widget takes drops (the shelf is off): no session, no placeholder.
+        guard let target = widgets.dropTarget() else { return [] }
         if !dragSession, !surfaces.dragActive {
             windowStartedSession = true
             surfaces.setDragSession(active: true)
         }
-        guard machine.mode.acceptsDrops, let target = widgets.dropTarget() else { return [] }
+        guard machine.mode.acceptsDrops else { return [] }
         return target.dragUpdated(info)
     }
 
@@ -548,8 +601,15 @@ extension NotchController: PanelDropRouting {
         return target.performDrop(info)
     }
 
+    /// After `performDragOperation` (or a cancelled drag over the window): the drop zone
+    /// waiting after a release closes now.
     func panelDragEnded() {
         widgets.dropTarget()?.dragEnded()
+        if awaitingDrop {
+            finishDrop()
+        } else if machine.isDragging {
+            dropDelivered = true   // the release has not been seen yet; close at once then
+        }
         if windowStartedSession {
             windowStartedSession = false
             surfaces.setDragSession(active: false)

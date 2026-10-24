@@ -23,8 +23,10 @@ import SwiftUI
 ///   Quick Look thumbnails. No network.
 ///
 /// Turning the widget off stops the monitors, polls and expiry timer and keeps the
-/// items and owned copies (user data; "Clear Shelf" deletes them). Copies past their 7
-/// days are removed the next time the shelf starts.
+/// items and owned copies (user data; "Clear Shelf" deletes them). While it is off,
+/// copies past their 7 days are removed at app launch (`ShelfStore.expireOnDisk`, one
+/// directory pass, no timers; see `NotchApp`). Bookmarks are resolved and images
+/// converted off the main thread.
 @MainActor @Observable
 final class ShelfWidget: NotchWidget {
     static let widgetID = "shelf"
@@ -58,6 +60,11 @@ final class ShelfWidget: NotchWidget {
     @ObservationIgnored private var expiryTask: Task<Void, Never>?
     /// Owned folders a file promise is still being written into.
     @ObservationIgnored private var receiving: Set<UUID> = []
+    @ObservationIgnored private var refreshGeneration = 0
+    /// The latest missing-file check (tests await it).
+    @ObservationIgnored private(set) var refreshTask: Task<Void, Never>?
+    /// The latest image conversion from a drop (tests await it).
+    @ObservationIgnored private(set) var importTask: Task<Void, Never>?
     @ObservationIgnored private lazy var drop = ShelfDropTarget(shelf: self)
     @ObservationIgnored private(set) lazy var dragSource = ShelfDragSource(shelf: self)
     @ObservationIgnored private static let promiseQueue: OperationQueue = {
@@ -171,8 +178,16 @@ final class ShelfWidget: NotchWidget {
                   !web.isEmpty {
             for url in web.reversed() { store.add(.url(url)) }
             added = web.count
-        } else if let png = Self.imageData(pb) {
-            if store.addOwnedData(png, filename: "Image \(Self.stamp(clock())).png") != nil { added = 1 }
+        } else if let image = Self.imageData(pb) {
+            // Read now (the pasteboard is only valid during the drop); TIFF → PNG off main.
+            let name = "Image \(Self.stamp(clock())).png"
+            importTask = Task { [weak self] in
+                let png: Data? = image.isPNG ? image.data
+                    : await Task.detached(priority: .userInitiated) { Self.png(fromTIFF: image.data) }.value
+                guard let self, let png, let store = self.store else { return }
+                if store.addOwnedData(png, filename: name) != nil { self.afterChange() }
+            }
+            added = 1
         } else if let text = pb.string(forType: .string), store.addText(text) != nil {
             added = 1
         }
@@ -230,10 +245,13 @@ final class ShelfWidget: NotchWidget {
         store?.sweepOrphans(keeping: receiving)   // a promise that wrote nothing leaves no folder
     }
 
-    private static func imageData(_ pb: NSPasteboard) -> Data? {
-        if let png = pb.data(forType: .png) { return png }
-        guard let tiff = pb.data(forType: .tiff), let rep = NSBitmapImageRep(data: tiff) else { return nil }
-        return rep.representation(using: .png, properties: [:])
+    private static func imageData(_ pb: NSPasteboard) -> (data: Data, isPNG: Bool)? {
+        if let png = pb.data(forType: .png) { return (png, true) }
+        return pb.data(forType: .tiff).map { ($0, false) }
+    }
+
+    nonisolated static func png(fromTIFF tiff: Data) -> Data? {
+        NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
     }
 
     private static func stamp(_ date: Date) -> String {
@@ -244,21 +262,38 @@ final class ShelfWidget: NotchWidget {
 
     // MARK: - Items
 
-    /// Where a file item is now (a stale bookmark is refreshed); nil and marked missing
-    /// when it is gone.
+    /// Where a file item is now; nil and marked missing when it is gone. Quick (a drag is
+    /// starting): the stored path, which `refreshMissing` keeps current, and a full
+    /// resolve only when that path is gone.
     func url(for item: ShelfItem) -> URL? {
         guard item.fileRef != nil, let store else { return nil }
-        let url = store.resolvedURL(item.id)
+        let url = store.currentURL(item.id)
         if url == nil { missing.insert(item.id) } else { missing.remove(item.id) }
         sync()
         return url
     }
 
-    /// Re-checks every file item (when the tile shows, after a drag out).
+    /// Re-checks every file item off the main thread (when the tile shows, after a
+    /// change or a drag out). A renamed or moved file's new path and name are saved, so
+    /// the tile shows them; a gone one is marked missing.
     func refreshMissing() {
         guard let store else { return }
-        let gone = Set(store.items.filter { store.isMissing($0, fileManager: .default) }.map(\.id))
-        if gone != missing { missing = gone }
+        refreshGeneration += 1
+        let generation = refreshGeneration
+        let refs = store.fileRefs
+        let bookmarks = store.bookmarks
+        refreshTask = Task { [weak self] in
+            let results = await Task.detached(priority: .utility) {
+                var out: [UUID: (ref: ShelfFileRef, result: ShelfResolution)] = [:]
+                for (id, ref) in refs { out[id] = (ref, ShelfStore.resolve(ref, bookmarks: bookmarks)) }
+                return out
+            }.value
+            guard let self, generation == self.refreshGeneration, let store = self.store else { return }
+            let ids = Set(store.items.map(\.id))
+            let gone = store.apply(results).intersection(ids)
+            self.sync()
+            if gone != self.missing { self.missing = gone }
+        }
     }
 
     /// The selected items in shelf order, or just `item` when it is not selected.

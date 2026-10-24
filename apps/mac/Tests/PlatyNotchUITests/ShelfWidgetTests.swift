@@ -10,14 +10,14 @@ import XCTest
 private final class FakeDragSignals: DragSignals {
     var starts = 0
     var stops = 0
-    var onButton: (@MainActor (Bool) -> Void)?
+    var onButton: (@MainActor (DragButtonEvent) -> Void)?
     var dragChangeCount = 0
     var leftButtonDown = false
     var ticks: [Int: @MainActor () -> Void] = [:]
     private var nextTick = 0
     var polling: Bool { !ticks.isEmpty }
 
-    func start(_ onButton: @escaping @MainActor (Bool) -> Void) {
+    func start(_ onButton: @escaping @MainActor (DragButtonEvent) -> Void) {
         starts += 1
         self.onButton = onButton
     }
@@ -37,9 +37,32 @@ private final class FakeDragSignals: DragSignals {
     func tick() { for t in Array(ticks.values) { t() } }
 
     // A user's gestures.
-    func press() { leftButtonDown = true; onButton?(true) }
-    func startDrag() { dragChangeCount += 1; onButton?(true) }
-    func release() { leftButtonDown = false; onButton?(false) }
+    func press() { leftButtonDown = true; onButton?(.down) }
+    /// The pasteboard changes and the mouse moves; the change is seen at the next poll.
+    func startDrag() { dragChangeCount += 1; onButton?(.dragged); tick() }
+    func release() { leftButtonDown = false; onButton?(.up) }
+}
+
+/// A drag from another app carrying `pasteboard` (only what the panel and shelf read).
+private final class FakeDraggingInfo: NSObject, NSDraggingInfo {
+    let draggingPasteboard: NSPasteboard
+    @MainActor init(_ pb: NSPasteboard) { draggingPasteboard = pb }
+    var draggingDestinationWindow: NSWindow? { nil }
+    var draggingSourceOperationMask: NSDragOperation { .copy }
+    var draggingLocation: NSPoint { .zero }
+    var draggedImageLocation: NSPoint { .zero }
+    var draggedImage: NSImage? { nil }
+    var draggingSource: Any? { nil }
+    var draggingSequenceNumber: Int { 1 }
+    func slideDraggedImage(to screenPoint: NSPoint) {}
+    var draggingFormation: NSDraggingFormation = .default
+    var animatesToDestination = false
+    var numberOfValidItemsForDrop = 1
+    func enumerateDraggingItems(options enumOpts: NSDraggingItemEnumerationOptions = [], for view: NSView?,
+                                classes classArray: [AnyClass], searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:],
+                                using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
+    var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+    func resetSpringLoading() {}
 }
 
 @MainActor
@@ -151,6 +174,23 @@ final class ShelfWidgetTests: XCTestCase {
         XCTAssertFalse(r.signals.polling)
     }
 
+    /// Fix round 1 (7): dragged events never read the drag pasteboard; only the poll does.
+    func testDraggedEventsDoNotSample() {
+        let r = rig()
+        r.signals.press()
+        r.signals.dragChangeCount += 1
+        r.signals.onButton?(.dragged)
+        XCTAssertFalse(r.surfaces.dragActive, "not until the poll")
+        r.signals.tick()
+        XCTAssertTrue(r.surfaces.dragActive)
+        r.signals.release()
+        // A missed down: the first dragged event starts the poll.
+        r.signals.leftButtonDown = true
+        r.signals.onButton?(.dragged)
+        XCTAssertTrue(r.signals.polling)
+        r.signals.release()
+    }
+
     /// The up event never arrives (a drag that ends in another app): the poll sees it.
     func testPollCatchesAMissedMouseUp() {
         let r = rig()
@@ -201,6 +241,8 @@ final class ShelfWidgetTests: XCTestCase {
         XCTAssertNotNil(r.registry.dropZoneView())
         down = false
         r.controller.dragMoved(to: CGPoint(x: 756, y: 900))   // released on the zone
+        XCTAssertEqual(r.controller.mode, .peek(.drop), "waits for the drop")
+        r.controller.panelDragEnded()
         XCTAssertEqual(r.controller.mode, .compact)
     }
 
@@ -216,6 +258,7 @@ final class ShelfWidgetTests: XCTestCase {
         XCTAssertEqual(r.controller.mode, .peek(.drop))
         down = false
         r.controller.dragMoved(to: CGPoint(x: 756, y: 800))
+        r.controller.panelDragEnded()   // the drop
         XCTAssertEqual(r.controller.mode, .expanded)
 
         // Leaving the zone with the button down: the panel rests.
@@ -224,6 +267,115 @@ final class ShelfWidgetTests: XCTestCase {
         r.controller.dragMoved(to: CGPoint(x: 100, y: 100))
         XCTAssertEqual(r.controller.mode, .compact)
         r.surfaces.setDragSession(active: false)
+    }
+
+    private func filePasteboard(_ r: Rig, _ name: String) throws -> NSPasteboard {
+        let pb = NSPasteboard.withUniqueName()
+        pb.clearContents()
+        pb.writeObjects([try file(r, name) as NSURL])
+        return pb
+    }
+
+    /// Fix round 1 (Important 1): the button-up is often seen before AppKit delivers the
+    /// drop. Released on the zone, it stays (taking drops) until the drop arrives.
+    func testReleaseOnZoneThenDropIsAccepted() throws {
+        let r = rig()
+        var down = true
+        r.controller.mouseDown = { down }
+        r.controller.expand()
+        r.surfaces.setDragSession(active: true)
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 940))
+        XCTAssertEqual(r.controller.mode, .peek(.drop))
+        down = false
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 800))   // the poll sees the release first
+        r.surfaces.setDragSession(active: false)              // and the detector ends the session
+        XCTAssertEqual(r.controller.mode, .peek(.drop), "still the drop zone")
+        XCTAssertTrue(r.controller.awaitingDrop)
+        let pb = try filePasteboard(r, "late.txt")
+        defer { pb.releaseGlobally() }
+        let info = FakeDraggingInfo(pb)
+        XCTAssertEqual(r.controller.panelDragUpdated(info), .copy)
+        XCTAssertTrue(r.controller.panelPerformDrop(info), "the late drop is taken")
+        r.controller.panelDragEnded()
+        XCTAssertEqual(r.shelf.items.first?.title, "late.txt")
+        XCTAssertFalse(r.controller.awaitingDrop)
+        XCTAssertEqual(r.controller.mode, .expanded, "then the open panel comes back")
+    }
+
+    func testReleaseOnZoneWithoutDropClosesAfterGrace() async throws {
+        let r = rig()
+        var down = true
+        r.controller.mouseDown = { down }
+        r.surfaces.setDragSession(active: true)
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 940))
+        down = false
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 800))
+        XCTAssertEqual(r.controller.mode, .peek(.drop))
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertEqual(r.controller.mode, .compact)
+        XCTAssertFalse(r.controller.awaitingDrop)
+        r.surfaces.setDragSession(active: false)
+    }
+
+    func testDropBeforeReleaseClosesAtOnce() {
+        let r = rig()
+        var down = true
+        r.controller.mouseDown = { down }
+        r.surfaces.setDragSession(active: true)
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 940))
+        r.controller.panelDragEnded()   // the drop arrived first
+        down = false
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 800))
+        XCTAssertEqual(r.controller.mode, .compact)
+        XCTAssertFalse(r.controller.awaitingDrop)
+        r.surfaces.setDragSession(active: false)
+    }
+
+    func testReleaseOutsideTheZoneClosesAtOnce() {
+        let r = rig()
+        var down = true
+        r.controller.mouseDown = { down }
+        r.surfaces.setDragSession(active: true)
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 940))
+        down = false
+        r.controller.dragMoved(to: CGPoint(x: 100, y: 100))   // released away from the zone
+        XCTAssertEqual(r.controller.mode, .compact)
+        XCTAssertFalse(r.controller.awaitingDrop)
+        r.controller.cursorLocation = { CGPoint(x: 100, y: 100) }
+        r.surfaces.setDragSession(active: false)
+        XCTAssertEqual(r.controller.mode, .compact)
+    }
+
+    /// Fix round 1 (Important 2): with the shelf off, a drag reaching the panel starts
+    /// no session and no placeholder drop zone.
+    func testWindowFallbackNeedsADropTarget() throws {
+        let r = rig(enabled: false)
+        r.controller.mouseDown = { true }
+        let pb = try filePasteboard(r, "a.txt")
+        defer { pb.releaseGlobally() }
+        XCTAssertEqual(r.controller.panelDragUpdated(FakeDraggingInfo(pb)), [])
+        XCTAssertFalse(r.surfaces.dragActive)
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 940))
+        XCTAssertEqual(r.controller.mode, .compact)
+    }
+
+    /// Fix round 1 (Important 2): a session the window started ends at the button-up even
+    /// when no drag-end reaches the window, so nothing stays polled.
+    func testWindowStartedSessionEndsOnButtonUp() throws {
+        let r = rig()
+        var down = true
+        r.controller.mouseDown = { down }
+        let pb = try filePasteboard(r, "a.txt")
+        defer { pb.releaseGlobally() }
+        _ = r.controller.panelDragUpdated(FakeDraggingInfo(pb))
+        XCTAssertTrue(r.surfaces.dragActive, "the detector missed it: the window starts the session")
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 940))
+        XCTAssertEqual(r.controller.mode, .peek(.drop))
+        down = false
+        r.controller.dragMoved(to: CGPoint(x: 100, y: 100))
+        XCTAssertFalse(r.surfaces.dragActive, "ended at the button-up")
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 940))
+        XCTAssertFalse(r.controller.mode == .peek(.drop))
     }
 
     /// Carry: ringing never covers the panel a drag opened; it is the chip there.
@@ -274,7 +426,7 @@ final class ShelfWidgetTests: XCTestCase {
         XCTAssertTrue(r.shelf.items.isEmpty)
     }
 
-    func testImageDataBecomesAnOwnedCopy() throws {
+    func testImageDataBecomesAnOwnedCopy() async throws {
         let r = rig()
         let pb = NSPasteboard.withUniqueName()
         defer { pb.releaseGlobally() }
@@ -286,8 +438,10 @@ final class ShelfWidgetTests: XCTestCase {
         pb.clearContents()
         pb.setData(try XCTUnwrap(image.tiffRepresentation), forType: .tiff)
         XCTAssertEqual(r.shelf.receive(pasteboard: pb), 1)
+        await r.shelf.importTask?.value   // TIFF → PNG off the main thread
         let item = try XCTUnwrap(r.shelf.items.first)
         XCTAssertTrue(item.ownsFile)
+        XCTAssertEqual(item.fileRef?.url.pathExtension, "png")
         let url = try XCTUnwrap(item.fileRef?.url)
         XCTAssertTrue(url.path.hasPrefix(r.shelf.directory.path))
         r.shelf.remove([item.id])
@@ -296,7 +450,7 @@ final class ShelfWidgetTests: XCTestCase {
 
     // MARK: - Missing files (Review Focus #2)
 
-    func testMissingFileIsMarkedAndNeverDragged() throws {
+    func testMissingFileIsMarkedAndNeverDragged() async throws {
         let r = rig()
         let pb = NSPasteboard.withUniqueName()
         defer { pb.releaseGlobally() }
@@ -306,6 +460,7 @@ final class ShelfWidgetTests: XCTestCase {
         r.shelf.receive(pasteboard: pb)
         try FileManager.default.removeItem(at: gone)
         r.shelf.refreshMissing()
+        await r.shelf.refreshTask?.value
         let goneItem = try XCTUnwrap(r.shelf.items.first { $0.title == "gone.txt" })
         XCTAssertEqual(r.shelf.missing, [goneItem.id])
 
@@ -317,9 +472,25 @@ final class ShelfWidgetTests: XCTestCase {
 
         let found = try file(r, "found.txt")
         r.shelf.relocate(goneItem, to: found)
+        await r.shelf.refreshTask?.value
         XCTAssertTrue(r.shelf.missing.isEmpty)
         r.shelf.remove([goneItem.id])
         XCTAssertTrue(FileManager.default.fileExists(atPath: found.path), "removing never deletes a user's file")
+    }
+
+    /// Fix round 1 (5): a file renamed in Finder shows its new name after a refresh.
+    func testRefreshSavesRenamedPath() async throws {
+        let r = rig()
+        let pb = try filePasteboard(r, "old.txt")
+        defer { pb.releaseGlobally() }
+        r.shelf.receive(pasteboard: pb)
+        await r.shelf.refreshTask?.value
+        let old = r.root.appendingPathComponent("user/old.txt")
+        try FileManager.default.moveItem(at: old, to: r.root.appendingPathComponent("user/new.txt"))
+        r.shelf.refreshMissing()
+        await r.shelf.refreshTask?.value
+        XCTAssertEqual(r.shelf.items.first?.title, "new.txt")
+        XCTAssertTrue(r.shelf.missing.isEmpty)
     }
 
     func testViewsBuild() throws {

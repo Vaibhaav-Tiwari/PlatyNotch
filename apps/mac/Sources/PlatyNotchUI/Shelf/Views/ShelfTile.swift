@@ -330,12 +330,14 @@ struct ShelfSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Drag anything to the notch to keep it on the shelf. Files stay where they are; the shelf remembers them, even if you rename or move them. Images and files from apps like Photos or Mail are copied into PlatyNotch's private folder and removed after 7 days unless pinned.")
+            Text("Drag anything to the notch to keep it on the shelf. Files stay where they are; the shelf remembers them, even if you rename or move them, and never deletes them.")
+                .fixedSize(horizontal: false, vertical: true)
+            Text("Images and files from apps like Photos or Mail are copied into PlatyNotch's private folder, and dropped text is kept there too. Unless pinned, they are deleted 7 days after you added them: while the shelf is on, at that time; while it is off, the next time PlatyNotch starts.")
                 .fixedSize(horizontal: false, vertical: true)
             Text("The shelf can't tell which app a drag comes from, so Memory's excluded apps don't apply to it. Items marked as passwords or transient by the app that copied them are never kept.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Turning the shelf off keeps its items. Use Clear Shelf to delete them.")
+            Text("Turning the shelf off keeps its items. Clear Shelf deletes every unpinned item and its copy now.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack {

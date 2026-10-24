@@ -364,3 +364,14 @@ lives in `$PLATYNOTCH_HOME/shelf` (0700; `items.json` 0600; owned copies in
 - [ ] **66. Idle cost.** Shelf on, collapsed: no CPU while the button is up (only click
   callbacks); while holding the button down (a window drag) a 20 Hz read of two integers
   that stops at release.
+- [ ] **67. Drop on release (fix round 1).** Drop 20 files one after another, quickly, on
+  the zone: every drop is taken (none bounces back to Finder). Release on the zone with
+  nothing droppable: the zone closes within about 0.3 s.
+- [ ] **68. Expiry while off (fix round 1).** Shelf off, an owned item 8 days old in
+  `items.json` (quit first): relaunch PlatyNotch; its `<uuid>/` folder and entry are gone
+  although the shelf stays off. Shelf off and never used: launch creates no `shelf/` folder.
+- [ ] **69. Shelf off, drag over the pill.** Turn the shelf off, drag a file over the
+  pill: no drop zone and no "Drop here" placeholder; after release, Activity Monitor
+  shows PlatyNotch idle (no leftover cursor polling).
+- [ ] **70. Promise file modes.** After a Photos drop, `ls -l "$PLATYNOTCH_HOME/shelf"/*/`:
+  note the mode the promised file got (written by Photos; the folder is 0700).

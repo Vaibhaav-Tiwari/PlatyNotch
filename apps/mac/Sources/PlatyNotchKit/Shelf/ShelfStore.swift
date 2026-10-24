@@ -62,8 +62,9 @@ public struct ShelfItem: Codable, Identifiable, Equatable, Sendable {
     }
 }
 
-/// Makes and resolves file bookmarks (a seam for tests).
-public protocol ShelfBookmarks {
+/// Makes and resolves file bookmarks (a seam for tests). Sendable: resolving runs off
+/// the main thread (`ShelfStore.resolve`).
+public protocol ShelfBookmarks: Sendable {
     func make(_ url: URL) -> Data?
     /// Where the bookmark points now, and whether it should be made again; nil when the
     /// file is gone.
@@ -84,6 +85,13 @@ public struct FileBookmarks: ShelfBookmarks {
                                  relativeTo: nil, bookmarkDataIsStale: &stale) else { return nil }
         return (url, stale)
     }
+}
+
+/// Where a shelf file is now (`ShelfStore.resolve`).
+public enum ShelfResolution: Equatable, Sendable {
+    case missing
+    /// Its reference now (the same one when nothing changed).
+    case found(ShelfFileRef)
 }
 
 /// What the shelf takes from a drop.
@@ -115,7 +123,7 @@ public final class ShelfStore {
     public private(set) var items: [ShelfItem] = []
 
     private let persist: Bool
-    private let bookmarks: ShelfBookmarks
+    public let bookmarks: ShelfBookmarks
     private let fileManager: FileManager
     private let now: () -> Date
 
@@ -251,11 +259,16 @@ public final class ShelfStore {
     }
 
     /// Points a (missing) file item at `url` ("Locate…"); keeps its id, pin and place.
+    /// The chosen file is the user's, so the item is no longer owned: removing it never
+    /// deletes that file, and it does not expire (its old owned folder is swept).
     public func relocate(_ id: UUID, to url: URL) {
         guard let i = items.firstIndex(where: { $0.id == id }), items[i].fileRef != nil else { return }
         let std = url.standardizedFileURL
+        let wasOwned = items[i].ownsFile
         items[i].kind = .file(ShelfFileRef(path: std.path, bookmark: bookmarks.make(std)))
+        items[i].ownsFile = false
         save()
+        if wasOwned { sweepOrphans() }
     }
 
     // MARK: - Files on disk
@@ -264,37 +277,91 @@ public final class ShelfStore {
     /// are found through the bookmark). Text and URLs are never missing.
     public func isMissing(_ item: ShelfItem, fileManager: FileManager) -> Bool {
         guard let ref = item.fileRef else { return false }
-        return locate(ref, fileManager: fileManager) == nil
+        return Self.resolve(ref, bookmarks: bookmarks, fileManager: fileManager) == .missing
     }
 
     /// Where a file item is now, or nil when it is missing (then a drag-out is refused).
     /// A stale bookmark is made again, and a moved file's path is updated and saved.
+    /// Resolves on the calling thread: prefer `currentURL` on the main thread.
     public func resolvedURL(_ id: UUID) -> URL? {
-        guard let i = items.firstIndex(where: { $0.id == id }), let ref = items[i].fileRef,
-              let found = locate(ref, fileManager: fileManager) else { return nil }
-        let path = found.url.standardizedFileURL.path
-        if found.isStale || path != ref.path {
-            let fresh = bookmarks.make(found.url) ?? ref.bookmark
-            items[i].kind = .file(ShelfFileRef(path: path, bookmark: fresh))
-            save()
-        }
-        return found.url
+        guard let ref = items.first(where: { $0.id == id })?.fileRef else { return nil }
+        let result = Self.resolve(ref, bookmarks: bookmarks, fileManager: fileManager)
+        _ = apply([id: (ref, result)])
+        if case .found(let now) = result { return now.url }
+        return nil
     }
 
-    private func locate(_ ref: ShelfFileRef, fileManager: FileManager) -> (url: URL, isStale: Bool)? {
+    /// For a drag out (main thread, must be quick): the stored path when the file is
+    /// still there (kept current by `resolve` + `apply` off the main thread), else a full
+    /// resolve; nil when missing.
+    public func currentURL(_ id: UUID) -> URL? {
+        guard let ref = items.first(where: { $0.id == id })?.fileRef else { return nil }
+        if Self.usable(ref.url, fileManager) { return ref.url }
+        return resolvedURL(id)
+    }
+
+    /// Every file item's id and reference (to `resolve` elsewhere, then `apply`).
+    public var fileRefs: [(id: UUID, ref: ShelfFileRef)] {
+        items.compactMap { item in item.fileRef.map { (item.id, $0) } }
+    }
+
+    /// Where `ref` is now, without touching any store: safe on any thread. A found
+    /// file's reference has its current path, and a fresh bookmark when the old one was
+    /// stale or the file moved.
+    public static func resolve(_ ref: ShelfFileRef, bookmarks: ShelfBookmarks,
+                               fileManager: FileManager = .default) -> ShelfResolution {
+        var found: (url: URL, isStale: Bool)?
         if let data = ref.bookmark, let r = bookmarks.resolve(data), usable(r.url, fileManager) {
-            return r
+            found = r
+        } else if usable(ref.url, fileManager) {
+            found = (ref.url, false)
         }
-        return usable(ref.url, fileManager) ? (ref.url, false) : nil
+        guard let found else { return .missing }
+        let path = found.url.standardizedFileURL.path
+        guard found.isStale || path != ref.path else { return .found(ref) }
+        return .found(ShelfFileRef(path: path, bookmark: bookmarks.make(found.url) ?? ref.bookmark))
     }
 
-    private func usable(_ url: URL, _ fm: FileManager) -> Bool {
+    /// Applies `resolve` results (id → the reference resolved, and the result). Items
+    /// whose reference changed meanwhile are skipped; moved files are saved with their
+    /// new path. Returns the ids of the missing ones.
+    public func apply(_ results: [UUID: (ref: ShelfFileRef, result: ShelfResolution)]) -> Set<UUID> {
+        var missing = Set<UUID>()
+        var changed = false
+        for (id, r) in results {
+            guard let i = items.firstIndex(where: { $0.id == id }), items[i].fileRef == r.ref else { continue }
+            switch r.result {
+            case .missing:
+                missing.insert(id)
+            case .found(let now) where now != r.ref:
+                items[i].kind = .file(now)
+                changed = true
+            case .found:
+                break
+            }
+        }
+        if changed { save() }
+        return missing
+    }
+
+    private static func usable(_ url: URL, _ fm: FileManager) -> Bool {
         let parts = url.standardizedFileURL.pathComponents
         if parts.contains(".Trash") || parts.contains(".Trashes") { return false }
         return fm.fileExists(atPath: url.path)
     }
 
     // MARK: - Expiry
+
+    /// The launch cleanup while the shelf widget is off (no timers, no monitors): one
+    /// bounded pass over the shelf directory that removes expired owned copies and orphan
+    /// folders. Reads nothing when the shelf was never used (no index).
+    public static func expireOnDisk(directory: URL, now: Date = Date(),
+                                    olderThan: TimeInterval = ownedLifetime) {
+        guard FileManager.default.fileExists(atPath: directory.appendingPathComponent(indexName).path) else { return }
+        let store = ShelfStore(directory: directory)
+        store.expireOwned(olderThan: olderThan, now: now)
+        store.sweepOrphans()
+    }
 
     /// Removes owned, unpinned items added at or before `now - olderThan` (their copies
     /// deleted). Returns their ids.

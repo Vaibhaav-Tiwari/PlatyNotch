@@ -143,6 +143,7 @@ final class PanelSurfacesTests: XCTestCase {
         XCTAssertEqual(r.controller.mode, .compact)
         r.controller.dragMoved(to: CGPoint(x: 756, y: 940))
         XCTAssertEqual(r.controller.mode, .peek(.drop))
+        r.controller.cursorLocation = { CGPoint(x: 100, y: 100) }   // the drag ended off the zone
         r.context.dragSession(active: false)
         XCTAssertEqual(r.controller.mode, .compact)
         r.controller.dragMoved(to: CGPoint(x: 756, y: 940))
@@ -160,6 +161,9 @@ final class PanelSurfacesTests: XCTestCase {
         XCTAssertEqual(r.controller.mode, .peek(.drop))
         down = false
         r.controller.dragMoved(to: CGPoint(x: 756, y: 940))
+        // Released on the zone: it waits for the drop (Task 5 fix round 1), then closes.
+        XCTAssertEqual(r.controller.mode, .peek(.drop))
+        r.controller.panelDragEnded()
         XCTAssertEqual(r.controller.mode, .compact, "button released: the drop zone closes")
         r.controller.dragMoved(to: CGPoint(x: 756, y: 960))
         XCTAssertEqual(r.controller.mode, .compact, "hovering with the button up never opens it")

@@ -240,6 +240,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                     defaults: .standard, notify: Notifiers.make(), surfaces: surfaces,
                                     openPanel: { [weak self] in self?.openPanel(tab: $0) })
         widgets.start(context: context)
+        // The shelf's privacy promise holds while it is off: expired copies (7 days) go at
+        // launch in one bounded directory pass (no timers, no monitors). Never in smoke runs.
+        if !options.smoke, !options.smokeSettings, !widgets.isEnabled(ShelfWidget.widgetID) {
+            ShelfStore.expireOnDisk(directory: CorePaths.shelf())
+        }
     }
 
     // MARK: - Panels

@@ -3,7 +3,7 @@ import XCTest
 import PlatyNotchKit   // not @testable: the UI uses these types as public API (C6)
 
 /// Bookmarks that resolve to whatever the test says (stale, moved, gone).
-private final class FakeBookmarks: ShelfBookmarks {
+private final class FakeBookmarks: ShelfBookmarks, @unchecked Sendable {
     var made: [URL] = []
     /// bookmark data (the path as UTF-8) → where it resolves now, and whether it is stale.
     var resolution: [String: (URL, Bool)] = [:]
@@ -267,6 +267,70 @@ final class ShelfTests: XCTestCase {
         XCTAssertTrue(now.pinned)
         XCTAssertFalse(s.isMissing(now, fileManager: .default))
         XCTAssertEqual(now.fileRef?.name, "found.txt")
+    }
+
+    /// Fix round 1 (4): a located file is the user's, never deleted, never expired.
+    func testRelocateClearsOwnership() throws {
+        let s = store()
+        let owned = try XCTUnwrap(s.addOwnedData(Data("x".utf8), filename: "x.png"))
+        let folder = try XCTUnwrap(owned.fileRef?.url).deletingLastPathComponent()
+        try FileManager.default.removeItem(at: try XCTUnwrap(owned.fileRef?.url))
+        let mine = try file("mine.png")
+        s.relocate(owned.id, to: mine)
+        XCTAssertEqual(s.items.first?.ownsFile, false)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.path), "the old owned folder is swept")
+        XCTAssertTrue(s.expireOwned(olderThan: 0, now: t0.addingTimeInterval(30 * day)).isEmpty)
+        s.remove(owned.id)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: mine.path))
+    }
+
+    /// Fix round 1 (5, 6): resolving runs without the store (off the main thread); applying
+    /// saves a renamed file's new path, and skips items changed meanwhile.
+    func testResolveElsewhereThenApply() throws {
+        let s = store()
+        let a = try file("a.txt"), gone = try file("gone.txt")
+        let item = s.addFile(a)
+        let goneItem = s.addFile(gone)
+        let renamed = a.deletingLastPathComponent().appendingPathComponent("b.txt")
+        try FileManager.default.moveItem(at: a, to: renamed)
+        try FileManager.default.removeItem(at: gone)
+        var results: [UUID: (ref: ShelfFileRef, result: ShelfResolution)] = [:]
+        for (id, ref) in s.fileRefs { results[id] = (ref, ShelfStore.resolve(ref, bookmarks: s.bookmarks)) }
+        XCTAssertEqual(s.apply(results), [goneItem.id])
+        XCTAssertEqual(s.items.first { $0.id == item.id }?.fileRef?.name, "b.txt")
+        XCTAssertEqual(store().items.first { $0.id == item.id }?.fileRef?.name, "b.txt", "saved")
+        // A result for a reference that has changed since is ignored.
+        let other = try file("c.txt")
+        let stale = results
+        s.relocate(goneItem.id, to: other)
+        XCTAssertEqual(s.apply(stale), [])
+        XCTAssertEqual(s.items.first { $0.id == goneItem.id }?.fileRef?.name, "c.txt")
+    }
+
+    func testCurrentURLUsesStoredPathThenResolves() throws {
+        let s = store()
+        let a = try file("a.txt")
+        let item = s.addFile(a)
+        XCTAssertEqual(s.currentURL(item.id)?.path, a.standardizedFileURL.path)
+        let moved = a.deletingLastPathComponent().appendingPathComponent("moved.txt")
+        try FileManager.default.moveItem(at: a, to: moved)
+        XCTAssertEqual(s.currentURL(item.id)?.resolvingSymlinksInPath().path, moved.resolvingSymlinksInPath().path)
+        try FileManager.default.removeItem(at: moved)
+        XCTAssertNil(s.currentURL(item.id))
+    }
+
+    /// Ruling (fix round 1): expired copies are removed at launch even with the shelf off.
+    func testExpireOnDiskWhileOff() throws {
+        ShelfStore.expireOnDisk(directory: shelfDir, now: t0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: shelfDir.path), "a never-used shelf reads and writes nothing")
+        let s = store()
+        let owned = try XCTUnwrap(s.addOwnedData(Data("x".utf8), filename: "x.png"))
+        let user = s.addFile(try file("a.txt"))
+        ShelfStore.expireOnDisk(directory: shelfDir, now: t0.addingTimeInterval(6 * day))
+        XCTAssertEqual(store().items.count, 2)
+        ShelfStore.expireOnDisk(directory: shelfDir, now: t0.addingTimeInterval(7 * day))
+        XCTAssertEqual(store().items.map(\.id), [user.id])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: owned.fileRef!.url.deletingLastPathComponent().path))
     }
 
     // MARK: - Expiry (7 days, owned only, pinned kept)

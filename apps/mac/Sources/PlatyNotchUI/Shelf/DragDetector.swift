@@ -1,12 +1,17 @@
 import AppKit
 import PlatyNotchKit
 
+/// A left-button event from the monitors.
+enum DragButtonEvent: Equatable {
+    case down, dragged, up
+}
+
 /// The raw signals the drag detector reads: left-button events and two cheap values.
 /// A seam so tests and smoke runs never install real event monitors.
 @MainActor
 protocol DragSignals: AnyObject {
-    /// Installs the monitors. `onButton(true)` on left mouse down / dragged, `false` on up.
-    func start(_ onButton: @escaping @MainActor (_ down: Bool) -> Void)
+    /// Installs the monitors for left mouse down / dragged / up.
+    func start(_ onButton: @escaping @MainActor (DragButtonEvent) -> Void)
     func stop()
     /// The drag pasteboard's change count (never its contents).
     var dragChangeCount: Int { get }
@@ -24,12 +29,16 @@ protocol DragSignals: AnyObject {
 final class SystemDragSignals: DragSignals {
     private var monitors: [Any] = []
 
-    func start(_ onButton: @escaping @MainActor (Bool) -> Void) {
+    func start(_ onButton: @escaping @MainActor (DragButtonEvent) -> Void) {
         guard monitors.isEmpty else { return }
         let mask: NSEvent.EventTypeMask = [.leftMouseDown, .leftMouseDragged, .leftMouseUp]
         let handle: (NSEvent) -> Void = { event in
-            let down = event.type != .leftMouseUp
-            MainActor.assumeIsolated { onButton(down) }
+            let e: DragButtonEvent = switch event.type {
+            case .leftMouseDown: .down
+            case .leftMouseUp: .up
+            default: .dragged
+            }
+            MainActor.assumeIsolated { onButton(e) }
         }
         if let g = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: handle) { monitors.append(g) }
         if let l = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { handle($0); return $0 }) {
@@ -56,7 +65,7 @@ final class SystemDragSignals: DragSignals {
 /// Installs nothing and reports nothing (smoke runs).
 @MainActor
 final class NoDragSignals: DragSignals {
-    func start(_ onButton: @escaping @MainActor (Bool) -> Void) {}
+    func start(_ onButton: @escaping @MainActor (DragButtonEvent) -> Void) {}
     func stop() {}
     var dragChangeCount: Int { 0 }
     var leftButtonDown: Bool { false }
@@ -70,6 +79,8 @@ final class NoDragSignals: DragSignals {
 /// While the button is down (a click, a selection, a window move, a drag) it polls two
 /// integers every `pollInterval` and stops at the button-up, which the poll also catches
 /// when the up event is not delivered (a drag that ends in another app's window).
+/// Dragged events only make sure the poll runs (a missed down); they never read the
+/// pasteboard, so a fast mouse costs nothing extra.
 @MainActor
 final class DragDetector {
     static let pollInterval: TimeInterval = 0.05
@@ -91,7 +102,7 @@ final class DragDetector {
         guard !isRunning else { return }
         isRunning = true
         poller = DragPoller(changeCount: signals.dragChangeCount)
-        signals.start { [weak self] down in self?.button(down) }
+        signals.start { [weak self] event in self?.button(event) }
     }
 
     /// Removes the monitors and the poll; a drag in progress is reported as ended.
@@ -105,15 +116,14 @@ final class DragDetector {
         if let event { onEvent(event) }
     }
 
-    private func button(_ down: Bool) {
+    private func button(_ event: DragButtonEvent) {
         guard isRunning else { return }
-        if down {
-            if !isPolling {
-                poller?.pressed(changeCount: signals.dragChangeCount)
-                cancelPoll = signals.repeatEvery(Self.pollInterval) { [weak self] in self?.sample(mouseDown: nil) }
-            }
-            sample(mouseDown: true)
-        } else {
+        switch event {
+        case .down, .dragged:
+            guard !isPolling else { return }
+            poller?.pressed(changeCount: signals.dragChangeCount)
+            cancelPoll = signals.repeatEvery(Self.pollInterval) { [weak self] in self?.sample(mouseDown: nil) }
+        case .up:
             sample(mouseDown: false)
         }
     }
