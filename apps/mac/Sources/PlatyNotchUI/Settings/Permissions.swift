@@ -57,25 +57,16 @@ final class Permissions {
     @ObservationIgnored private(set) var accessibilityPoll: Task<Void, Never>?
     private(set) var notifications: State = .notAsked
     private(set) var automation: [String: State] = [:]
-    /// Camera (v0.2 mirror). Read without prompting; asked only from a button
-    /// (`requestCamera`).
-    private(set) var camera: State = .notAsked
-    @ObservationIgnored private let cameraAccess: CameraAccess
-    /// This build's camera grant (`GrantStamp`): a mirror that was on resumes after a
-    /// rebuild only when the grant was made to this build ("Turn On Again" otherwise).
-    @ObservationIgnored let cameraGrant: GrantStamp
     let calendar: CalendarService
     let reminders: RemindersService
 
-    static let cameraGrantKey = "camera.grant"
+    // The camera is not here: the Mirror tile owns its state, reads it only while it is
+    // on, and stamps the grant (`MirrorWidget.cameraGrantKey`) (final review M2).
 
-    init(calendar: CalendarService, reminders: RemindersService, trust: AccessibilityTrust = .system,
-         camera: CameraAccess = .system, cameraGrant: GrantStamp = CodeIdentity.stamp(key: Permissions.cameraGrantKey)) {
+    init(calendar: CalendarService, reminders: RemindersService, trust: AccessibilityTrust = .system) {
         self.calendar = calendar
         self.reminders = reminders
         self.trust = trust
-        cameraAccess = camera
-        self.cameraGrant = cameraGrant
     }
 
     /// Re-reads every status without prompting.
@@ -84,7 +75,6 @@ final class Permissions {
         calendar.refreshAccess()
         reminders.refreshAccess()
         refreshNotifications()
-        readCamera()
         for id in automationTargetsToRead() {
             Task.detached {
                 let s = Self.automationStatus(bundleID: id, ask: false)
@@ -193,31 +183,6 @@ final class Permissions {
         case Int(errAEEventWouldRequireUserConsent): return .notAsked
         case Int(procNotFound): return .unavailable("Open the app first, then allow.")
         default: return .unavailable("Not available (\(status)).")
-        }
-    }
-
-    // MARK: - Camera (v0.2 mirror)
-
-    /// Shows the system camera prompt. Only from a button (the mirror's, or Settings).
-    func requestCamera() async {
-        _ = await cameraAccess.request()
-        readCamera()
-    }
-
-    /// Reads the camera status (never prompts) and stamps a working grant with this build.
-    func readCamera() {
-        let s = Self.cameraState(cameraAccess.status())
-        if s == .granted { cameraGrant.note() }
-        if camera != s { camera = s }
-    }
-
-    nonisolated static func cameraState(_ status: AVAuthorizationStatus) -> State {
-        switch status {
-        case .authorized: .granted
-        case .denied: .denied
-        case .restricted: .unavailable("Restricted on this Mac.")
-        case .notDetermined: .notAsked
-        @unknown default: .notAsked
         }
     }
 

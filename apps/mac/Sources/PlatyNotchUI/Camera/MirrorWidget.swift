@@ -17,13 +17,15 @@ import SwiftUI
 /// starts unless macOS already reports access (so starting it can never prompt).
 ///
 /// Rebuilds: a working grant is stamped with this build (`GrantStamp`, key
-/// `Permissions.cameraGrantKey`). When access is missing but was granted to another build,
+/// `MirrorWidget.cameraGrantKey`). When access is missing but was granted to another build,
 /// the tile says "Turn On Again" and asks from that button.
 ///
 /// Cost: with the mirror not showing, nothing runs (no session, observers or timers).
 @MainActor @Observable
 final class MirrorWidget: NotchWidget {
     static let widgetID = "mirror"
+    /// Where this build's camera grant is stamped (`GrantStamp`).
+    static let cameraGrantKey = "camera.grant"
 
     let id = MirrorWidget.widgetID
     let title = "Mirror"
@@ -60,7 +62,7 @@ final class MirrorWidget: NotchWidget {
     }
 
     init(access: CameraAccess = .system,
-         grant: GrantStamp = CodeIdentity.stamp(key: Permissions.cameraGrantKey),
+         grant: GrantStamp = CodeIdentity.stamp(key: MirrorWidget.cameraGrantKey),
          feed: @escaping @MainActor () -> CameraFeed = { SystemCameraFeed() },
          signals: MirrorStopSignals = SystemMirrorSignals()) {
         self.access = access
@@ -72,7 +74,7 @@ final class MirrorWidget: NotchWidget {
     /// Never touches the camera, never prompts, saves nothing (smoke runs).
     static func inert() -> MirrorWidget {
         MirrorWidget(access: CameraAccess(status: { .notDetermined }, request: { false }),
-                     grant: GrantStamp(key: Permissions.cameraGrantKey, defaults: UserDefaults(suiteName: "dev.platynotch.inert")!,
+                     grant: GrantStamp(key: MirrorWidget.cameraGrantKey, defaults: UserDefaults(suiteName: "dev.platynotch.inert")!,
                                        identity: { "inert" }),
                      feed: { InertCameraFeed() }, signals: InertMirrorSignals())
     }
