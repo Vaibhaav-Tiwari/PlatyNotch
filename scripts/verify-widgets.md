@@ -1271,3 +1271,65 @@ Settings › Widgets › Power features › Mail, on an installed build.
   by itself.
 - [ ] **248. Nothing kept.** Turn Mail off and on: the tile reads again (nothing was saved).
   `defaults read dev.platynotch.app | grep -i mail` shows only `automationGrant.com.apple.mail`.
+
+## Notes and tasks (v0.2)
+
+Settings › Widgets › Power features › Notes & Tasks. Use a throwaway vault (a copy of an
+Obsidian vault, ideally one in Documents) with a `Daily` folder, a few notes with tasks
+edited today, one edited 40 days ago (`touch -t`), a `.obsidian` folder and a fenced code
+block containing `- [ ] in code`.
+
+- [ ] **270. Off by default.** On a fresh home the widget is off and listed under Power
+  features. Turned on with no vault, the tile shows the quick-note field and "Choose a
+  vault in Settings…"; Activity Monitor shows no extra CPU and `lsof -p <pid>` lists no
+  file in any vault.
+- [ ] **271. Quick note without a vault.** Type "hello" in the tile and press Return:
+  `~/Library/Application Support/PlatyNotch/notes.noindex/notes.md` gains `- HH:mm hello`
+  (the folder is 0700, the file 0600). The tile says "Added to PlatyNotch notes".
+- [ ] **272. Choosing the vault.** Settings › Choose Vault… opens a folder picker in
+  front. Choosing a vault in Documents makes macOS ask once for Documents; Allow. The
+  tile lists the open tasks of notes edited in the last 30 days, soonest due (`📅
+  2026-10-30`) first, with the note's name. Not listed: done tasks, tasks in the old
+  note, in `.obsidian`, in the code block or in frontmatter. Don't Allow instead: the
+  settings say macOS did not allow it, with Open System Settings and Try Again.
+- [ ] **273. Tick.** Tick a task: only that line's `[ ]` becomes `[x]` (check with
+  `git diff` in the vault or `cmp -l` against a copy: exactly one byte differs). A CRLF
+  note keeps CRLF, permissions (`ls -l`) and extended attributes (`xattr -l`) are
+  unchanged, and no other file in the vault appears or changes. With the vault on another
+  volume (an external or FAT32 drive), macOS's own `.TemporaryItems` folder may appear at
+  that volume's root (where the change is staged before the swap): expected, outside the
+  vault, and Finder hides it. On FAT32 the tick still lands and the tile reports no error.
+- [ ] **274. Changed since it was read.** With the panel open, add a line above a task in
+  Obsidian, then (before the list refreshes) tick that task: nothing is written; the tile
+  asks "… changed since it was read. Tick “…” on line N?". Tick It writes that line;
+  Cancel writes nothing. Edit the task's text instead: nothing is written and the list
+  refreshes.
+- [ ] **275. Read-only and locked notes.** `chmod 444` a note (or Finder › Get Info ›
+  Locked) and tick one of its tasks: the tile says it is read-only and the file is
+  unchanged.
+- [ ] **276. Quick note into the vault.** With the vault on and today's note missing, a
+  quick note is not added: the tile says "Today's note doesn't exist yet — open it in
+  Obsidian first." and no file appears. Open today's note in Obsidian (its template
+  runs), then add again: `Daily/YYYY-MM-DD.md` keeps everything and gains one line at the
+  end. With "Create today's note if missing" on, a missing note is made with just that
+  line. Set the daily folder to a folder that does not exist: the tile says so and no
+  folder is made. Make `Daily` a symlink to a folder outside the vault: nothing is
+  written there. `../x` is refused in Settings. A UTF-16 or Latin-1 note is never
+  appended to.
+- [ ] **277. Watching and idle.** Edit a note in Obsidian: the list follows within a few
+  seconds, and only that note is read again (type steadily in a 20 000-note vault: CPU
+  stays low, no full walk). Create or rename a folder: one full walk. Leave Obsidian open
+  and idle for a minute (it rewrites `.obsidian/workspace.json`): PlatyNotch stays under
+  1% CPU and does not rescan. With the panel closed there is no periodic walk; while the
+  tile shows, one every 5 minutes. iCloud notes that are not downloaded are skipped.
+- [ ] **278. After a rebuild.** Rebuild (ad-hoc) and relaunch with the widget on: no
+  prompt appears; the tile and settings ask to Turn On Again; until then nothing in the
+  vault is read. Turn On Again… resumes (macOS may ask once more).
+- [ ] **279. Off and Forget.** Turning the widget off stops the folder watch (no CPU,
+  nothing read). Forget clears the vault from Settings; its files are untouched.
+- [ ] **280. Recurring tasks and comments.** A task with `🔁 every week` shows a repeat
+  icon and "Tick it in Obsidian" instead of a tick box, and is never changed. Tasks inside
+  `%% … %%` comments are not listed.
+- [ ] **281. Ticks in quick succession.** Tick three tasks in today's note quickly and add
+  a quick note at once: all three are `[x]` and the note line is there (every write runs
+  one after another).

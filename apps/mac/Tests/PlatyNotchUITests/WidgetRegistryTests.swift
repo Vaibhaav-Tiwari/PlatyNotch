@@ -185,7 +185,7 @@ final class WidgetRegistryTests: DefaultsTestCase {
         XCTAssertTrue(registry.isEnabled(ShelfWidget.widgetID), "the shelf needs no permission and is on")
         XCTAssertFalse(registry.isEnabled(HUDWidget.widgetID))
         XCTAssertTrue(registry.isEnabled(SystemWidget.widgetID), "battery and keep-awake need no permission")
-        for id in [FileActionsWidget.widgetID, WindowSnapWidget.widgetID] {
+        for id in [FileActionsWidget.widgetID, WindowSnapWidget.widgetID, NotesWidget.widgetID] {
             XCTAssertTrue(registry.orderedWidgets(in: .power).contains { $0.id == id })
             XCTAssertFalse(registry.isEnabled(id), "power features are off by default")
         }

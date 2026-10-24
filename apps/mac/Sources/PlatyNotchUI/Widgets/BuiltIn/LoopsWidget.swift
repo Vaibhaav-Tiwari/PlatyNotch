@@ -102,6 +102,8 @@ enum BuiltInWidgets {
         list.append(persist ? MirrorWidget() : MirrorWidget.inert())
         // Mail only while it is running; never in smoke runs (no process, no Apple Event).
         list.append(persist ? MailWidget() : MailWidget.inert())
+        // Quick notes and Obsidian tasks: no vault, watch or file until set up in its settings.
+        list.append(persist ? NotesWidget() : NotesWidget.inert())
         return list
     }
 }
