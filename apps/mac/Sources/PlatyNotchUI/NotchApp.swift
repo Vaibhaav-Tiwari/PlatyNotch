@@ -65,6 +65,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var clipboard = options.smoke || options.smokeSettings ? ClipboardWidget.inert() : ClipboardWidget()
     /// Widget peeks, ringing, HUDs and the drag session, shown on every display's panel.
     private lazy var surfaces = PanelSurfaces(registry: widgets)
+    /// The one drag monitor (R2), shared by the shelf and later drag features; it writes
+    /// the drag session. Installs monitors only while a feature listens; smoke runs get
+    /// one that installs nothing.
+    private lazy var drags = options.smoke || options.smokeSettings
+        ? DragMonitor.inert(surfaces: surfaces)
+        : DragMonitor(signals: SystemDragSignals(), surfaces: surfaces)
     /// On-screen text capture (runs only while memory is on) and the Memory tab's search.
     private lazy var capture = CaptureService(client: client)
     private lazy var memory = MemoryServices(client: client, capture: capture)
@@ -263,7 +269,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startWidgets() {
         let context = WidgetContext(store: store, client: client, config: config, events: events,
                                     defaults: .standard, notify: Notifiers.make(), surfaces: surfaces,
-                                    openPanel: { [weak self] in self?.openPanel(tab: $0) })
+                                    drags: drags, openPanel: { [weak self] in self?.openPanel(tab: $0) })
         widgets.start(context: context)
         // The shelf's privacy promise holds while it is off: expired copies (7 days) go at
         // launch in one bounded directory pass (no timers, no monitors). Never in smoke runs.

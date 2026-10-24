@@ -102,18 +102,24 @@ public struct WidgetContext {
     public let notify: Notifier
     /// Peeks, ringing, HUDs and the drag session, shown on every display's panel.
     public let surfaces: PanelSurfaces
+    /// The app's one drag monitor (R2): subscribe to hear about drags anywhere on screen.
+    /// It also opens and closes the drag session (its only writer, R5).
+    public let drags: DragMonitor
     private let openPanelHandler: (String?) -> Void
 
     public init(store: AppStore, client: CoreClient, config: ConfigFileStore, events: CoreEventHub,
                 defaults: UserDefaults = .standard, notify: Notifier, surfaces: PanelSurfaces? = nil,
-                openPanel: @escaping (String?) -> Void) {
+                drags: DragMonitor? = nil, openPanel: @escaping (String?) -> Void) {
         self.store = store
         self.client = client
         self.config = config
         self.events = events
         self.defaults = defaults
         self.notify = notify
-        self.surfaces = surfaces ?? PanelSurfaces()
+        let surfaces = surfaces ?? PanelSurfaces()
+        self.surfaces = surfaces
+        // Without one (tests, headless contexts) drags are never seen.
+        self.drags = drags ?? DragMonitor.inert(surfaces: surfaces)
         self.openPanelHandler = openPanel
     }
 
@@ -154,8 +160,10 @@ public struct WidgetContext {
         surfaces.showHUD(kind: kind, level: level, display: display)
     }
 
-    /// The drag detector reports a drag session (Task 5): while active, a panel opens its
-    /// drop zone when the cursor comes within `PanelLayout.dragReach` of its notch.
-    /// Also true while a panel itself receives a drag the detector missed.
+    /// A drag session (Task 5): while active, a panel opens its drop zone when the cursor
+    /// comes within `PanelLayout.dragReach` of its notch. Also true while a panel itself
+    /// receives a drag the monitor missed. Built-in widgets never call this: the drag
+    /// monitor (`drags`) is the session's one writer (R5); a listener asks for the session
+    /// by returning true from `DragMonitorListener.dragBegan`.
     public func dragSession(active: Bool) { surfaces.setDragSession(active: active) }
 }
