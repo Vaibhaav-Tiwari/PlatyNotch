@@ -166,13 +166,20 @@ final class WindowSnapper {
     init(driver: SnapWindowDriver = AXSnapWindowDriver(),
          displays: @escaping @MainActor () -> SnapDisplays = { SnapDisplays.system() },
          frontmost: @escaping @MainActor () -> pid_t? = { NSWorkspace.shared.frontmostApplication?.processIdentifier },
-         blocked: @escaping @MainActor () -> Bool = { NSApplication.shared.keyWindow is NotchPanel },
+         blocked: @escaping @MainActor () -> Bool = { WindowSnapper.panelIsKey(in: NSApplication.shared.windows) },
          ownPID: pid_t = ProcessInfo.processInfo.processIdentifier) {
         self.driver = driver
         self.displays = displays
         self.frontmost = frontmost
         self.blocked = blocked
         self.ownPID = ownPID
+    }
+
+    /// Whether one of `windows` is a notch panel with the keyboard. Scans the windows:
+    /// `NSApp.keyWindow` can be nil while PlatyNotch is inactive and the key window is a
+    /// nonactivating panel. `isKey` is a seam for tests (stub windows cannot be key).
+    static func panelIsKey(in windows: [NSWindow], isKey: (NSWindow) -> Bool = { $0.isKeyWindow }) -> Bool {
+        windows.contains { $0 is NotchPanel && isKey($0) }
     }
 
     /// Snaps the focused window to `target`. Nil (nothing done) while another snap runs,

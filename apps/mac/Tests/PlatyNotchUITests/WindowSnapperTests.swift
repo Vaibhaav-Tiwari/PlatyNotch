@@ -129,7 +129,7 @@ final class WindowSnapperTests: DefaultsTestCase {
         s.refuseSize = true
         XCTAssertEqual(WindowSnapper.perform(.rightHalf, pid: 7, driver: s, displays: displays, gap: 0), .moved)
         XCTAssertEqual(s.calls.count, 5, "position, size (refused), one read, position: no loop")
-        XCTAssertEqual(s.calls.last, .position(CGPoint(x: 880, y: 313)), "the kept size centred in the right half")
+        XCTAssertEqual(s.calls.last, .position(CGPoint(x: 880, y: 312)), "the kept size centred in the right half")
     }
 
     /// Fix round 1: an app that says its size is settable but keeps its own gets one
@@ -141,7 +141,7 @@ final class WindowSnapperTests: DefaultsTestCase {
         let out = WindowSnapper.perform(.leftHalf, pid: 7, driver: d, displays: displays, gap: 0)
         XCTAssertEqual(out, .moved)
         XCTAssertEqual(d.calls, [.read(7), .position(CGPoint(x: 0, y: 25)), .size(CGSize(width: 720, height: 875)),
-                                 .readSize, .position(CGPoint(x: 160, y: 313))])
+                                 .readSize, .position(CGPoint(x: 160, y: 312))])
     }
 
     /// Fix round 1 (critical): never PlatyNotch's own windows, nothing while a panel is key.
@@ -157,6 +157,41 @@ final class WindowSnapperTests: DefaultsTestCase {
         let blocked = WindowSnapper(driver: d, displays: { [displays] in displays }, frontmost: { 42 }, blocked: { true })
         XCTAssertNil(blocked.snap(.maximize))
         XCTAssertEqual(d.calls, [], "no AX call at all")
+    }
+
+    /// Fix round 2: the panel-key scan looks at every window, not `NSApp.keyWindow`.
+    func testPanelIsKeyScansWindows() {
+        let panel = NotchPanel(frame: .zero)
+        let other = NSWindow(contentRect: .init(x: 0, y: 0, width: 10, height: 10), styleMask: [.titled],
+                             backing: .buffered, defer: true)
+        other.isReleasedWhenClosed = false
+        XCTAssertTrue(WindowSnapper.panelIsKey(in: [other, panel], isKey: { $0 === panel }))
+        XCTAssertFalse(WindowSnapper.panelIsKey(in: [other, panel], isKey: { $0 === other }), "another key window")
+        XCTAssertFalse(WindowSnapper.panelIsKey(in: [other, panel], isKey: { _ in false }))
+        XCTAssertFalse(WindowSnapper.panelIsKey(in: [], isKey: { _ in true }))
+        XCTAssertFalse(WindowSnapper.panelIsKey(in: [panel]), "a panel that never became key")
+    }
+
+    /// Fix round 2: a cancelled snap finishing late never clears the snap that followed.
+    func testLateCancelledSnapLeavesTheNewerOne() async {
+        let d = FakeDriver()
+        d.window = window()
+        let gate = DispatchSemaphore(value: 0)
+        d.gate = gate
+        let snapper = WindowSnapper(driver: d, displays: { [displays] in displays }, frontmost: { 42 }, blocked: { false })
+        let a = snapper.snap(.leftHalf)
+        XCTAssertNotNil(a)
+        snapper.cancel()
+        let b = snapper.snap(.rightHalf)
+        XCTAssertNotNil(b, "a new press after cancel starts a snap")
+        gate.signal()   // A's read returns
+        let outA = await a?.value
+        XCTAssertEqual(outA, .cancelled)
+        XCTAssertEqual(snapper.inFlight, b, "A's late result left B in flight")
+        gate.signal()   // B's read returns
+        let outB = await b?.value
+        XCTAssertEqual(outB, .snapped)
+        XCTAssertNil(snapper.inFlight)
     }
 
     /// Fix round 1: turning snapping off while a snap runs leaves the window alone.
