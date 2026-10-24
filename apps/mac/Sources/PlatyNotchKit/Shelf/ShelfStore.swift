@@ -233,7 +233,7 @@ public final class ShelfStore {
     @discardableResult
     public func addOwnedData(_ data: Data, filename: String) -> ShelfItem? {
         guard let (id, folder) = reserveOwnedFolder() else { return nil }
-        let url = folder.appendingPathComponent(Self.safeName(filename))
+        let url = folder.appendingPathComponent(FileNames.safe(filename))
         do {
             try data.write(to: url, options: .withoutOverwriting)
             try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
@@ -277,19 +277,22 @@ public final class ShelfStore {
         save()
     }
 
-    /// Points a (missing) file item at `url` ("Locate…"); keeps its id, pin and place.
-    /// The chosen file is the user's, so the item is no longer owned: removing it never
-    /// deletes that file, and it does not expire. Only this item's old owned folder is
-    /// deleted (never another folder, such as a promise still being written).
+    /// Points a (missing) file item at `url` ("Locate…", or a file the user renamed with
+    /// Batch rename, R10); keeps its id, pin and place. A file elsewhere is the user's, so
+    /// the item is no longer owned: removing it never deletes that file, and it does not
+    /// expire. Only this item's old owned folder is deleted (never another folder, such as
+    /// a promise still being written). An owned item pointed at a file inside its own
+    /// folder (its copy, renamed) stays owned and keeps its expiry.
     public func relocate(_ id: UUID, to url: URL) {
         guard let i = items.firstIndex(where: { $0.id == id }), items[i].fileRef != nil else { return }
         let std = url.standardizedFileURL
         let old = items[i]
-        items[i].kind = .file(ShelfFileRef(path: std.path, bookmark: bookmarks.make(std)))
-        items[i].ownsFile = false
-        save()
         let folder = ownedFolder(id).resolvingSymlinksInPath().path + "/"
-        if !std.resolvingSymlinksInPath().path.hasPrefix(folder) { deleteOwned(old) }
+        let inOwnFolder = std.resolvingSymlinksInPath().path.hasPrefix(folder)
+        items[i].kind = .file(ShelfFileRef(path: std.path, bookmark: bookmarks.make(std)))
+        items[i].ownsFile = old.ownsFile && inOwnFolder
+        save()
+        if !inOwnFolder { deleteOwned(old) }
     }
 
     /// A folder from `reserveOwnedFolder` that never became an item (a promise that
@@ -625,14 +628,6 @@ public final class ShelfStore {
 
     private static func clean(_ text: String) -> String {
         String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(maxTextLength))
-    }
-
-    /// A single path component: no separators, no leading dots, never empty.
-    static func safeName(_ name: String) -> String {
-        let last = (name as NSString).lastPathComponent
-            .replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
-        let trimmed = String(last.drop { $0 == "." }).trimmingCharacters(in: .whitespaces)
-        return trimmed.isEmpty ? "Item" : String(trimmed.prefix(200))
     }
 
     @discardableResult

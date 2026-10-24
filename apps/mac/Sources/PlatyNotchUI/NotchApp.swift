@@ -225,6 +225,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .onboarding: onboarding.show()
             case .open: openPanel(tab: nil)
             case .plugin(let u): _ = plugins.first { $0.handle(url: u) }
+            case .shelfAdd, .timerStart, .clipboardOpen: break
             case nil: break
             }
         }
