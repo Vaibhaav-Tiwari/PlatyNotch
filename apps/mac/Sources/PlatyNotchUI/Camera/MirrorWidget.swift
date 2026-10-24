@@ -49,8 +49,15 @@ final class MirrorWidget: NotchWidget {
     @ObservationIgnored private let signals: MirrorStopSignals
     @ObservationIgnored private var feed: CameraFeed?
     @ObservationIgnored private(set) var running = false
-    /// Tiles on screen: id → whether the panel's content shows.
-    @ObservationIgnored private var tiles: [UUID: Bool] = [:]
+    /// Tiles on screen. The token is held weakly: a tile whose view went away without
+    /// `onDisappear` (its panel was torn down) no longer counts.
+    @ObservationIgnored private var tiles: [UUID: TileEntry] = [:]
+
+    private struct TileEntry {
+        weak var token: MirrorTileToken?
+        var visible: Bool
+        var alive: Bool { token != nil }
+    }
 
     init(access: CameraAccess = .system,
          grant: GrantStamp = CodeIdentity.stamp(key: Permissions.cameraGrantKey),
@@ -94,29 +101,45 @@ final class MirrorWidget: NotchWidget {
     // MARK: - Tile events
 
     /// A tile appeared; `visible`: the panel's content shows.
-    func tileAppeared(_ tile: UUID, visible: Bool) {
-        tiles[tile] = visible
+    func tileAppeared(_ tile: MirrorTileToken, visible: Bool) {
+        tiles = tiles.filter { $0.value.alive }
+        tiles[tile.id] = TileEntry(token: tile, visible: visible)
+        // A live mirror whose tile went without `onDisappear` (a rebuilt panel): stop it.
+        if live, let owner, tiles[owner]?.alive != true { end(.collapsed) }
         if running { readAuth() }
     }
 
+    /// The app rebuilt every panel (displays or appearance changed): the owner's tile is
+    /// gone, whether or not it said so.
+    func panelsRebuilt() {
+        tiles = [:]
+        end(.displaysChanged)
+    }
+
     /// The tile left the screen (the panel collapsed, or another tab).
-    func tileDisappeared(_ tile: UUID) {
-        tiles[tile] = nil
-        if owner == tile { end(.collapsed) }
+    func tileDisappeared(_ tile: MirrorTileToken) {
+        tiles[tile.id] = nil
+        if owner == tile.id { end(.collapsed) }
     }
 
     /// The panel's content around `tile` was hidden or shown again.
-    func tileVisibility(_ tile: UUID, visible: Bool) {
-        guard tiles[tile] != nil else { return }
-        tiles[tile] = visible
-        if !visible, owner == tile { end(.panelHidden) }
+    func tileVisibility(_ tile: MirrorTileToken, visible: Bool) {
+        guard tiles[tile.id] != nil else { return }
+        tiles[tile.id]?.visible = visible
+        if !visible, owner == tile.id { end(.panelHidden) }
+    }
+
+    /// `tile` is on screen with the panel's content showing.
+    private func shows(_ tile: MirrorTileToken) -> Bool {
+        guard let e = tiles[tile.id] else { return false }
+        return e.alive && e.visible
     }
 
     /// The tile's button: shows the mirror, or hides it while live. Asks for the camera
     /// first when macOS never asked (the only place the prompt can appear).
-    func buttonClicked(_ tile: UUID) async {
-        if live { end(.userHid); return }
-        guard running, !asking, tiles[tile] == true else { return }
+    func buttonClicked(_ tile: MirrorTileToken) async {
+        if live { end(.userHid); return }   // Hide works from any tile
+        guard running, !asking, shows(tile) else { return }
         readAuth()
         if auth == .notDetermined {
             asking = true
@@ -126,8 +149,8 @@ final class MirrorWidget: NotchWidget {
         }
         guard auth == .authorized else { return }
         // The answer may have come after the panel closed: never start unseen.
-        guard running, !live, tiles[tile] == true else { return }
-        begin(in: tile)
+        guard running, !live, shows(tile) else { return }
+        begin(in: tile.id)
     }
 
     func openCameraSettings() { Permissions.open(.camera) }
@@ -155,6 +178,7 @@ final class MirrorWidget: NotchWidget {
         guard live else { return }
         feed?.onLost = nil
         feed?.stop()
+        feed = nil   // the next showing gets a new session
         signals.end()
         live = false
         owner = nil
@@ -188,13 +212,13 @@ final class MirrorWidget: NotchWidget {
 /// The Today tile: the preview while live, else the button and what it will do.
 struct MirrorTileView: View {
     let widget: MirrorWidget
-    @State private var tileID = UUID()
+    @State private var token = MirrorTileToken()
     @Environment(\.panelTicking) private var shown
 
     var body: some View {
         let state = widget.tileState
         VStack(alignment: .leading, spacing: 6) {
-            if state == .live, widget.owner == tileID {
+            if state == .live, widget.owner == token.id {
                 MirrorPreview(session: widget.session)
                     .frame(height: 150)
                     .frame(maxWidth: .infinity)
@@ -219,18 +243,18 @@ struct MirrorTileView: View {
         }
         .padding(6)
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .onAppear { widget.tileAppeared(tileID, visible: shown) }
-        .onDisappear { widget.tileDisappeared(tileID) }
-        .onChange(of: shown) { widget.tileVisibility(tileID, visible: shown) }
+        .onAppear { widget.tileAppeared(token, visible: shown) }
+        .onDisappear { widget.tileDisappeared(token) }
+        .onChange(of: shown) { widget.tileVisibility(token, visible: shown) }
     }
 
     @ViewBuilder
     private func button(_ state: MirrorTileState) -> some View {
         if let title = state.buttonTitle {
-            let id = tileID
-            Button(title) { Task { await widget.buttonClicked(id) } }
+            let tile = token
+            Button(title) { Task { await widget.buttonClicked(tile) } }
                 .controlSize(.small)
-                .disabled(widget.asking || (state == .live && widget.owner != tileID))
+                .disabled(widget.asking)   // Hide works from any tile
         } else if case .denied = state {
             Button("Open Settings") { widget.openCameraSettings() }
                 .controlSize(.small)
@@ -250,6 +274,12 @@ struct MirrorSettingsView: View {
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
     }
+}
+
+/// One tile view's identity, held by the view (`@State`) and weakly by the widget.
+@MainActor
+final class MirrorTileToken {
+    let id = UUID()
 }
 
 /// Never touches a camera (smoke runs).

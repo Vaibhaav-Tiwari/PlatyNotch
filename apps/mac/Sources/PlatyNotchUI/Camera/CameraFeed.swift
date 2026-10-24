@@ -10,7 +10,8 @@ import SwiftUI
 protocol CameraFeed: AnyObject {
     /// What the preview layer shows; nil for fakes.
     var session: AVCaptureSession? { get }
-    /// Turns the camera on. False when there is no camera (nothing runs then).
+    /// Turns the camera on. False when there is no camera or its input could not be added
+    /// (nothing runs then). A session that then fails to run calls `onLost`.
     func start() -> Bool
     /// Turns the camera off at once (the camera light goes out).
     func stop()
@@ -31,9 +32,11 @@ final class SystemCameraFeed: CameraFeed {
     var session: AVCaptureSession? { box.session }
 
     func start() -> Bool {
-        guard let device = Self.camera() else { return false }
-        box.start(device: device)
+        guard let device = Self.camera(), box.configure(device: device) else { return false }
         watch(device)
+        box.run { [weak self] in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.onLost?() } }
+        }
         return true
     }
 
@@ -72,9 +75,11 @@ private final class SessionBox: @unchecked Sendable {
     let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "dev.platynotch.mirror.camera", qos: .userInitiated)
 
-    func start(device: AVCaptureDevice) {
+    /// Adds `device` as the only input, in order with earlier stops. False when it could
+    /// not be added (the session has no input then).
+    func configure(device: AVCaptureDevice) -> Bool {
         nonisolated(unsafe) let device = device
-        queue.async { [self] in
+        return queue.sync { [self] in
             session.beginConfiguration()
             if session.canSetSessionPreset(.medium) { session.sessionPreset = .medium }
             for input in session.inputs { session.removeInput(input) }
@@ -82,7 +87,16 @@ private final class SessionBox: @unchecked Sendable {
                 session.addInput(input)
             }
             session.commitConfiguration()
-            if !session.inputs.isEmpty { session.startRunning() }
+            return !session.inputs.isEmpty
+        }
+    }
+
+    /// Starts the configured session (blocking, so on `queue`); `failed` when it does not run.
+    func run(failed: @escaping @Sendable () -> Void) {
+        queue.async { [self] in
+            guard !session.inputs.isEmpty else { return }
+            session.startRunning()
+            if !session.isRunning { failed() }
         }
     }
 
@@ -104,22 +118,40 @@ protocol MirrorStopSignals: AnyObject {
     func end()
 }
 
-/// Screen lock (distributed `com.apple.screenIsLocked`), display sleep, system sleep and a
-/// switch to another user.
+/// Screen lock (distributed `com.apple.screenIsLocked`), display sleep, system sleep, a
+/// switch to another user and a display change.
 @MainActor
 final class SystemMirrorSignals: MirrorStopSignals {
     static let screenLocked = Notification.Name("com.apple.screenIsLocked")
+    private let distributed: NotificationCenter
+    private let workspace: NotificationCenter
+    private let app: NotificationCenter
     private var tokens: [(NotificationCenter, NSObjectProtocol)] = []
+
+    /// The centers are a seam (tests post to plain ones).
+    init(distributed: NotificationCenter = DistributedNotificationCenter.default(),
+         workspace: NotificationCenter = NSWorkspace.shared.notificationCenter,
+         app: NotificationCenter = .default) {
+        self.distributed = distributed
+        self.workspace = workspace
+        self.app = app
+    }
+
+    /// Which notification on which center stops the mirror, and why.
+    var events: [(NotificationCenter, Notification.Name, MirrorStopReason)] {
+        [
+            (distributed, Self.screenLocked, .screenLocked),
+            (workspace, NSWorkspace.screensDidSleepNotification, .displaySleep),
+            (workspace, NSWorkspace.willSleepNotification, .systemSleep),
+            (workspace, NSWorkspace.sessionDidResignActiveNotification, .sessionSwitched),
+            // Displays changed: the app rebuilds every panel, and a tile may go without
+            // `onDisappear`.
+            (app, NSApplication.didChangeScreenParametersNotification, .displaysChanged),
+        ]
+    }
 
     func begin(_ onStop: @escaping @MainActor (MirrorStopReason) -> Void) {
         end()
-        let ws = NSWorkspace.shared.notificationCenter
-        let events: [(NotificationCenter, Notification.Name, MirrorStopReason)] = [
-            (DistributedNotificationCenter.default(), Self.screenLocked, .screenLocked),
-            (ws, NSWorkspace.screensDidSleepNotification, .displaySleep),
-            (ws, NSWorkspace.willSleepNotification, .systemSleep),
-            (ws, NSWorkspace.sessionDidResignActiveNotification, .sessionSwitched),
-        ]
         for (center, name, reason) in events {
             let token = center.addObserver(forName: name, object: nil, queue: .main) { _ in
                 MainActor.assumeIsolated { onStop(reason) }
@@ -161,6 +193,7 @@ final class MirrorPreviewView: NSView {
         // connection is replaced (inputs are removed on every stop).
         preview.setAffineTransform(CGAffineTransform(scaleX: -1, y: 1))
         layer?.addSublayer(preview)
+        place()
         setAccessibilityElement(true)
         setAccessibilityRole(.image)
         setAccessibilityLabel("Camera mirror")
@@ -175,6 +208,16 @@ final class MirrorPreviewView: NSView {
 
     override func layout() {
         super.layout()
+        place()
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        place()
+    }
+
+    /// Bounds and position, not frame: the layer has a transform.
+    private func place() {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         preview.bounds = bounds

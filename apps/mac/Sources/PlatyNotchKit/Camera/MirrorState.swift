@@ -26,6 +26,8 @@ public enum MirrorStopReason: String, CaseIterable, Equatable, Sendable {
     case widgetOff
     /// The camera went away or failed while running.
     case cameraLost
+    /// Displays changed or the panels were rebuilt (a tile may go without `onDisappear`).
+    case displaysChanged
 }
 
 /// What the mirror tile shows (pure; `MirrorWidget` feeds it).

@@ -354,6 +354,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Panel state carries over per display (falling back to the old primary panel), so a
     /// rebuild neither collapses an open panel nor replays the last notice.
     private func rebuildControllers() {
+        // The panels' views go now: a live camera mirror stops with them (R17).
+        (widgets.widget(MirrorWidget.widgetID) as? MirrorWidget)?.panelsRebuilt()
         appearance = AppearanceStore.load(from: .standard)
         var carry: [CGDirectDisplayID: PanelCarryOver] = [:]
         for c in controllers {
