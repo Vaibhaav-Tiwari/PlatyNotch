@@ -104,9 +104,12 @@ final class SystemBasketSystem: BasketSystem {
         self.appearance = appearance
     }
 
-    func screens() -> [BasketScreen] {
-        let width = appearance().pillWidth
-        return NSScreen.screens.map { s in
+    func screens() -> [BasketScreen] { Self.screens(pillWidth: appearance().pillWidth) }
+
+    /// Every display with its notch panel's region, for any floating window that must stay
+    /// clear of it (baskets, Batch rename).
+    static func screens(pillWidth width: AppearanceSettings.PillWidth) -> [BasketScreen] {
+        NSScreen.screens.map { s in
             let layout = PanelLayout(screenFrame: s.frame, visibleFrame: s.visibleFrame,
                                      auxLeft: s.auxiliaryTopLeftArea, auxRight: s.auxiliaryTopRightArea, pillWidth: width)
             return BasketScreen(visibleFrame: s.visibleFrame, layout: layout, displayID: s.displayID)

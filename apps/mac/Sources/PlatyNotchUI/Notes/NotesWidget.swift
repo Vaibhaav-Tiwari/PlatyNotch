@@ -657,7 +657,7 @@ struct NotesSettings: View {
                 Button(widget.options.vaultDenied ? "Try Again" : "Turn On Again…") { widget.turnOnAgain() }
             }
             Button(widget.options.vaultPath == nil ? "Choose Vault…" : "Change…") {
-                if let url = VaultAccess.chooseFolder() { widget.chooseVault(url) }
+                VaultAccess.chooseFolder { [widget] url in widget.chooseVault(url) }
             }
             if widget.options.vaultPath != nil {
                 Button("Forget") { widget.forgetVault() }

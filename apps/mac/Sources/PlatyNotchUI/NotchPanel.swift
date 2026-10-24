@@ -45,6 +45,14 @@ final class NotchPanel: NSPanel {
     override var canBecomeKey: Bool { allowsKey && clickedIn }
     override var canBecomeMain: Bool { false }
 
+    /// Approvals win over any modal session (C1): if a modal panel is ever up (an open
+    /// panel in Settings, a v0.1 picker), the approval card still takes clicks and keys,
+    /// so a request never times out behind it. Fixed: a setter cannot turn it off.
+    override var worksWhenModal: Bool {
+        get { true }
+        set {}
+    }
+
     /// A left click; right and other buttons never hand the panel the keyboard.
     static func isPress(_ type: NSEvent.EventType) -> Bool { type == .leftMouseDown }
 
