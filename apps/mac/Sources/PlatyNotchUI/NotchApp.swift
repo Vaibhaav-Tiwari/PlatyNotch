@@ -356,6 +356,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !options.smoke, !options.smokeSettings, !widgets.isEnabled(ClipboardWidget.widgetID) {
             ClipboardWidget.expireWhileOff()
         }
+        // The same for baskets: a pinned basket's copies past 7 days go while Baskets is off.
+        if !options.smoke, !options.smokeSettings, !widgets.isEnabled(BasketsWidget.widgetID) {
+            BasketStore.expireOnDisk(directory: CorePaths.baskets())
+        }
     }
 
     // MARK: - Panels

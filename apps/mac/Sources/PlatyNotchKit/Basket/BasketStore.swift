@@ -339,6 +339,23 @@ public final class BasketStore {
         for e in entries { e.store.expireOwned(olderThan: ShelfStore.ownedLifetime, now: now()) }
     }
 
+    /// At most this many basket folders are read by `expireOnDisk` (kept baskets are at
+    /// most `maxBaskets`; the rest is room for recovery leftovers).
+    public static let expireFolderLimit = 4 * maxBaskets
+
+    /// The launch cleanup while Baskets is off (final review I4), the shelf's rule: each
+    /// basket folder's index (`<directory>/<uuid>/items.json`) goes through
+    /// `ShelfStore.expireOnDisk`, so owned copies past 7 days go even in a pinned basket
+    /// that is not shown. One bounded pass (`expireFolderLimit` folders), no timers; a
+    /// folder with no index or a damaged one is left as it is, and nothing else is swept.
+    public static func expireOnDisk(directory: URL, now: Date = Date()) {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        let folders = names.filter { UUID(uuidString: $0) != nil }.sorted().prefix(expireFolderLimit)
+        for name in folders {
+            ShelfStore.expireOnDisk(directory: directory.appendingPathComponent(name, isDirectory: true), now: now)
+        }
+    }
+
     /// When the next owned copy in any basket expires.
     public func nextExpiry() -> Date? {
         entries.compactMap { $0.store.nextExpiry(olderThan: ShelfStore.ownedLifetime) }.min()
