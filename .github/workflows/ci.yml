@@ -45,6 +45,32 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: '26.3'
+      # DIAGNOSTIC (temporary): find where the test process aborts.
+      - name: diag env
+        working-directory: apps/mac
+        run: |
+          sw_vers; uname -a; swift --version; xcodebuild -version
+          ls -la /usr/lib/swift/libswift_Concurrency.dylib || true
+      - name: diag build tests
+        working-directory: apps/mac
+        run: swift build --build-tests
+      - name: diag filter DragMonitorTests
+        working-directory: apps/mac
+        continue-on-error: true
+        run: swift test --skip-build --filter DragMonitorTests 2>&1 | tail -60
+      - name: diag lldb DragMonitorTests
+        working-directory: apps/mac
+        continue-on-error: true
+        run: |
+          B=$(find .build/debug -maxdepth 1 -name '*.xctest' | head -1)
+          echo "bundle: $B"
+          lldb --batch -o 'settings set target.process.stop-on-exec false' -o run -k 'bt all' -k 'quit 1' -- "$(xcrun --find xctest)" -XCTest PlatyNotchUITests.DragMonitorTests "$B" 2>&1 | tail -200
+      - name: diag crash reports
+        if: always()
+        run: |
+          for f in $(ls -t ~/Library/Logs/DiagnosticReports/*.ips /Library/Logs/DiagnosticReports/*.ips 2>/dev/null | head -3); do
+            echo "=== $f"; head -c 60000 "$f"; echo
+          done
       - name: swift test
         working-directory: apps/mac
         run: swift test
