@@ -105,7 +105,11 @@ enum MailText {
 /// newest `MailInbox.shownCount` from those, and then reads Message-ID, sender, subject
 /// and date of each of those few by its id (`byId`), so a row never mixes two messages and
 /// a large unread inbox costs two bulk requests, not one per field. A message gone
-/// meanwhile is skipped (at most `MailInbox.shownCount` more are tried). Sender and
+/// meanwhile (-1728) is skipped (at most `MailInbox.shownCount` more are tried); any other
+/// error ends the script so `MailScriptOutcome.classify` maps it. When unread messages
+/// exist but none was found by `byId` (it may not reach the unified inbox), each is looked
+/// up once more with `whose({id:})`; if that finds none either, the answer is "changed"
+/// (an error in the tile, never an empty list). Sender and
 /// subject are cut to `fieldLimit` and the id to `idLimit` characters so one huge message
 /// cannot overflow the answer. It never activates, opens, changes or marks anything.
 public enum MailScript {
@@ -133,14 +137,30 @@ public enum MailScript {
       var order = [];
       for (var i = 0; i < n; i++) { order.push([dates[i] ? dates[i].getTime() : 0, i]); }
       order.sort(function (a, b) { return b[0] - a[0]; });
-      var latest = [];
-      for (var k = 0; k < order.length && k < \(MailInbox.shownCount * 2) && latest.length < \(MailInbox.shownCount); k++) {
-        try {
-          var m = inbox.messages.byId(keys[order[k][1]]);
-          var d = m.dateReceived();
-          latest.push({id: cut(m.messageId(), \(idLimit)), sender: cut(m.sender(), \(fieldLimit)),
-                       subject: cut(m.subject(), \(fieldLimit)), received: d ? d.getTime() / 1000 : 0});
-        } catch (e) {}
+      function row(m) {
+        var d = m.dateReceived();
+        return {id: cut(m.messageId(), \(idLimit)), sender: cut(m.sender(), \(fieldLimit)),
+                subject: cut(m.subject(), \(fieldLimit)), received: d ? d.getTime() / 1000 : 0};
+      }
+      // Only "no such message" (-1728) is skipped; any other error (Mail quit, timeout,
+      // not allowed) ends the script with its number for the caller.
+      function each(find) {
+        var rows = [];
+        for (var k = 0; k < top.length && rows.length < \(MailInbox.shownCount); k++) {
+          try {
+            var m = find(top[k]);
+            if (m) { rows.push(row(m)); }
+          } catch (e) { if (e.errorNumber !== -1728) { throw e; } }
+        }
+        return rows;
+      }
+      var top = [];
+      for (var t = 0; t < order.length && t < \(MailInbox.shownCount * 2); t++) { top.push(keys[order[t][1]]); }
+      var latest = each(function (key) { return inbox.messages.byId(key); });
+      if (n > 0 && latest.length === 0) {
+        // byId may not reach messages through the unified inbox: look each up by query.
+        latest = each(function (key) { return inbox.messages.whose({id: key})()[0]; });
+        if (latest.length === 0) { return JSON.stringify({running: true, changed: true}); }
       }
       return JSON.stringify({running: true, unread: unread, latest: latest});
     }
