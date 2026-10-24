@@ -1,4 +1,5 @@
 import Foundation
+import zlib
 
 /// Little-endian bytes, appended field by field (no long `+` chains for the type checker).
 struct Bytes {
@@ -32,6 +33,14 @@ struct ZipFixture {
         var mode: UInt32?
         /// The made-by host byte (3 Unix, 0 DOS, 19 OS X); default 3 with a mode, else 0.
         var host: UInt16?
+        /// 8: `data` is raw-deflated into the archive (else stored).
+        var method: UInt16 = 0
+        /// The bytes written as the entry's data instead (e.g. a cut-short stream).
+        var payload: Data?
+        /// Extra general-purpose flags (bit 0: encrypted).
+        var flags: UInt16 = 0
+        /// A CRC-32 to declare instead of the real one.
+        var crc: UInt32?
 
         init(_ name: String, _ data: Data = Data("x".utf8)) {
             self.name = name
@@ -48,13 +57,15 @@ struct ZipFixture {
         var listedCount = 0
         for (index, e) in entries.enumerated() {
             let offset = UInt32(file.count)
-            let size = UInt64(e.data.count)
-            let declared = e.centralSize ?? size
+            let stored = e.payload ?? (e.method == 8 ? deflate(e.data) : e.data)
+            let size = UInt64(stored.count)
+            let declared = e.centralSize ?? UInt64(e.data.count)
+            let crc = e.crc ?? crc32(e.data)
             let localName = Data((e.localName ?? e.name).utf8)
-            let flags: UInt16 = e.descriptor == .none ? 0 : 8
+            let flags: UInt16 = (e.descriptor == .none ? 0 : 8) | e.flags
             var localExtra = Bytes()
             var localC = e.localSize ?? UInt32(size)
-            var localU = localC
+            var localU = e.localSize ?? UInt32(truncatingIfNeeded: declared)
             if e.zip64 {
                 localC = 0xFFFF_FFFF
                 localU = 0xFFFF_FFFF
@@ -63,11 +74,12 @@ struct ZipFixture {
                 localC = 0
                 localU = 0
             }
-            file.u32(0x0403_4B50); file.u16(20); file.u16(flags); file.u16(0); file.u32(0); file.u32(0)
+            file.u32(0x0403_4B50); file.u16(20); file.u16(flags); file.u16(e.method); file.u32(0)
+            file.u32(e.descriptor == .none ? crc : 0)
             file.u32(localC); file.u32(localU); file.u16(UInt16(localName.count)); file.u16(UInt16(localExtra.count))
-            file.raw(localName); file.raw(localExtra.data); file.raw(e.data)
+            file.raw(localName); file.raw(localExtra.data); file.raw(stored)
             if e.descriptor == .matching {
-                file.u32(0x0807_4B50); file.u32(0); file.u32(UInt32(size)); file.u32(UInt32(declared))
+                file.u32(0x0807_4B50); file.u32(crc); file.u32(UInt32(size)); file.u32(UInt32(declared))
             }
             let name = Data(e.name.utf8)
             var extra = Bytes()
@@ -81,8 +93,8 @@ struct ZipFixture {
             guard listed?.contains(index) ?? true else { continue }
             listedCount += 1
             let made: UInt16 = (e.host ?? (e.mode == nil ? 0 : 3)) << 8 | 20
-            central.u32(0x0201_4B50); central.u16(made); central.u16(20); central.u16(flags); central.u16(0); central.u32(0)
-            central.u32(0); central.u32(c); central.u32(u); central.u16(UInt16(name.count)); central.u16(UInt16(extra.count))
+            central.u32(0x0201_4B50); central.u16(made); central.u16(20); central.u16(flags); central.u16(e.method); central.u32(0)
+            central.u32(crc); central.u32(c); central.u32(u); central.u16(UInt16(name.count)); central.u16(UInt16(extra.count))
             central.u16(0); central.u16(0); central.u16(0); central.u32((e.mode ?? 0) << 16); central.u32(offset)
             central.raw(name); central.raw(extra.data)
         }
@@ -91,5 +103,29 @@ struct ZipFixture {
         file.u32(0x0605_4B50); file.u16(0); file.u16(0); file.u16(UInt16(listedCount)); file.u16(UInt16(listedCount))
         file.u32(UInt32(central.count)); file.u32(dirOffset); file.u16(0)
         return file.data
+    }
+
+    static func crc32(_ data: Data) -> UInt32 {
+        UInt32(data.withUnsafeBytes { zlib.crc32(0, $0.bindMemory(to: Bytef.self).baseAddress, uInt($0.count)) })
+    }
+
+    /// Raw deflate (windowBits -15), as zip entries hold it.
+    static func deflate(_ data: Data) -> Data {
+        var stream = z_stream()
+        deflateInit2_(&stream, 9, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size))
+        defer { deflateEnd(&stream) }
+        var input = data
+        var out = [UInt8](repeating: 0, count: Int(deflateBound(&stream, uLong(data.count))) + 64)
+        let produced: Int = input.withUnsafeMutableBytes { inBuf in
+            out.withUnsafeMutableBufferPointer { outBuf in
+                stream.next_in = inBuf.bindMemory(to: Bytef.self).baseAddress
+                stream.avail_in = uInt(inBuf.count)
+                stream.next_out = outBuf.baseAddress
+                stream.avail_out = uInt(outBuf.count)
+                _ = zlib.deflate(&stream, Z_FINISH)
+                return outBuf.count - Int(stream.avail_out)
+            }
+        }
+        return Data(out[0..<produced])
     }
 }
