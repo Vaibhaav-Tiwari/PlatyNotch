@@ -178,12 +178,6 @@ final class FileActionsEngineTests: DefaultsTestCase {
         XCTAssertEqual(try SystemFileActions.uprightImage(png).width, 6000, "full size elsewhere")
     }
 
-    func testUnzipWatchLimit() {
-        XCTAssertEqual(SystemFileActions.watchLimit(declared: 1_000, entries: 2), 1_000 + 16_384 + (1 << 20))
-        XCTAssertEqual(SystemFileActions.watchLimit(declared: .max - 5, entries: 10), .max, "saturates")
-        XCTAssertEqual(SystemFileActions.watchLimit(declared: 0, entries: .max), .max)
-    }
-
     // MARK: - Audio and video (AVFoundation)
 
     func testAudioToM4AAndBackToWAV() async throws {
@@ -263,7 +257,7 @@ final class FileActionsEngineTests: DefaultsTestCase {
     }
 
     /// Fix round 2: an entry the directory does not list (ditto would extract it) is
-    /// refused before ditto runs. The reviewer's B3 archive (Kit fixtures).
+    /// refused before anything runs. The reviewer's B3 archive (Kit fixtures).
     func testUnzipRefusesAHiddenEntry() async throws {
         let b3 = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("PlatyNotchKitTests/Fixtures/zips/B3_hidden_slip.zip")
@@ -279,26 +273,43 @@ final class FileActionsEngineTests: DefaultsTestCase {
         XCTAssertEqual(try fm.contentsOfDirectory(atPath: out.path), [])
     }
 
-    /// Fix round 2: an archive whose honest headers inflate past what they declare is
-    /// stopped by the live watch and deleted. A stand-in ditto writes 4 MB for 9 bytes.
-    func testUnzipStopsWhatWritesMoreThanDeclared() async throws {
-        let fake = root.appendingPathComponent("greedy-ditto")
-        try "#!/bin/sh\nfor a; do last=$a; done\n/bin/dd if=/dev/zero of=\"$last/big\" bs=1048576 count=4 2>/dev/null\nexec /bin/sleep 30\n"
-            .write(to: fake, atomically: true, encoding: .utf8)
-        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fake.path)
-        var greedy = SystemFileActions()
-        greedy.ditto = ProcessRunner(executableURL: fake, stopsOnCancel: true)
-        let zip = try Fixtures.storedZip(at: root.appendingPathComponent("small.zip"), name: "a.txt", contents: Data("123456789".utf8))
+    /// Fix round 3: honest headers, a lying stream (declares 9 bytes, inflates to 200 MB:
+    /// the reviewer's D). PlatyNotch's extractor stops at the declared size; nothing is left.
+    func testUnzipStopsAStreamThatInflatesPastItsSize() async throws {
+        let d = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("PlatyNotchKitTests/Fixtures/zips/D_deflate_decl9_real200M.zip")
         let out = try folder()
         let started = Date()
         do {
-            _ = try await greedy.perform(.unzip, sources: [zip], into: out)
+            _ = try await engine.perform(.unzip, sources: [d], into: out)
             XCTFail("kept what it wrote")
         } catch {
-            XCTAssertEqual(error as? FileActionError, .overDeclared)
+            XCTAssertEqual(error as? FileActionError, .damagedArchive)
         }
-        XCTAssertLessThan(Date().timeIntervalSince(started), 5, "stopped by the watch, not the 30 s sleep")
-        XCTAssertEqual(try fm.contentsOfDirectory(atPath: out.path), [], "what it wrote is deleted")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2, "stopped at once")
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: out.path), [], "nothing left")
+    }
+
+    /// Cancelling an unzip stops the extractor between chunks and deletes what it wrote.
+    func testCancelledUnzipLeavesNothing() async throws {
+        let src = root.appendingPathComponent("big.bin")
+        var bytes = [UInt8](repeating: 0, count: 64 << 20)
+        for i in stride(from: 0, to: bytes.count, by: 4096) { bytes[i] = UInt8(truncatingIfNeeded: i >> 12) }
+        try Data(bytes).write(to: src)
+        guard case .file(let zip) = try await engine.perform(.zip, sources: [src], into: try folder("z")) else {
+            return XCTFail("no zip")
+        }
+        let out = try folder("u")
+        let task = Task { [engine] in try await engine.perform(.unzip, sources: [zip], into: out) }
+        try await Task.sleep(for: .milliseconds(20))
+        task.cancel()
+        do {
+            _ = try await task.value
+            // A fast machine may finish 64 MB first; then the result is whole.
+        } catch {
+            XCTAssertEqual(error as? FileActionError, .cancelled)
+            XCTAssertEqual(try fm.contentsOfDirectory(atPath: out.path), [], "what it wrote is deleted")
+        }
     }
 
     /// Fix round 2: not enough free space: refused before anything is written.

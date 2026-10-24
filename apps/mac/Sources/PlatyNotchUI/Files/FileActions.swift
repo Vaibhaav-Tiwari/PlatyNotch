@@ -61,8 +61,8 @@ enum FileActionError: Error, Equatable, LocalizedError {
     case unsupported
     case tooLarge(UInt64)
     case unsafeArchive
-    /// It wrote more than it declared (stopped, and what it wrote deleted).
-    case overDeclared
+    /// Its data does not match what it declares (sizes, stream end, CRC), or it is cut short.
+    case damagedArchive
     case noSubject
     case noText
     /// Vision cannot do this on this Mac (no subject lifting, no text recognizer).
@@ -78,7 +78,7 @@ enum FileActionError: Error, Equatable, LocalizedError {
         case .unsupported: "this Mac can't make that kind of file"
         case .tooLarge(let cap): "it would unpack to more than \(ByteCountFormatter.string(fromByteCount: Int64(cap), countStyle: .binary))"
         case .unsafeArchive: "the archive is damaged or unsafe (its entries would land outside its folder, or its headers disagree)"
-        case .overDeclared: "it unpacked to more than it said it holds"
+        case .damagedArchive: "the archive is damaged (its contents don't match what it declares)"
         case .noSubject: "no subject was found"
         case .noText: "no text was found"
         case .unavailable: "this Mac can't do that"
@@ -113,8 +113,6 @@ struct SystemFileActions: FileActionPerforming {
     static let maxPDFImages = 100
     /// Unzip keeps this much free space beyond what the archive declares.
     static let freeSpaceMargin: UInt64 = 64 << 20
-    /// How often an unzip checks what it has written.
-    static let unzipWatchInterval: Duration = .milliseconds(250)
 
     var unzipCap: UInt64 = defaultUnzipCap
     var ditto = ProcessRunner(executableURL: URL(fileURLWithPath: "/usr/bin/ditto"), stopsOnCancel: true)
@@ -151,7 +149,7 @@ struct SystemFileActions: FileActionPerforming {
     /// work checks `Task.isCancelled` between steps), and a cancelled run always throws
     /// `cancelled`, even when the work had already finished.
     private static func detached<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
-        try Task.checkCancellation()
+        if Task.isCancelled { throw FileActionError.cancelled }
         let task = Task.detached(priority: .userInitiated) { try work() }
         let value = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
         if Task.isCancelled { throw FileActionError.cancelled }
@@ -334,11 +332,11 @@ struct SystemFileActions: FileActionPerforming {
         return final
     }
 
-    /// Into `<folder>/<archive name>/`. Refused when the archive declares more than
-    /// `unzipCap` bytes, fails `ZipInspector`'s checks (zip slip, local headers that
-    /// disagree with the directory, unreadable data descriptors, unsafe links), or would
-    /// not fit on the disk. While ditto runs, what it has written is checked every 250 ms
-    /// against the declared total plus a small slack: past that, it is stopped and deleted.
+    /// Into `<folder>/<archive name>/`, with PlatyNotch's own extractor (`ZipExtractor`),
+    /// never ditto: only entries the checked directory lists, each exactly its declared
+    /// bytes, size and CRC. Refused first when the archive declares more than `unzipCap`,
+    /// fails `ZipInspector` (hidden or mismatched entries, unsafe names or links), or would
+    /// not fit on the disk. On any failure or cancel, what it wrote is deleted.
     func unzip(_ src: URL, into folder: URL) async throws -> URL {
         guard let summary = ZipInspector.summary(of: src) else { throw FileActionError.unreadable }
         guard summary.problem == nil else { throw FileActionError.unsafeArchive }
@@ -348,59 +346,41 @@ struct SystemFileActions: FileActionPerforming {
         if let free = freeSpaceAt(folder), needed.overflow || free < needed.partialValue {
             throw FileActionError.notEnoughSpace
         }
-        let limit = Self.watchLimit(declared: summary.uncompressedBytes, entries: summary.entries)
         let dest = folder.appendingPathComponent(FileNames.split(FileNames.safe(src.lastPathComponent)).base)
-        try? FileManager.default.createDirectory(at: dest, withIntermediateDirectories: false,
-                                                 attributes: [.posixPermissions: 0o700])
-        let ditto = self.ditto
-        let run = Task { await ditto.run(["-x", "-k", src.path, dest.path], timeout: Self.archiveTimeout) }
-        let watch = Task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: Self.unzipWatchInterval)
-                if Self.size(of: dest) > limit {
-                    run.cancel()
-                    return true
-                }
-            }
-            return false
+        do {
+            try FileManager.default.createDirectory(at: dest, withIntermediateDirectories: false,
+                                                    attributes: [.posixPermissions: 0o700])
+        } catch {
+            throw FileActionError.failed("the folder could not be made")
         }
-        let r = await withTaskCancellationHandler { await run.value } onCancel: { run.cancel() }
-        watch.cancel()
-        let overLimit = await watch.value || Self.size(of: dest) > limit
-        guard r.status == 0, !r.cancelled, !r.timedOut, !overLimit, !Task.isCancelled else {
+        do {
+            _ = try await Self.detached { try ZipExtractor.extract(src, into: dest, cap: cap, isCancelled: { Task.isCancelled }) }
+        } catch {
             try? FileManager.default.removeItem(at: dest)
-            if overLimit { throw FileActionError.overDeclared }
-            if r.cancelled || Task.isCancelled { throw FileActionError.cancelled }
-            throw FileActionError.failed(r.timedOut ? "it took longer than 30 minutes" : Self.firstLine(r.combined, or: "ditto failed"))
+            throw Self.unzipError(error, cap: cap)
         }
         return dest
     }
 
-    /// What an unzip may put on disk: the declared bytes, plus a block per entry (files
-    /// are stored in whole blocks, and ditto may add folders and attributes) and 1 MiB.
-    static func watchLimit(declared: UInt64, entries: Int) -> UInt64 {
-        let perEntry = UInt64(max(entries, 0)).multipliedReportingOverflow(by: 8_192)
-        guard !perEntry.overflow else { return .max }
-        let a = declared.addingReportingOverflow(perEntry.partialValue)
-        guard !a.overflow else { return .max }
-        let b = a.partialValue.addingReportingOverflow(1 << 20)
-        return b.overflow ? .max : b.partialValue
+    static func unzipError(_ error: Error, cap: UInt64) -> FileActionError {
+        if let e = error as? FileActionError { return e }
+        if error is CancellationError { return .cancelled }
+        guard let failure = error as? ZipExtractor.Failure else { return .failed(error.localizedDescription) }
+        switch failure {
+        case .unreadable: return .unreadable
+        case .unsafe, .unsafeName: return .unsafeArchive
+        case .encrypted: return .failed("it is encrypted")
+        case .unsupportedMethod: return .failed("it uses a kind of compression PlatyNotch can't unpack")
+        case .tooLarge: return .tooLarge(cap)
+        case .damaged, .crcMismatch: return .damagedArchive
+        case .cancelled: return .cancelled
+        case .writeFailed: return .failed("the files could not be written")
+        }
     }
 
     static func freeSpace(at url: URL) -> UInt64? {
         let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
         return values?.volumeAvailableCapacityForImportantUsage.map { UInt64(max($0, 0)) }
-    }
-
-    /// Bytes on disk under `url` (never follows links).
-    static func size(of url: URL) -> UInt64 {
-        let keys: [URLResourceKey] = [.totalFileAllocatedSizeKey, .isSymbolicLinkKey]
-        guard let walker = FileManager.default.enumerator(at: url, includingPropertiesForKeys: keys) else { return 0 }
-        var total: UInt64 = 0
-        for case let file as URL in walker {
-            total += UInt64((try? file.resourceValues(forKeys: Set(keys)))?.totalFileAllocatedSize ?? 0)
-        }
-        return total
     }
 
     private static func firstLine(_ text: String, or fallback: String) -> String {
