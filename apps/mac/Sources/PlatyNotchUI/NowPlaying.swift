@@ -28,8 +28,15 @@ public final class NowPlaying {
     public private(set) var appName: String?
     /// The default output device's name, read while the tile is on screen.
     public private(set) var outputDevice: String?
-    /// Music's favourite state after the user toggled it (nil: not known).
+    /// Music's favourite state: read when the track changes (only when Music already allows
+    /// PlatyNotch, so never a prompt) and after a toggle; nil while not known.
     public private(set) var liked: Bool?
+    /// Why the last heart click did not work (cleared by the next track or after a while).
+    public private(set) var likeMessage: String?
+    /// Buttons for `likeMessage` when Music refused PlatyNotch (Automation).
+    private(set) var likeHelp: PermissionHelp?
+    /// A heart click is waiting for Music's answer.
+    public private(set) var likeBusy = false
 
     public var title: String? { info?.title }
     public var artist: String? { info?.artist }
@@ -55,6 +62,12 @@ public final class NowPlaying {
     /// Perf runs only (`LaunchOptions.fakeNowPlaying`): `start` reports a fake track as
     /// playing and reads no player.
     @ObservationIgnored public var fakePlaying = false
+    /// The Apple Events behind the heart (tests pass their own).
+    @ObservationIgnored var music: MusicScripting = .system
+    /// Which build Music last answered, so a refusal after a rebuild is explained.
+    @ObservationIgnored var grants = AutomationGrants(defaults: .standard, identity: { CodeIdentity.current })
+    @ObservationIgnored private var likeMessageTask: Task<Void, Never>?
+    static let likeMessageSeconds: Double = 30
 
     public init() {}
 
@@ -120,18 +133,68 @@ public final class NowPlaying {
     }
 
     /// Toggles the current track's favourite in Apple Music (asks for Automation the
-    /// first time, on this click).
+    /// first time, on this click). The heart follows Music's answer; a refusal or failure
+    /// says why under the controls instead of doing nothing.
     public func toggleLike() {
-        guard canLike, AppleScriptPlayer.music.isRunning else { return }
+        guard canLike, !likeBusy else { return }
+        guard music.isRunning() else {
+            showLikeMessage("Music is not running.")
+            return
+        }
+        likeBusy = true
         let title = info?.title
+        let toggle = music.toggle
         AppleScriptPlayer.queue.async {
-            let result = AppleScriptPlayer.music.toggleFavourite()
+            let outcome = toggle()
+            Task { @MainActor [weak self] in self?.likeFinished(outcome, title: title) }
+        }
+    }
+
+    private func likeFinished(_ outcome: MusicFavourite.Outcome, title: String?) {
+        likeBusy = false
+        guard info?.title == title else { return }
+        if case .state(let on) = outcome {
+            liked = on
+            grants.noteAccepted(AppleScriptPlayer.music.rawValue)
+            showLikeMessage(nil)
+            return
+        }
+        let history = grants.history(AppleScriptPlayer.music.rawValue)
+        let help: PermissionHelp? = outcome == .notAllowed ? .automation(reset: history != .thisBuild) : nil
+        showLikeMessage(MusicFavourite.message(outcome, history: history), help: help)
+    }
+
+    private func showLikeMessage(_ text: String?, help: PermissionHelp? = nil) {
+        likeMessage = text
+        likeHelp = text == nil ? nil : help
+        likeMessageTask?.cancel()
+        guard text != nil else { return }
+        likeMessageTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Self.likeMessageSeconds))
+            guard !Task.isCancelled else { return }
+            self?.likeMessage = nil
+            self?.likeHelp = nil
+        }
+    }
+
+    /// The new track's favourite state, only when Music already allows PlatyNotch (checked
+    /// without asking), so reading it never shows a prompt.
+    private func readLiked() {
+        guard canLike, music.isRunning() else { return }
+        let title = info?.title
+        let music = self.music
+        AppleScriptPlayer.queue.async {
+            guard music.allowedWithoutAsking() else { return }
+            let outcome = music.read()
             Task { @MainActor [weak self] in
-                guard let self, self.info?.title == title else { return }
-                self.liked = result
+                guard let self, self.info?.title == title, !self.likeBusy, case .state(let on) = outcome else { return }
+                self.liked = on
             }
         }
     }
+
+    /// Tests: feed a report as if the reader had sent it.
+    func debugApply(_ new: NowPlayingInfo?) { apply(new) }
 
     // MARK: - Adapter
 
@@ -186,8 +249,13 @@ public final class NowPlaying {
             tintArtwork(new?.artwork)
         }
         if new?.appBundleIdentifier != info?.appBundleIdentifier { lookUpApp(new?.appBundleIdentifier) }
-        if new?.title != info?.title || new?.bundleIdentifier != info?.bundleIdentifier { liked = nil }
+        let trackChanged = new?.title != info?.title || new?.bundleIdentifier != info?.bundleIdentifier
+        if trackChanged {
+            liked = nil
+            showLikeMessage(nil)
+        }
         info = new
+        if trackChanged { readLiked() }
         if isPlaying != wasPlaying { onPlayingChange?(isPlaying) }
         if viewers > 0 { refreshOutputDevice() }
     }
@@ -482,23 +550,41 @@ enum AppleScriptPlayer: String, CaseIterable, Sendable {
     }
 
     /// Music only: flips the current track's favourite (`favorited` on current Music,
-    /// `loved` before it) and returns the new state; nil when neither works.
-    nonisolated func toggleFavourite() -> Bool? {
-        guard self == .music else { return nil }
-        for property in ["favorited", "loved"] {
-            let out = Self.execute("""
+    /// `loved` before it) and returns the new state, or why it could not.
+    nonisolated func toggleFavourite() -> MusicFavourite.Outcome {
+        favourite { property in
+            """
+            set v to not (\(property) of current track)
+            set \(property) of current track to v
+            return v as text
+            """
+        }
+    }
+
+    /// Music only: the current track's favourite state.
+    nonisolated func readFavourite() -> MusicFavourite.Outcome {
+        favourite { property in "return (\(property) of current track) as text" }
+    }
+
+    /// Runs `body` (given the property name) inside Music, trying `loved` only when this
+    /// Music does not know `favorited`.
+    private nonisolated func favourite(_ body: (String) -> String) -> MusicFavourite.Outcome {
+        guard self == .music else { return .failed(0) }
+        var last = MusicFavourite.Outcome.unknownTerm
+        for property in MusicFavourite.properties {
+            let (out, code) = Self.executeDetailed("""
             if application id "\(rawValue)" is not running then return ""
             with timeout of 2 seconds
                 tell application id "\(rawValue)"
-                    set v to not (\(property) of current track)
-                    set \(property) of current track to v
-                    return v as text
+                    if player state is stopped then return ""
+                    \(body(property))
                 end tell
             end timeout
             """)
-            if let out, out == "true" || out == "false" { return out == "true" }
+            last = MusicFavourite.outcome(output: out, errorNumber: code)
+            if !MusicFavourite.tryNextProperty(after: last) { return last }
         }
-        return nil
+        return last
     }
 
     /// `verb` is one of our fixed commands (playpause, next track, previous track).
@@ -513,9 +599,32 @@ enum AppleScriptPlayer: String, CaseIterable, Sendable {
     }
 
     private nonisolated static func execute(_ source: String) -> String? {
-        guard let script = NSAppleScript(source: source) else { return nil }
+        executeDetailed(source).output
+    }
+
+    /// The script's text, or its AppleScript error number.
+    private nonisolated static func executeDetailed(_ source: String) -> (output: String?, error: Int?) {
+        guard let script = NSAppleScript(source: source) else { return (nil, -1) }
         var error: NSDictionary?
         let out = script.executeAndReturnError(&error)
-        return error == nil ? (out.stringValue ?? "") : nil
+        if let error { return (nil, (error[NSAppleScript.errorNumber] as? Int) ?? -1) }
+        return (out.stringValue ?? "", nil)
     }
+}
+
+/// The Apple Events behind Music's heart: one seam so tests never script Music.
+struct MusicScripting: Sendable {
+    var isRunning: @MainActor () -> Bool
+    /// Automation for Music already granted (checked without asking; off the main thread).
+    var allowedWithoutAsking: @Sendable () -> Bool
+    var toggle: @Sendable () -> MusicFavourite.Outcome
+    var read: @Sendable () -> MusicFavourite.Outcome
+
+    static let system = MusicScripting(
+        isRunning: { AppleScriptPlayer.music.isRunning },
+        allowedWithoutAsking: {
+            Permissions.automationStatus(bundleID: AppleScriptPlayer.music.rawValue, ask: false) == .granted
+        },
+        toggle: { AppleScriptPlayer.music.toggleFavourite() },
+        read: { AppleScriptPlayer.music.readFavourite() })
 }

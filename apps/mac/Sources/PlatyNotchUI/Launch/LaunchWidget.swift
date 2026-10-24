@@ -6,11 +6,7 @@ import SwiftUI
 
 /// A notice in the tile (and, for a finished shortcut, a short peek).
 struct LaunchNotice: Equatable {
-    /// Buttons beside a permission notice.
-    enum Help: Equatable {
-        /// "Open Automation Settings"; `reset` adds "Copy Command" (`PermissionAdvice.resetAppleEvents`).
-        case automation(reset: Bool)
-    }
+    typealias Help = PermissionHelp
 
     let id = UUID()
     var text: String

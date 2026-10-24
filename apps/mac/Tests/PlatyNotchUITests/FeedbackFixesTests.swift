@@ -4,7 +4,8 @@ import PlatyNotchKit
 import XCTest
 @testable import PlatyNotchUI
 
-/// User feedback round 1: Settings from inside the notch (11), Calendar from the notch (8).
+/// User feedback round 1: Settings from inside the notch (11), Calendar from the notch (8),
+/// Apple Music's heart (6).
 @MainActor
 final class FeedbackFixesTests: DefaultsTestCase {
     private var mbpLayout: PanelLayout {
@@ -93,5 +94,96 @@ final class FeedbackFixesTests: DefaultsTestCase {
         let calendar = CalendarService(seam: .init(status: { .notAsked }, request: { true }), focus: focus(log))
         await calendar.requestAccess()
         XCTAssertEqual(log.steps, [])
+    }
+
+    // MARK: - 6. Apple Music's heart
+
+    private final class FakeMusic: @unchecked Sendable {
+        let lock = NSLock()
+        var toggleResult: MusicFavourite.Outcome = .state(true)
+        var readResult: MusicFavourite.Outcome = .state(false)
+        var allowed = false
+        var toggles = 0
+        var reads = 0
+
+        var scripting: MusicScripting {
+            MusicScripting(isRunning: { true },
+                           allowedWithoutAsking: { self.lock.withLock { self.allowed } },
+                           toggle: { self.lock.withLock { self.toggles += 1; return self.toggleResult } },
+                           read: { self.lock.withLock { self.reads += 1; return self.readResult } })
+        }
+    }
+
+    private func musicTrack(_ title: String) -> NowPlayingInfo {
+        NowPlayingInfo(bundleIdentifier: "com.apple.Music", title: title, artist: "Someone", isPlaying: true)
+    }
+
+    private func nowPlaying(_ fake: FakeMusic, identity: String = "dr:build-A") -> NowPlaying {
+        let np = NowPlaying()
+        np.music = fake.scripting
+        np.grants = AutomationGrants(defaults: defaults(), identity: { identity })
+        return np
+    }
+
+    /// A refused click used to do nothing at all: now it says why, with the Automation steps.
+    func testHeartRefusedSaysWhy() async {
+        let fake = FakeMusic()
+        fake.toggleResult = .notAllowed
+        let np = nowPlaying(fake)
+        np.debugApply(musicTrack("Song"))
+        XCTAssertTrue(np.canLike)
+        np.toggleLike()
+        let said = await eventually { np.likeMessage != nil }
+        XCTAssertTrue(said)
+        XCTAssertNil(np.liked, "the heart does not claim a change that did not happen")
+        XCTAssertTrue(np.likeMessage?.contains("Automation › PlatyNotch › Music") == true, np.likeMessage ?? "")
+        XCTAssertEqual(np.likeHelp, .automation(reset: true))
+        XCTAssertFalse(np.likeBusy)
+    }
+
+    /// Success fills the heart from Music's answer; after that a refusal on a new build
+    /// names the rebuild and the reset command.
+    func testHeartFollowsMusicAndExplainsARebuild() async {
+        let fake = FakeMusic()
+        let np = nowPlaying(fake)
+        np.debugApply(musicTrack("Song"))
+        np.toggleLike()
+        let liked = await eventually { np.liked == true }
+        XCTAssertTrue(liked)
+        XCTAssertNil(np.likeMessage)
+
+        let rebuilt = nowPlaying(fake, identity: "dr:build-B")
+        fake.toggleResult = .notAllowed
+        rebuilt.debugApply(musicTrack("Song"))
+        rebuilt.toggleLike()
+        let said = await eventually { rebuilt.likeMessage != nil }
+        XCTAssertTrue(said)
+        XCTAssertTrue(rebuilt.likeMessage?.contains("tccutil reset AppleEvents dev.platynotch.app") == true,
+                      rebuilt.likeMessage ?? "")
+    }
+
+    /// A new track shows Music's real heart, read only when Music already allows PlatyNotch.
+    func testNewTrackReadsTheHeartOnlyWhenAllowed() async {
+        let fake = FakeMusic()
+        fake.readResult = .state(true)
+        let np = nowPlaying(fake)
+        np.debugApply(musicTrack("One"))
+        await drainBackground()
+        XCTAssertEqual(fake.lock.withLock { fake.reads }, 0, "not allowed yet: no Apple Event, so no prompt")
+        XCTAssertNil(np.liked)
+
+        fake.lock.withLock { fake.allowed = true }
+        np.debugApply(musicTrack("Two"))
+        let read = await eventually { np.liked == true }
+        XCTAssertTrue(read)
+    }
+
+    /// Lets the AppleScript queue and the main-actor hop after it run.
+    private func drainBackground() async {
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            AppleScriptPlayer.queue.async { c.resume() }
+        }
+        await drainMainQueue()
+        for _ in 0..<5 { await Task.yield() }
     }
 }

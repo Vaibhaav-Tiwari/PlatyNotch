@@ -19,3 +19,9 @@ struct AutomationGrants {
         defaults?.set(identity(), forKey: Self.keyPrefix + bundleID)
     }
 }
+
+/// Buttons beside a permission message (`PermissionHelpButtons`).
+enum PermissionHelp: Equatable {
+    /// "Open Automation Settings"; `reset` adds "Copy Command" (`PermissionAdvice.resetAppleEvents`).
+    case automation(reset: Bool)
+}

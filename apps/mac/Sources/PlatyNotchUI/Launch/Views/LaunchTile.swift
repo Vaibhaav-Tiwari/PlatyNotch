@@ -248,7 +248,7 @@ private struct NoticeLine: View {
 /// "Open Automation Settings" and, after a rebuild, "Copy Command" (the reset is the
 /// user's to run; PlatyNotch never changes privacy settings).
 struct PermissionHelpButtons: View {
-    let help: LaunchNotice.Help
+    let help: PermissionHelp
 
     var body: some View {
         HStack(spacing: 8) {
