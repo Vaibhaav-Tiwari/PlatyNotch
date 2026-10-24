@@ -380,3 +380,71 @@ lives in `$PLATYNOTCH_HOME/shelf` (0700; `items.json` 0600; owned copies in
   off): the shelf starts empty, `items.json.corrupt-<date>` (0600) holds the old text,
   Console shows "shelf index unreadable; moved aside", and every `<uuid>/` folder is
   still there. Delete the `.corrupt-` file: folders older than 7 days go at the next start.
+
+## Task 6: clipboard history and picker
+
+Automated: `ClipboardTests` (Kit: filter steps, stable hash, history dedupe / limit / age /
+search, store round trip, modes, image deletion, damaged index, picker search, selection
+and keys), `ClipboardWidgetTests` (fake pasteboard, timer, hot key and ⌘V poster: off does
+nothing, 0.5 s poll only while on, password managers and concealed items never read or
+written, pause, paste with and without Accessibility), `MenuBarTests` (C23). History lives
+in `$PLATYNOTCH_HOME/clipboard` (0700): `history.json` (0600) and `images/<id>.png` (0600).
+Use a throwaway `PLATYNOTCH_HOME`. Turn the widget on in Settings › Widgets (it is off by
+default). Settings › Widgets › Clipboard history has Pause, Keep / Up to, Shortcut, Clear
+History, Clear All, and the Accessibility button.
+
+- [ ] **72. Password managers are never recorded (Review Focus #3).** Copy a password in
+  1Password (the app, and the browser extension in Safari or Chrome), in Keychain Access
+  (Show password › Copy), in Passwords, and in Bitwarden if installed. Press ⌥⇧V: none of
+  them is listed. `grep -r "<the password>" "$PLATYNOTCH_HOME/clipboard"` finds nothing.
+  Note which managers set `org.nspasteboard.ConcealedType` (an app like Pasteboard Viewer
+  shows the types) and which were caught only by the frontmost-app rule.
+- [ ] **73. Excluded apps.** Add an app (e.g. Notes, `com.apple.Notes`) to Settings ›
+  Memory › excluded apps; copy text in Notes: not recorded. Remove it again: the next copy
+  is recorded. Copy something in TextEdit while Notes is frontmost through a script
+  (`osascript -e 'set the clipboard to "x"'` from Terminal while Notes is in front): note
+  that it is attributed to Notes (best effort, documented).
+- [ ] **74. Picker and paste with Accessibility.** Allow Accessibility from Settings ›
+  Widgets › Clipboard history › Allow Accessibility… (the only place that prompts). In
+  TextEdit, press ⌥⇧V: the picker opens near the cursor with the search field focused
+  and TextEdit stays the active app (its menu bar stays). Type "caf" for an item with
+  "café"; ↑/↓ move; ↩ pastes into TextEdit at the cursor; ⌘2 pastes the second row. The
+  picker closes and TextEdit has the keyboard.
+- [ ] **75. Paste without Accessibility.** Remove PlatyNotch from System Settings ›
+  Privacy & Security › Accessibility, relaunch. ⌥⇧V › ↩: nothing is typed, the notch peeks
+  "Copied — press ⌘V", no Accessibility prompt appears; ⌘V in TextEdit pastes the item.
+  The picker's footer says "↩ copy (paste needs Accessibility…)".
+- [ ] **76. Picker keys.** ⌘P pins (pin glyph; the row moves to the top; Clear History
+  keeps it). With an empty search, ⌫ deletes the selected row (its image file goes too);
+  with text, ⌫ edits the text; holding ⌫ to clear the search never deletes rows. Esc
+  closes and returns the keyboard to the previous app. Clicking outside closes it. ⌥⇧V
+  again while open closes it.
+- [ ] **77. Approvals are untouched.** With an approval peek up (fake-events), press ⌥⇧V:
+  the approval stays where it is, is not hidden, and the picker never covers it (move the
+  cursor under the notch first). In the picker press ↩, ⌘↩ and ⌘⌫: nothing happens to
+  the approval (↩ picks a clip, copy-only: the notch panel had the keyboard, so no ⌘V
+  is posted). After Esc the approval card still answers ⌘↩ / ⌘⌫ as before.
+- [ ] **78. Pause.** Menu bar › "Pause clipboard history": copies are not recorded; the
+  item now reads "Resume clipboard history"; the tile says Paused. Relaunch: still paused.
+  Resume: what was copied while paused never appears. With the widget off the menu item is
+  not shown at all.
+- [ ] **79. Off does nothing.** Turn the widget off: ⌥⇧V does nothing (another app can use
+  it), copies are not recorded, Activity Monitor shows no 0.5 s wake-ups from PlatyNotch
+  (Energy tab, idle wake-ups). Turn it on: earlier history is still there.
+- [ ] **80. Images and files.** Copy an image in Preview (⌘C) and a screenshot to the
+  clipboard (⌃⇧⌘4): one image row each, a PNG in `clipboard/images/`; copying the same
+  image again moves it to the top (no second file). An image over 10 MB is skipped.
+  Copy files in Finder: one row ("name + 2 more"); ↩ pastes them in a Finder window.
+  Delete an image row: its PNG is gone.
+- [ ] **81. Retention.** Keep: 1 day; set an item's `copiedAt` 2 days back in
+  `history.json` (quit first) and relaunch, once with the widget on and once off: it and
+  its image are gone. Up to: 50: older items beyond 50 go at once; pinned ones stay.
+- [ ] **82. Damaged history.** Quit, write junk into `clipboard/history.json`, relaunch:
+  history starts empty, `history.json.corrupt-<date>` (0600) keeps the old text, every
+  file in `images/` is still there after a second relaunch, and Settings shows "A damaged
+  history file was set aside" with Delete Kept Files (which removes them).
+- [ ] **83. Shortcut taken.** Pick ⌃⌥V in Settings while another app holds it (or keep
+  ⌥⇧V with an app such as Alfred bound to it): Settings says it is taken. Other shortcuts
+  work at once without relaunch.
+- [ ] **84. Full screen and Spaces.** In a full-screen app, ⌥⇧V opens the picker on that
+  Space over the app; paste works there.

@@ -48,6 +48,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }))
     /// Built-in and plugin widgets. Smoke runs read the saved layout but never write it.
     private lazy var widgets = WidgetRegistry(persist: !options.smoke && !options.smokeSettings)
+    /// Clipboard history (off by default). Smoke runs get an inert one: no pasteboard, no
+    /// hot key, no events, nothing on disk.
+    private lazy var clipboard = options.smoke || options.smokeSettings ? ClipboardWidget.inert() : ClipboardWidget()
     /// Widget peeks, ringing, HUDs and the drag session, shown on every display's panel.
     private lazy var surfaces = PanelSurfaces(registry: widgets)
     /// On-screen text capture (runs only while memory is on) and the Memory tab's search.
@@ -115,7 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watchConfig()
         wireSettingsEntryPoints()
         BuiltInWidgets.register(in: widgets, store: store, today: today,
-                                persist: !options.smoke && !options.smokeSettings)
+                                persist: !options.smoke && !options.smokeSettings, clipboard: clipboard)
         startPlugins()
         startWidgets()
 
@@ -131,7 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { self?.appearanceMayHaveChanged() }
         }
 
-        menuBar = MenuBarController(capture: capture, updater: updater, surfaces: surfaces,
+        menuBar = MenuBarController(capture: capture, updater: updater, surfaces: surfaces, clipboard: clipboard,
                                     onOpen: { [weak self] in self?.openPanel(tab: nil) },
                                     onSettings: { [weak self] in self?.openSettings(section: nil) })
 
@@ -245,6 +248,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !options.smoke, !options.smokeSettings, !widgets.isEnabled(ShelfWidget.widgetID) {
             ShelfStore.expireOnDisk(directory: CorePaths.shelf())
         }
+        // The same for clipboard history: past its age or limit, items and images go.
+        if !options.smoke, !options.smokeSettings, !widgets.isEnabled(ClipboardWidget.widgetID) {
+            ClipboardWidget.expireWhileOff()
+        }
     }
 
     // MARK: - Panels
@@ -332,6 +339,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             failure = "surfaces: \(problem)"
         }
         if failure == nil { buildSurfaceViews() }
+        if failure == nil, let menuBar,
+           !menuBar.menuTitles.contains("Pause clipboard history") || menuBar.menuAutoenables {
+            failure = "menu bar clipboard item missing or menu autoenables"
+        }
         let sounds = TimeSound.allCases.filter { $0.url != nil }.count
         if failure == nil, sounds != TimeSound.allCases.count {
             failure = "bundled sounds missing (\(UIResources.bundleName))"
@@ -379,6 +390,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             + [AnyView(HUDIndicator(state: HUDState(kind: .volume, level: 0.5, until: Date()))),
                AnyView(DropZonePlaceholder()), AnyView(RingingFallback(id: "smoke", onStop: {})),
                AnyView(ShelfDropZone(shelf: ShelfWidget.inert())),
+               AnyView(ClipCopiedPeek()), AnyView(ClipboardTile(widget: ClipboardWidget.inert())),
+               AnyView(ClipboardSettings(widget: ClipboardWidget.inert())),
+               AnyView(ClipPickerView(model: ClipPickerModel(widget: clipboard), onChoose: { _ in },
+                                      trusted: { false }, imageURL: { _ in nil })),
                AnyView(RingingOverlay(title: "Alarm", subtitle: "Alarm · 7:00", isAlarm: true, onSnooze: {}, onStop: {}))]
         for v in views {
             NSHostingView(rootView: v.frame(width: 380).environment(\.colorScheme, .dark)).layoutSubtreeIfNeeded()

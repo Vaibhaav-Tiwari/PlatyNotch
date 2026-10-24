@@ -37,7 +37,9 @@ private struct LoopsTile: View {
 /// HUD never creates an event tap, prompts, or touches volume or brightness.
 @MainActor
 enum BuiltInWidgets {
-    static func register(in registry: WidgetRegistry, store: AppStore, today: TodayServices, persist: Bool = true) {
+    /// `clipboard`: the app keeps its instance for the menu bar's pause item (C23).
+    static func register(in registry: WidgetRegistry, store: AppStore, today: TodayServices, persist: Bool = true,
+                         clipboard: ClipboardWidget? = nil) {
         registry.register(MusicWidget(nowPlaying: today.nowPlaying, visualiser: today.visualiser))
         registry.register(MeetingWidget(calendar: today.calendar))
         registry.register(FocusWidget(focus: today.focus))
@@ -45,5 +47,6 @@ enum BuiltInWidgets {
         registry.register(TimeWidget(persist: persist))
         registry.register(persist ? HUDWidget() : HUDWidget.inert())
         registry.register(persist ? ShelfWidget() : ShelfWidget.inert())
+        registry.register(clipboard ?? (persist ? ClipboardWidget() : ClipboardWidget.inert()))
     }
 }

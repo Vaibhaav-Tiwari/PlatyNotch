@@ -4,7 +4,8 @@ import PlatyNotchKit
 
 /// The menu bar item: a template icon (placeholder until the Platy icon) with a dot
 /// while capture is running. Menu: Open PlatyNotch, Settings…, Check for Updates… (or the
-/// GitHub Releases page when updates are off), Pause/Resume capture, Quit.
+/// GitHub Releases page when updates are off), Pause/Resume capture, Pause/Resume
+/// clipboard history (only while that widget is on, C23), Quit.
 @MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
     private let item: NSStatusItem
@@ -14,14 +15,18 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private let updater: AppUpdater?
     private let updatesItem = NSMenuItem(title: "Check for Updates…", action: nil, keyEquivalent: "")
     private let pauseItem = NSMenuItem(title: "Pause capture for 1 hour", action: nil, keyEquivalent: "")
+    private let clipboardItem = NSMenuItem(title: "Pause clipboard history", action: nil, keyEquivalent: "")
+    private let clipboard: ClipboardMenuControl?
     private var observing = false
     private let surfaces: PanelSurfaces?
     /// "Stop <title>" items at the top while anything rings, then a separator.
     private var stopMenuItems: [NSMenuItem] = []
 
     init(capture: CaptureService?, updater: AppUpdater? = nil, surfaces: PanelSurfaces? = nil,
+         clipboard: ClipboardMenuControl? = nil,
          onOpen: @escaping () -> Void, onSettings: @escaping () -> Void) {
         self.capture = capture
+        self.clipboard = clipboard
         self.updater = updater
         self.surfaces = surfaces
         self.onOpen = onOpen
@@ -93,6 +98,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
     }
 
+    /// The clipboard item: hidden while the clipboard widget is off (nothing to pause).
+    static func clipboardItemState(running: Bool, paused: Bool) -> (title: String, hidden: Bool) {
+        (paused ? "Resume clipboard history" : "Pause clipboard history", !running)
+    }
+
     /// The updates item: Sparkle's own check when updates are on (disabled while a check
     /// is already running), otherwise a link to GitHub Releases that always works.
     static func updatesItemState(isEnabled: Bool, canCheck: Bool) -> (title: String, enabled: Bool) {
@@ -114,6 +124,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         pauseItem.action = #selector(togglePause)
         pauseItem.target = self
         menu.addItem(pauseItem)
+        clipboardItem.action = #selector(toggleClipboardPause)
+        clipboardItem.target = self
+        clipboardItem.isHidden = true
+        menu.addItem(clipboardItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit PlatyNotch", action: #selector(quit), keyEquivalent: "q").target = self
         item.menu = menu
@@ -125,6 +139,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             updatesItem.title = state.title
             updatesItem.isEnabled = state.enabled
         }
+        let clip = Self.clipboardItemState(running: clipboard?.isRunning ?? false, paused: clipboard?.paused ?? false)
+        clipboardItem.title = clip.title
+        clipboardItem.isHidden = clip.hidden
+        clipboardItem.isEnabled = !clip.hidden
         guard let capture else { pauseItem.isHidden = true; return }
         let state = Self.pauseItemState(capture.status)
         pauseItem.title = state.title
@@ -135,6 +153,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     @objc private func settings() { onSettings() }
     @objc private func checkForUpdates() { updater?.checkForUpdates() }
     @objc private func quit() { NSApp.terminate(nil) }
+
+    @objc private func toggleClipboardPause() {
+        guard let clipboard, clipboard.isRunning else { return }
+        clipboard.setPaused(!clipboard.paused)
+    }
+
+    /// The menu as built (smoke checks and tests): item titles, hidden ones included.
+    var menuTitles: [String] { item.menu?.items.map(\.title) ?? [] }
+    var menuAutoenables: Bool { item.menu?.autoenablesItems ?? true }
 
     @objc private func togglePause() {
         guard let capture else { return }

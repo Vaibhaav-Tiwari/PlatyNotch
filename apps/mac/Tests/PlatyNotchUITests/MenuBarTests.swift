@@ -36,4 +36,26 @@ final class MenuBarTests: XCTestCase {
         XCTAssertEqual(s.title, "Download Updates from GitHub Releases…")
         XCTAssertTrue(s.enabled)
     }
+
+    /// C23: "Pause clipboard history" exists only while the widget runs, and flips to Resume.
+    func testClipboardItemFollowsTheWidget() {
+        XCTAssertTrue(MenuBarController.clipboardItemState(running: false, paused: false).hidden)
+        XCTAssertTrue(MenuBarController.clipboardItemState(running: false, paused: true).hidden)
+        let on = MenuBarController.clipboardItemState(running: true, paused: false)
+        XCTAssertEqual(on.title, "Pause clipboard history")
+        XCTAssertFalse(on.hidden)
+        XCTAssertEqual(MenuBarController.clipboardItemState(running: true, paused: true).title, "Resume clipboard history")
+    }
+
+    /// The clipboard item is added through the same non-autoenabling menu (C23).
+    func testClipboardItemKeepsAutoenableOff() {
+        let menu = MenuBarController.newMenu()
+        let item = NSMenuItem(title: "Pause clipboard history", action: #selector(NSObject.description), keyEquivalent: "")
+        item.target = NSObject()
+        item.isEnabled = false
+        menu.addItem(item)
+        menu.update()
+        XCTAssertFalse(menu.autoenablesItems)
+        XCTAssertFalse(item.isEnabled, "isEnabled is ours, not AppKit's")
+    }
 }
