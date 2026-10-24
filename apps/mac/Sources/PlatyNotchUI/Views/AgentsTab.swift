@@ -32,6 +32,12 @@ struct AgentsTab: View {
                 }
             }
             UsageSection(usage: usage)
+            if let hint = PanelFormat.claudeLimitsHint(usage: usage, sessions: sessions) {
+                Text(verbatim: hint)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 }

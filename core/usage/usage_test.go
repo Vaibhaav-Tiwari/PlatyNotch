@@ -356,3 +356,35 @@ func TestRunPreviousCapped(t *testing.T) {
 		t.Fatalf("flood output %d bytes", len(out))
 	}
 }
+
+// The whole statusLine input current Claude Code sends (docs: code.claude.com/docs/en/statusline,
+// "rate_limits.five_hour/seven_day.used_percentage" 0-100, "resets_at" Unix seconds, plus a
+// gateway spend_limit and many unrelated objects) goes from `notch statusline` through
+// usage.json to the watcher as Claude's 5-hour and weekly windows.
+func TestRealisticStatuslineReachesWatcher(t *testing.T) {
+	home, _ := env(t)
+	var out bytes.Buffer
+	if code := RunStatusline(bytes.NewReader(fx(t, "claude_statusline_full.json")), &out, config.Default()); code != 0 {
+		t.Fatal(code)
+	}
+	if got := strings.TrimSpace(out.String()); got != "Opus · 5h 63.5%" {
+		t.Fatalf("status line %q", got)
+	}
+	var sent []protocol.Usage
+	w := NewWatcher(filepath.Join(home, "usage.json"), filepath.Join(home, "no-codex"), func(u protocol.Usage) { sent = append(sent, u) })
+	w.poll()
+	if len(sent) != 1 || sent[0].Claude == nil {
+		t.Fatalf("watcher sent %+v", sent)
+	}
+	c := sent[0].Claude
+	if c.FiveHour == nil || c.FiveHour.UsedPercent != 63.5 || c.FiveHour.ResetsAt == nil || c.FiveHour.ResetsAt.Unix() != 1792850400 {
+		t.Fatalf("five hour %+v", c.FiveHour)
+	}
+	if c.Weekly == nil || c.Weekly.UsedPercent != 17.25 || c.Weekly.ResetsAt == nil || c.Weekly.ResetsAt.Unix() != 1793282400 {
+		t.Fatalf("weekly %+v", c.Weekly)
+	}
+	// context_window.used_percentage and the spend limit are not rate-limit windows.
+	if len(c.Extra) != 0 {
+		t.Fatalf("extra %+v", c.Extra)
+	}
+}

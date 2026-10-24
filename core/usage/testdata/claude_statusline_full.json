@@ -1,0 +1,26 @@
+{
+  "hook_event_name": "Status",
+  "session_id": "5f0c2a9e-3b1d-4c7a-9e21-7d4b8a6f1c02",
+  "transcript_path": "/Users/me/.claude/projects/-Users-me-src-app/5f0c2a9e.jsonl",
+  "cwd": "/Users/me/src/app",
+  "model": {"id": "claude-opus-5-5", "display_name": "Opus"},
+  "workspace": {"current_dir": "/Users/me/src/app", "project_dir": "/Users/me/src/app", "added_dirs": []},
+  "version": "2.1.290",
+  "output_style": {"name": "default"},
+  "cost": {"total_cost_usd": 0.42, "total_duration_ms": 61000, "total_api_duration_ms": 9100,
+           "total_lines_added": 12, "total_lines_removed": 3},
+  "context_window": {"total_input_tokens": 41000, "total_output_tokens": 2300, "context_window_size": 200000,
+                     "used_percentage": 21, "remaining_percentage": 79,
+                     "current_usage": {"input_tokens": 900, "output_tokens": 2300,
+                                       "cache_creation_input_tokens": 1200, "cache_read_input_tokens": 38900}},
+  "exceeds_200k_tokens": false,
+  "prompt_cache": {"warm": true, "caching_observed": true, "ttl": "5m", "expires_at": 1792840000,
+                   "requests": 6, "misses": 0, "hit_ratio": 0.88},
+  "effort": {"level": "high"},
+  "thinking": {"enabled": true},
+  "rate_limits": {
+    "five_hour": {"used_percentage": 63.5, "resets_at": 1792850400},
+    "seven_day": {"used_percentage": 17.25, "resets_at": 1793282400},
+    "spend_limit": {"used_percentage": 40, "resets_at": 1795000000, "used_usd": 80, "limit_usd": 200, "period": "monthly"}
+  }
+}

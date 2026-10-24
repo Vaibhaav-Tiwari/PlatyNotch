@@ -207,4 +207,21 @@ final class PanelFormatTests: XCTestCase {
         XCTAssertEqual(try ApprovalFormat.decideEnvelope(id: "ap1", .allow).decode(ApprovalDecide.self).behavior,
                        "allow")
     }
+
+    // MARK: Claude limits hint (feedback 12)
+
+    /// With a Claude Code session and no Claude limits (only Codex's), the Agents tab says
+    /// where Claude's come from instead of silently showing Codex alone.
+    func testClaudeLimitsHint() {
+        let codex = Limits(fiveHour: Window(usedPercent: 10, resetsAt: nil), weekly: nil, extra: nil, updatedAt: now)
+        let claude = Limits(fiveHour: Window(usedPercent: 40, resetsAt: nil), weekly: nil, extra: nil, updatedAt: now)
+        let hint = PanelFormat.claudeLimitsHint(usage: Usage(claude: nil, codex: codex), sessions: [session("a", .idle)])
+        XCTAssertNotNil(hint)
+        XCTAssertTrue(hint?.contains("status line") == true, hint ?? "")
+        XCTAssertNil(PanelFormat.claudeLimitsHint(usage: Usage(claude: claude, codex: codex), sessions: [session("a", .idle)]))
+        XCTAssertNil(PanelFormat.claudeLimitsHint(usage: Usage(), sessions: []), "no Claude session: nothing to explain")
+        var other = session("b", .idle)
+        other.agent = "codex"
+        XCTAssertNil(PanelFormat.claudeLimitsHint(usage: Usage(), sessions: [other]))
+    }
 }
