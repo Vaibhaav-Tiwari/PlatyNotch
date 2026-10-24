@@ -2,12 +2,32 @@ import AppKit
 import PlatyNotchKit
 import SwiftUI
 
-/// Colors, fonts and shapes shared by the panel views. The panel surface is always
-/// black (it continues the notch), so the views run in the dark color scheme and use
-/// semantic colors that resolve against it.
+/// Colors, fonts and shapes shared by the panel views. The panel runs in the color
+/// scheme Appearance › Theme picks (`scheme`) and the views use semantic colors that
+/// resolve against it. Dark draws a black surface (it continues the notch).
 enum Theme {
     static let corner: CGFloat = 14
+    /// The dark surface (also what the compact pill on a notch always uses).
     static let surface = Color.black
+    /// The light surface.
+    static let lightSurface = Color(nsColor: .windowBackgroundColor)
+
+    static func surface(_ scheme: ColorScheme) -> Color {
+        scheme == .light ? lightSurface : surface
+    }
+
+    /// The panel's color scheme for `theme`. The resting pill on a notch stays dark in
+    /// every theme: it continues the black camera housing, which a light pill would show
+    /// as a hole.
+    static func scheme(_ theme: AppearanceSettings.Theme, system: ColorScheme, mode: PanelMode,
+                       hasNotch: Bool) -> ColorScheme {
+        if hasNotch, mode == .compact || mode == .hidden { return .dark }
+        switch theme {
+        case .system: return system
+        case .dark: return .dark
+        case .light: return .light
+        }
+    }
     static let card = Color(nsColor: .quaternaryLabelColor).opacity(0.5)
     static let codeBackground = Color(nsColor: .textBackgroundColor).opacity(0.55)
     static let divider = Color(nsColor: .separatorColor)

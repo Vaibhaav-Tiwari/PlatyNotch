@@ -63,7 +63,7 @@ final class PanelSurfacesTests: XCTestCase {
                                               events: CoreEventHub(), defaults: defaults(), notify: NoopNotifier(),
                                               surfaces: surfaces, openPanel: { _ in }))
         let c = NotchController(store: AppStore(), client: client, plugins: [], widgets: registry,
-                                surfaces: surfaces, minimal: minimal)
+                                surfaces: surfaces, appearance: AppearanceSettings(mode: minimal ? .minimal : .alwaysOn))
         c.cursorLocation = { CGPoint(x: 100, y: 100) }   // never the real mouse
         return Rig(surfaces: surfaces, registry: registry, widget: w, controller: c)
     }
@@ -227,7 +227,7 @@ final class PanelSurfacesTests: XCTestCase {
         let r = rig()
         r.context.ring(id: "fake.alarm", title: "Alarm 7:30")
         let late = NotchController(store: AppStore(), client: CoreClient(socketPath: "/nonexistent"), plugins: [],
-                                   widgets: r.registry, surfaces: r.surfaces, minimal: true)
+                                   widgets: r.registry, surfaces: r.surfaces, appearance: AppearanceSettings(mode: .minimal))
         XCTAssertEqual(late.mode, .peek(.ringing(id: "fake.alarm")))
         late.detach()
         r.context.stopRinging(id: "fake.alarm")

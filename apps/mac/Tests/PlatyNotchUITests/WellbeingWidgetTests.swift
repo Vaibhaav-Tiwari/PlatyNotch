@@ -95,7 +95,7 @@ final class WellbeingWidgetTests: XCTestCase {
         registry.register(w)
         if enabled { registry.setEnabled(WellbeingWidget.widgetID, true) }
         let c = NotchController(store: AppStore(), client: CoreClient(socketPath: "/nonexistent"), plugins: [],
-                                widgets: registry, surfaces: surfaces, minimal: false)
+                                widgets: registry, surfaces: surfaces, appearance: AppearanceSettings())
         c.cursorLocation = { CGPoint(x: 100, y: 100) }   // never the real mouse
         registry.start(context: context(registry, surfaces, d))
         if enabled, pastGrace { clock.advance(NudgeScheduler.resumeGrace) }

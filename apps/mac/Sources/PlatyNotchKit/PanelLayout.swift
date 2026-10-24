@@ -3,10 +3,28 @@ import CoreGraphics
 /// Where the notch panel sits on one screen and which rect each mode occupies.
 /// Pure geometry in AppKit screen coordinates (origin bottom-left).
 public struct PanelLayout: Equatable, Sendable {
-    /// Extra width on each side of the physical notch in compact mode.
+    /// Extra width on each side of the physical notch in compact mode (standard pill width).
     public static let compactEar: CGFloat = 64
-    /// Compact pill width on screens without a notch.
+    /// Compact pill width on screens without a notch (standard pill width).
     public static let pillWidth: CGFloat = 200
+
+    /// Ear width beside a notch for each Appearance › Pill width.
+    public static func ear(_ width: AppearanceSettings.PillWidth) -> CGFloat {
+        switch width {
+        case .compact: 40
+        case .standard: compactEar
+        case .wide: 96
+        }
+    }
+
+    /// Pill width without a notch for each Appearance › Pill width.
+    public static func pillWidth(_ width: AppearanceSettings.PillWidth) -> CGFloat {
+        switch width {
+        case .compact: 150
+        case .standard: pillWidth
+        case .wide: 260
+        }
+    }
     /// Room for an approval card below the notch: header, a few summary lines, buttons,
     /// and a one-line row for the next approval.
     public static let peekSize = CGSize(width: 420, height: 236)
@@ -39,15 +57,19 @@ public struct PanelLayout: Equatable, Sendable {
     /// The physical notch, or the pill just below the menu bar.
     public let anchor: CGRect
     public let hasNotch: Bool
+    /// Extra width on each side of the notch in compact mode (`ear(_:)`).
+    public let ear: CGFloat
 
-    public init(screenFrame: CGRect, visibleFrame: CGRect, auxLeft: CGRect?, auxRight: CGRect?) {
+    public init(screenFrame: CGRect, visibleFrame: CGRect, auxLeft: CGRect?, auxRight: CGRect?,
+                pillWidth: AppearanceSettings.PillWidth = .standard) {
         self.screenFrame = screenFrame
+        ear = Self.ear(pillWidth)
         if let notch = NotchGeometry.notchRect(screenFrame: screenFrame, auxLeft: auxLeft, auxRight: auxRight) {
             anchor = notch
             hasNotch = true
         } else {
             anchor = NotchGeometry.pillRect(screenFrame: screenFrame, visibleFrame: visibleFrame,
-                                            width: Self.pillWidth)
+                                            width: Self.pillWidth(pillWidth))
             hasNotch = false
         }
     }
@@ -62,7 +84,7 @@ public struct PanelLayout: Equatable, Sendable {
     }
 
     private var compactRect: CGRect {
-        hasNotch ? anchor.insetBy(dx: -Self.compactEar, dy: 0) : anchor
+        hasNotch ? anchor.insetBy(dx: -ear, dy: 0) : anchor
     }
 
     /// The fixed window frame: big enough for every mode's content.

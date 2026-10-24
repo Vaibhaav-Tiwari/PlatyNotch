@@ -23,9 +23,11 @@ public enum FullScreenPolicy {
     /// zone (the user dragged to the notch) always show. HUDs and widget peeks never reach
     /// here over full screen (`PanelStateMachine.setFullScreen`). Otherwise touching
     /// `revealRect` reveals it, and it stays revealed while the cursor is on `hitRect`.
-    public static func shouldSuppress(fullScreen: Bool, mode: PanelMode, cursor: CGPoint,
-                                      revealRect: CGRect, hitRect: CGRect, wasSuppressed: Bool) -> Bool {
-        guard fullScreen else { return false }
+    /// With `hideInFullScreen` off (Appearance) nothing is suppressed.
+    public static func shouldSuppress(fullScreen: Bool, hideInFullScreen: Bool = true, mode: PanelMode,
+                                      cursor: CGPoint, revealRect: CGRect, hitRect: CGRect,
+                                      wasSuppressed: Bool) -> Bool {
+        guard fullScreen, hideInFullScreen else { return false }
         switch mode {
         case .peek(.approval), .expanded, .peek(.ringing), .peek(.drop): return false
         default: break

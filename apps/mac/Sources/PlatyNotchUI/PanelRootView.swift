@@ -23,6 +23,8 @@ final class PanelViewModel {
     var ringingChip: RingingItem?
     /// Stops a ringing alarm or timer (the chip; a card no running widget draws any more).
     var onStopRinging: (String) -> Void = { _ in }
+    /// Settings › Appearance, clamped (live side, theme, spring).
+    var appearance = AppearanceSettings()
 }
 
 /// Places the mode's content inside the fixed-size panel window.
@@ -35,24 +37,30 @@ struct PanelRootView: View {
     let memory: MemoryServices
     let extraTabs: [PanelTab]
     let onOpenTerminal: (Session) -> Void
-    /// Which ear holds live activities (Appearance; right by default).
-    @AppStorage(NotchSettings.liveSide) private var liveSide = LiveSide.right.rawValue
+    /// The system's scheme (Appearance › Theme: System follows it).
+    @Environment(\.colorScheme) private var systemScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The blur new content settles out of after a mode change (Appearance › spring blur).
+    @State private var morphBlur: CGFloat = 0
 
     var body: some View {
+        let scheme = Theme.scheme(model.appearance.theme, system: systemScheme, mode: model.mode,
+                                  hasNotch: model.layout?.hasNotch ?? false)
         ZStack(alignment: .topLeading) {
             if let layout = model.layout {
                 let r = PanelLayout.localRect(layout.contentRect(for: model.mode), in: layout.windowFrame)
                 content(layout)
+                    .blur(radius: morphBlur)
                     .frame(width: r.width, height: r.height)
                     .overlay(alignment: .topLeading) { chip(layout) }
-                    .background(Theme.surface)
+                    .background(Theme.surface(scheme))
                     .clipShape(Theme.panelShape(hasNotch: layout.hasNotch))
                     .offset(x: r.minX, y: r.minY)
                     .opacity(model.visible ? 1 : 0)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .environment(\.colorScheme, .dark)
+        .environment(\.colorScheme, scheme)
         // Pill timelines (countdown, music bars) tick only while the panel is really shown,
         // not while hidden or suppressed over full screen.
         .environment(\.panelTicking, model.visible)
@@ -60,8 +68,27 @@ struct PanelRootView: View {
         // The games tab pauses unless the panel is open, on screen and not over full screen.
         .environment(\.gamePanel, GamePanelState(expanded: model.mode == .expanded, visible: model.visible,
                                                  fullScreen: model.fullScreen))
-        .animation(.spring(duration: 0.25), value: model.mode)
+        .animation(modeAnimation, value: model.mode)
         .animation(.easeOut(duration: 0.15), value: model.visible)
+        .onChange(of: model.mode) { settleBlur() }
+    }
+
+    /// Appearance › spring (clamped); a short ease with Reduce Motion.
+    private var modeAnimation: Animation {
+        if reduceMotion { return .easeOut(duration: 0.15) }
+        let spring = model.appearance.spring
+        return .spring(response: spring.response, dampingFraction: spring.dampingFraction)
+    }
+
+    /// New content starts blurred and settles sharp with the spring. Runs once per mode
+    /// change (never while resting), and not at all with Reduce Motion or a 0 blur.
+    private func settleBlur() {
+        let blur = CGFloat(model.appearance.spring.blur)
+        guard !reduceMotion, blur > 0 else { return }
+        var start = Transaction()
+        start.disablesAnimations = true
+        withTransaction(start) { morphBlur = blur }
+        withAnimation(modeAnimation) { morphBlur = 0 }
     }
 
     @ViewBuilder private func content(_ layout: PanelLayout) -> some View {
@@ -77,7 +104,7 @@ struct PanelRootView: View {
                         connection: store.connection, hasNotch: layout.hasNotch,
                         notchWidth: layout.hasNotch ? layout.anchor.width : 0,
                         primary: live.primary, bubble: live.bubble,
-                        liveSide: LiveSide(rawValue: liveSide) ?? .right)
+                        liveSide: model.appearance.liveSide)
                 .contentShape(Rectangle())
                 .onTapGesture { model.onClick() }
         case .peek(.approval):

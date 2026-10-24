@@ -15,8 +15,8 @@ public enum LiveGlyph: Equatable, Sendable {
 }
 
 /// Which ear of the compact pill holds live activities (the other holds the agent dots).
-/// Stored as `appearance.liveSide` ("left" / "right"); right by default.
-public enum LiveSide: String, Sendable {
+/// `AppearanceSettings.liveSide` (Plan 3 stored it as `appearance.liveSide`); right by default.
+public enum LiveSide: String, Codable, CaseIterable, Sendable {
     case left, right
 }
 

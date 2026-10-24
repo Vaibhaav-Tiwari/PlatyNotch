@@ -31,7 +31,13 @@ public final class NotchController {
     private var layout: PanelLayout?
 
     private var cursor = NSEvent.mouseLocation
+    /// A full-screen app covers this display (games pause, nudges wait, HUDs drop).
     private var fullScreen = false
+    /// Settings › Appearance (`AppearanceStore`), applied live except the pill width
+    /// (the app rebuilds the panels for that and for the displays).
+    public var appearance: AppearanceSettings {
+        didSet { if appearance != oldValue { applyAppearance() } }
+    }
     private var suppressed = false
     private var feed: PanelFeed
     private var topInset: CGFloat = 0
@@ -64,6 +70,7 @@ public final class NotchController {
     /// `extraTabs` follow the built-in tabs (plugin tabs); `onOpenTerminal` focuses a session's terminal.
     /// Pass one `responder`, one `today` and one `widgets` to every display's controller so
     /// answers, the focus session, loop changes and live activities are shared; likewise one `memory`.
+    /// `appearance` is `AppearanceStore.load` in the app; tests pass their own.
     public init(store: AppStore, client: CoreClient, plugins: [NotchPlugin],
                 responder: ApprovalResponder? = nil,
                 today: TodayServices? = nil,
@@ -72,7 +79,7 @@ public final class NotchController {
                 memory: MemoryServices? = nil,
                 extraTabs: [PanelTab] = [],
                 onOpenTerminal: @escaping (Session) -> Void = { _ in },
-                minimal: Bool = UserDefaults.standard.bool(forKey: NotchSettings.minimal),
+                appearance: AppearanceSettings = AppearanceSettings(),
                 carryOver: PanelCarryOver? = nil) {
         self.store = store
         self.client = client
@@ -84,14 +91,19 @@ public final class NotchController {
         self.widgets = widgets ?? WidgetRegistry(persist: false)
         self.surfaces = surfaces ?? PanelSurfaces(registry: self.widgets)
         self.memory = memory ?? MemoryServices(client: client)
+        let settings = appearance.clamped()
+        self.appearance = settings
         if let carryOver {
             machine = carryOver.machine
-            machine.minimal = minimal
+            machine.minimal = settings.mode == .minimal
             feed = carryOver.feed
         } else {
-            machine = PanelStateMachine(minimal: minimal)
+            machine = PanelStateMachine(minimal: settings.mode == .minimal)
             feed = PanelFeed(noticeSequence: store.noticeSequence)
         }
+        machine.openOnHover = settings.openOn == .hover
+        debouncer = HoverDebouncer(enterDelay: settings.hoverDelay)
+        model.appearance = settings
         // An open panel must still close when the cursor is away after a rebuild.
         debouncer.reset(hovering: machine.mode == .expanded)
         model.onClick = { [weak self] in self?.handle(.click) }
@@ -113,17 +125,33 @@ public final class NotchController {
     public var carryOver: PanelCarryOver { PanelCarryOver(machine: machine, feed: feed) }
     /// The display this controller's panel is on.
     public private(set) var displayID: CGDirectDisplayID?
-    public var minimal: Bool {
-        get { machine.minimal }
-        set { machine.minimal = newValue; apply() }
-    }
     /// True while the panel window is ordered in (the content may still be hidden).
     public var isOnScreen: Bool { panel?.isVisible ?? false }
+    /// Whether the panel's content shows (not hidden, not suppressed over full screen).
+    var contentVisible: Bool { model.visible }
+
+    /// Mode, open trigger, hover delay, live side, theme, spring and full-screen hiding.
+    private func applyAppearance() {
+        let settings = appearance.clamped()
+        machine.minimal = settings.mode == .minimal
+        machine.openOnHover = settings.openOn == .hover
+        if debouncer.enterDelay != settings.hoverDelay {
+            let hovering = debouncer.isHovering
+            debouncer = HoverDebouncer(enterDelay: settings.hoverDelay)
+            debouncer.reset(hovering: hovering)
+        }
+        model.appearance = settings
+        apply()
+    }
+
+    /// Full screen hides the panel only when Appearance says so (C32).
+    private var hidesForFullScreen: Bool { fullScreen && appearance.hideInFullScreen }
 
     /// Places (or re-places) the panel on `screen`.
     public func attach(to screen: NSScreen) {
         let l = PanelLayout(screenFrame: screen.frame, visibleFrame: screen.visibleFrame,
-                            auxLeft: screen.auxiliaryTopLeftArea, auxRight: screen.auxiliaryTopRightArea)
+                            auxLeft: screen.auxiliaryTopLeftArea, auxRight: screen.auxiliaryTopRightArea,
+                            pillWidth: appearance.pillWidth)
         layout = l
         displayID = screen.displayID
         topInset = screen.safeAreaInsets.top
@@ -187,15 +215,17 @@ public final class NotchController {
         return p
     }
 
-    /// Pushes the current mode, full-screen suppression and cursor into the window.
+    /// Pushes the current mode, full-screen suppression and cursor into the view model and
+    /// the window. Without a window (tests) only the view model.
     private func apply() {
         defer { surfaces.sinkStateChanged() }   // the media-key tap's view of where a HUD would show
-        guard let panel, let layout else { return }
+        guard let layout else { return }
         cursor = cursorLocation()   // never decide pass-through from a stale position
         let mode = machine.mode
+        // Approvals, ringing, the open panel and the drop zone are never suppressed.
         suppressed = FullScreenPolicy.shouldSuppress(
-            fullScreen: fullScreen, mode: mode, cursor: cursor, revealRect: layout.revealRect,
-            hitRect: layout.fullScreenHoldRect(for: mode), wasSuppressed: suppressed)
+            fullScreen: fullScreen, hideInFullScreen: appearance.hideInFullScreen, mode: mode, cursor: cursor,
+            revealRect: layout.revealRect, hitRect: layout.fullScreenHoldRect(for: mode), wasSuppressed: suppressed)
         let visible = mode != .hidden && !suppressed
         model.mode = mode
         model.visible = visible
@@ -204,6 +234,7 @@ public final class NotchController {
         model.hudIndicator = machine.hudIndicator
         model.ringingChip = ringingChip
         noteVisibleApprovals(mode: mode, visible: visible)
+        guard let panel else { updateEngaged(); return }
         panel.hasShadow = mode.hasShadow && visible
         panel.allowsKey = mode.canBecomeKey
         if !mode.canBecomeKey && panel.isKeyWindow {
@@ -235,7 +266,7 @@ public final class NotchController {
     /// the hit rect always restores pass-through).
     private func updateEngaged() {
         tracker.engaged = debouncer.isHovering || debouncer.deadline != nil
-            || (fullScreen && !suppressed) || panel?.ignoresMouseEvents == false
+            || (hidesForFullScreen && !suppressed) || panel?.ignoresMouseEvents == false
             || dragSession   // drag polling only while a drag is in progress
     }
 
@@ -282,7 +313,7 @@ public final class NotchController {
         let inside: Bool
         if suppressed {
             inside = false
-        } else if fullScreen {
+        } else if hidesForFullScreen {
             inside = PanelLayout.contains(layout.fullScreenHoldRect(for: machine.mode), p)
         } else {
             inside = PanelLayout.contains(layout.hitRect(for: machine.mode), p)
@@ -630,5 +661,11 @@ extension NotchController: PanelDropRouting {
 extension NSScreen {
     var displayID: CGDirectDisplayID? {
         (deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
+    }
+
+    /// Whether this display has a camera notch (the same test `PanelLayout` uses).
+    var hasNotch: Bool {
+        NotchGeometry.notchRect(screenFrame: frame, auxLeft: auxiliaryTopLeftArea,
+                                auxRight: auxiliaryTopRightArea) != nil
     }
 }

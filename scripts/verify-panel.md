@@ -7,15 +7,17 @@ this list covers what only a person looking at the screen can confirm.
 What each mode shows:
 
 - **Compact**: up to three agent dots on the left (green pulsing = working, amber =
-  waiting or needs approval, grey = idle) and `+n` for more; on the right a count of
-  pending approvals, or an amber bolt while the core is not connected. On a notch Mac
-  the dots sit in the left ear and the badge in the right ear.
+  waiting or needs approval, grey = idle) and `+n` for more; on the right (the live ear)
+  a count of pending approvals, an amber bolt while the core is not connected, else the
+  top live activity (music, a timer). On a notch Mac the dots sit in the left ear and the
+  badge in the right ear; Settings › Appearance › Live activities swaps the ears.
 - **Peek (approval)**: the oldest approval card in full; with several, the next one as
   a one-line row (agent · tool · first line, "+n more", "Open"). Clicking the card
   header, "More" or "Open" opens the full panel. **Peek (notice)**: a short toast ("Claude Code finished").
-- **Expanded**: tabs Agents, Today, Focus, Memory (the last three say "Coming soon"),
-  pending approvals above the tab, the Agents list and Claude/Codex usage bars, and a
-  chevron close button. An amber "Reconnecting…" shows in the tab bar while the core
+- **Expanded**: tabs Agents, Today (the enabled widgets' tiles, in the order set in
+  Settings › Widgets), Focus (while the focus widget is on), Memory and Games (while the
+  games widget is on); pending approvals above the tab, the Agents list and Claude/Codex
+  usage bars, and a chevron close button. An amber "Reconnecting…" shows in the tab bar while the core
   is down.
 
 ## Setup
@@ -35,10 +37,14 @@ cd apps/mac && PLATYNOTCH_EXTERNAL_CORE=1 PLATYNOTCH_HOME=… PLATYNOTCH_SOCKET=
 Start the app, wait for `connected`, then step through the script. Approvals only
 appear while the app is connected.
 
-Minimal mode (panel hidden when nothing is live): `defaults write PlatyNotch appearance.minimal -bool true`
-(the domain is the executable name under `swift run`; undo with `defaults delete PlatyNotch appearance.minimal`).
-Show on all displays: `defaults write PlatyNotch appearance.showOnAllDisplays -bool true`.
-Restart the app after changing either.
+Minimal mode (panel hidden when nothing is live), the displays (menu-bar display, all, or
+those with a notch), open on hover or click, pill width, live side, theme, motion and
+"Hide in full screen" are in Settings › Appearance and apply at once, no restart. They are
+one JSON value under `appearance.settings` (the domain is the executable name under
+`swift run`: `defaults read PlatyNotch appearance.settings`; `defaults delete PlatyNotch
+appearance.settings` resets them). The Plan 3 keys `appearance.minimal`,
+`appearance.showOnAllDisplays` and `appearance.liveSide` are read once as the starting
+values while `appearance.settings` does not exist, and never again.
 
 ## Cases
 
@@ -150,8 +156,11 @@ long multi-line command with a Unicode path). The core default expiry is 100 s.
 - [ ] **16. Open terminal.** "Open terminal" shows when the approval's session is
   known; clicking it does nothing yet (terminal focus is Task 7). Agents tab rows
   highlight on hover and are clickable the same way.
-- [ ] **17. Light and dark.** Switch System Settings › Appearance between Light and
-  Dark: the panel stays black with legible text and colors in both.
+- [ ] **17. Light and dark.** With Settings › Appearance › Theme on Dark, switch System
+  Settings › Appearance between Light and Dark: the panel stays black with legible text
+  and colors in both. Theme Light: the open panel and peeks are light with legible text;
+  System follows the system setting. In every theme the resting pill on a notch stays
+  black.
 
 ## Automated equivalents
 

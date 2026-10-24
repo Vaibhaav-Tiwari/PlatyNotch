@@ -246,7 +246,7 @@ final class SystemWidgetTests: XCTestCase {
         if !enabled { registry.setEnabled(SystemWidget.widgetID, false) }
         let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("pnsys\(UUID().uuidString)")
         let c = NotchController(store: AppStore(), client: client, plugins: [], widgets: registry, surfaces: surfaces,
-                                minimal: false)
+                                appearance: AppearanceSettings())
         c.cursorLocation = { CGPoint(x: 100, y: 100) }   // never the real mouse
         registry.start(context: WidgetContext(store: AppStore(), client: client,
                                               config: ConfigFileStore(url: dir.appendingPathComponent("config.json")),

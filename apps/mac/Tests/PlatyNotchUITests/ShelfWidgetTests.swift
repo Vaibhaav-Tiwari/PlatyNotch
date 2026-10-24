@@ -114,7 +114,7 @@ final class ShelfWidgetTests: XCTestCase {
                                               events: CoreEventHub(), defaults: defaults(), notify: NoopNotifier(),
                                               surfaces: surfaces, openPanel: { _ in }))
         let c = NotchController(store: AppStore(), client: client, plugins: [], widgets: registry,
-                                surfaces: surfaces, minimal: false)
+                                surfaces: surfaces, appearance: AppearanceSettings())
         c.cursorLocation = { CGPoint(x: 100, y: 100) }   // never the real mouse
         c.debugHandle(.layout(PanelLayout(screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),
                                           visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 950),

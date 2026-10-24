@@ -816,3 +816,46 @@ icons in `<home>/favicons` (0700).
 - [ ] **170. Leaving Agents mid-refresh.** Open Settings › Agents and switch section at
   once: no "exit status 15" appears when you come back (notch commands are not killed when
   a view goes away).
+
+## Task 12: Appearance and the idle budget
+
+Automated: `AppearanceTests` (Kit: defaults with `hoverDelay` 0.12, spring and hover delay
+clamping, `{}` and partial / unknown values decode to the defaults, migration from
+`appearance.minimal` / `appearance.showOnAllDisplays` / `appearance.liveSide`, which
+changes rebuild the panels, display choice, pill widths, click mode, full-screen hiding
+never hides approvals or ringing) and `AppearanceControllerTests` (the real
+`NotchController`: approvals and ringing show over full screen with hiding on; the pill
+stays with it off; mode, open trigger and hover delay applied live; a HUD for a display
+without a panel is not taken).
+
+Idle budget, on a real Mac (not CI; the panel shows for about a minute, keep the pointer
+away from the notch):
+
+```sh
+scripts/perf-idle.sh                    # mediaremote-adapter from build/ when built there
+scripts/perf-idle.sh --music-fallback   # AppleScript now-playing fallback
+scripts/perf-idle.sh --app build/PlatyNotch.app
+```
+
+- [ ] **171. Idle under 1%.** On a notched M1 both runs print PASS (mean of 60 one-second
+  `top` samples, the first dropped). Note the Mac, macOS and which of Music / Spotify ran.
+- [ ] **172. Settings migrate.** Before updating, set Minimal, Show on all displays and live
+  side left (Plan 3 keys). After: Settings › Appearance shows Minimal, "All displays",
+  Live activities Left; the panels look as before.
+- [ ] **173. Live changes.** In Settings › Appearance change each control with the panel in
+  view: Minimal hides the resting pill at once; Theme repaints the open panel; Live
+  activities swaps the ears; Spring sliders change the next open / close; Blur 0 opens
+  with no blur; Width and Show on rebuild the panels (an open panel stays open, no notice
+  replays). Nothing needs a restart.
+- [ ] **174. Open on click.** Open on: Click. Resting the pointer on the pill does nothing;
+  a click opens it; moving away closes it. Hover delay (Hover mode) at 0.6 s needs a
+  clear dwell; at 0 it opens on touch.
+- [ ] **175. Displays.** With an external display: "Display with the menu bar" shows one
+  panel; "All displays" one per display; "Displays with a notch" only on the built-in
+  screen (with the lid closed, the menu-bar display). Press a volume key with the pointer
+  on a display without a panel: the system HUD shows there.
+- [ ] **176. Full screen.** Play a video full screen. Hide in full screen on: the pill goes,
+  the top edge reveals it, an approval (`scripts/fake-events.sh`) and a ringing alarm still
+  show. Off: the pill stays over the video (volume keys still show the system HUD there).
+- [ ] **177. Reduce Motion.** System Settings › Accessibility › Display › Reduce motion:
+  the panel opens with a short ease and no blur.

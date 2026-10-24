@@ -150,6 +150,9 @@ public struct PanelStateMachine: Sendable {
     public var minimal: Bool {
         didSet { if minimal != oldValue { refresh() } }
     }
+    /// Hovering the pill opens the panel (Appearance › Open on: hover). Off (click mode),
+    /// only a click opens it; moving away still closes it.
+    public var openOnHover = true
     public private(set) var mode: PanelMode
     private var hasLive = false
     private var state: PanelSurfaceState
@@ -200,7 +203,7 @@ public struct PanelStateMachine: Sendable {
             state.approvals = max(n, 0)
             if n > 0 { state.notice = false }   // a notice under an approval is dropped
         case .hoverEnter:
-            if isIdle || mode.isHUD { open() }
+            if openOnHover, isIdle || mode.isHUD { open() }
         case .hoverExit:
             state.open = false   // also when ringing covers the open panel
         case .click:

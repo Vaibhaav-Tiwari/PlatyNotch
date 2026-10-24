@@ -3,14 +3,6 @@ import os
 import PlatyNotchKit
 import SwiftUI
 
-/// UserDefaults keys for panel settings (Settings › Appearance).
-public enum NotchSettings {
-    public static let minimal = "appearance.minimal"
-    public static let showOnAllDisplays = "appearance.showOnAllDisplays"
-    /// "left" or "right" (default): the pill ear that shows live activities.
-    public static let liveSide = "appearance.liveSide"
-}
-
 /// App entry point.
 public enum NotchApp {
     @MainActor
@@ -72,7 +64,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var restartTask: Task<Void, Never>?
     private var screenObserver: NSObjectProtocol?
     private var defaultsObserver: NSObjectProtocol?
-    private var appearance = AppearanceState.current
+    /// Settings › Appearance; the panels are built from it (`AppearanceStore`, C32).
+    private var appearance = AppearanceStore.load(from: .standard)
     private var signalSources: [DispatchSourceSignal] = []
     /// What launch did to `<home>/bin/notch` (reported by smoke runs).
     private var hookLink: HookBinaryLink.Outcome?
@@ -256,21 +249,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Panels
 
-    /// The Appearance settings the panels are built from.
-    private struct AppearanceState: Equatable {
-        var minimal: Bool
-        var allDisplays: Bool
-        static var current: AppearanceState {
-            AppearanceState(minimal: UserDefaults.standard.bool(forKey: NotchSettings.minimal),
-                            allDisplays: UserDefaults.standard.bool(forKey: NotchSettings.showOnAllDisplays))
-        }
-    }
-
+    /// Settings › Appearance changed (any UserDefaults write lands here): new displays or
+    /// pill width rebuild the panels; everything else is applied to them live.
     private func appearanceMayHaveChanged() {
-        let now = AppearanceState.current
+        let now = AppearanceStore.load(from: .standard)
         guard now != appearance else { return }
+        let rebuild = now.needsRebuild(from: appearance)
         appearance = now
-        rebuildControllers()
+        if rebuild {
+            rebuildControllers()
+        } else {
+            for c in controllers { c.appearance = now }
+        }
     }
 
     /// SIGTERM / SIGINT (kill, Ctrl-C under `swift run`) quit through `terminate`, so the
@@ -290,26 +280,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// One controller per target screen: the primary (menu bar) display, or all
-    /// displays when "Show on all displays" is on.
+    /// One controller per target screen: Appearance › Displays (the menu-bar display, all,
+    /// or those with a notch). HUDs go to the display under the cursor; one without a
+    /// panel lets the system HUD show (`PanelSurfaces.showHUD`).
     /// Panel state carries over per display (falling back to the old primary panel), so a
     /// rebuild neither collapses an open panel nor replays the last notice.
     private func rebuildControllers() {
-        appearance = AppearanceState.current
+        appearance = AppearanceStore.load(from: .standard)
         var carry: [CGDirectDisplayID: PanelCarryOver] = [:]
         for c in controllers {
             if let id = c.displayID { carry[id] = c.carryOver }
             c.detach()
         }
         let fallback = controllers.first?.carryOver
-        let screens = appearance.allDisplays ? NSScreen.screens : Array(NSScreen.screens.prefix(1))
+        let all = NSScreen.screens
+        let screens = appearance.displays.select(hasNotch: all.map(\.hasNotch)).map { all[$0] }
         controllers = screens.enumerated().map { index, screen in
             let state = screen.displayID.flatMap { carry[$0] } ?? (index == 0 ? fallback : nil)
             let c = NotchController(store: store, client: client, plugins: plugins, responder: responder,
                                     today: today, widgets: widgets, surfaces: surfaces, memory: memory,
                                     extraTabs: pluginTabs,
                                     onOpenTerminal: { TerminalFocus.focus(session: $0) },
-                                    minimal: appearance.minimal,
+                                    appearance: appearance,
                                     carryOver: state)
             c.attach(to: screen)
             return c
