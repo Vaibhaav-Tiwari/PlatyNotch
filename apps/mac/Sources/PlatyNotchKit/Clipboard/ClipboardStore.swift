@@ -3,7 +3,7 @@ import os
 
 /// Clipboard history on disk (C22): `<directory>/history.json` (0600, written atomically)
 /// and copied images as `<directory>/images/<item id>.png` (0600); both folders are 0700
-/// (`~/Library/Application Support/PlatyNotch/clipboard`, or under `PLATYNOTCH_HOME`).
+/// (`~/Library/Application Support/PlatyNotch/clipboard.noindex`, or under `PLATYNOTCH_HOME`).
 /// Never `UserDefaults`, never a log: history holds whatever the user copied.
 ///
 /// Mirrors the shelf's data-safety rules: an unreadable index is moved aside
@@ -152,13 +152,14 @@ public final class ClipboardStore {
         history.items.filter { !$0.pinned }.map { $0.copiedAt.addingTimeInterval(history.maxAge) }.min()
     }
 
-    /// The image file of an `.image` item, only when it is this store's own
-    /// `images/<item id>.png` (never a path from elsewhere).
+    /// The image file of an `.image` item: always this store's own `images/<item id>.png`,
+    /// never a path from elsewhere. Resolved by id, so an index written under an older
+    /// folder name (`clipboard`, before the `.noindex` move) still finds its images; the
+    /// stored name must still be exactly `<item id>.png`.
     public func imageURL(for item: ClipItem) -> URL? {
-        guard case .image(let stored, _, _) = item.kind else { return nil }
-        let own = imageFile(item.id)
-        guard stored.standardizedFileURL.path == own.standardizedFileURL.path else { return nil }
-        return own
+        guard case .image(let stored, _, _) = item.kind,
+              stored.lastPathComponent == "\(item.id.uuidString).png" else { return nil }
+        return imageFile(item.id)
     }
 
     // MARK: - Files the index does not list
@@ -249,11 +250,20 @@ public final class ClipboardStore {
         var items: [ClipItem]
     }
 
+    /// An image item's stored path moved to this store's own `images/<id>.png` (an index
+    /// written before the folder was renamed); anything else unchanged.
+    private func rebased(_ item: ClipItem) -> ClipItem {
+        guard case .image(_, let w, let h) = item.kind, imageURL(for: item) != nil else { return item }
+        var out = item
+        out.kind = .image(fileURL: imageFile(item.id), width: w, height: h)
+        return out
+    }
+
     private func load() {
         guard fileManager.fileExists(atPath: indexURL.path) else { return }
         if let data = try? Data(contentsOf: indexURL),
            let decoded = try? JSONDecoder().decode(IndexFile.self, from: data) {
-            history.items = decoded.items
+            history.items = decoded.items.map(rebased)
             return
         }
         let f = ISO8601DateFormatter()

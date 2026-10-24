@@ -94,4 +94,62 @@ final class PrivateFolderTests: XCTestCase {
         XCTAssertEqual(PrivateFolder.migrateToNoIndex(home: home)["favicons"], .failed)
         XCTAssertEqual(read("favicons/a.png"), "ico")
     }
+
+    // MARK: - Stores after the move (round 2)
+
+    /// Clipboard: an index written under `clipboard/` still finds its images under
+    /// `clipboard.noindex/` (paste reads them; remove deletes them).
+    func testClipboardImagesSurviveTheMove() throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let old = ClipboardStore(directory: home.appendingPathComponent("clipboard", isDirectory: true), now: { now })
+        let png = Data([0x89, 0x50, 0x4E, 0x47, 1, 2, 3])
+        let item = try XCTUnwrap(old.recordImage(png: png, width: 2, height: 2, source: nil))
+        old.record(.text("hello"), source: nil)
+        XCTAssertEqual(PrivateFolder.migrateToNoIndex(home: home)["clipboard"], .moved)
+
+        let store = ClipboardStore(directory: CorePaths.clipboard(env: ["PLATYNOTCH_HOME": home.path]), now: { now })
+        let moved = try XCTUnwrap(store.history.items.first { $0.id == item.id })
+        let url = try XCTUnwrap(store.imageURL(for: moved), "the image resolves after the move")
+        XCTAssertEqual(url.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent, "clipboard.noindex")
+        XCTAssertEqual(try Data(contentsOf: url), png, "paste reads the same bytes")
+        store.remove(item.id)
+        XCTAssertFalse(fm.fileExists(atPath: url.path), "removing the item deletes its PNG")
+    }
+
+    /// Only the store's own `<id>.png` is ever used, whatever folder the index names.
+    func testClipboardImageMustBeTheItemsOwnName() throws {
+        let store = ClipboardStore(directory: home.appendingPathComponent("clipboard.noindex", isDirectory: true))
+        let id = UUID()
+        let other = ClipItem(id: id, kind: .image(fileURL: URL(fileURLWithPath: "/tmp/x/\(UUID().uuidString).png"),
+                                                   width: 1, height: 1), sourceBundleID: nil, copiedAt: Date())
+        XCTAssertNil(store.imageURL(for: other))
+        let renamed = ClipItem(id: id, kind: .image(fileURL: URL(fileURLWithPath: "/elsewhere/images/\(id.uuidString).png"),
+                                                     width: 1, height: 1), sourceBundleID: nil, copiedAt: Date())
+        XCTAssertEqual(store.imageURL(for: renamed)?.path,
+                       home.appendingPathComponent("clipboard.noindex/images/\(id.uuidString).png").path)
+    }
+
+    /// Shelf: an owned copy whose bookmark cannot help still resolves after the move (its
+    /// stored path is rebased onto the new root), and removing it deletes the copy.
+    func testShelfOwnedCopySurvivesTheMove() throws {
+        let old = ShelfStore(directory: home.appendingPathComponent("shelf", isDirectory: true), bookmarks: NoBookmarks())
+        let item = try XCTUnwrap(old.addOwnedData(Data("png".utf8), filename: "a.png"))
+        XCTAssertNil(item.fileRef?.bookmark)
+        XCTAssertEqual(PrivateFolder.migrateToNoIndex(home: home)["shelf"], .moved)
+
+        let store = ShelfStore(directory: CorePaths.shelf(env: ["PLATYNOTCH_HOME": home.path]), bookmarks: NoBookmarks())
+        let url = try XCTUnwrap(store.currentURL(item.id), "the owned copy resolves")
+        XCTAssertTrue(url.path.contains("/shelf.noindex/"), url.path)
+        XCTAssertEqual(try Data(contentsOf: url), Data("png".utf8))
+        store.sweepOrphans(olderThan: 0)
+        XCTAssertTrue(fm.fileExists(atPath: url.path), "still listed: never swept")
+        store.remove(item.id)
+        XCTAssertFalse(fm.fileExists(atPath: url.deletingLastPathComponent().path))
+    }
+}
+
+/// Bookmarks that never help (made as nil, never resolve).
+private struct NoBookmarks: ShelfBookmarks {
+    func make(_ url: URL) -> Data? { nil }
+    func resolve(_ data: Data) -> (url: URL, isStale: Bool)? { nil }
 }
