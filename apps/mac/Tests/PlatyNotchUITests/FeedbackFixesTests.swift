@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import PlatyNotchKit
+import SwiftUI
 import XCTest
 @testable import PlatyNotchUI
 
@@ -8,6 +9,7 @@ import XCTest
 /// Apple Music's heart (6).
 @MainActor
 final class FeedbackFixesTests: DefaultsTestCase {
+
     private var mbpLayout: PanelLayout {
         PanelLayout(screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),
                     visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 950),
@@ -35,6 +37,87 @@ final class FeedbackFixesTests: DefaultsTestCase {
         c.panelModel.onOpenSettings()
         XCTAssertEqual(opened, 1)
         XCTAssertEqual(c.mode, .expanded)
+    }
+
+    // MARK: - The gear in the views
+
+    private func approval(_ id: String) -> Approval {
+        let created = Date()
+        return Approval(id: id, sessionKey: "s", agent: "claude-code", agentName: "Claude Code",
+                        project: nil, cwd: nil, tool: "Bash", summary: "ls",
+                        createdAt: created, expiresAt: created.addingTimeInterval(600))
+    }
+
+    /// Every built-in tab (Agents, Today, Focus, Memory, Games) and "Reconnecting…".
+    private func fullPanel(store: AppStore, onOpenSettings: @escaping () -> Void) -> ExpandedPanel {
+        let client = CoreClient(socketPath: "/nonexistent")
+        let registry = WidgetRegistry(defaults: defaults(), persist: false)
+        let today = TodayServices(client: client, calendar: CalendarService(eventKit: false),
+                                  reminders: RemindersService(eventKit: false, defaults: defaults()))
+        registry.register(FocusWidget(focus: today.focus))
+        registry.register(GamesWidget(defaults: nil))
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("pnfb\(UUID().uuidString)")
+        registry.start(context: WidgetContext(store: store, client: client,
+                                              config: ConfigFileStore(url: dir.appendingPathComponent("config.json")),
+                                              events: CoreEventHub(), defaults: defaults(), notify: NoopNotifier(),
+                                              surfaces: PanelSurfaces(registry: registry), openPanel: { _ in }))
+        registry.setEnabled(FocusWidget.widgetID, true)
+        registry.setEnabled(GamesWidget.widgetID, true)
+        var selected = BuiltinTab.agents
+        return ExpandedPanel(store: store, responder: ApprovalResponder(client: client), arming: ApprovalArming(),
+                             today: today, widgets: registry, memory: MemoryServices(client: client), extraTabs: [],
+                             selectedTab: Binding(get: { selected }, set: { selected = $0 }),
+                             onCollapse: {}, onOpenSettings: onOpenSettings,
+                             onDecide: { _, _ in }, onOpenTerminal: { _ in })
+    }
+
+    private func host<V: View>(_ view: V, width: CGFloat, height: CGFloat) -> NSHostingView<some View> {
+        let h = NSHostingView(rootView: view.frame(width: width, height: height)
+            .background(Color(white: 0.08)).environment(\.colorScheme, .dark))
+        h.frame = CGRect(x: 0, y: 0, width: width, height: height)
+        h.layoutSubtreeIfNeeded()
+        return h
+    }
+
+    /// The open panel's gear action is the panel's `onOpenSettings` (which the controller
+    /// wires to Settings, `testGearInTheOpenPanelOpensSettings`); the approval peek takes no
+    /// such action at all, so it cannot show a gear. (SwiftUI builds no accessibility tree
+    /// for an unshown test window, so the button itself is checked in the render below.)
+    func testGearIsInTheOpenPanelAndNotInTheApprovalPeek() throws {
+        let store = AppStore()
+        store.apply(.connected)
+        try store.apply(Envelope.make(.approvalAdded, approval("a")))
+        var opened = 0
+        let panel = fullPanel(store: store, onOpenSettings: { opened += 1 })
+        panel.onOpenSettings()
+        XCTAssertEqual(opened, 1)
+        let client = CoreClient(socketPath: "/nonexistent")
+        let peek = ApprovalPeek(store: store, responder: ApprovalResponder(client: client), arming: ApprovalArming(),
+                                onExpand: {}, onDecide: { _, _ in }, onOpenTerminal: { _ in })
+        let peekInputs = Mirror(reflecting: peek).children.compactMap(\.label)
+        XCTAssertFalse(peekInputs.contains { $0.lowercased().contains("settings") }, "\(peekInputs)")
+        let panelInputs = Mirror(reflecting: panel).children.compactMap(\.label)
+        XCTAssertTrue(panelInputs.contains("onOpenSettings"), "\(panelInputs)")
+    }
+
+    /// Feedback 11 render check: every built-in tab, "Reconnecting…", the gear and the
+    /// close chevron fit the narrowest open panel (its ideal width is within the content
+    /// width). Writes the PNG for a look when PLATYNOTCH_RENDER_DIR is set.
+    func testTabBarFitsWithEveryTabAndReconnecting() throws {
+        let store = AppStore()
+        store.apply(.connected)
+        store.apply(.disconnected)
+        XCTAssertEqual(store.connection, .reconnecting)
+        let width = PanelLayout.expandedSize.width - 24   // the panel's 12 pt padding each side
+        let ideal = NSHostingView(rootView: fullPanel(store: store, onOpenSettings: {}).fixedSize(horizontal: true, vertical: false))
+        XCTAssertLessThanOrEqual(ideal.fittingSize.width, width, "the tab bar would crowd")
+        let view = host(fullPanel(store: store, onOpenSettings: {}), width: width, height: 340)
+        if let dir = ProcessInfo.processInfo.environment["PLATYNOTCH_RENDER_DIR"] {
+            let rep = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+            view.cacheDisplay(in: view.bounds, to: rep)
+            let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+            try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("tabbar-reconnecting.png"))
+        }
     }
 
     func testSettingsURLRoutes() {
