@@ -20,6 +20,12 @@ public protocol NotchWidget: AnyObject {
     /// Whether a newly seen widget starts enabled. Widgets that use the network, read
     /// private data or need a permission default to false.
     var defaultEnabled: Bool { get }
+    /// False for a widget with nothing to show in the Today tab (a headless power
+    /// feature): the tab skips it and `tileView()` is never laid out. Default true.
+    var hasTile: Bool { get }
+    /// Where Settings › Widgets lists it (power features under their own heading).
+    /// Default `.everyday`.
+    var category: WidgetCategory { get }
     /// What is live right now; empty when nothing is.
     var liveActivities: [LiveActivity] { get }
     func start(context: WidgetContext)
@@ -45,6 +51,8 @@ public protocol NotchWidget: AnyObject {
 }
 
 extension NotchWidget {
+    public var hasTile: Bool { true }
+    public var category: WidgetCategory { .everyday }
     public var liveActivities: [LiveActivity] { [] }
     public func start(context: WidgetContext) {}
     public func stop() {}

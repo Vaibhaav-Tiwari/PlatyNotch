@@ -2,7 +2,9 @@ import PlatyNotchKit
 import SwiftUI
 
 /// Settings › Widgets: turn each widget on or off and set the Today tab's order (drag,
-/// or the arrow buttons). An enabled widget's own settings follow below. Stored in
+/// or the arrow buttons). Everyday widgets come first; power features are listed in
+/// their own group under "Power features" (hidden while there are none, R1). Rows move
+/// only within their group. An enabled widget's own settings follow below. Stored in
 /// `UserDefaults.standard` (`widgets.layout`); turning a widget off stops all its work.
 struct WidgetsSection: View {
     let widgets: WidgetRegistry
@@ -12,19 +14,9 @@ struct WidgetsSection: View {
     var body: some View {
         let ordered = widgets.orderedWidgets
         SettingsPage("Widgets", subtitle: "Tiles in the Today tab, top to bottom. Widgets that are off do nothing.") {
-            List {
-                ForEach(Array(ordered.enumerated()), id: \.element.id) { index, w in
-                    row(w, index: index, count: ordered.count)
-                }
-                .onMove { source, destination in
-                    var ids = ordered.map(\.id)
-                    ids.move(fromOffsets: source, toOffset: destination)
-                    widgets.reorder(ids)
-                }
+            ForEach(WidgetCategory.allCases, id: \.self) { category in
+                group(category)
             }
-            .listStyle(.bordered(alternatesRowBackgrounds: true))
-            .frame(height: CGFloat(max(ordered.count, 1)) * Self.rowHeight + 8)
-            .accessibilityLabel("Widgets")
 
             let configurable = ordered.filter { widgets.isEnabled($0.id) }
                 .compactMap { w in w.settingsView().map { (id: w.id, title: w.title, view: $0) } }
@@ -36,18 +28,44 @@ struct WidgetsSection: View {
         }
     }
 
+    /// One category's list; nothing at all for an empty one (so no "Power features"
+    /// heading until a power feature exists).
+    @ViewBuilder
+    private func group(_ category: WidgetCategory) -> some View {
+        let listed = widgets.orderedWidgets(in: category)
+        if !listed.isEmpty {
+            if let heading = category.heading {
+                Text(heading).font(.headline).padding(.top, 8)
+            }
+            List {
+                ForEach(Array(listed.enumerated()), id: \.element.id) { index, w in
+                    row(w, index: index, count: listed.count)
+                }
+                .onMove { source, destination in
+                    var ids = listed.map(\.id)
+                    ids.move(fromOffsets: source, toOffset: destination)
+                    widgets.reorder(ids, in: category)
+                }
+            }
+            .listStyle(.bordered(alternatesRowBackgrounds: true))
+            .frame(height: CGFloat(listed.count) * Self.rowHeight + 8)
+            .accessibilityLabel(category.heading ?? "Widgets")
+        }
+    }
+
     private func row(_ w: any NotchWidget, index: Int, count: Int) -> some View {
         let id = w.id
+        let category = w.category
         return HStack(spacing: 8) {
             Image(systemName: "line.3.horizontal").foregroundStyle(.tertiary).accessibilityHidden(true)
             Image(systemName: w.systemImage).frame(width: 18).foregroundStyle(.secondary).accessibilityHidden(true)
             Text(verbatim: w.title)
             Spacer()
-            Button { swap(index, index - 1) } label: { Image(systemName: "chevron.up") }
+            Button { swap(index, index - 1, in: category) } label: { Image(systemName: "chevron.up") }
                 .buttonStyle(.borderless)
                 .disabled(index == 0)
                 .accessibilityLabel("Move \(w.title) up")
-            Button { swap(index, index + 1) } label: { Image(systemName: "chevron.down") }
+            Button { swap(index, index + 1, in: category) } label: { Image(systemName: "chevron.down") }
                 .buttonStyle(.borderless)
                 .disabled(index >= count - 1)
                 .accessibilityLabel("Move \(w.title) down")
@@ -62,12 +80,12 @@ struct WidgetsSection: View {
         .frame(height: Self.rowHeight - 6)
     }
 
-    /// Swaps two rows of the list (positions among the listed widgets, not the stored
+    /// Swaps two rows of one group (positions among its listed widgets, not the stored
     /// order, which also keeps ids of plugins that are not loaded).
-    private func swap(_ a: Int, _ b: Int) {
-        var ids = widgets.orderedWidgets.map(\.id)
+    private func swap(_ a: Int, _ b: Int, in category: WidgetCategory) {
+        var ids = widgets.orderedWidgets(in: category).map(\.id)
         guard ids.indices.contains(a), ids.indices.contains(b) else { return }
         ids.swapAt(a, b)
-        widgets.reorder(ids)
+        widgets.reorder(ids, in: category)
     }
 }

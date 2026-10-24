@@ -29,13 +29,13 @@ public final class TodayServices {
     }
 }
 
-/// One tile per enabled widget, in the user's order (Settings › Widgets).
+/// One tile per enabled widget that has one (`hasTile`), in the user's order (Settings › Widgets).
 struct TodayTab: View {
     let widgets: WidgetRegistry
     @Environment(\.platyMood) private var platyMood
 
     var body: some View {
-        let shown = widgets.visibleWidgets
+        let shown = widgets.tileWidgets
         if shown.isEmpty {
             VStack(spacing: 6) {
                 if let platyMood {

@@ -398,15 +398,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var count = 0
         var failed: [String] = []
         for w in widgets.visibleWidgets {
-            let tile = NSHostingView(rootView: w.tileView().frame(width: 360).environment(\.colorScheme, .dark))
-            tile.layoutSubtreeIfNeeded()
-            if let settings = w.settingsView() {
-                NSHostingView(rootView: settings.frame(width: 480)).layoutSubtreeIfNeeded()
-            }
-            guard widgets.running.contains(w.id), tile.fittingSize.width > 0 else { failed.append(w.id); continue }
+            let built = Self.buildViews(of: w)
+            guard widgets.running.contains(w.id), built else { failed.append(w.id); continue }
             count += 1
         }
         return (count, failed)
+    }
+
+    /// Lays out `w`'s settings view and, when it has one (`hasTile`), its tile off
+    /// screen. False when the tile lays out with no width.
+    static func buildViews(of w: any NotchWidget) -> Bool {
+        if let settings = w.settingsView() {
+            NSHostingView(rootView: settings.frame(width: 480)).layoutSubtreeIfNeeded()
+        }
+        guard w.hasTile else { return true }
+        let tile = NSHostingView(rootView: w.tileView().frame(width: 360).environment(\.colorScheme, .dark))
+        tile.layoutSubtreeIfNeeded()
+        return tile.fittingSize.width > 0
     }
 
     /// Lays out the built-in HUD, indicator, drop zone and ringing fallback off screen,

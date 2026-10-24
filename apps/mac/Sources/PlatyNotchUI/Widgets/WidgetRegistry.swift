@@ -83,6 +83,30 @@ public final class WidgetRegistry {
         layout.visible(available: widgets.map(\.id)).compactMap { widget($0) }
     }
 
+    /// The Today tab's tiles: enabled widgets that have one (`hasTile`), in the user's order.
+    public var tileWidgets: [any NotchWidget] {
+        visibleWidgets.filter(\.hasTile)
+    }
+
+    /// Every widget of `category` in the user's order, enabled or not (one group of
+    /// Settings › Widgets).
+    public func orderedWidgets(in category: WidgetCategory) -> [any NotchWidget] {
+        orderedWidgets.filter { $0.category == category }
+    }
+
+    /// Sets the order of one Settings group (`ids`: that group's ids). The stored order
+    /// becomes every group in `WidgetCategory.allCases` order, so a row never moves into
+    /// another group; ids of widgets that are not loaded keep their place after them.
+    public func reorder(_ ids: [String], in category: WidgetCategory) {
+        let current = orderedWidgets.map(\.id)
+        reorder(WidgetCategory.replacing(category, with: ids, in: current, category: categoryOf))
+    }
+
+    /// A loaded widget's category (`.everyday` for an unknown id).
+    public func categoryOf(_ id: String) -> WidgetCategory {
+        widget(id)?.category ?? .everyday
+    }
+
     /// Every widget in the user's order, enabled or not (Settings › Widgets).
     public var orderedWidgets: [any NotchWidget] {
         let ids = widgets.map(\.id)
