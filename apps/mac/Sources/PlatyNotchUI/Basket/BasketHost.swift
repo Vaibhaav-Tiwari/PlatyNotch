@@ -91,10 +91,11 @@ final class BasketHost: ItemListHost, FileActionResults, Identifiable {
         return max(0, BasketStore.maxItems - store.items.count - pending)
     }
 
-    /// A file promise is still being written into it, or a file action runs on one of its
-    /// items: it is not closed or merged until that ends (its folders must stay).
+    /// A file promise is still being written into it, a dropped TIFF is still being
+    /// converted, or a file action runs on one of its items: it is not closed or merged
+    /// until that ends (its folders must stay).
     var isBusy: Bool {
-        !receiving.isEmpty || (actionCenterMade && !actionCenter.running.isEmpty)
+        !receiving.isEmpty || importTask != nil || (actionCenterMade && !actionCenter.running.isEmpty)
     }
 
     /// Anything still running for this basket stops (the feature stops or it closes).
@@ -257,6 +258,8 @@ final class BasketHost: ItemListHost, FileActionResults, Identifiable {
             importTask = Task { [weak self] in
                 let png = await Task.detached(priority: .userInitiated) { ShelfWidget.png(fromTIFF: tiff) }.value
                 guard let self else { return }
+                defer { self.importTask = nil }
+                guard !Task.isCancelled else { return }
                 if let png, self.room > 0, self.store.addOwnedData(png, filename: name) != nil {
                     self.afterChange()
                 } else {
