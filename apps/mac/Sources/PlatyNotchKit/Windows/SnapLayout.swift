@@ -77,14 +77,20 @@ public struct SnapScreen: Equatable, Sendable {
 }
 
 /// What to do to the window, in Accessibility coordinates (top-left origin of the primary
-/// display, y down). `size` is nil when the window is only moved.
+/// display, y down). `size` is nil when the window is only moved. `area` (the target)
+/// and `bounds` (the screen's visible frame) let a window that kept another size than
+/// asked be centred again (`SnapLayout.position(centering:in:)`).
 public struct SnapPlan: Equatable, Sendable {
     public var position: CGPoint
     public var size: CGSize?
+    public var area: CGRect
+    public var bounds: CGRect
 
-    public init(position: CGPoint, size: CGSize?) {
+    public init(position: CGPoint, size: CGSize?, area: CGRect = .zero, bounds: CGRect = .zero) {
         self.position = position
         self.size = size
+        self.area = area
+        self.bounds = bounds
     }
 }
 
@@ -198,10 +204,35 @@ public enum SnapLayout {
             setsSize = true
             cocoa = target
         }
-        let ax = axFrame(from: cocoa, primaryScreenHeight: primaryScreenHeight)
-        let position = CGPoint(x: ax.minX.rounded(), y: ax.minY.rounded())
-        let size: CGSize? = setsSize ? CGSize(width: ax.width.rounded(), height: ax.height.rounded()) : nil
-        return SnapPlan(position: position, size: size)
+        // Whole points, edges rounded (not origin and size apart): neighbouring targets
+        // share an edge exactly, with no 1 pt seam or overlap.
+        let ax = edgesRounded(axFrame(from: cocoa, primaryScreenHeight: primaryScreenHeight))
+        return SnapPlan(position: ax.origin, size: setsSize ? ax.size : nil,
+                        area: axFrame(from: target, primaryScreenHeight: primaryScreenHeight),
+                        bounds: axFrame(from: visible, primaryScreenHeight: primaryScreenHeight))
+    }
+
+    /// Where a window of `size` goes when it kept another size than `plan` asked for (an
+    /// app that says its size is settable but refuses it): centred in the plan's area and
+    /// kept inside its bounds, top-left corner first. Accessibility coordinates.
+    public static func position(centering size: CGSize, in plan: SnapPlan) -> CGPoint {
+        let a = plan.area
+        let b = plan.bounds
+        var x: CGFloat = a.midX - size.width / 2
+        var y: CGFloat = a.midY - size.height / 2
+        if size.width >= b.width { x = b.minX } else { x = min(max(x, b.minX), b.maxX - size.width) }
+        // AX y grows downwards: the top edge is minY.
+        if size.height >= b.height { y = b.minY } else { y = min(max(y, b.minY), b.maxY - size.height) }
+        return CGPoint(x: x.rounded(), y: y.rounded())
+    }
+
+    /// `r` with each edge on a whole point; the size follows from the edges.
+    static func edgesRounded(_ r: CGRect) -> CGRect {
+        let minX: CGFloat = r.minX.rounded()
+        let minY: CGFloat = r.minY.rounded()
+        let maxX: CGFloat = r.maxX.rounded()
+        let maxY: CGFloat = r.maxY.rounded()
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 
     private static func centered(_ size: CGSize, in area: CGRect) -> CGRect {

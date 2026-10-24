@@ -139,6 +139,47 @@ final class SnapLayoutTests: DefaultsTestCase {
                                      primaryScreenHeight: primaryHeight, gap: 0))
     }
 
+    /// Fix round 1: edges are rounded, not origin and size apart, so neighbours share an
+    /// edge exactly (no 1 pt seam or overlap) on odd-sized screens.
+    func testRoundedNeighboursShareEdges() throws {
+        let odd = SnapScreen(frame: CGRect(x: 0, y: 0, width: 1441, height: 901),
+                             visible: CGRect(x: 0, y: 0, width: 1441, height: 876))
+        let window = CGRect(x: 100, y: 100, width: 300, height: 200)
+        for gap in [CGFloat(0), CGFloat(4), CGFloat(8)] {
+            func plan(_ t: SnapTarget) throws -> (x: CGFloat, maxX: CGFloat, y: CGFloat, maxY: CGFloat) {
+                let p = try XCTUnwrap(SnapLayout.plan(t, windowAX: window, resizable: true, screens: [odd],
+                                                      primaryScreenHeight: 901, gap: gap))
+                let size = try XCTUnwrap(p.size)
+                XCTAssertEqual(p.position.x, p.position.x.rounded())
+                XCTAssertEqual(size.width, size.width.rounded())
+                return (p.position.x, p.position.x + size.width, p.position.y, p.position.y + size.height)
+            }
+            let l = try plan(.leftHalf), r = try plan(.rightHalf)
+            XCTAssertEqual(r.x - l.maxX, gap)
+            XCTAssertEqual(1441 - r.maxX, gap)
+            let a = try plan(.leftThird), b = try plan(.centerThird), c = try plan(.rightThird)
+            XCTAssertEqual(b.x - a.maxX, gap)
+            XCTAssertEqual(c.x - b.maxX, gap)
+            XCTAssertEqual(1441 - c.maxX, gap, "the last third ends on the screen edge (minus the gap)")
+            let top = try plan(.topHalf), bottom = try plan(.bottomHalf)
+            XCTAssertEqual(bottom.y - top.maxY, gap)
+            XCTAssertEqual(901 - bottom.maxY, gap)
+        }
+    }
+
+    func testCentringAKeptSize() throws {
+        let p = try XCTUnwrap(SnapLayout.plan(.leftHalf, windowAX: CGRect(x: 0, y: 0, width: 10, height: 10),
+                                              resizable: true, screens: [primary], primaryScreenHeight: primaryHeight,
+                                              gap: 0))
+        XCTAssertEqual(p.area, CGRect(x: 0, y: 25, width: 720, height: 875))
+        XCTAssertEqual(p.bounds, CGRect(x: 0, y: 25, width: 1440, height: 875))
+        XCTAssertEqual(SnapLayout.position(centering: CGSize(width: 400, height: 300), in: p), CGPoint(x: 160, y: 313))
+        XCTAssertEqual(SnapLayout.position(centering: CGSize(width: 2000, height: 1000), in: p), CGPoint(x: 0, y: 25),
+                       "too large: top-left corner on screen")
+        XCTAssertEqual(SnapLayout.position(centering: CGSize(width: 1000, height: 300), in: p), CGPoint(x: 0, y: 313),
+                       "wider than the half: kept inside the screen")
+    }
+
     func testDefaultShortcutsNeverClash() {
         var presets: [String: [KeyCombo]] = [:]
         for t in SnapTarget.allCases { presets[t.hotKeyFeature] = [t.defaultCombo] }
