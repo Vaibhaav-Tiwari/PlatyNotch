@@ -197,6 +197,16 @@ final class DayTests: XCTestCase {
             Row(text: "call Priya at 5pm", now: date(2020, 3, 4, 10), title: "Call Priya", due: date(2020, 3, 4, 17)),
             Row(text: "file 2020-03-01", now: date(2020, 3, 4, 10), title: "File", due: date(2020, 3, 1), time: false, past: true),
             Row(text: "12/01 renew passport", now: date(2020, 3, 4, 10), title: "12/01 renew passport", due: nil, time: false),
+            // Controller probe: "H:MM" without am/pm reads like "at H"; a leading zero or 13+ is 24 h.
+            Row(text: "pick up kids at 3:15", title: "Pick up kids", due: date(2026, 10, 23, 15, 15)),
+            Row(text: "call at 7:45", title: "Call", due: date(2026, 10, 23, 19, 45)),
+            Row(text: "standup at 9:30", title: "Standup", due: date(2026, 10, 24, 9, 30)),
+            Row(text: "alarm 03:15", title: "Alarm", due: date(2026, 10, 24, 3, 15)),
+            Row(text: "call at 17:30", title: "Call", due: date(2026, 10, 23, 17, 30)),
+            Row(text: "pickup tonight at 9:30", now: date(2026, 10, 23, 19), title: "Pickup", due: date(2026, 10, 23, 21, 30)),
+            // A rejected time keeps its words.
+            Row(text: "at 13pm", title: "13pm", due: nil, time: false),
+            Row(text: "at 13pm tomorrow", title: "13pm", due: date(2026, 10, 24), time: false),
         ]
         for r in rows {
             let q = parse(r.text, at: r.now ?? fri)

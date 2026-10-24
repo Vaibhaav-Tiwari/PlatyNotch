@@ -124,7 +124,8 @@ public enum QuickAddParser {
             isPast = due.map { $0 < now } ?? false
         }
 
-        var title = tidy(scan.remaining)
+        // Nothing understood: the whole text is the title (no partial match may eat words).
+        var title = tidy(due == nil ? text : scan.remaining)
         if title.isEmpty { title = isEvent ? "Event" : (due == nil ? "" : "Reminder") }
         return QuickAdd(title: title, due: due, isEvent: isEvent, duration: due == nil ? nil : duration,
                         hasTime: hasTime, isPast: isPast)
@@ -246,9 +247,12 @@ public enum QuickAddParser {
     }
 
     private static func timePass(_ scan: inout Scanner, after date: DateHit?, calendar: Calendar) -> TimeHit? {
-        if let m = scan.take(Pattern.range12),
-           let sh = m.group(1).flatMap(Int.init), let eh = m.group(5).flatMap(Int.init),
-           (1...12).contains(sh), (1...12).contains(eh) {
+        // Each rule checks its numbers before it consumes the text, so a rejected match
+        // ("13pm") stays in the title.
+        if let m = scan.find(Pattern.range12, where: { m, _ in
+               twelveHour(m.group(1)) && twelveHour(m.group(5))
+           }), let sh = m.group(1).flatMap(Int.init), let eh = m.group(5).flatMap(Int.init) {
+            scan.mask(m.range)
             let sm = (m.group(2) ?? m.group(3)).flatMap(Int.init) ?? 0
             let em = (m.group(6) ?? m.group(7)).flatMap(Int.init) ?? 0
             let endPM = m.group(8)!.lowercased().hasPrefix("p")
@@ -271,12 +275,15 @@ public enum QuickAddParser {
             if length <= 0 { length += 24 * 60 }
             return TimeHit(time: (sh, sm), bare: false, duration: TimeInterval(length * 60))
         }
-        if let m = scan.take(Pattern.meridiem), let h = m.group(1).flatMap(Int.init), (1...12).contains(h) {
+        if let m = scan.find(Pattern.meridiem, where: { m, _ in twelveHour(m.group(1)) }),
+           let h = m.group(1).flatMap(Int.init) {
+            scan.mask(m.range)
             let minute = (m.group(2) ?? m.group(3)).flatMap(Int.init) ?? 0
             return TimeHit(time: (hour24(h, pm: m.group(4)!.lowercased().hasPrefix("p")), minute), bare: false)
         }
-        if let m = scan.take(Pattern.clock), let h = m.group(1).flatMap(Int.init), let mi = m.group(2).flatMap(Int.init) {
-            return TimeHit(time: (h, mi), bare: false)
+        if let m = scan.take(Pattern.clock), let raw = m.group(1), let h = Int(raw), let mi = m.group(2).flatMap(Int.init) {
+            // "3:15" reads like "at 3" (afternoon); "03:15", "15:00" and "0:30" are 24 h.
+            return TimeHit(time: (h, mi), bare: !raw.hasPrefix("0") && (1...11).contains(h))
         }
         if let m = scan.take(Pattern.namedTimeAfterAt) ?? scan.take(Pattern.namedTime) {
             // Midnight is the end of the day named (or of today): hour 24.
@@ -292,6 +299,10 @@ public enum QuickAddParser {
             return TimeHit(time: (h, 0), bare: true)
         }
         return nil
+    }
+
+    private static func twelveHour(_ s: String?) -> Bool {
+        s.flatMap(Int.init).map { (1...12).contains($0) } ?? false
     }
 
     private static func hour24(_ h: Int, pm: Bool) -> Int {
