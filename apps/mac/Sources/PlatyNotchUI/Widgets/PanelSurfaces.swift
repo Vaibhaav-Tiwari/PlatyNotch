@@ -72,6 +72,10 @@ public final class PanelSurfaces {
     public private(set) var hudReadiness = HUDReadiness()
     /// Told synchronously when `hudReadiness` changes (the HUD widget's tap gate).
     @ObservationIgnored private var readinessHandlers: [ObjectIdentifier: (HUDReadiness) -> Void] = [:]
+    /// The displays a full-screen app covers (each placed panel's `coveredByFullScreen`),
+    /// kept current like `hudReadiness`. Baskets hide on these.
+    public private(set) var fullScreenDisplays: Set<CGDirectDisplayID> = []
+    @ObservationIgnored private var fullScreenHandlers: [ObjectIdentifier: (Set<CGDirectDisplayID>) -> Void] = [:]
 
     @ObservationIgnored private weak var registry: WidgetRegistry?
     @ObservationIgnored private var sinks: [WeakSink] = []
@@ -129,6 +133,14 @@ public final class PanelSurfaces {
 
     /// A panel's mode, full-screen state or display changed: recompute `hudReadiness`.
     public func sinkStateChanged() {
+        var covered = Set<CGDirectDisplayID>()
+        for w in sinks {
+            if let sink = w.sink, sink.coveredByFullScreen, let id = sink.displayID { covered.insert(id) }
+        }
+        if covered != fullScreenDisplays {
+            fullScreenDisplays = covered
+            for f in fullScreenHandlers.values { f(covered) }
+        }
         var next = HUDReadiness()
         for w in sinks {
             guard let sink = w.sink, sink.hudWouldShow else { continue }
@@ -137,6 +149,11 @@ public final class PanelSurfaces {
         guard next != hudReadiness else { return }
         hudReadiness = next
         for f in readinessHandlers.values { f(next) }
+    }
+
+    /// Calls `handler` whenever `fullScreenDisplays` changes, until replaced or removed (nil).
+    public func onFullScreenChange(owner: AnyObject, _ handler: ((Set<CGDirectDisplayID>) -> Void)?) {
+        fullScreenHandlers[ObjectIdentifier(owner)] = handler
     }
 
     /// Calls `handler` whenever `hudReadiness` changes, until replaced or removed (nil).
