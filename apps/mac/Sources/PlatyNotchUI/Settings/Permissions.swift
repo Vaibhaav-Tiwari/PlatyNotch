@@ -273,5 +273,12 @@ struct CameraAccess: Sendable {
 
     static let system = CameraAccess(
         status: { AVCaptureDevice.authorizationStatus(for: .video) },
-        request: { await AVCaptureDevice.requestAccess(for: .video) })
+        // An explicit continuation, not the compiler's async form of this completion-handler
+        // API: the generated form of AVAssetWriter.finishWriting crashed on resume on macOS
+        // 15.7 (CI), and this AVFoundation call is not proven safe there.
+        request: {
+            await withCheckedContinuation { done in
+                AVCaptureDevice.requestAccess(for: .video) { done.resume(returning: $0) }
+            }
+        })
 }
