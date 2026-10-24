@@ -38,15 +38,10 @@ final class WindowSnapWidget: NotchWidget {
 
     @ObservationIgnored let snapper: WindowSnapper
     @ObservationIgnored let hotKeys: SnapHotKeys
-    @ObservationIgnored private let trust: AccessibilityTrust
-    @ObservationIgnored private let identity: () -> String
-    @ObservationIgnored private let pollSleep: @MainActor () async -> Void
-    @ObservationIgnored private let allowSleep: @MainActor () async -> Void
+    /// Accessibility trust, its observers, the Allow recheck and the rebuilt-app advice
+    /// (the HUD's, shared).
+    @ObservationIgnored private let gate: AccessibilityGate
     @ObservationIgnored private var context: WidgetContext?
-    @ObservationIgnored private var observers: [(NotificationCenter, NSObjectProtocol)] = []
-    @ObservationIgnored private var recheckTask: Task<Void, Never>?
-    @ObservationIgnored private var generation = 0
-    @ObservationIgnored private var allowReturn = AllowReturn()
 
     init(snapper: WindowSnapper = WindowSnapper(),
          makeHotKey: @escaping HotKeyMaker = HotKey.make,
@@ -56,10 +51,8 @@ final class WindowSnapWidget: NotchWidget {
          allowSleep: @escaping @MainActor () async -> Void = { try? await Task.sleep(for: .seconds(1)) }) {
         self.snapper = snapper
         hotKeys = SnapHotKeys(make: makeHotKey)
-        self.trust = trust
-        self.identity = identity
-        self.pollSleep = pollSleep
-        self.allowSleep = allowSleep
+        gate = AccessibilityGate(trust: trust, identity: identity, pollSleep: pollSleep, allowSleep: allowSleep)
+        gate.onChange = { [weak self] trusted, advice in self?.trustRead(trusted: trusted, advice: advice) }
         snapper.gap = { [weak self] in CGFloat(self?.gap ?? 0) }
     }
 
@@ -77,45 +70,40 @@ final class WindowSnapWidget: NotchWidget {
     func start(context: WidgetContext) {
         guard self.context == nil else { return }
         self.context = context
-        generation += 1
         let saved = context.defaults.integer(forKey: SnapLayout.gapDefaultsKey)
         gap = SnapLayout.gapPresets.contains(saved) ? saved : 0
-        observeSystem()
+        gate.start(defaults: context.defaults)
         connect()
     }
 
     func stop() {
         guard context != nil else { return }
-        generation += 1
+        gate.stop()
         hotKeys.unregister()
-        for (center, o) in observers { center.removeObserver(o) }
-        observers = []
-        recheckTask?.cancel()
-        recheckTask = nil
+        // A snap still running when the feature is turned off does nothing more.
+        snapper.cancel()
         context = nil
         status = .stopped
         advice = .none
         taken = []
-        allowReturn.reset()
+    }
+
+    /// Reads Accessibility trust (`trustRead` does the rest).
+    private func connect() {
+        guard context != nil else { return }
+        gate.evaluate()
     }
 
     /// Holds the shortcuts while Accessibility is allowed and drops them when not.
-    private func connect() {
-        guard let context else { return }
-        guard trust.isTrusted() else {
+    private func trustRead(trusted: Bool, advice next: PermissionAdvice.AccessibilityAdvice) {
+        guard context != nil else { return }
+        if advice != next { advice = next }
+        guard trusted else {
             hotKeys.unregister()
             if !taken.isEmpty { taken = [] }
             status = .needsAccessibility
-            let history = AccessibilityGrant.history(context.defaults, identity: identity())
-            let next = PermissionAdvice.accessibility(trusted: false, returnedAfterAllow: allowReturn.returned,
-                                                      history: history)
-            if advice != next { advice = next }
             return
         }
-        recheckTask?.cancel()
-        recheckTask = nil
-        AccessibilityGrant.note(context.defaults, identity: identity())
-        if advice != .none { advice = .none }
         if !hotKeys.isRegistered {
             hotKeys.register { [weak self] target in self?.snap(target) }
             if taken != hotKeys.taken { taken = hotKeys.taken }
@@ -142,76 +130,22 @@ final class WindowSnapWidget: NotchWidget {
         taken = hotKeys.taken
     }
 
-    // MARK: - Permission (the HUD's pattern)
+    // MARK: - Permission (`AccessibilityGate`, shared with the HUD)
 
     /// "Allow Accessibility…": the system prompt, then a bounded recheck for a minute
     /// while the window showing the button is on screen.
     func requestAccess(isOnScreen: @escaping @MainActor () -> Bool = { true }) {
-        allowReturn.allowClicked()
-        trust.request()
-        recheckTask?.cancel()
-        recheckTask = Task { [weak self] in
-            for _ in 0..<60 {
-                await self?.allowSleep()
-                guard !Task.isCancelled, let self, self.isRunning else { return }
-                guard isOnScreen() else { continue }
-                self.connect()
-                if self.status != .needsAccessibility { return }
-            }
-        }
+        gate.requestAccess(isOnScreen: isOnScreen)
     }
 
     func recheckTrust() { connect() }
 
     /// While the Allow button shows: re-reads trust every 2 s, only while on screen.
     func watchTrustWhileVisible(isOnScreen: @escaping @MainActor () -> Bool) async {
-        while !Task.isCancelled, isRunning, status == .needsAccessibility {
-            await pollSleep()
-            guard !Task.isCancelled else { return }
-            if isOnScreen() { connect() }
-        }
+        await gate.watchTrustWhileVisible(isOnScreen: isOnScreen)
     }
 
-    func userReturned() {
-        allowReturn.appBecameActive()
-        trustMayHaveChanged()
-    }
-
-    private func observeSystem() {
-        let dnc = DistributedNotificationCenter.default()
-        observers.append((dnc, dnc.addObserver(forName: Notification.Name("com.apple.accessibility.api"),
-                                              object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.trustMayHaveChanged() }
-        }))
-        let nc = NotificationCenter.default
-        observers.append((nc, nc.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil,
-                                             queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.userReturned() }
-        }))
-        observers.append((nc, nc.addObserver(forName: NSApplication.didResignActiveNotification, object: nil,
-                                             queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.allowReturn.appResigned() }
-        }))
-        let ws = NSWorkspace.shared.notificationCenter
-        observers.append((ws, ws.addObserver(forName: NSWorkspace.didDeactivateApplicationNotification, object: nil,
-                                             queue: .main) { [weak self] note in
-            guard PermissionReturn.leftSystemSettings(note) else { return }
-            MainActor.assumeIsolated {
-                self?.allowReturn.appResigned()
-                self?.userReturned()
-            }
-        }))
-    }
-
-    private func trustMayHaveChanged() {
-        // The notification arrives before the new state can be read.
-        let gen = generation
-        Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(500))
-            guard let self, self.generation == gen else { return }
-            self.connect()
-        }
-    }
+    func userReturned() { gate.userReturned() }
 
     // MARK: - Views
 
