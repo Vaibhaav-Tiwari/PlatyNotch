@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// A file on the shelf: where it was last seen and a bookmark that follows it when it is
 /// renamed or moved in Finder.
@@ -116,11 +117,21 @@ public final class ShelfStore {
     /// Owned copies and text expire this long after they were added, unless pinned.
     public static let ownedLifetime: TimeInterval = 7 * 24 * 60 * 60
     public static let indexName = "items.json"
+    /// A damaged index moved aside: `items.json.corrupt-<date>`.
+    public static let corruptPrefix = "items.json.corrupt-"
     /// Longer dropped text is cut to this many characters.
     public static let maxTextLength = 100_000
 
     public let directory: URL
     public private(set) var items: [ShelfItem] = []
+    /// The index existed but could not be read or decoded. It was moved aside to this
+    /// file (0600), and for the rest of this store's life nothing is swept or expired, so
+    /// no owned copy is deleted on the strength of an index that lost its items.
+    public private(set) var quarantinedIndex: URL?
+    /// The bad index could not even be moved aside: nothing is written or deleted.
+    public private(set) var readOnly = false
+    private var deletionsBlocked: Bool { quarantinedIndex != nil || readOnly }
+    private static let log = Logger(subsystem: "dev.platynotch.app", category: "shelf")
 
     private let persist: Bool
     public let bookmarks: ShelfBookmarks
@@ -182,7 +193,7 @@ public final class ShelfStore {
     /// A fresh `<directory>/<id>/` (0700) for a promised file to be written into; then
     /// call `addOwnedFile(_:id:)`. Nil when not persisting or the folder cannot be made.
     public func reserveOwnedFolder() -> (id: UUID, folder: URL)? {
-        guard persist, ensureDirectory() else { return nil }
+        guard persist, !readOnly, ensureDirectory() else { return nil }
         let id = UUID()
         let folder = ownedFolder(id)
         do {
@@ -260,15 +271,24 @@ public final class ShelfStore {
 
     /// Points a (missing) file item at `url` ("Locate…"); keeps its id, pin and place.
     /// The chosen file is the user's, so the item is no longer owned: removing it never
-    /// deletes that file, and it does not expire (its old owned folder is swept).
+    /// deletes that file, and it does not expire. Only this item's old owned folder is
+    /// deleted (never another folder, such as a promise still being written).
     public func relocate(_ id: UUID, to url: URL) {
         guard let i = items.firstIndex(where: { $0.id == id }), items[i].fileRef != nil else { return }
         let std = url.standardizedFileURL
-        let wasOwned = items[i].ownsFile
+        let old = items[i]
         items[i].kind = .file(ShelfFileRef(path: std.path, bookmark: bookmarks.make(std)))
         items[i].ownsFile = false
         save()
-        if wasOwned { sweepOrphans() }
+        let folder = ownedFolder(id).resolvingSymlinksInPath().path + "/"
+        if !std.resolvingSymlinksInPath().path.hasPrefix(folder) { deleteOwned(old) }
+    }
+
+    /// A folder from `reserveOwnedFolder` that never became an item (a promise that
+    /// failed or wrote nothing): deleted. Nothing happens when an item owns it.
+    public func discardReserved(_ id: UUID) {
+        guard persist, !deletionsBlocked, !items.contains(where: { $0.id == id }) else { return }
+        try? fileManager.removeItem(at: ownedFolder(id))
     }
 
     // MARK: - Files on disk
@@ -352,21 +372,21 @@ public final class ShelfStore {
 
     // MARK: - Expiry
 
-    /// The launch cleanup while the shelf widget is off (no timers, no monitors): one
-    /// bounded pass over the shelf directory that removes expired owned copies and orphan
-    /// folders. Reads nothing when the shelf was never used (no index).
+    /// The launch cleanup while the shelf widget is off (no timers, no monitors): reads
+    /// the index and removes expired owned copies. It never sweeps orphan folders, and
+    /// with a bad index it deletes nothing. Reads nothing when the shelf was never used.
     public static func expireOnDisk(directory: URL, now: Date = Date(),
                                     olderThan: TimeInterval = ownedLifetime) {
         guard FileManager.default.fileExists(atPath: directory.appendingPathComponent(indexName).path) else { return }
-        let store = ShelfStore(directory: directory)
+        let store = ShelfStore(directory: directory, now: { now })
         store.expireOwned(olderThan: olderThan, now: now)
-        store.sweepOrphans()
     }
 
     /// Removes owned, unpinned items added at or before `now - olderThan` (their copies
     /// deleted). Returns their ids.
     @discardableResult
     public func expireOwned(olderThan: TimeInterval, now: Date) -> [UUID] {
+        guard !deletionsBlocked else { return [] }
         let cutoff = now.addingTimeInterval(-olderThan)
         let gone = items.filter { $0.ownsFile && !$0.pinned && $0.addedAt <= cutoff }
         guard !gone.isEmpty else { return [] }
@@ -383,14 +403,24 @@ public final class ShelfStore {
     }
 
     /// Deletes `<directory>/<uuid>/` folders no item owns (a promise written before a
-    /// crash or quit), except `keeping` (promises still being received). Other names
-    /// in the directory are left alone.
-    public func sweepOrphans(keeping: Set<UUID> = []) {
-        guard persist, let names = try? fileManager.contentsOfDirectory(atPath: directory.path) else { return }
+    /// crash or quit) once they are older than `olderThan` (the owned lifetime), except
+    /// `keeping` (promises still being received). The age rule means a folder that lost
+    /// its item some other way is kept as long as an owned copy would have been. Other
+    /// names are left alone. Nothing is swept while a moved-aside damaged index
+    /// (`items.json.corrupt-*`) is in the directory: the folders it listed are unknown, so
+    /// they stay until the user deletes that file (it is the only record of their pins).
+    public func sweepOrphans(keeping: Set<UUID> = [], olderThan: TimeInterval = ownedLifetime) {
+        guard persist, !deletionsBlocked,
+              let names = try? fileManager.contentsOfDirectory(atPath: directory.path),
+              !names.contains(where: { $0.hasPrefix(Self.corruptPrefix) }) else { return }
         let owned = Set(items.filter(\.ownsFile).map(\.id)).union(keeping)
+        let cutoff = now().addingTimeInterval(-olderThan)
         for name in names {
             guard let id = UUID(uuidString: name), !owned.contains(id) else { continue }
-            try? fileManager.removeItem(at: ownedFolder(id))
+            let folder = ownedFolder(id)
+            let modified = (try? fileManager.attributesOfItem(atPath: folder.path)[.modificationDate]) as? Date
+            guard let modified, modified <= cutoff else { continue }
+            try? fileManager.removeItem(at: folder)
         }
     }
 
@@ -402,7 +432,7 @@ public final class ShelfStore {
 
     /// Only ever the item's own `<directory>/<id>/`, never a stored path.
     private func deleteOwned(_ item: ShelfItem) {
-        guard persist, item.ownsFile, item.fileRef != nil else { return }
+        guard persist, !readOnly, item.ownsFile, item.fileRef != nil else { return }
         try? fileManager.removeItem(at: ownedFolder(item.id))
     }
 
@@ -443,14 +473,36 @@ public final class ShelfStore {
 
     private var indexURL: URL { directory.appendingPathComponent(Self.indexName) }
 
+    /// Reads the index. A missing one is an empty shelf. One that exists but cannot be
+    /// read or decoded is moved aside (`items.json.corrupt-<date>`, 0600) and blocks every
+    /// sweep and expiry: the shelf starts empty and no folder is deleted.
     private func load() {
-        guard let data = try? Data(contentsOf: indexURL),
-              let decoded = try? JSONDecoder().decode([ShelfItem].self, from: data) else { return }
-        items = decoded
+        guard fileManager.fileExists(atPath: indexURL.path) else { return }
+        if let data = try? Data(contentsOf: indexURL),
+           let decoded = try? JSONDecoder().decode([ShelfItem].self, from: data) {
+            items = decoded
+            return
+        }
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        let stamp = f.string(from: now()).replacingOccurrences(of: ":", with: "-")
+        var aside = directory.appendingPathComponent("\(Self.corruptPrefix)\(stamp)")
+        if fileManager.fileExists(atPath: aside.path) {
+            aside = directory.appendingPathComponent("\(Self.corruptPrefix)\(stamp)-\(UUID().uuidString.prefix(8))")
+        }
+        do {
+            try fileManager.moveItem(at: indexURL, to: aside)
+            try? fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: aside.path)
+            quarantinedIndex = aside
+            Self.log.error("shelf index unreadable; moved aside to \(aside.lastPathComponent, privacy: .public); no copies deleted")
+        } catch {
+            readOnly = true
+            Self.log.error("shelf index unreadable and could not be moved aside; the shelf will not write or delete")
+        }
     }
 
     private func save() {
-        guard persist, ensureDirectory(), let data = try? JSONEncoder().encode(items) else { return }
+        guard persist, !readOnly, ensureDirectory(), let data = try? JSONEncoder().encode(items) else { return }
         do {
             try data.write(to: indexURL, options: .atomic)
             try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: indexURL.path)

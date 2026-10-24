@@ -269,6 +269,70 @@ final class ShelfTests: XCTestCase {
         XCTAssertEqual(now.fileRef?.name, "found.txt")
     }
 
+    /// Fix round 2 (Important): a damaged index never costs the owned copies. It is moved
+    /// aside, the shelf starts empty, and neither the launch cleanup nor a shelf start
+    /// (expire + sweep) deletes a folder.
+    func testCorruptIndexKeepsOwnedFolders() throws {
+        let s = store()
+        let a = try XCTUnwrap(s.addOwnedData(Data("a".utf8), filename: "a.png"))
+        let b = try XCTUnwrap(s.addOwnedData(Data("b".utf8), filename: "b.png"))
+        let folders = [a, b].map { $0.fileRef!.url.deletingLastPathComponent() }
+        let index = shelfDir.appendingPathComponent(ShelfStore.indexName)
+        try Data("{ not json".utf8).write(to: index)
+        let farFuture = Date().addingTimeInterval(365 * day)
+
+        // Launch with the shelf off: the index is found damaged and moved aside.
+        ShelfStore.expireOnDisk(directory: shelfDir, now: farFuture)
+        for f in folders { XCTAssertTrue(FileManager.default.fileExists(atPath: f.path)) }
+        let names = try FileManager.default.contentsOfDirectory(atPath: shelfDir.path)
+        let asideName = try XCTUnwrap(names.first { $0.hasPrefix(ShelfStore.corruptPrefix) })
+        let aside = shelfDir.appendingPathComponent(asideName)
+
+        // A damaged index found at shelf start blocks expiry and the sweep for that run.
+        try Data("{ still not json".utf8).write(to: index)
+        let started = ShelfStore(directory: shelfDir, now: { farFuture })
+        started.expireOwned(olderThan: ShelfStore.ownedLifetime, now: farFuture)
+        started.sweepOrphans()
+        for f in folders { XCTAssertTrue(FileManager.default.fileExists(atPath: f.path), "\(f.lastPathComponent) kept") }
+        XCTAssertTrue(started.items.isEmpty)
+        XCTAssertNotNil(started.quarantinedIndex)
+        XCTAssertTrue(aside.lastPathComponent.hasPrefix("items.json.corrupt-"))
+        XCTAssertEqual(try mode(aside), 0o600)
+        XCTAssertEqual(try String(contentsOf: aside, encoding: .utf8), "{ not json", "the bad index is kept, not lost")
+
+        // The shelf keeps working; the folders that lost their item outlive this run.
+        started.add(.text("new"))
+        started.sweepOrphans()
+        for f in folders { XCTAssertTrue(FileManager.default.fileExists(atPath: f.path)) }
+        // Later launches, a valid index: still no sweep while a damaged index is kept aside.
+        let next = ShelfStore(directory: shelfDir, now: { farFuture })
+        XCTAssertEqual(next.items.count, 1)
+        next.sweepOrphans()
+        for f in folders { XCTAssertTrue(FileManager.default.fileExists(atPath: f.path), "never on a lost index's account") }
+        // The user deletes the damaged indexes: sweeping (by age) resumes.
+        for n in try FileManager.default.contentsOfDirectory(atPath: shelfDir.path) where n.hasPrefix(ShelfStore.corruptPrefix) {
+            try FileManager.default.removeItem(at: shelfDir.appendingPathComponent(n))
+        }
+        next.sweepOrphans()
+        for f in folders { XCTAssertFalse(FileManager.default.fileExists(atPath: f.path)) }
+    }
+
+    /// Fix round 2 (2): locating an owned item deletes only its own old folder, never a
+    /// promise still being written.
+    func testRelocateLeavesOtherFolders() throws {
+        let s = store()
+        let owned = try XCTUnwrap(s.addOwnedData(Data("x".utf8), filename: "x.png"))
+        let inFlight = try XCTUnwrap(s.reserveOwnedFolder())
+        s.relocate(owned.id, to: try file("mine.png"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: inFlight.folder.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: owned.fileRef!.url.deletingLastPathComponent().path))
+        s.discardReserved(inFlight.id)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: inFlight.folder.path))
+        let item = try XCTUnwrap(s.addOwnedData(Data("y".utf8), filename: "y.png"))
+        s.discardReserved(item.id)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: item.fileRef!.url.path), "an item's folder is never discarded")
+    }
+
     /// Fix round 1 (4): a located file is the user's, never deleted, never expired.
     func testRelocateClearsOwnership() throws {
         let s = store()
@@ -367,6 +431,10 @@ final class ShelfTests: XCTestCase {
         let stray = shelfDir.appendingPathComponent("notes")   // not ours by name: left alone
         try FileManager.default.createDirectory(at: stray, withIntermediateDirectories: true)
         s.sweepOrphans()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: orphan.folder.path),
+                      "fix round 2: an orphan younger than the owned lifetime is kept")
+        let later = ShelfStore(directory: shelfDir, now: { Date().addingTimeInterval(8 * self.day) })
+        later.sweepOrphans()
         XCTAssertFalse(FileManager.default.fileExists(atPath: orphan.folder.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: kept.fileRef!.url.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: stray.path))

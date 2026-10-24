@@ -346,6 +346,53 @@ final class ShelfWidgetTests: XCTestCase {
         XCTAssertEqual(r.controller.mode, .compact)
     }
 
+    /// Fix round 2 (3): a new drag that starts inside the grace is not closed by it.
+    func testNewDragDuringGraceKeepsTheZone() async throws {
+        let r = rig()
+        var down = true
+        r.controller.mouseDown = { down }
+        r.controller.cursorLocation = { CGPoint(x: 756, y: 800) }
+        r.surfaces.setDragSession(active: true)
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 940))
+        down = false
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 800))
+        r.surfaces.setDragSession(active: false)
+        XCTAssertTrue(r.controller.awaitingDrop)
+        down = true
+        r.surfaces.setDragSession(active: true)   // the next drag, within 300 ms
+        XCTAssertFalse(r.controller.awaitingDrop)
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 900))
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(r.controller.mode, .peek(.drop), "the old grace did not close the new drag's zone")
+        r.controller.dragMoved(to: CGPoint(x: 100, y: 100))
+        r.surfaces.setDragSession(active: false)
+    }
+
+    /// Fix round 2 (4): an image counts only once kept; a failed conversion is reported.
+    func testImageCountedOnlyWhenKept() async throws {
+        let r = rig()
+        let pb = NSPasteboard.withUniqueName()
+        defer { pb.releaseGlobally() }
+        pb.clearContents()
+        pb.setData(Data("not a tiff".utf8), forType: .tiff)
+        XCTAssertEqual(r.shelf.receive(pasteboard: pb), 1, "taken for import while the pasteboard is valid")
+        await r.shelf.importTask?.value
+        XCTAssertTrue(r.shelf.items.isEmpty)
+        XCTAssertEqual(r.shelf.importFailures, 1)
+
+        let image = NSImage(size: CGSize(width: 2, height: 2))
+        image.lockFocus()
+        NSColor.blue.setFill()
+        NSRect(x: 0, y: 0, width: 2, height: 2).fill()
+        image.unlockFocus()
+        let png = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(image.tiffRepresentation))?
+            .representation(using: .png, properties: [:]))
+        pb.clearContents()
+        pb.setData(png, forType: .png)
+        XCTAssertEqual(r.shelf.receive(pasteboard: pb), 1)
+        XCTAssertEqual(r.shelf.items.count, 1, "PNG data is written before it counts")
+    }
+
     /// Fix round 1 (Important 2): with the shelf off, a drag reaching the panel starts
     /// no session and no placeholder drop zone.
     func testWindowFallbackNeedsADropTarget() throws {

@@ -164,7 +164,10 @@ final class ShelfWidget: NotchWidget {
 
     /// Adds what `pasteboard` holds (read only now, on the drop): file URLs, else web
     /// URLs, else an image, else text. File promises are taken by `receivePromises`.
-    /// Refuses (0) anything marked concealed or transient. Returns how many items were added.
+    /// Refuses (0) anything marked concealed or transient. Returns how many items were
+    /// added; PNG data counts only once written. TIFF data is taken for import (1, so the
+    /// drop is accepted while the pasteboard is still valid) and converted off the main
+    /// thread; a failed conversion or write is reported (log, beep, `importFailures`).
     @discardableResult
     func receive(pasteboard pb: NSPasteboard) -> Int {
         guard let store, ShelfDropPolicy.accepts(types: (pb.types ?? []).map(\.rawValue)) else { return 0 }
@@ -179,15 +182,22 @@ final class ShelfWidget: NotchWidget {
             for url in web.reversed() { store.add(.url(url)) }
             added = web.count
         } else if let image = Self.imageData(pb) {
-            // Read now (the pasteboard is only valid during the drop); TIFF → PNG off main.
             let name = "Image \(Self.stamp(clock())).png"
-            importTask = Task { [weak self] in
-                let png: Data? = image.isPNG ? image.data
-                    : await Task.detached(priority: .userInitiated) { Self.png(fromTIFF: image.data) }.value
-                guard let self, let png, let store = self.store else { return }
-                if store.addOwnedData(png, filename: name) != nil { self.afterChange() }
+            if image.isPNG {
+                if store.addOwnedData(image.data, filename: name) != nil { added = 1 } else { importFailed() }
+            } else {
+                // Read now (the pasteboard is only valid during the drop); TIFF → PNG off main.
+                importTask = Task { [weak self] in
+                    let png = await Task.detached(priority: .userInitiated) { Self.png(fromTIFF: image.data) }.value
+                    guard let self, let store = self.store else { return }
+                    if let png, store.addOwnedData(png, filename: name) != nil {
+                        self.afterChange()
+                    } else {
+                        self.importFailed()
+                    }
+                }
+                added = 1
             }
-            added = 1
         } else if let text = pb.string(forType: .string), store.addText(text) != nil {
             added = 1
         }
@@ -242,7 +252,16 @@ final class ShelfWidget: NotchWidget {
 
     private func promiseFinished(_ folderID: UUID) {
         receiving.remove(folderID)
-        store?.sweepOrphans(keeping: receiving)   // a promise that wrote nothing leaves no folder
+        store?.discardReserved(folderID)   // a promise that wrote nothing leaves no folder
+    }
+
+    /// Dropped image data that could not be converted or written.
+    private(set) var importFailures = 0
+
+    private func importFailed() {
+        importFailures += 1
+        Self.log.error("dropped image could not be kept")
+        NSSound.beep()
     }
 
     private static func imageData(_ pb: NSPasteboard) -> (data: Data, isPNG: Bool)? {

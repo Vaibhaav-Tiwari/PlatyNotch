@@ -326,7 +326,10 @@ public final class NotchController {
             surfaces.setDragSession(active: false)
             return
         }
-        if awaitingDrop, !down { return }   // released on the zone: waiting for the drop
+        if awaitingDrop {
+            guard down else { return }   // released on the zone: waiting for the drop
+            cancelDropGrace()            // pressed again: a new drag, not the old drop
+        }
         let near = down && layout.dragHover(p, showing: machine.isDragging)
         guard near != machine.isDragging else { return }
         if near {
@@ -479,6 +482,10 @@ extension NotchController: PanelSurfaceSink {
         case .dragSession(let active):
             dragSession = active
             if active {
+                // A new drag inside the grace after a release: it owns the drop zone now,
+                // so the old grace must not close it.
+                cancelDropGrace()
+                dropDelivered = false
                 if panel != nil { sampleCursor() }
             } else {
                 windowStartedSession = false

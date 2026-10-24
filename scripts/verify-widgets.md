@@ -375,3 +375,8 @@ lives in `$PLATYNOTCH_HOME/shelf` (0700; `items.json` 0600; owned copies in
   shows PlatyNotch idle (no leftover cursor polling).
 - [ ] **70. Promise file modes.** After a Photos drop, `ls -l "$PLATYNOTCH_HOME/shelf"/*/`:
   note the mode the promised file got (written by Photos; the folder is 0700).
+- [ ] **71. Damaged index (fix round 2).** Quit, put a few owned items on the shelf
+  first, then write junk into `shelf/items.json` and relaunch (shelf on, and once with it
+  off): the shelf starts empty, `items.json.corrupt-<date>` (0600) holds the old text,
+  Console shows "shelf index unreadable; moved aside", and every `<uuid>/` folder is
+  still there. Delete the `.corrupt-` file: folders older than 7 days go at the next start.
