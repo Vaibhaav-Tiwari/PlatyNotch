@@ -106,61 +106,19 @@ public struct PluginContext {
     public func openSettings(section: String? = nil) { openSettingsHandler(section) }
 }
 
-/// Runs `notch` subcommands (hooks, statusline, mcp, doctor) for Settings and plugins.
+/// Runs `notch` subcommands (hooks, statusline, mcp, doctor) for Settings and plugins:
+/// a `ProcessRunner` for the bundled core binary.
 struct CoreRunner: Sendable {
-    struct Result: Sendable {
-        var status: Int32
-        var stdout: String
-        var stderr: String
-        var combined: String {
-            [stdout, stderr].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }.joined(separator: "\n")
-        }
-    }
+    typealias Result = ProcessRunner.Result
 
-    static let maxOutput = 1 << 20
+    static let maxOutput = ProcessRunner.maxOutput
 
     let binaryURL: URL
 
     func run(_ args: [String], timeout: Duration = .seconds(60)) async -> Result {
-        let url = binaryURL
-        guard FileManager.default.isExecutableFile(atPath: url.path) else {
-            return Result(status: 127, stdout: "", stderr: "notch not found at \(url.path)")
+        guard FileManager.default.isExecutableFile(atPath: binaryURL.path) else {
+            return Result(status: 127, stdout: "", stderr: "notch not found at \(binaryURL.path)")
         }
-        return await withCheckedContinuation { (cont: CheckedContinuation<Result, Never>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let p = Process()
-                p.executableURL = url
-                p.arguments = args
-                let out = Pipe(), err = Pipe()
-                p.standardOutput = out
-                p.standardError = err
-                p.standardInput = FileHandle.nullDevice
-                do {
-                    try p.run()
-                } catch {
-                    cont.resume(returning: Result(status: 126, stdout: "", stderr: error.localizedDescription))
-                    return
-                }
-                let pid = p.processIdentifier
-                let killer = DispatchWorkItem { if p.isRunning { kill(pid, SIGKILL) } }
-                let seconds = Double(timeout.components.seconds)
-                DispatchQueue.global().asyncAfter(deadline: .now() + seconds, execute: killer)
-                // Read both pipes concurrently so neither fills up and blocks the child.
-                let group = DispatchGroup()
-                nonisolated(unsafe) var errData = Data()
-                group.enter()
-                DispatchQueue.global().async {
-                    errData = err.fileHandleForReading.readDataToEndOfFile()
-                    group.leave()
-                }
-                let outData = out.fileHandleForReading.readDataToEndOfFile()
-                group.wait()
-                p.waitUntilExit()
-                killer.cancel()
-                func text(_ d: Data) -> String { String(decoding: d.prefix(Self.maxOutput), as: UTF8.self) }
-                cont.resume(returning: Result(status: p.terminationStatus, stdout: text(outData), stderr: text(errData)))
-            }
-        }
+        return await ProcessRunner(executableURL: binaryURL).run(args, timeout: timeout)
     }
 }

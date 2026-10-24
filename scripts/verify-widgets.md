@@ -754,3 +754,59 @@ every game and each board laid out with an inert widget). High scores live in
   motion on, games still play; Snake's food does not pulse and Flappy's bird does not tilt.
 - [ ] **157. High scores.** Finish a game with a new best: "New best: N!" shows, the tile
   and Settings › Widgets › Games show it after a relaunch; Reset High Scores clears them.
+
+## Task 11: Pinned sites and Shortcuts
+
+Automated: `LaunchTests` (Kit: favicon candidates from the origin only, https only,
+same-origin check, sanitised cache key, type / size / freshness / once-a-day policy,
+http(s)-only site URLs, pin limits 12 and 8, Codable, constant per-browser scripts,
+`shortcuts run -- <name>` argv) and `LaunchWidgetTests` (fakes only: a never-started
+widget fetches, scripts and spawns nothing; pinning fetches only `<origin>/favicon.ico`
+then `apple-touch-icon.png`; http sites get a letter with no fetch; a redirect to another
+host, a non-image, SVG, over 256 KB or undecodable bodies are refused; a failure is not
+retried within a day; a fresh icon is reused for 30 days; the real redirect guard refuses
+other origins; the runner passes the name as one argument, reports exit codes, stops a
+hang at the timeout and on Cancel). `--smoke` lays out the tile, settings and result peek
+with an inert widget (no network, no Shortcuts, no Apple Events). Pins live in
+`UserDefaults.standard` under `launch.pins` (`defaults delete PlatyNotch launch.pins`);
+icons in `<home>/favicons` (0700).
+
+- [ ] **158. On by default, quiet until used.** Fresh home, launch: the Today tab shows the
+  "Sites & Shortcuts" tile with its hint. Little Snitch / `nettop -p PlatyNotch` shows no
+  connection from it, and no Automation or Shortcuts prompt appears.
+- [ ] **159. Add current tab, Safari.** Open Safari on an https page, open the panel and
+  click the Add current tab button (two rectangles): macOS asks once whether PlatyNotch may
+  control Safari. Allow: the site is pinned ("Pinned <host> from Safari") and its icon
+  appears within a few seconds. Repeat in Chrome and Arc (each asks once).
+- [ ] **160. Browser not running, never launched.** Quit all three browsers and click Add
+  current tab: "Open Safari, Chrome or Arc first."; no browser starts. With Safari open but
+  no window: "Safari has no open window."
+- [ ] **161. Automation denied.** In System Settings › Privacy & Security › Automation turn
+  PlatyNotch › Safari off, click Add current tab: the notice names Automation. Settings ›
+  Permissions › Automation lists Safari/Chrome/Arc with "Asked when you click Add current
+  tab" (no Allow button), or "Open System Settings" when denied.
+- [ ] **162. Non-web tabs refused.** A Safari start page, a local PDF (`file://`) or
+  `chrome://settings` as the front tab: "…tab is not a web page"; nothing is pinned.
+  Settings › Widgets › Sites & Shortcuts: typing `javascript:alert(1)`, `file:///etc` or
+  `data:text/html,x` and Pin says only http and https can be pinned.
+- [ ] **163. Favicons from the origin only.** With a proxy (Proxyman / Charles) or
+  `nettop`, pin `https://github.com/anthropics`: the only requests are to
+  `https://github.com/favicon.ico` (and `apple-touch-icon.png` if the first fails), with no
+  Cookie header. Pin `http://neverssl.com`: no request at all, a letter icon.
+  `ls -le "$PLATYNOTCH_HOME/favicons"`: directory `drwx------`, files `-rw-------` named
+  `https_<host>_<port>.icon`.
+- [ ] **164. Open.** Click a pinned site: it opens in the default browser. Right-click:
+  Move Left / Move Right / Unpin. A 13th site is refused ("12 sites pinned…").
+- [ ] **165. Shortcuts.** Click the bolt-plus button: the list of your shortcuts appears
+  (`shortcuts list` ran only now). Pin one, click it: it runs once, the tile and a short
+  peek say "“Name” done". A shortcut that ends with an error (e.g. "Stop and output" with
+  an error) says "failed (exit N)". A 9th pin is refused.
+- [ ] **166. Hang and cancel.** Make a shortcut with "Wait 120 seconds", pin and run it: a
+  spinner and Cancel show; Cancel says "cancelled"; left alone it says "stopped after 60 s".
+  `ps aux | grep shortcuts` shows no leftover `shortcuts run`. While one runs, other
+  shortcut buttons are disabled.
+- [ ] **167. Odd names.** Name a shortcut `--help` or `$(say hi)`: pin and run it; it runs
+  that shortcut (no help text, nothing spoken).
+- [ ] **168. Disable.** Settings › Widgets: turn Sites & Shortcuts off: the tile goes, a
+  running shortcut is stopped, `<home>/favicons` is deleted; pins come back when turned on
+  (icons are fetched again).

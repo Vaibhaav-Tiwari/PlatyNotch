@@ -14,18 +14,9 @@ public final class OpenMeteoFetcher: WeatherFetching {
     private let session: URLSession
 
     public init() {
-        let c = URLSessionConfiguration.ephemeral
-        c.httpCookieStorage = nil
-        c.httpShouldSetCookies = false
-        c.httpCookieAcceptPolicy = .never
-        c.urlCache = nil
-        c.urlCredentialStorage = nil
-        c.requestCachePolicy = .reloadIgnoringLocalCacheData
-        c.timeoutIntervalForRequest = 15
-        c.timeoutIntervalForResource = 30
-        c.waitsForConnectivity = false
-        c.httpAdditionalHeaders = [:]
-        session = URLSession(configuration: c, delegate: RedirectGuard(), delegateQueue: nil)
+        let c = EphemeralSession.configuration(requestTimeout: 15, resourceTimeout: 30)
+        let guardian = RedirectGuard { _, target in OpenMeteo.isAllowed(target) }
+        session = URLSession(configuration: c, delegate: guardian, delegateQueue: nil)
     }
 
     deinit { session.invalidateAndCancel() }
@@ -41,14 +32,6 @@ public final class OpenMeteoFetcher: WeatherFetching {
         // Open-Meteo explains a 400 in the body ({"error": true, "reason": …}).
         guard (200..<300).contains(http.statusCode) || http.statusCode == 400 else { throw WeatherError.http(http.statusCode) }
         return data
-    }
-}
-
-/// Follows a redirect only to an allowed Open-Meteo URL.
-final class RedirectGuard: NSObject, URLSessionTaskDelegate, Sendable {
-    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
-                    newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
-        completionHandler(request.url.map(OpenMeteo.isAllowed) == true ? request : nil)
     }
 }
 

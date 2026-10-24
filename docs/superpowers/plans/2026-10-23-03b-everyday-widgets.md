@@ -18,7 +18,7 @@
 - Every widget can be disabled and reordered; disabled widgets do no work.
 - Permissions are requested only when the user enables the widget that needs them.
 - Clipboard and shelf never read from apps in `config.Memory.ExcludeApps`, never store items marked `org.nspasteboard.ConcealedType` or `TransientType`.
-- Persistence: small state in `UserDefaults` suite `dev.platynotch.app`; files (shelf copies, clipboard images) in `~/Library/Application Support/PlatyNotch/{shelf,clipboard}` with mode 0700.
+- Persistence: small state in `UserDefaults` suite `dev.platynotch.app`; files (shelf copies, clipboard images, pinned sites' favicons) in `~/Library/Application Support/PlatyNotch/{shelf,clipboard,favicons}` with mode 0700 (C31).
 - Sounds: bundled, original or CC0; respect Focus and focus sessions (alarms still ring).
 
 ## Review Focus

@@ -49,7 +49,7 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>Apache-2.0. See LICENSE and NOTICE.</string>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>PlatyNotch asks your terminal app to bring an agent's tab to the front, and asks Spotify or Music what is playing.</string>
+	<string>PlatyNotch asks your terminal app to bring an agent's tab to the front, asks Spotify or Music what is playing, and, only when you click Add current tab, asks Safari, Chrome or Arc for the address of the front tab so you can pin it.</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>PlatyNotch listens to what your Mac is playing, only while music plays, to move the bars. Nothing is recorded or kept.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>

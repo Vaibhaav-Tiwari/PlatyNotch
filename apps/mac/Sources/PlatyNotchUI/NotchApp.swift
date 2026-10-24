@@ -406,6 +406,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         views += Self.dayViews()
         views += Self.wellbeingViews()
         views += Self.systemViews()
+        views += Self.launchViews()
         for v in views {
             NSHostingView(rootView: v.frame(width: 380).environment(\.colorScheme, .dark)).layoutSubtreeIfNeeded()
         }
@@ -454,6 +455,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 AnyView(HeadphonesPeekView(info: .init(id: "smoke2", name: "Headphones", battery: .init()))),
                 AnyView(HeadphonesSettings(widget: w)), AnyView(DownloadsSettings(widget: w)),
                 AnyView(DownloadPeekView(widget: w, url: file)), AnyView(FinishedDownloadRow(widget: w, url: file))]
+            .compactMap { $0 }
+    }
+
+    /// Task 11's views with an inert widget holding sample pins in memory (no icon fetch,
+    /// no Shortcuts, no Apple Events): the tile, the settings, the result peek and a letter icon.
+    private static func launchViews() -> [AnyView] {
+        let w = LaunchWidget.inert(sample: true)
+        let done = LaunchNotice(text: "“Log water” done", isError: false)
+        let failed = LaunchNotice(text: "“Log water” failed (exit 1)", isError: true)
+        return [w.tileView(), w.settingsView(), AnyView(LaunchResultPeek(notice: done)),
+                AnyView(LaunchResultPeek(notice: failed)), AnyView(SiteIcon(image: nil, letter: "E", size: 26))]
             .compactMap { $0 }
     }
 

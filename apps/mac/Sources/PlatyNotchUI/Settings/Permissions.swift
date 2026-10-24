@@ -13,12 +13,18 @@ final class Permissions {
         case granted, denied, notAsked, unavailable(String)
     }
 
-    /// Apps PlatyNotch scripts with Apple Events: terminals (jump to a session's tab)
-    /// and music players (now playing controls).
+    /// Apps PlatyNotch scripts with Apple Events: terminals (jump to a session's tab),
+    /// music players (now playing controls) and browsers ("Add current tab", Task 11).
     static let automationTargets: [(id: String, name: String)] = [
         (TerminalApps.appleTerminalID, "Terminal"), (TerminalApps.iTermID, "iTerm"),
         ("com.apple.Music", "Music"), ("com.spotify.client", "Spotify"),
-    ]
+    ] + SupportedBrowser.allCases.map { ($0.rawValue, $0.name) }
+
+    /// Browsers are asked only from "Add current tab" (the one place their Automation
+    /// prompt may appear), so Settings shows their status without an Allow button.
+    static func asksFromSettings(_ bundleID: String) -> Bool {
+        SupportedBrowser(rawValue: bundleID) == nil
+    }
 
     private(set) var accessibility = false
     private(set) var notifications: State = .notAsked

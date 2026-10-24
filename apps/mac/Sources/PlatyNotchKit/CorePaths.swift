@@ -43,6 +43,12 @@ public enum CorePaths {
         home(env: env, userHome: userHome).appendingPathComponent("clipboard", isDirectory: true)
     }
 
+    /// Pinned sites' icons (0700), one file per https origin, kept 30 days (Task 11).
+    public static func favicons(env: [String: String] = ProcessInfo.processInfo.environment,
+                                userHome: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+        home(env: env, userHome: userHome).appendingPathComponent("favicons", isDirectory: true)
+    }
+
     /// The stable hook binary path written into agent configs (Go `paths.HookBinary`):
     /// a symlink the app keeps pointed at its bundled `notch` (see `HookBinaryLink`).
     public static func hookBinary(env: [String: String] = ProcessInfo.processInfo.environment,
