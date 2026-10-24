@@ -70,7 +70,7 @@ enum FileActionError: Error, Equatable, LocalizedError {
         switch self {
         case .unreadable: "the file can't be read"
         case .unsupported: "this Mac can't make that kind of file"
-        case .tooLarge(let cap): "it would unpack to more than \(ByteCountFormatter.string(fromByteCount: Int64(cap), countStyle: .file))"
+        case .tooLarge(let cap): "it would unpack to more than \(ByteCountFormatter.string(fromByteCount: Int64(cap), countStyle: .binary))"
         case .unsafeArchive: "the archive has files that would land outside its folder"
         case .noSubject: "no subject was found"
         case .noText: "no text was found"

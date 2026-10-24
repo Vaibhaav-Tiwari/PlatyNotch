@@ -81,7 +81,7 @@ launch, so the retention below holds.
 | Focus | on | Focus sessions with a countdown in the pill; during a session agent notices do not peek (approvals still do) and meeting reminders stay quiet. |
 | Open loops | on | Open loops from memory (empty while memory is off). |
 | Time | on | Timers, a pomodoro, a stopwatch with laps, alarms and world clocks; a system notification backs up each timer and alarm in case the app is quit. |
-| Shelf | on | Drag files, images, links or text to the notch to keep them; drag them back out, AirDrop, share or Quick Look them. |
+| Shelf | on | Drag files, images, links or text to the notch to keep them; drag them back out, AirDrop, share or Quick Look them. Finder › Services › Add to PlatyNotch Shelf adds the selected files. With File actions on (a power feature), right-click › Actions converts, zips, unzips, reads text from, removes backgrounds from or renames them. |
 | System | on | Battery (plug-in and unplug peeks) and keep-awake. Headphones (AirPods battery) and Downloads (progress and a finished notice) are sub-features, off until you turn them on in its settings. |
 | Games | on | Snake, Tetris, 2048 and Flappy in a Games tab; best scores on the tile. |
 | Sites & Shortcuts | on | Pinned websites (http and https only) and pinned Shortcuts, run on a click. |
@@ -125,8 +125,22 @@ for access when the shelf tile shows them; nothing is checked at launch.
 
 #### Power features (v0.2)
 
-Coming in v0.2. Each is off until you turn it on under Settings › Widgets › Power
-features, and asks for its permission only from its own button.
+Each is off until you turn it on under Settings › Widgets › Power features, and asks
+for its permission only from its own button.
+
+**File actions** needs no permission and no network: converting, OCR and background
+removal run on this Mac (ImageIO, AVFoundation, Vision), and results are new shelf
+items in the shelf's folder (kept 7 days unless pinned; Save As… for a copy elsewhere),
+never written next to your files. Rename changes your files' names only when you
+click Rename, never replacing another file, with one Undo. Files in Downloads, Desktop
+or Documents may make macOS ask for access when an action reads them.
+
+**Finder service and links** (no new permission): Finder › Services › Add to
+PlatyNotch Shelf is always listed but only shows "Turn on the Shelf" while the shelf is
+off. `platynotch://shelf/add?path=…`, `platynotch://timer/start?d=25m` and
+`platynotch://clipboard/open` (for Alfred or Raycast) never act on their own: adding
+files or starting a timer asks first under the notch, and nothing happens while that
+widget is off.
 
 | Permission | Asked when | Used by |
 | --- | --- | --- |

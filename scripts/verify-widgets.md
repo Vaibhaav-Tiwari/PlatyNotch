@@ -4,8 +4,8 @@ Checks for the widget system (Plan 3b). Automated checks cover the logic (`swift
 `LiveArbiterTests`, `WidgetLayoutTests`, `WidgetRegistryTests`) and the launch
 (`swift run PlatyNotch --smoke` prints `widgets=<n>`, the number of enabled widgets whose
 tile was built; `--smoke-settings` visits Settings › Widgets; `--smoke-power` builds an
-inert instance of every v0.2 power feature and prints `SMOKE-POWER OK widgets=<n>`, 0
-until the first one lands, with no core, window or permission). This list covers what
+inert instance of every v0.2 power feature and prints `SMOKE-POWER OK widgets=<n>` (1 with
+File actions), with no core, window or permission). This list covers what
 only a person looking at the screen can confirm.
 
 ## Setup
@@ -1005,3 +1005,50 @@ tester: these checks only read what the app says.
   offers Copy Command (`tccutil reset AppleEvents dev.platynotch.app`). After the tester runs
   it, the next click asks again. With Safari's switch simply off (same build), the notice
   gives System Settings › Privacy & Security › Automation › PlatyNotch › Safari instead.
+
+## File actions (v0.2)
+
+Use an installed build (`scripts/build-app.sh`). Turn on **Settings › Widgets › Power
+features › File actions** (off by default). `swift test` already converts, zips, unzips and
+OCRs small files made by the tests (`FileActionsEngineTests`); these checks use real files.
+
+- [ ] **199. Off means no menu.** With File actions off, right-click a shelf item: no
+  Actions entry. Turn it on: an image gets Actions › Convert to, Zip, Copy Text, Remove
+  Background and Rename…; a text or link item gets no Actions entry; Activity Monitor shows
+  PlatyNotch near 0% CPU with nothing running.
+- [ ] **200. HEIC to JPEG.** Drag a HEIC photo from Photos or Finder to the notch, then
+  Actions › Convert to › JPEG: the card shows "Converting…" with Cancel, then a new item
+  "<name>.jpg" appears right after it. Quick Look shows it upright, with the original's
+  colours. Nothing new appears next to the original file in Finder. Reveal in Finder opens
+  the shelf's own folder; Save As… writes a copy where you choose (and asks before replacing).
+- [ ] **201. Copy Text from a screenshot.** Put a screenshot of this page on the shelf,
+  Actions › Copy Text, then paste into TextEdit: the text matches, line by line. A PDF with
+  text works the same; a photo without text says "Couldn't read text in …: no text was found".
+- [ ] **202. Remove background.** On a photo of a person or a pet, Actions › Remove
+  Background: a new "<name> (no background).png" item shows the subject on transparency
+  (open it in Preview). A flat graphic with no subject says "no subject was found".
+- [ ] **203. Video.** On a screen recording (.mov), Convert to › MP4 (H.264) and Compress
+  Video › 720p: each gives a new item that plays in QuickTime. Start a compression of a
+  long video and click Cancel on the card: it stops within a second, "Cancelled" shows,
+  and no partial file is left in the shelf's folder.
+- [ ] **204. Zip and unzip.** Zip a folder: "<folder>.zip" appears after it; unzip that:
+  a folder item with the same contents. While a large zip runs, `ls` the shelf folder shows
+  `<name>.zip.partial`, renamed when done. An archive that would unpack to more than 2 GB
+  (e.g. a zip of a large sparse disk image) is refused with "it would unpack to more than 2 GB".
+- [ ] **205. Batch rename.** Select three files in a Downloads subfolder (⌘-click), Actions
+  › Batch Rename…, pattern `{date:yyyy-MM-dd} trip {n:2}`: the preview lists every new name;
+  Rename renames them in Finder, and the cards follow. A name already taken gets " 2".
+  Actions › Undo Rename puts every name back; it then disappears (one level).
+- [ ] **206. Finder service.** After installing, run `/System/Library/CoreServices/pbs -flush`
+  and relaunch PlatyNotch. In Finder, select two files › right-click › Services (or Quick
+  Actions) › Add to PlatyNotch Shelf: a peek says "Added 2 files to the shelf" and both are
+  on the shelf (in place, not copied). Turn the shelf off and repeat: the peek says "Turn on
+  the Shelf" and nothing is added.
+- [ ] **207. Links ask first.** In Terminal: `open "platynotch://shelf/add?path=$HOME/Desktop/a.txt"`
+  (an existing file): a peek asks "Add 1 file to the shelf?" with the file name, "Asked by a
+  link", Cancel and Add; nothing is added until Add. `open "platynotch://timer/start?d=25m"`
+  asks "Start a 25 minute timer?"; Start starts it, Cancel or waiting 30 s does nothing.
+  With the shelf (or Time) widget off, the same links do nothing at all. A path inside
+  `~/Library/Application Support/PlatyNotch`, a relative path or more than 20 paths: no
+  peek. `open platynotch://clipboard/open` opens the clipboard picker only while Clipboard
+  history is on.
