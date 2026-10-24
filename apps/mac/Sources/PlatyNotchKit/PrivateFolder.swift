@@ -22,6 +22,21 @@ public enum PrivateFolder {
         }
     }
 
+    /// Makes `directory` (and missing parents) if needed, sets it to 0700 and marks it
+    /// (backup and Spotlight exclusion). False when it cannot be made or is not a folder.
+    @discardableResult
+    public static func ensure(_ directory: URL, fileManager: FileManager = .default) -> Bool {
+        do {
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true,
+                                            attributes: [.posixPermissions: 0o700])
+            try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        } catch {
+            return false
+        }
+        mark(directory, fileManager: fileManager)
+        return true
+    }
+
     /// Both marks are present (tests, Settings).
     public static func isMarked(_ directory: URL, fileManager: FileManager = .default) -> Bool {
         let excluded = (try? directory.resourceValues(forKeys: [.isExcludedFromBackupKey]))?.isExcludedFromBackup ?? false

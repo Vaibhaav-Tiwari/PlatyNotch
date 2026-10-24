@@ -291,6 +291,67 @@ public final class ShelfStore {
         try? fileManager.removeItem(at: ownedFolder(id))
     }
 
+    // MARK: - Moving between stores (baskets, R4)
+
+    /// Moves item `id` to `other` (another store, e.g. a basket's), keeping its id, pin
+    /// and added date (so an owned copy still expires 7 days after it was first added).
+    /// An owned file's folder moves with one atomic rename, `<directory>/<id>/` to
+    /// `<other.directory>/<id>/`; text, links and the user's own files move as records.
+    ///
+    /// Nothing is ever deleted: on any failure (no such item, `other` already lists the
+    /// id, either store not persisting or read-only, the rename failing) the item stays
+    /// here, unchanged, and nil is returned. The order of writes keeps a crash safe too:
+    /// `other`'s index lists the item before the folder moves, and this index drops it
+    /// only after, so no index ever lacks an owned folder the other has (a sweep could
+    /// otherwise remove it).
+    @discardableResult
+    public func transfer(_ id: UUID, to other: ShelfStore) -> ShelfItem? {
+        guard other !== self, persist, other.persist, !readOnly, !other.readOnly,
+              let i = items.firstIndex(where: { $0.id == id }),
+              !other.items.contains(where: { $0.id == id }) else { return nil }
+        let item = items[i]
+        let ownedFolder = item.ownsFile && item.fileRef != nil
+        var moved = item
+        if ownedFolder, var ref = item.fileRef {
+            let from = self.ownedFolder(id)
+            let fromPath = from.standardizedFileURL.path + "/"
+            guard fileManager.fileExists(atPath: from.path), ref.path.hasPrefix(fromPath),
+                  other.ensureDirectory() else { return nil }
+            let to = other.ownedFolder(id)
+            ref.path = to.standardizedFileURL.path + "/" + ref.path.dropFirst(fromPath.count)
+            ref.bookmark = nil   // made again after the move, when the file is there
+            moved.kind = .file(ref)
+            other.items.insert(moved, at: 0)
+            other.save()
+            do {
+                try fileManager.moveItem(at: from, to: to)
+            } catch {
+                other.items.removeAll { $0.id == id }   // only the record; no file is touched
+                other.save()
+                return nil
+            }
+            if let bookmark = other.bookmarks.make(ref.url), let j = other.items.firstIndex(where: { $0.id == id }) {
+                ref.bookmark = bookmark
+                other.items[j].kind = .file(ref)
+                moved = other.items[j]
+                other.save()
+            }
+        } else if let j = other.items.firstIndex(where: { Self.sameContent($0.kind, item.kind) }) {
+            // The same text, link or file is already there: it moves to the front.
+            var existing = other.items.remove(at: j)
+            existing.pinned = existing.pinned || item.pinned
+            other.items.insert(existing, at: 0)
+            moved = existing
+            other.save()
+        } else {
+            other.items.insert(moved, at: 0)
+            other.save()
+        }
+        items.removeAll { $0.id == id }   // the record only: its folder (if any) has moved
+        save()
+        return moved
+    }
+
     // MARK: - Files on disk
 
     /// True for a file item whose file is gone or in the Trash (moved or renamed files
