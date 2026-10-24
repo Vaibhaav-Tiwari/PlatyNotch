@@ -4,11 +4,19 @@ import XCTest
 
 @MainActor
 final class CoreSupervisorTests: XCTestCase {
+    /// A fake core: a shell script, read by `/bin/sh` (see `supervisor`), never exec'd itself.
     func makeScript(_ dir: URL, body: String) throws -> URL {
         let url = dir.appendingPathComponent("fake-notch")
-        try "#!/bin/sh\n\(body)\n".write(to: url, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        try "\(body)\n".write(to: url, atomically: true, encoding: .utf8)
         return url
+    }
+
+    /// Supervises `script` as `/bin/sh <script> serve`. macOS scans every new executable on
+    /// its first exec, and while other test runs or builds keep that scan busy, exec'ing a
+    /// fresh script took longer than the waits here: the core had not even started.
+    func supervisor(_ script: URL, logURL: URL, secrets: (@MainActor () -> Data)? = nil) -> CoreSupervisor {
+        CoreSupervisor(binaryURL: URL(fileURLWithPath: "/bin/sh"), arguments: [script.path, "serve"],
+                       logURL: logURL, delayScale: 0.01, secrets: secrets)
     }
 
     func tempDir() throws -> URL {
@@ -27,7 +35,7 @@ final class CoreSupervisorTests: XCTestCase {
         let counter = dir.appendingPathComponent("count")
         let bin = try makeScript(dir, body: "echo run >> '\(counter.path)'; echo \"args:$@\"; exit 1")
         let log = dir.appendingPathComponent("logs/core.log")
-        let sup = CoreSupervisor(binaryURL: bin, logURL: log, delayScale: 0.01)
+        let sup = supervisor(bin, logURL: log)
         sup.start()
         for _ in 0..<200 where lines(counter) < 3 { try await Task.sleep(for: .milliseconds(25)) }
         XCTAssertGreaterThanOrEqual(lines(counter), 3)
@@ -44,7 +52,7 @@ final class CoreSupervisorTests: XCTestCase {
         let dir = try tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
         let bin = try makeScript(dir, body: "exec sleep 30")
-        let sup = CoreSupervisor(binaryURL: bin, logURL: dir.appendingPathComponent("core.log"), delayScale: 0.01)
+        let sup = supervisor(bin, logURL: dir.appendingPathComponent("core.log"))
         sup.start()
         try await Task.sleep(for: .milliseconds(200))
         XCTAssertTrue(sup.isRunning)
@@ -60,7 +68,7 @@ extension CoreSupervisorTests {
         let counter = dir.appendingPathComponent("count")
         // Takes a moment to shut down, like the core closing its socket.
         let bin = try makeScript(dir, body: "echo run >> '\(counter.path)'; trap 'sleep 0.2; exit 0' TERM; while true; do sleep 0.05; done")
-        let sup = CoreSupervisor(binaryURL: bin, logURL: dir.appendingPathComponent("core.log"), delayScale: 0.01)
+        let sup = supervisor(bin, logURL: dir.appendingPathComponent("core.log"))
         sup.start()
         for _ in 0..<100 where lines(counter) < 1 { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertEqual(lines(counter), 1)
@@ -90,7 +98,7 @@ extension CoreSupervisorTests {
         trap 'sleep 0.3; : > "\(alive.path)"; exit 0' TERM
         while true; do sleep 0.05; done
         """)
-        let sup = CoreSupervisor(binaryURL: bin, logURL: dir.appendingPathComponent("core.log"), delayScale: 0.01)
+        let sup = supervisor(bin, logURL: dir.appendingPathComponent("core.log"))
         sup.start()
         for _ in 0..<100 where lines(counter) < 1 { try await Task.sleep(for: .milliseconds(20)) }
         sup.restart()
@@ -110,8 +118,8 @@ extension CoreSupervisorTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         let got = dir.appendingPathComponent("got")
         let bin = try makeScript(dir, body: "echo \"fd=$PLATYNOTCH_SECRETS_FD\" > '\(got.path)'; cat >> '\(got.path)'; exec sleep 30")
-        let sup = CoreSupervisor(binaryURL: bin, logURL: dir.appendingPathComponent("core.log"), delayScale: 0.01,
-                                 secrets: { Data(#"{"embedder.openai":"sk-1"}"#.utf8) })
+        let sup = supervisor(bin, logURL: dir.appendingPathComponent("core.log"),
+                             secrets: { Data(#"{"embedder.openai":"sk-1"}"#.utf8) })
         sup.start()
         var text = ""
         for _ in 0..<100 {
@@ -136,7 +144,7 @@ extension CoreSupervisorTests {
         let home = dir.appendingPathComponent("home")
         let log = home.appendingPathComponent("logs/core.log")
         let bin = try makeScript(dir, body: "echo hi; exec sleep 30")
-        let sup = CoreSupervisor(binaryURL: bin, logURL: log, delayScale: 0.01)
+        let sup = supervisor(bin, logURL: log)
         sup.start()
         defer { sup.stop() }
         XCTAssertEqual(perms(home), 0o700)
@@ -152,7 +160,7 @@ extension CoreSupervisorTests {
         try "old\n".write(to: log, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: log.path)
         let bin = try makeScript(dir, body: "exec sleep 30")
-        let sup = CoreSupervisor(binaryURL: bin, logURL: log, delayScale: 0.01)
+        let sup = supervisor(bin, logURL: log)
         sup.start()
         defer { sup.stop() }
         XCTAssertEqual(perms(log), 0o600)
