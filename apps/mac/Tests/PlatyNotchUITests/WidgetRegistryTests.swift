@@ -168,7 +168,8 @@ final class WidgetRegistryTests: DefaultsTestCase {
         let registry = WidgetRegistry(defaults: defaults())
         let today = TodayServices(client: CoreClient(socketPath: "/nonexistent"))
         BuiltInWidgets.register(in: registry, store: AppStore(), today: today, persist: false)
-        XCTAssertEqual(registry.orderedWidgets.map(\.id), ["music", "meeting", "focus", "loops", "time", "hud", "shelf", "clipboard",
+        // Power features (v0.2) follow; each is off by default (`WidgetCategoryRegistryTests`).
+        XCTAssertEqual(registry.orderedWidgets(in: .everyday).map(\.id), ["music", "meeting", "focus", "loops", "time", "hud", "shelf", "clipboard",
                                                            "reminders", "weather", "wellbeing", "system", "games", "launch"])
         XCTAssertEqual(registry.visibleWidgets.count, 9,
                        "the HUD (needs Accessibility), clipboard history (C22), Reminders (private data), weather (network) "

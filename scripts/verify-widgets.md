@@ -1112,3 +1112,30 @@ you browsed a little). The graph is read from the core over `memory.graph`; `not
   hours" and so on.
 - [ ] **214. Loops whose thread is gone.** An open loop whose source thread was purged by
   retention still shows, linked to its app (or alone when that app is not in the range).
+
+## Camera mirror (v0.2)
+
+Automated: `MirrorWidgetTests` (the camera starts only after a click and stops on each stop
+event, through fakes) and `MirrorStateTests`. Turn on Settings › Widgets › Power features ›
+Mirror, on an installed build.
+
+- [ ] **440. Nothing at rest.** With the mirror on and the panel open on Today, the camera
+  light stays off until you click Show Mirror. Activity Monitor shows no extra CPU.
+- [ ] **441. First click asks.** On a Mac that never allowed the camera, Show Mirror shows the
+  macOS camera prompt (and nothing else does: launch, Settings and opening the panel never
+  do). Allow: the mirror shows at once. Don't Allow: no light; the tile says the camera is
+  off with Open Settings.
+- [ ] **442. A mirror.** Raise your right hand: it shows on the right of the preview. The
+  preview fills its frame without stretching.
+- [ ] **443. Stops on collapse.** Show the mirror, then move away so the panel closes: the
+  camera light goes out within a second. Reopen the panel: the tile shows Show Mirror again
+  (it never restarts by itself). Same after choosing another tab, and after Hide.
+- [ ] **444. Stops on lock and sleep.** Show the mirror, press ⌃⌘Q (lock): unlock, the light
+  is off and the tile shows Show Mirror. Same after the display sleeps (hot corner or
+  `pmset displaysleepnow`), after the Mac sleeps, and after switching to another user.
+- [ ] **445. Stops when turned off.** Show the mirror, then turn Mirror off in Settings: the
+  light goes out at once.
+- [ ] **446. Rebuilt app.** After `scripts/build-app.sh` makes a new ad-hoc build, the tile
+  says Turn On Again (when macOS forgot the grant); clicking it asks once more.
+- [ ] **447. No camera.** With the lid closed on an external display and no camera, Show
+  Mirror says no camera was found; nothing keeps trying.

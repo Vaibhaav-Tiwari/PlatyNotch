@@ -89,8 +89,11 @@ enum BuiltInWidgets {
     }
 
     /// Every power feature (`WidgetCategory.power`); `persist: false` gives inert ones
-    /// (no monitors, permissions, files or network), as `--smoke-power` checks. None yet.
+    /// (no monitors, permissions, files or network), as `--smoke-power` checks.
     static func powerWidgets(persist: Bool) -> [any NotchWidget] {
-        []
+        var list: [any NotchWidget] = []
+        // Camera only after a click in its tile; never in smoke runs.
+        list.append(persist ? MirrorWidget() : MirrorWidget.inert())
+        return list
     }
 }

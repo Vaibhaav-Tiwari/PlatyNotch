@@ -117,9 +117,10 @@ final class WidgetCategoryRegistryTests: DefaultsTestCase {
 /// `--smoke-power` (Task 0): every power feature built inert.
 @MainActor
 final class PowerSmokeTests: DefaultsTestCase {
-    func testNoPowerFeaturesYet() {
-        XCTAssertTrue(BuiltInWidgets.powerWidgets(persist: false).isEmpty)
-        XCTAssertEqual(NotchApp.powerSmoke(BuiltInWidgets.powerWidgets(persist: false)), .success(0))
+    func testPowerFeaturesBuildInert() {
+        let list = BuiltInWidgets.powerWidgets(persist: false)
+        XCTAssertTrue(list.map(\.id).contains(MirrorWidget.widgetID))
+        XCTAssertEqual(NotchApp.powerSmoke(list), .success(list.count))
     }
 
     func testEveryListedWidgetMustBeAPowerFeature() {

@@ -130,7 +130,7 @@ features, and asks for its permission only from its own button.
 
 | Permission | Asked when | Used by |
 | --- | --- | --- |
-| Camera | Coming in v0.2 | Mirror (shows your camera only while it is open) |
+| Camera | You click Show Mirror in the Mirror tile | Mirror: the camera runs only while it shows; hiding it, closing the panel, locking the screen or display sleep turns it off. Nothing is recorded |
 | Accessibility | Coming in v0.2 | Window snapping |
 | Automation: Mail | Coming in v0.2 | Mail |
 | Files and Folders | Coming in v0.2 | The notes folder |
