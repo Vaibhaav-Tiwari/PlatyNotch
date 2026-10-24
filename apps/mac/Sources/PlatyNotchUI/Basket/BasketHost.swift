@@ -74,6 +74,12 @@ final class BasketHost: ItemListHost, FileActionResults, Identifiable {
     /// How many more items it takes.
     var room: Int { max(0, BasketStore.maxItems - store.items.count) }
 
+    /// A file promise is still being written into it, or a file action runs on one of its
+    /// items: it is not closed or merged until that ends (its folders must stay).
+    var isBusy: Bool {
+        !receiving.isEmpty || (actionCenterMade && !actionCenter.running.isEmpty)
+    }
+
     /// Anything still running for this basket stops (the feature stops or it closes).
     func cancelWork() {
         refreshTask?.cancel()

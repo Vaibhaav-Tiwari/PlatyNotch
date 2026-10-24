@@ -256,6 +256,7 @@ final class BasketController: DragMonitorListener {
         store.setOrigin(host.id, w.frame.origin)
         guard let target = hosts.first(where: { $0.id != host.id && (windows[$0.id]?.frame.contains(pointer) ?? false) })
         else { return }
+        guard !host.isBusy else { return system.beep() }
         let before = host.items.count
         let moved = store.merge(host.id, into: target.id)
         target.afterChange()
@@ -267,10 +268,10 @@ final class BasketController: DragMonitorListener {
         }
     }
 
-    /// The close button: with items, asks (Move to Shelf, Discard, Cancel). Waits while a
-    /// file promise is still being written into it.
+    /// The close button: with items, asks (Move to Shelf, Discard, Cancel). Refused (a
+    /// beep) while a file promise or a file action is still writing into it.
     func requestClose(_ host: BasketHost) {
-        guard host.receiving.isEmpty else { return system.beep() }
+        guard !host.isBusy else { return system.beep() }
         guard !host.items.isEmpty else { return close(host, keepItems: false) }
         let canMove = store.shelf() != nil
         switch system.confirmClose(name: host.name, count: host.items.count, canMoveToShelf: canMove) {

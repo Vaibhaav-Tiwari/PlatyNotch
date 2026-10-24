@@ -541,3 +541,42 @@ final class BasketControllerTests: DefaultsTestCase {
         XCTAssertLessThan(switcher.level.rawValue, NSWindow.Level.statusBar.rawValue)
     }
 }
+
+/// Waits until cancelled.
+private struct HangingEngine: FileActionPerforming {
+    func perform(_ action: FileAction, sources: [URL], into folder: URL?) async throws -> FileActionOutput {
+        while !Task.isCancelled { try await Task.sleep(for: .seconds(60)) }
+        throw CancellationError()
+    }
+}
+
+@MainActor
+final class BasketBusyTests: DefaultsTestCase {
+    /// A file action still writing into a basket: it is neither closed nor merged.
+    func testBusyBasketIsNotClosed() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("BasketBusyTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = BasketStore(directory: dir.appendingPathComponent("baskets.noindex"), defaults: defaults())
+        let screen = BasketScreen(visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 950), exclusion: nil)
+        let system = FakeSystem(displays: [screen])
+        let engine = HangingEngine()
+        let c = BasketController(store: store, system: system, makeHotKey: { _, _, _ in nil },
+                                 actions: { FileActionCenter(engine: engine) })
+        c.start(drags: DragMonitor(signals: Signals(), surfaces: nil), sensitivity: 3, switcher: nil)
+        c.fileActionsOn = { true }
+        let host = try XCTUnwrap(c.summon(at: CGPoint(x: 300, y: 300)))
+        let src = dir.appendingPathComponent("a.txt")
+        try Data("x".utf8).write(to: src)
+        host.store.addFile(src)
+        host.sync()
+        let item = try XCTUnwrap(host.items.first)
+        let center = try XCTUnwrap(host.fileActions)
+        center.run(.zip, on: [(item, src)])
+        XCTAssertTrue(host.isBusy)
+        c.requestClose(host)
+        XCTAssertEqual(system.beeps, 1)
+        XCTAssertEqual(c.hosts.count, 1, "still open")
+        c.stop()
+    }
+}
