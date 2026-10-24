@@ -42,6 +42,9 @@ public final class NotchController {
     /// A drag session is in progress (`PanelSurfaces`): the cursor is polled and the drop
     /// zone opens near the notch.
     private var dragSession = false
+    /// This panel started the drag session itself: a drag reached its window that the
+    /// shelf's detector did not report (it ends the session when the drag ends).
+    private var windowStartedSession = false
     /// Whether the left mouse button is down (a drag cannot be in progress otherwise).
     var mouseDown: () -> Bool = { NSEvent.pressedMouseButtons & 1 != 0 }
     private var workspaceObservers: [NSObjectProtocol] = []
@@ -164,6 +167,10 @@ public final class NotchController {
         host.sizingOptions = []
         host.frame = CGRect(origin: .zero, size: frame.size)
         host.autoresizingMask = [.width, .height]
+        // The drag destination exists from the start, so the first drag-enter after the
+        // window stops ignoring mouse events reaches it (verify-widgets #16).
+        host.registerForDraggedTypes(PanelDrop.types)
+        host.dropRouter = self
         p.contentView = host
         p.onEscape = { [weak self] in self?.handle(.escape) }
         return p
@@ -226,7 +233,8 @@ public final class NotchController {
         // Hovering a peek, ringing card or drop zone never opens the panel, but the
         // debouncer saw the cursor arrive. When that surface goes, start over so hovering
         // the pill afterwards opens the panel.
-        if before != machine.mode, Self.isNonOpening(before) { debouncer.reset(hovering: false) }
+        // A drop that gives back the open panel counts as hovering it, so moving away closes it.
+        if before != machine.mode, Self.isNonOpening(before) { debouncer.reset(hovering: machine.mode == .expanded) }
         apply()
         scheduleExpiry()
     }
@@ -298,8 +306,22 @@ public final class NotchController {
     func dragMoved(to p: CGPoint) {
         guard dragSession, let layout else { return }
         // A session whose end was missed (button already up) never opens it on hover.
-        let near = mouseDown() && layout.dragHover(p, showing: machine.isDragging)
-        if near != machine.isDragging { handle(near ? .dragBegan : .dragEnded) }
+        let down = mouseDown()
+        let near = down && layout.dragHover(p, showing: machine.isDragging)
+        guard near != machine.isDragging else { return }
+        if near {
+            handle(.dragBegan)
+        } else {
+            endDrag(at: p, released: !down)
+        }
+    }
+
+    /// Closes the drop zone. Released (or dropped) on it: a panel that was open when the
+    /// drag began opens again; left it: the panel rests.
+    private func endDrag(at p: CGPoint, released: Bool) {
+        guard machine.isDragging else { return }
+        let onZone = layout.map { PanelLayout.contains($0.contentRect(for: .peek(.drop)), p) } ?? false
+        handle(released && onZone ? .dragEndedInside : .dragEnded)
     }
 
     // MARK: - Store
@@ -407,8 +429,9 @@ extension NotchController: PanelSurfaceSink {
             dragSession = active
             if active {
                 if panel != nil { sampleCursor() }
-            } else if machine.isDragging {
-                handle(.dragEnded)
+            } else {
+                windowStartedSession = false
+                endDrag(at: NSEvent.mouseLocation, released: true)
             }
             updateEngaged()
         }
@@ -468,11 +491,16 @@ extension NotchController: PanelSurfaceSink {
             (.approvalsChanged(count: 1), .peek(.approval), "smoke.ring"),
             (.escape, .peek(.approval), "smoke.ring"),
             (.dragBegan, .peek(.approval), "smoke.ring"),
-            (.approvalsChanged(count: 0), .peek(.ringing(id: "smoke.ring")), nil),
+            // Answered mid-drag: the drop zone, carrying the ringing chip (Task 5).
+            (.approvalsChanged(count: 0), .peek(.drop), "smoke.ring"),
             (.click, .expanded, "smoke.ring"),
-            (.click, .peek(.ringing(id: "smoke.ring")), nil),
+            (.click, .peek(.drop), "smoke.ring"),
             (.ringStopped(id: "smoke.ring"), .peek(.drop), nil),
             (.dragEnded, .peek(.hud(.volume)), nil),
+            (.click, .expanded, nil),
+            (.dragBegan, .peek(.drop), nil),
+            (.dragEndedInside, .expanded, nil),   // a drop gives the open panel back
+            (.click, .peek(.hud(.volume)), nil),
             (.expire(now: until), .compact, nil),   // .hidden in Minimal mode with nothing live
         ]
         for (event, expected, chip) in checks {
@@ -489,6 +517,43 @@ extension NotchController: PanelSurfaceSink {
             if chip != nil, layout.ringingChipRect(for: step.mode) == nil { return "no chip place in \(step.mode)" }
         }
         return nil
+    }
+}
+
+// MARK: - Drops (the hosting view's drag destination)
+
+extension NotchController: PanelDropRouting {
+    /// Drags reach the window only where it takes mouse events: the drop zone (whole
+    /// window), or the pill / open panel / approval peek under the cursor. A drag the
+    /// shelf's detector missed starts the session here, so the drop zone still opens;
+    /// the drop itself is taken only while the drop zone shows (never on an approval).
+    func panelDragUpdated(_ info: NSDraggingInfo) -> NSDragOperation {
+        // Our own drags (a shelf item dragged out of the open panel) never open the drop
+        // zone over the panel they come from, and are never dropped back.
+        guard info.draggingSource == nil else { return [] }
+        if !dragSession, !surfaces.dragActive {
+            windowStartedSession = true
+            surfaces.setDragSession(active: true)
+        }
+        guard machine.mode.acceptsDrops, let target = widgets.dropTarget() else { return [] }
+        return target.dragUpdated(info)
+    }
+
+    func panelDragExited() {
+        widgets.dropTarget()?.dragExited()
+    }
+
+    func panelPerformDrop(_ info: NSDraggingInfo) -> Bool {
+        guard machine.mode.acceptsDrops, let target = widgets.dropTarget() else { return false }
+        return target.performDrop(info)
+    }
+
+    func panelDragEnded() {
+        widgets.dropTarget()?.dragEnded()
+        if windowStartedSession {
+            windowStartedSession = false
+            surfaces.setDragSession(active: false)
+        }
     }
 }
 

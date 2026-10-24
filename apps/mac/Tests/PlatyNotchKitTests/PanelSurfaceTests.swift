@@ -262,13 +262,59 @@ final class PanelSurfaceTests: XCTestCase {
         XCTAssertEqual(withApproval.ringingChip, "r")
     }
 
-    func testRingingBeatsDropZone() {
+    /// Task 5 carry: a drag near the notch shows the drop zone even while something rings
+    /// (the ringing card never covers the panel the drag opened); ringing is the header
+    /// chip meanwhile and the full card comes back when the drag ends.
+    func testDropZoneBeatsRingingWhichShowsAsChip() {
         var m = PanelStateMachine()
         m.handle(.dragBegan)
         m.handle(.ringStarted(id: "r"))
-        XCTAssertEqual(m.mode, .peek(.ringing(id: "r")))
-        m.handle(.ringStopped(id: "r"))
         XCTAssertEqual(m.mode, .peek(.drop))
+        XCTAssertEqual(m.ringingChip, "r")
+        m.handle(.dragEnded)
+        XCTAssertEqual(m.mode, .peek(.ringing(id: "r")))
+        XCTAssertNil(m.ringingChip)
+
+        var open = PanelStateMachine()
+        open.handle(.ringStarted(id: "r"))
+        open.handle(.click)
+        open.handle(.dragBegan)
+        XCTAssertEqual(open.mode, .peek(.drop), "not the ringing card over the open panel")
+        XCTAssertEqual(open.ringingChip, "r")
+        open.handle(.dragEndedInside)
+        XCTAssertEqual(open.mode, .expanded, "the open panel comes back, ringing as its chip")
+        XCTAssertEqual(open.ringingChip, "r")
+    }
+
+    /// Task 5 carry: `.dragBegan` clears `open`; a drag that ends with the cursor still on
+    /// the panel (a drop, or a release there) gives back the panel that was open.
+    func testDragEndedInsideRestoresOpenPanel() {
+        var m = PanelStateMachine()
+        m.handle(.click)
+        m.handle(.dragBegan)
+        XCTAssertEqual(m.mode, .peek(.drop))
+        m.handle(.dragEndedInside)
+        XCTAssertEqual(m.mode, .expanded)
+
+        var away = PanelStateMachine()
+        away.handle(.click)
+        away.handle(.dragBegan)
+        away.handle(.dragEnded)   // left the drop zone: the panel rests
+        XCTAssertEqual(away.mode, .compact)
+        away.handle(.dragBegan)
+        away.handle(.dragEndedInside)
+        XCTAssertEqual(away.mode, .compact, "only a panel open when this drag began comes back")
+
+        var closed = PanelStateMachine()
+        closed.handle(.dragBegan)
+        closed.handle(.dragEndedInside)
+        XCTAssertEqual(closed.mode, .compact)
+
+        var approval = PanelStateMachine()
+        approval.handle(.approvalsChanged(count: 1))
+        approval.handle(.dragBegan)
+        approval.handle(.dragEndedInside)
+        XCTAssertEqual(approval.mode, .peek(.approval))
     }
 
     /// Ruling: while any approval is pending the drop zone is not shown; the approval
@@ -334,7 +380,8 @@ final class PanelSurfaceTests: XCTestCase {
                        .peek(.approval))
         XCTAssertEqual(s { $0.approvals = 1; $0.open = true; $0.ringing = ["r"] }, .expanded)
         XCTAssertEqual(s { $0.open = true; $0.ringing = ["r"]; $0.dragging = true; $0.hud = hud; $0.notice = true }, .expanded)
-        XCTAssertEqual(s { $0.ringing = ["r"]; $0.dragging = true; $0.hud = hud }, .peek(.ringing(id: "r")))
+        XCTAssertEqual(s { $0.ringing = ["r"]; $0.dragging = true; $0.hud = hud }, .peek(.drop))
+        XCTAssertEqual(s { $0.ringing = ["r"]; $0.hud = hud }, .peek(.ringing(id: "r")))
         XCTAssertEqual(s { $0.dragging = true; $0.hud = hud; $0.notice = true }, .peek(.drop))
         XCTAssertEqual(s { $0.hud = hud; $0.notice = true; $0.widgetPeek = peek }, .peek(.hud(.volume)))
         XCTAssertEqual(s { $0.notice = true; $0.widgetPeek = peek }, .peek(.notice))
@@ -381,7 +428,7 @@ final class PanelSurfaceTests: XCTestCase {
         XCTAssertEqual(chip { $0.open = true }, "r")
         XCTAssertEqual(chip { $0.approvals = 2; $0.open = true }, "r")
         XCTAssertNil(chip { _ in })
-        XCTAssertNil(chip { $0.dragging = true })
+        XCTAssertEqual(chip { $0.dragging = true }, "r", "the drop zone carries the chip (Task 5)")
         var none = PanelSurfaceState(idle: .compact)
         none.approvals = 1
         XCTAssertNil(PanelPrecedence.ringingChip(none))
@@ -494,6 +541,14 @@ final class PanelSurfaceLayoutTests: XCTestCase {
         // Card room on a screen without a notch is what it was before the header strip.
         XCTAssertEqual(ext.approvalSlot(for: .peek(.approval))!.height, PanelLayout.peekSize.height - 20)
         XCTAssertNil(mbp.ringingChipRect(for: .compact))
+        // The drop zone carries the chip too (Task 5), above its content.
+        for l in [mbp, ext] {
+            let chip = try! XCTUnwrap(l.ringingChipRect(for: .peek(.drop)))
+            let content = l.contentRect(for: .peek(.drop))
+            XCTAssertTrue(content.contains(chip))
+            XCTAssertLessThanOrEqual(content.maxY - l.contentInset(for: .peek(.drop)), chip.minY + 0.5,
+                                     "drop content starts below the chip")
+        }
         XCTAssertNil(mbp.approvalSlot(for: .peek(.notice)))
     }
 

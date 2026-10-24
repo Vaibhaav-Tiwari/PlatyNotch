@@ -110,6 +110,10 @@ public final class WidgetRegistry {
         runningWidgets.lazy.compactMap { $0.dropZoneView() }.first
     }
 
+    public func dropTarget() -> PanelDropTarget? {
+        runningWidgets.lazy.compactMap { $0.dropTarget() }.first
+    }
+
     private var runningWidgets: [any NotchWidget] { widgets.filter { running.contains($0.id) } }
 
     private func start(_ w: any NotchWidget) {

@@ -1,4 +1,5 @@
 import AppKit
+import Quartz
 import SwiftUI
 
 /// The borderless, non-activating window over the notch. It is transparent and
@@ -37,9 +38,59 @@ final class NotchPanel: NSPanel {
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 { onEscape?() } else { super.keyDown(with: event) }
     }
+
+    // Quick Look for shelf items: the open panel is the key window when the user picks
+    // "Quick Look", so it is the panel's controller (QLPreviewPanel's responder-chain API).
+    override func acceptsPreviewPanelControl(_ panel: QLPreviewPanel!) -> Bool {
+        MainActor.assumeIsolated { ShelfQuickLook.shared.hasItems }
+    }
+
+    override func beginPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        MainActor.assumeIsolated { ShelfQuickLook.shared.attach(panel) }
+    }
+
+    override func endPreviewPanelControl(_ panel: QLPreviewPanel!) {
+        MainActor.assumeIsolated { ShelfQuickLook.shared.detach(panel) }
+    }
+}
+
+/// Where the hosting view sends the drags it receives (the controller).
+@MainActor
+protocol PanelDropRouting: AnyObject {
+    func panelDragUpdated(_ info: NSDraggingInfo) -> NSDragOperation
+    func panelDragExited()
+    func panelPerformDrop(_ info: NSDraggingInfo) -> Bool
+    func panelDragEnded()
 }
 
 /// Hosting view that takes the first click, so a click on the compact pill acts immediately.
+/// It is the panel's drag destination (registered for `PanelDrop.types` at creation, not
+/// when the drop zone appears) and hands every drag to `dropRouter`; nothing in the
+/// panel's SwiftUI content uses `onDrop`.
 final class NotchHostingView<Content: View>: NSHostingView<Content> {
+    weak var dropRouter: PanelDropRouting?
+
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        dropRouter?.panelDragUpdated(sender) ?? []
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        dropRouter?.panelDragUpdated(sender) ?? []
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        dropRouter?.panelDragExited()
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool { dropRouter != nil }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        dropRouter?.panelPerformDrop(sender) ?? false
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        dropRouter?.panelDragEnded()
+    }
 }

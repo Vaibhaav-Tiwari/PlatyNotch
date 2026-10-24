@@ -305,3 +305,62 @@ build loses the grant on every rebuild.
   keys: they keep working (ours or the system's), nothing sticks after leaving the field.
 - [ ] **53. Idle cost.** Widget on and allowed, collapsed, no music: Activity Monitor
   shows PlatyNotch where it was before (no polling; the tap runs only on key presses).
+
+## Task 5: file shelf and drag detection
+
+Automated: `ShelfTests` (store, bookmarks, missing state, expiry, drag poller),
+`ShelfWidgetTests` (detector through fake signals, drop zone and the panel, receiving,
+missing files), `PanelSurfaceTests` (drop zone vs ringing, open panel restored). The shelf
+lives in `$PLATYNOTCH_HOME/shelf` (0700; `items.json` 0600; owned copies in
+`<uuid>/`). Use a throwaway `PLATYNOTCH_HOME` and check `ls -la "$PLATYNOTCH_HOME/shelf"`.
+
+- [ ] **54. Real drag-enter after the pass-through flip (closes #16).** Drag a file from
+  Finder slowly towards the notch. Within about 60 pt the drop zone opens ("Drop to keep
+  on the Shelf"); keep moving onto it: the border turns solid accent on the **first**
+  pass (the drag-enter reached the panel). Drop: the item is on the shelf (Today tab
+  tile, pill ear shows a tray and the count when nothing else is live). If the zone
+  opens but never highlights, note it: the panel's view is registered for drags at
+  creation, so this would mean AppKit withholds drag-enter after `ignoresMouseEvents`
+  flips mid-drag.
+- [ ] **55. Drag in, several sources.** Finder (3 files at once: all three, in the
+  dragged order); Safari image (an owned copy under `shelf/<uuid>/`); Safari link (a
+  link card); selected text from TextEdit (a text card); a photo from Photos and an
+  attachment from Mail (file promises: owned copies appear after a moment). Nothing
+  prompts for any permission.
+- [ ] **56. Drag out.** Drag a card into a Finder window: a copy appears (the shelf item
+  stays). ⌘-click three cards, drag one: all three go (into Mail's compose window as
+  attachments). Dragging a card out of the open panel never turns the panel into the
+  drop zone.
+- [ ] **57. Moved, renamed, deleted in Finder (Review Focus #2).** Rename a shelved file
+  in Finder, reopen the panel: the card shows the new name. Move it to another folder:
+  still found. Move it to the Trash (or delete it): the card shows the orange badge with
+  Locate (magnifying glass) and Remove. Dragging that card does nothing but beep (no
+  crash, no empty drag); in a multi-selection the other cards still drag. Locate… →
+  choose a file: badge gone. Remove: the card goes and nothing on disk is deleted.
+- [ ] **58. AirDrop.** Right-click a file card › AirDrop: the system AirDrop window
+  opens with the file; send to a nearby device. With several selected, all go.
+- [ ] **59. Quick Look.** Right-click › Quick Look: the Quick Look panel shows the file
+  (several selected: arrows page through them). Note whether it opens without
+  activating PlatyNotch. Close it: the panel behaves as before.
+- [ ] **60. Menu.** Open, Reveal in Finder, Share… (picker next to the card), Copy (paste
+  in Finder gives the file), Copy Path, Pin (pin glyph; "Clear" keeps it), Remove.
+- [ ] **61. Drag while the panel is open / something rings.** Open the panel, drag a file
+  to the notch: the drop zone replaces the panel; drop: the open panel comes back. Drag
+  away instead: it rests compact. With an alarm ringing, drag to the notch: the drop
+  zone shows (not the ringing card) with the amber Stop chip; after the drop the ringing
+  card is back.
+- [ ] **62. Approval pending.** With an approval peek up, drag a file to the notch: the
+  approval stays, nothing is dropped on it, its buttons work after the drag.
+- [ ] **63. Privacy.** Copy a password from a password manager that marks it concealed
+  and drag that text to the notch: refused (nothing added). Settings › Widgets › Shelf
+  says the shelf cannot honour Memory's excluded apps. Little Snitch / `nettop`: no
+  network from the shelf.
+- [ ] **64. Expiry.** Set an owned item's `addedAt` 8 days back in `items.json` (quit
+  first), relaunch: it and its `<uuid>/` folder are gone; a pinned one stays; files you
+  dropped from disk are never deleted.
+- [ ] **65. Off does nothing.** Turn the shelf off: dragging files around shows no drop
+  zone, and Activity Monitor shows no extra CPU while holding the mouse button down. Turn
+  it on again: the items are still there.
+- [ ] **66. Idle cost.** Shelf on, collapsed: no CPU while the button is up (only click
+  callbacks); while holding the button down (a window drag) a 20 Hz read of two integers
+  that stops at release.

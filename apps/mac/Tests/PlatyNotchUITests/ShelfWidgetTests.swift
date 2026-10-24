@@ -1,0 +1,339 @@
+import AppKit
+import Foundation
+import PlatyNotchKit
+import SwiftUI
+import XCTest
+@testable import PlatyNotchUI
+
+/// Stands in for the NSEvent monitors and the drag pasteboard: installs nothing.
+@MainActor
+private final class FakeDragSignals: DragSignals {
+    var starts = 0
+    var stops = 0
+    var onButton: (@MainActor (Bool) -> Void)?
+    var dragChangeCount = 0
+    var leftButtonDown = false
+    var ticks: [Int: @MainActor () -> Void] = [:]
+    private var nextTick = 0
+    var polling: Bool { !ticks.isEmpty }
+
+    func start(_ onButton: @escaping @MainActor (Bool) -> Void) {
+        starts += 1
+        self.onButton = onButton
+    }
+
+    func stop() {
+        stops += 1
+        onButton = nil
+    }
+
+    func repeatEvery(_ interval: TimeInterval, _ tick: @escaping @MainActor () -> Void) -> () -> Void {
+        let id = nextTick
+        nextTick += 1
+        ticks[id] = tick
+        return { [weak self] in MainActor.assumeIsolated { _ = self?.ticks.removeValue(forKey: id) } }
+    }
+
+    func tick() { for t in Array(ticks.values) { t() } }
+
+    // A user's gestures.
+    func press() { leftButtonDown = true; onButton?(true) }
+    func startDrag() { dragChangeCount += 1; onButton?(true) }
+    func release() { leftButtonDown = false; onButton?(false) }
+}
+
+@MainActor
+final class ShelfWidgetTests: XCTestCase {
+    nonisolated(unsafe) private var suites: [String] = []
+    nonisolated(unsafe) private var dirs: [URL] = []
+
+    override func tearDown() {
+        for name in suites { UserDefaults.standard.removePersistentDomain(forName: name) }
+        for d in dirs { try? FileManager.default.removeItem(at: d) }
+        suites = []
+        dirs = []
+        super.tearDown()
+    }
+
+    private func defaults() -> UserDefaults {
+        let name = "ShelfWidgetTests-\(UUID().uuidString)"
+        suites.append(name)
+        return UserDefaults(suiteName: name)!
+    }
+
+    private func tempDir() -> URL {
+        let d = FileManager.default.temporaryDirectory.appendingPathComponent("ShelfWidgetTests-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        dirs.append(d)
+        return d
+    }
+
+    private struct Rig {
+        let registry: WidgetRegistry
+        let surfaces: PanelSurfaces
+        let shelf: ShelfWidget
+        let signals: FakeDragSignals
+        let controller: NotchController
+        let root: URL
+    }
+
+    private func rig(enabled: Bool = true) -> Rig {
+        let root = tempDir()
+        let signals = FakeDragSignals()
+        let shelf = ShelfWidget(directory: root.appendingPathComponent("home/shelf"), makeSignals: { signals })
+        let registry = WidgetRegistry(defaults: defaults(), persist: false)
+        let surfaces = PanelSurfaces(registry: registry)
+        registry.register(shelf)
+        if !enabled { registry.setEnabled(ShelfWidget.widgetID, false) }
+        let client = CoreClient(socketPath: "/nonexistent")
+        registry.start(context: WidgetContext(store: AppStore(), client: client,
+                                              config: ConfigFileStore(url: root.appendingPathComponent("config.json")),
+                                              events: CoreEventHub(), defaults: defaults(), notify: NoopNotifier(),
+                                              surfaces: surfaces, openPanel: { _ in }))
+        let c = NotchController(store: AppStore(), client: client, plugins: [], widgets: registry,
+                                surfaces: surfaces, minimal: false)
+        c.debugHandle(.layout(PanelLayout(screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),
+                                          visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 950),
+                                          auxLeft: CGRect(x: 0, y: 950, width: 654, height: 32),
+                                          auxRight: CGRect(x: 858, y: 950, width: 654, height: 32))))
+        return Rig(registry: registry, surfaces: surfaces, shelf: shelf, signals: signals, controller: c, root: root)
+    }
+
+    private func file(_ r: Rig, _ name: String) throws -> URL {
+        let url = r.root.appendingPathComponent("user/\(name)")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("hello".utf8).write(to: url)
+        return url
+    }
+
+    // MARK: - Disabled does no work
+
+    func testDisabledShelfInstallsNothingAndReadsNothing() {
+        let r = rig(enabled: false)
+        XCTAssertEqual(r.signals.starts, 0, "no event monitors")
+        XCTAssertFalse(r.shelf.isRunning)
+        XCTAssertNil(r.registry.dropTarget(), "no drop target")
+        XCTAssertNil(r.registry.dropZoneView())
+        XCTAssertFalse(FileManager.default.fileExists(atPath: r.shelf.directory.path), "nothing read or written")
+    }
+
+    func testTurningOffStopsMonitorsAndKeepsItems() throws {
+        let r = rig()
+        XCTAssertEqual(r.signals.starts, 1)
+        let pb = NSPasteboard.withUniqueName()
+        defer { pb.releaseGlobally() }
+        pb.writeObjects([try file(r, "keep.txt") as NSURL])
+        XCTAssertEqual(r.shelf.receive(pasteboard: pb), 1)
+        r.signals.press()
+        XCTAssertTrue(r.signals.polling)
+
+        r.registry.setEnabled(ShelfWidget.widgetID, false)
+        XCTAssertEqual(r.signals.stops, 1)
+        XCTAssertFalse(r.signals.polling, "the poll stops with the widget")
+        XCTAssertTrue(r.shelf.liveActivities.isEmpty || !r.registry.running.contains(ShelfWidget.widgetID))
+        r.registry.setEnabled(ShelfWidget.widgetID, true)
+        XCTAssertEqual(r.shelf.items.count, 1, "turning the shelf off keeps its items")
+    }
+
+    // MARK: - Drag detection
+
+    func testDetectorOpensAndClosesTheDragSession() {
+        let r = rig()
+        XCTAssertFalse(r.signals.polling, "nothing polls with the button up")
+        r.signals.press()
+        XCTAssertTrue(r.signals.polling, "polls only while the button is down")
+        r.signals.tick()
+        XCTAssertFalse(r.surfaces.dragActive, "a click is not a drag")
+        r.signals.startDrag()
+        XCTAssertTrue(r.surfaces.dragActive)
+        r.signals.release()
+        XCTAssertFalse(r.surfaces.dragActive)
+        XCTAssertFalse(r.signals.polling)
+    }
+
+    /// The up event never arrives (a drag that ends in another app): the poll sees it.
+    func testPollCatchesAMissedMouseUp() {
+        let r = rig()
+        r.signals.press()
+        r.signals.dragChangeCount += 1
+        r.signals.tick()
+        XCTAssertTrue(r.surfaces.dragActive)
+        r.signals.leftButtonDown = false
+        r.signals.tick()
+        XCTAssertFalse(r.surfaces.dragActive)
+        XCTAssertFalse(r.signals.polling)
+    }
+
+    func testOwnDragOutDoesNotOpenTheDropZone() {
+        let r = rig()
+        r.shelf.outgoingDragChanged(true)
+        r.signals.press()
+        r.signals.startDrag()
+        XCTAssertFalse(r.surfaces.dragActive)
+        r.signals.release()
+        r.shelf.outgoingDragChanged(false)
+        r.signals.press()
+        r.signals.startDrag()
+        XCTAssertTrue(r.surfaces.dragActive)
+        r.signals.release()
+    }
+
+    func testStoppingMidDragEndsTheSession() {
+        let r = rig()
+        r.signals.press()
+        r.signals.startDrag()
+        XCTAssertTrue(r.surfaces.dragActive)
+        r.registry.setEnabled(ShelfWidget.widgetID, false)
+        XCTAssertFalse(r.surfaces.dragActive)
+    }
+
+    // MARK: - Drop zone and the panel (carries from Task 1b)
+
+    func testDragToTheNotchShowsTheShelfDropZone() {
+        let r = rig()
+        var down = true
+        r.controller.mouseDown = { down }
+        r.signals.press()
+        r.signals.startDrag()
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 940))
+        XCTAssertEqual(r.controller.mode, .peek(.drop))
+        XCTAssertNotNil(r.registry.dropTarget())
+        XCTAssertNotNil(r.registry.dropZoneView())
+        down = false
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 900))   // released on the zone
+        XCTAssertEqual(r.controller.mode, .compact)
+    }
+
+    /// Carry: `.dragBegan` clears `open`; a drop on the zone gives the open panel back.
+    func testDropOnZoneRestoresTheOpenPanel() {
+        let r = rig()
+        var down = true
+        r.controller.mouseDown = { down }
+        r.controller.expand()
+        XCTAssertEqual(r.controller.mode, .expanded)
+        r.surfaces.setDragSession(active: true)
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 940))
+        XCTAssertEqual(r.controller.mode, .peek(.drop))
+        down = false
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 800))
+        XCTAssertEqual(r.controller.mode, .expanded)
+
+        // Leaving the zone with the button down: the panel rests.
+        down = true
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 940))
+        r.controller.dragMoved(to: CGPoint(x: 100, y: 100))
+        XCTAssertEqual(r.controller.mode, .compact)
+        r.surfaces.setDragSession(active: false)
+    }
+
+    /// Carry: ringing never covers the panel a drag opened; it is the chip there.
+    func testRingingDuringDragIsAChip() {
+        let r = rig()
+        r.controller.mouseDown = { true }
+        r.controller.debugHandle(.event(.ringStarted(id: "time.alarm")))
+        r.surfaces.setDragSession(active: true)
+        r.controller.dragMoved(to: CGPoint(x: 756, y: 940))
+        XCTAssertEqual(r.controller.mode, .peek(.drop))
+        XCTAssertEqual(r.controller.ringingChip?.id, "time.alarm")
+        r.surfaces.setDragSession(active: false)
+    }
+
+    // MARK: - Receiving
+
+    func testReceivesFilesTextAndLinks() throws {
+        let r = rig()
+        let pb = NSPasteboard.withUniqueName()
+        defer { pb.releaseGlobally() }
+        let a = try file(r, "a.txt"), b = try file(r, "b.txt")
+        pb.clearContents()
+        pb.writeObjects([a as NSURL, b as NSURL])
+        XCTAssertEqual(r.shelf.receive(pasteboard: pb), 2)
+        XCTAssertEqual(r.shelf.items.map(\.title), ["a.txt", "b.txt"], "dragged order kept")
+
+        pb.clearContents()
+        pb.writeObjects([URL(string: "https://example.com/page")! as NSURL])
+        XCTAssertEqual(r.shelf.receive(pasteboard: pb), 1)
+        XCTAssertEqual(r.shelf.items.first?.kind, .url(URL(string: "https://example.com/page")!))
+
+        pb.clearContents()
+        pb.setString("a snippet", forType: .string)
+        XCTAssertEqual(r.shelf.receive(pasteboard: pb), 1)
+        XCTAssertEqual(r.shelf.items.first?.kind, .text("a snippet"))
+        XCTAssertEqual(r.shelf.liveActivities.first?.trailing, "4")
+        XCTAssertEqual(r.shelf.liveActivities.first?.isAmbient, true, "never keeps the pill up (C9)")
+    }
+
+    func testRefusesConcealedDrops() {
+        let r = rig()
+        let pb = NSPasteboard.withUniqueName()
+        defer { pb.releaseGlobally() }
+        pb.clearContents()
+        pb.declareTypes([.string, NSPasteboard.PasteboardType(ShelfDropPolicy.concealedType)], owner: nil)
+        pb.setString("hunter2", forType: .string)
+        XCTAssertEqual(r.shelf.receive(pasteboard: pb), 0)
+        XCTAssertTrue(r.shelf.items.isEmpty)
+    }
+
+    func testImageDataBecomesAnOwnedCopy() throws {
+        let r = rig()
+        let pb = NSPasteboard.withUniqueName()
+        defer { pb.releaseGlobally() }
+        let image = NSImage(size: CGSize(width: 4, height: 4))
+        image.lockFocus()
+        NSColor.red.setFill()
+        NSRect(x: 0, y: 0, width: 4, height: 4).fill()
+        image.unlockFocus()
+        pb.clearContents()
+        pb.setData(try XCTUnwrap(image.tiffRepresentation), forType: .tiff)
+        XCTAssertEqual(r.shelf.receive(pasteboard: pb), 1)
+        let item = try XCTUnwrap(r.shelf.items.first)
+        XCTAssertTrue(item.ownsFile)
+        let url = try XCTUnwrap(item.fileRef?.url)
+        XCTAssertTrue(url.path.hasPrefix(r.shelf.directory.path))
+        r.shelf.remove([item.id])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+    }
+
+    // MARK: - Missing files (Review Focus #2)
+
+    func testMissingFileIsMarkedAndNeverDragged() throws {
+        let r = rig()
+        let pb = NSPasteboard.withUniqueName()
+        defer { pb.releaseGlobally() }
+        let gone = try file(r, "gone.txt"), kept = try file(r, "kept.txt")
+        pb.clearContents()
+        pb.writeObjects([gone as NSURL, kept as NSURL])
+        r.shelf.receive(pasteboard: pb)
+        try FileManager.default.removeItem(at: gone)
+        r.shelf.refreshMissing()
+        let goneItem = try XCTUnwrap(r.shelf.items.first { $0.title == "gone.txt" })
+        XCTAssertEqual(r.shelf.missing, [goneItem.id])
+
+        XCTAssertTrue(r.shelf.pasteboardWriters(for: [goneItem]).isEmpty, "a missing file is never dragged")
+        r.shelf.selection = Set(r.shelf.items.map(\.id))
+        let writers = r.shelf.pasteboardWriters(for: r.shelf.dragSet(startingAt: goneItem))
+        XCTAssertEqual(writers.count, 1, "the rest of the selection still drags")
+        XCTAssertEqual((writers.first?.1 as? NSURL)?.lastPathComponent, "kept.txt")
+
+        let found = try file(r, "found.txt")
+        r.shelf.relocate(goneItem, to: found)
+        XCTAssertTrue(r.shelf.missing.isEmpty)
+        r.shelf.remove([goneItem.id])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: found.path), "removing never deletes a user's file")
+    }
+
+    func testViewsBuild() throws {
+        let r = rig()
+        let pb = NSPasteboard.withUniqueName()
+        defer { pb.releaseGlobally() }
+        pb.writeObjects([try file(r, "a.txt") as NSURL])
+        r.shelf.receive(pasteboard: pb)
+        let views: [AnyView] = [r.shelf.tileView(), try XCTUnwrap(r.shelf.dropZoneView()),
+                                try XCTUnwrap(r.shelf.settingsView()), ShelfWidget.inert().tileView()]
+        for v in views {
+            let host = NSHostingView(rootView: v.frame(width: 380).environment(\.colorScheme, .dark))
+            host.layoutSubtreeIfNeeded()
+            XCTAssertGreaterThan(host.fittingSize.width, 0)
+        }
+    }
+}

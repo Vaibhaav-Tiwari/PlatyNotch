@@ -44,5 +44,6 @@ enum BuiltInWidgets {
         registry.register(LoopsWidget(store: store, actions: today.loops))
         registry.register(TimeWidget(persist: persist))
         registry.register(persist ? HUDWidget() : HUDWidget.inert())
+        registry.register(persist ? ShelfWidget() : ShelfWidget.inert())
     }
 }

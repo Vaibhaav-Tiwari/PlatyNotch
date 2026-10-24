@@ -59,6 +59,9 @@ public enum PanelEvent: Equatable, Sendable {
     case ringStarted(id: String), ringStopped(id: String)
     /// The cursor carrying a drag came near the notch / left the drop zone or the drag ended.
     case dragBegan, dragEnded
+    /// The drag ended (a drop, or the button released) with the cursor still on the drop
+    /// zone: a panel that was open when the drag began opens again.
+    case dragEndedInside
 }
 
 /// Everything the panel's mode is derived from (the inputs of `PanelPrecedence.resolve`).
@@ -69,6 +72,9 @@ public struct PanelSurfaceState: Equatable, Sendable {
     /// Ringing ids, oldest first.
     public var ringing: [String] = []
     public var dragging = false
+    /// The panel was open when the current drag began (`.dragBegan` closes it); a drag
+    /// that ends on the panel (`.dragEndedInside`) opens it again.
+    public var openBeforeDrag = false
     public var hud: HUDState?
     public var notice = false
     public var widgetPeek: WidgetPeek?
@@ -84,12 +90,13 @@ public struct PanelSurfaceState: Equatable, Sendable {
 /// 1. A pending approval: the approval peek, or the open panel (which lists approvals on top).
 ///    Nothing covers it; Escape never hides it.
 /// 2. The open panel.
-/// 3. Ringing (alarm, timer): beats the drop zone, HUDs and peeks; shows over full screen.
-///    Under an approval or the open panel it is a fixed ringing chip with Stop in the
-///    header strip (`ringingChip`), so the alarm never pressures an answer and never
-///    moves an approval card.
-/// 4. The drop zone while a drag is near the notch. Never shown while an approval is
-///    pending; a drag near an open panel (no approval) replaces it.
+/// 3. The drop zone while a drag is near the notch. Never shown while an approval is
+///    pending; a drag near an open panel (no approval) replaces it, and a drop on it
+///    gives the open panel back (Task 5).
+/// 4. Ringing (alarm, timer): beats HUDs and peeks; shows over full screen. Under an
+///    approval, the open panel or the drop zone it is a fixed ringing chip with Stop in
+///    the header (`ringingChip`), so the alarm never pressures an answer, never moves an
+///    approval card and never covers the panel a drag opened.
 /// 5. A HUD (dropped over full screen; a tiny indicator under an approval or the open panel).
 /// 6. An agent notice.
 /// 7. A widget peek such as a nudge (held, not shown, over full screen).
@@ -98,20 +105,20 @@ public enum PanelPrecedence {
     public static func resolve(_ s: PanelSurfaceState) -> PanelMode {
         if s.approvals > 0 { return s.open ? .expanded : .peek(.approval) }
         if s.open { return .expanded }
-        if let ring = s.ringing.first { return .peek(.ringing(id: ring)) }
         if s.dragging { return .peek(.drop) }
+        if let ring = s.ringing.first { return .peek(.ringing(id: ring)) }
         if let hud = s.hud, !s.fullScreen { return .peek(.hud(hud.kind)) }
         if s.notice { return .peek(.notice) }
         if let peek = s.widgetPeek, !s.fullScreen { return .peek(.widget(id: peek.id)) }
         return s.idle
     }
 
-    /// The ringing id drawn as the header chip: something rings but an approval peek or
-    /// the open panel is showing.
+    /// The ringing id drawn as the header chip: something rings but an approval peek,
+    /// the open panel or the drop zone is showing.
     public static func ringingChip(_ s: PanelSurfaceState) -> String? {
         guard let ring = s.ringing.first else { return nil }
         switch resolve(s) {
-        case .peek(.approval), .expanded: return ring
+        case .peek(.approval), .expanded, .peek(.drop): return ring
         default: return nil
         }
     }
@@ -233,11 +240,19 @@ public struct PanelStateMachine: Sendable {
             state.ringing.removeAll { $0 == id }
         case .dragBegan:
             state.dragging = true
-            // A drag near the open panel turns it into the drop zone. With an approval
-            // pending the panel stays as it is (rule 1).
-            if state.approvals == 0 { state.open = false }
+            // A drag near the open panel turns it into the drop zone (remembered, so a
+            // drop gives it back). With an approval pending the panel stays as it is (rule 1).
+            if state.approvals == 0 {
+                state.openBeforeDrag = state.open
+                state.open = false
+            }
         case .dragEnded:
             state.dragging = false
+            state.openBeforeDrag = false
+        case .dragEndedInside:
+            state.dragging = false
+            if state.openBeforeDrag { state.open = true }
+            state.openBeforeDrag = false
         }
         refresh()
     }

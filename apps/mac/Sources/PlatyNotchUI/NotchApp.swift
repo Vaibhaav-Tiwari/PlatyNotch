@@ -373,6 +373,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                hud.tileView()] + [hud.settingsView()].compactMap { $0 }
             + [AnyView(HUDIndicator(state: HUDState(kind: .volume, level: 0.5, until: Date()))),
                AnyView(DropZonePlaceholder()), AnyView(RingingFallback(id: "smoke", onStop: {})),
+               AnyView(ShelfDropZone(shelf: ShelfWidget.inert())),
                AnyView(RingingOverlay(title: "Alarm", subtitle: "Alarm · 7:00", isAlarm: true, onSnooze: {}, onStop: {}))]
         for v in views {
             NSHostingView(rootView: v.frame(width: 380).environment(\.colorScheme, .dark)).layoutSubtreeIfNeeded()

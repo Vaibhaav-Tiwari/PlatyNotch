@@ -23,8 +23,8 @@ public struct PanelLayout: Equatable, Sendable {
     public static let hudHeight: CGFloat = 34
     /// The HUD is at least this wide (wider when the compact pill is).
     public static let hudMinWidth: CGFloat = 300
-    /// Without a notch, the approval peek and the open panel start with a header strip
-    /// this tall (the ringing chip's place) instead of the usual 10 pt inset.
+    /// Without a notch, the approval peek, the open panel and the drop zone (which has the
+    /// open panel's size) start with a header strip this tall (the ringing chip's place) instead of the usual 10 pt inset.
     public static let headerStrip: CGFloat = 26
     /// How much taller those two are without a notch, so card room is unchanged.
     public static let headerStripExtra: CGFloat = headerStrip - 10
@@ -98,12 +98,12 @@ public struct PanelLayout: Equatable, Sendable {
     }
 
     /// Inset from the content rect's top to where a mode's content starts: below the
-    /// camera housing on a notch; below the header strip for the approval peek and the
-    /// open panel without one; else 10 pt.
+    /// camera housing on a notch; below the header strip for the approval peek, the
+    /// open panel and the drop zone without one; else 10 pt.
     public func contentInset(for mode: PanelMode) -> CGFloat {
         if hasNotch { return anchor.height + 4 }
         switch mode {
-        case .peek(.approval), .expanded: return Self.headerStrip
+        case .peek(.approval), .expanded, .peek(.drop): return Self.headerStrip
         default: return 10
         }
     }
@@ -123,7 +123,7 @@ public struct PanelLayout: Equatable, Sendable {
     /// camera on a notch, else the right of the header strip. Never inside `approvalSlot`.
     public func ringingChipRect(for mode: PanelMode) -> CGRect? {
         switch mode {
-        case .peek(.approval), .expanded: break
+        case .peek(.approval), .expanded, .peek(.drop): break
         default: return nil
         }
         let c = contentRect(for: mode)

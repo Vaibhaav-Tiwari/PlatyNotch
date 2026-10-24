@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import PlatyNotchKit
 import SwiftUI
@@ -38,6 +39,9 @@ public protocol NotchWidget: AnyObject {
     func hudView(kind: HUDKind, level: Double) -> AnyView?
     /// The drop zone shown while a drag is near the notch (the shelf, Task 5); expanded size.
     func dropZoneView() -> AnyView?
+    /// Takes drops on the drop zone (the shelf). The panel forwards drags to it only while
+    /// the drop zone shows.
+    func dropTarget() -> PanelDropTarget?
 }
 
 extension NotchWidget {
@@ -49,6 +53,28 @@ extension NotchWidget {
     public func peekView(id: String) -> AnyView? { nil }
     public func hudView(kind: HUDKind, level: Double) -> AnyView? { nil }
     public func dropZoneView() -> AnyView? { nil }
+    public func dropTarget() -> PanelDropTarget? { nil }
+}
+
+/// Receives the drags a display's panel gets while it shows the drop zone. The panel's
+/// view is registered for `PanelDrop.types` when it is created, so the first drag-enter
+/// after the window starts taking mouse events is never missed.
+@MainActor
+public protocol PanelDropTarget: AnyObject {
+    /// Entered or moved over the drop zone: the operation offered (`[]` refuses).
+    func dragUpdated(_ info: NSDraggingInfo) -> NSDragOperation
+    func dragExited()
+    func performDrop(_ info: NSDraggingInfo) -> Bool
+    /// The drag ended (dropped or not).
+    func dragEnded()
+}
+
+public enum PanelDrop {
+    /// What the panel accepts drags of: files, file promises (Photos, Mail), URLs,
+    /// images and text.
+    public static let types: [NSPasteboard.PasteboardType] =
+        [.fileURL, .URL, .string, .png, .tiff]
+        + NSFilePromiseReceiver.readableDraggedTypes.map { NSPasteboard.PasteboardType($0) }
 }
 
 /// What a widget gets from the app when it starts.
@@ -119,5 +145,6 @@ public struct WidgetContext {
 
     /// The drag detector reports a drag session (Task 5): while active, a panel opens its
     /// drop zone when the cursor comes within `PanelLayout.dragReach` of its notch.
+    /// Also true while a panel itself receives a drag the detector missed.
     public func dragSession(active: Bool) { surfaces.setDragSession(active: active) }
 }
