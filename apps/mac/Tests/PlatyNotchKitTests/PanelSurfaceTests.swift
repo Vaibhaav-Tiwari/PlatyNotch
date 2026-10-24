@@ -317,6 +317,36 @@ final class PanelSurfaceTests: XCTestCase {
         XCTAssertEqual(approval.mode, .peek(.approval))
     }
 
+    /// Final review A1: an approval that arrives during a drag that began over the open
+    /// panel must stay a peek when the drag ends on the panel: restoring `open` would turn
+    /// it into the expanded list under the cursor.
+    func testApprovalArrivingMidDragIsNotExpandedByTheDrop() {
+        var m = PanelStateMachine()
+        m.handle(.click)
+        m.handle(.dragBegan)
+        m.handle(.approvalsChanged(count: 1))
+        m.handle(.dragEndedInside)
+        XCTAssertEqual(m.mode, .peek(.approval))
+
+        // Answered before the drop: the remembered open panel is gone with it.
+        var answered = PanelStateMachine()
+        answered.handle(.click)
+        answered.handle(.dragBegan)
+        answered.handle(.approvalsChanged(count: 1))
+        answered.handle(.approvalsChanged(count: 0))
+        XCTAssertEqual(answered.mode, .peek(.drop))
+        answered.handle(.dragEndedInside)
+        XCTAssertEqual(answered.mode, .compact)
+
+        // Still pending at drop time after a plain drag end: no reopen either.
+        var ended = PanelStateMachine()
+        ended.handle(.click)
+        ended.handle(.dragBegan)
+        ended.handle(.approvalsChanged(count: 2))
+        ended.handle(.dragEnded)
+        XCTAssertEqual(ended.mode, .peek(.approval))
+    }
+
     /// Ruling: while any approval is pending the drop zone is not shown; the approval
     /// (peek or the open panel's approval list) stays visible and answerable.
     func testDragWhileApprovalPendingKeepsApproval() {

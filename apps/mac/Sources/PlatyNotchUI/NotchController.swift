@@ -63,6 +63,8 @@ public final class NotchController {
     var mouseDown: () -> Bool = { NSEvent.pressedMouseButtons & 1 != 0 }
     /// Where the cursor is now (tests pin it, so no result depends on the real mouse).
     var cursorLocation: () -> CGPoint = { NSEvent.mouseLocation }
+    /// The clock approval arming notes cards against (tests move it).
+    var armingClock: () -> Date = { Date() }
     private var workspaceObservers: [NSObjectProtocol] = []
 
     /// `carryOver` restores the panel state of the controller this one replaces (display change).
@@ -248,18 +250,23 @@ public final class NotchController {
     }
 
     /// Arms approval cards only once they are actually on screen in a fixed position.
+    /// The key includes the placement (peek, open panel, header above the list), so a move
+    /// between them re-arms every card (A1b).
     private func noteVisibleApprovals(mode: PanelMode, visible: Bool) {
         let ordered = ApprovalFormat.ordered(store.approvals).map(\.id)
+        let placement = visible ? ApprovalPlacement(mode: mode, count: ordered.count) : nil
         let ids: [String]
-        switch mode {
-        case _ where !visible: ids = []
-        case .peek(.approval): ids = Array(ordered.prefix(1))
+        switch placement {
+        case .peek: ids = Array(ordered.prefix(1))
         case .expanded: ids = ordered
-        default: ids = []
+        case nil: ids = []
         }
         var arming = model.arming
-        if arming.noteVisible(ids, at: Date()) { model.arming = arming }
+        if arming.noteVisible(ids, placement: placement ?? .peek, at: armingClock()) { model.arming = arming }
     }
+
+    /// Approval arming for this panel (tests).
+    var arming: ApprovalArming { model.arming }
 
     /// Poll the cursor while anything depends on it moving: a hover or pending debounce,
     /// a revealed full-screen panel, or a window currently catching clicks (so leaving

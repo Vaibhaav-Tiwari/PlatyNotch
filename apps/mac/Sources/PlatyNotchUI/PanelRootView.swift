@@ -188,7 +188,8 @@ extension PanelRootView {
         guard DecisionInput.accepts(NSApp.currentEvent) else { return }
         let now = Date()
         let slot = ApprovalFormat.ordered(store.approvals).firstIndex { $0.id == approval.id }
-        guard model.arming.attempt(approval.id, slot: slot, at: now) else { return }
+        let placement = model.visible ? ApprovalPlacement(mode: model.mode, count: store.approvals.count) : nil
+        guard model.arming.attempt(approval.id, slot: slot, placement: placement, at: now) else { return }
         responder.decide(approval, behavior, now: now, canAnswer: store.canAnswerApprovals)
     }
 }

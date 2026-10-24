@@ -60,7 +60,8 @@ public enum PanelEvent: Equatable, Sendable {
     /// The cursor carrying a drag came near the notch / left the drop zone or the drag ended.
     case dragBegan, dragEnded
     /// The drag ended (a drop, or the button released) with the cursor still on the drop
-    /// zone: a panel that was open when the drag began opens again.
+    /// zone: a panel that was open when the drag began opens again, unless an approval
+    /// is pending or arrived during the drag.
     case dragEndedInside
 }
 
@@ -201,7 +202,11 @@ public struct PanelStateMachine: Sendable {
         switch e {
         case .approvalsChanged(let n):
             state.approvals = max(n, 0)
-            if n > 0 { state.notice = false }   // a notice under an approval is dropped
+            if n > 0 {
+                state.notice = false   // a notice under an approval is dropped
+                // An approval that arrives mid-drag is never opened by the drop (A1).
+                state.openBeforeDrag = false
+            }
         case .hoverEnter:
             if openOnHover, isIdle || mode.isHUD { open() }
         case .hoverExit:
@@ -254,7 +259,9 @@ public struct PanelStateMachine: Sendable {
             state.openBeforeDrag = false
         case .dragEndedInside:
             state.dragging = false
-            if state.openBeforeDrag { state.open = true }
+            // Never while an approval is pending: the drop would expand the approval
+            // peek under the cursor (rule 1, A1).
+            if state.openBeforeDrag, state.approvals == 0 { state.open = true }
             state.openBeforeDrag = false
         }
         refresh()

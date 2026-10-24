@@ -9,62 +9,106 @@ final class ApprovalSafetyTests: XCTestCase {
 
     func testDecideBeforeArmTimeIgnored() {
         var arm = ApprovalArming()
-        XCTAssertTrue(arm.noteVisible(["a"], at: t0))
+        XCTAssertTrue(arm.noteVisible(["a"], placement: .peek, at: t0))
         XCTAssertFalse(arm.isArmed("a", at: t0))
         XCTAssertFalse(arm.isArmed("a", at: t0.addingTimeInterval(0.69)))
-        XCTAssertFalse(arm.attempt("a", slot: 0, at: t0.addingTimeInterval(0.3)))
+        XCTAssertFalse(arm.attempt("a", slot: 0, placement: .peek, at: t0.addingTimeInterval(0.3)))
         XCTAssertTrue(arm.showsLookFirst("a", at: t0.addingTimeInterval(0.5)))
         XCTAssertFalse(arm.isArmed("never-shown", at: t0.addingTimeInterval(100)), "a card never shown is never armed")
     }
 
     func testDecideAfterArmTimeAccepted() {
         var arm = ApprovalArming()
-        arm.noteVisible(["a"], at: t0)
-        XCTAssertTrue(arm.attempt("a", slot: 0, at: t0.addingTimeInterval(ApprovalArming.delay)))
+        arm.noteVisible(["a"], placement: .peek, at: t0)
+        XCTAssertTrue(arm.attempt("a", slot: 0, placement: .peek, at: t0.addingTimeInterval(ApprovalArming.delay)))
         XCTAssertFalse(arm.showsLookFirst("a", at: t0.addingTimeInterval(ApprovalArming.delay)))
-        XCTAssertFalse(arm.noteVisible(["a"], at: t0.addingTimeInterval(5)), "unchanged positions change nothing")
+        XCTAssertFalse(arm.noteVisible(["a"], placement: .peek, at: t0.addingTimeInterval(5)), "unchanged positions change nothing")
         XCTAssertTrue(arm.isArmed("a", at: t0.addingTimeInterval(5)))
     }
 
     func testArmResetsWhenAnotherApprovalMovesIntoFirstSlot() {
         var arm = ApprovalArming()
-        arm.noteVisible(["a", "b"], at: t0)
+        arm.noteVisible(["a", "b"], placement: .expanded(header: true), at: t0)
         XCTAssertTrue(arm.isArmed("b", at: t0.addingTimeInterval(2)))
         // "a" answered: "b" slides into the first slot and must be looked at again.
         let t1 = t0.addingTimeInterval(2)
-        XCTAssertTrue(arm.noteVisible(["b"], at: t1))
+        XCTAssertTrue(arm.noteVisible(["b"], placement: .expanded(header: true), at: t1))
         XCTAssertFalse(arm.isArmed("b", at: t1.addingTimeInterval(0.1)))
         XCTAssertTrue(arm.isArmed("b", at: t1.addingTimeInterval(0.7)))
     }
 
     func testArmResetsWhenHiddenAndShownAgain() {
         var arm = ApprovalArming()
-        arm.noteVisible(["a"], at: t0)
-        arm.noteVisible([], at: t0.addingTimeInterval(1))
+        arm.noteVisible(["a"], placement: .peek, at: t0)
+        arm.noteVisible([], placement: .peek, at: t0.addingTimeInterval(1))
         XCTAssertFalse(arm.isArmed("a", at: t0.addingTimeInterval(1)))
-        arm.noteVisible(["a"], at: t0.addingTimeInterval(2))
+        arm.noteVisible(["a"], placement: .peek, at: t0.addingTimeInterval(2))
         XCTAssertFalse(arm.isArmed("a", at: t0.addingTimeInterval(2.5)))
         XCTAssertTrue(arm.isArmed("a", at: t0.addingTimeInterval(2.7)))
     }
 
     func testLookFirstFades() {
         var arm = ApprovalArming()
-        arm.noteVisible(["a"], at: t0)
-        arm.attempt("a", slot: 0, at: t0)
+        arm.noteVisible(["a"], placement: .peek, at: t0)
+        arm.attempt("a", slot: 0, placement: .peek, at: t0)
         XCTAssertTrue(arm.showsLookFirst("a", at: t0.addingTimeInterval(1)))
         XCTAssertFalse(arm.showsLookFirst("a", at: t0.addingTimeInterval(ApprovalArming.lookFirstDuration + 0.01)))
     }
 
     func testDecideRechecksSlotAtDecideTime() {
         var arm = ApprovalArming()
-        arm.noteVisible(["a", "b"], at: t0)
+        arm.noteVisible(["a", "b"], placement: .expanded(header: true), at: t0)
         let later = t0.addingTimeInterval(5)
-        XCTAssertTrue(arm.attempt("b", slot: 1, at: later))
+        XCTAssertTrue(arm.attempt("b", slot: 1, placement: .expanded(header: true), at: later))
         // "a" was resolved but the view has not re-noted positions yet: "b" now sits in
         // slot 0, which is not where it was armed, so the answer is refused.
-        XCTAssertFalse(arm.attempt("b", slot: 0, at: later))
+        XCTAssertFalse(arm.attempt("b", slot: 0, placement: .expanded(header: true), at: later))
         XCTAssertTrue(arm.showsLookFirst("b", at: later))
-        XCTAssertFalse(arm.attempt("b", slot: nil, at: later), "an approval no longer pending is never answered")
+        XCTAssertFalse(arm.attempt("b", slot: nil, placement: .expanded(header: true), at: later), "an approval no longer pending is never answered")
+    }
+
+    /// Final review A1b: arming is keyed on where the card is drawn as well as its slot.
+    /// Any move between the peek and the open panel (click, menu "Open PlatyNotch",
+    /// platynotch://open, expand(tab:), a drop that reopens the panel) or the
+    /// "N approvals waiting" header appearing above the list starts the delay over.
+    func testPlacementChangeRearms() {
+        let transitions: [(ApprovalPlacement, ApprovalPlacement)] = [
+            (.peek, .expanded(header: false)),
+            (.expanded(header: false), .peek),
+            (.peek, .expanded(header: true)),
+            (.expanded(header: false), .expanded(header: true)),
+            (.expanded(header: true), .expanded(header: false)),
+        ]
+        for (from, to) in transitions {
+            var arm = ApprovalArming()
+            arm.noteVisible(["a"], placement: from, at: t0)
+            let t1 = t0.addingTimeInterval(5)
+            XCTAssertTrue(arm.isArmed("a", at: t1), "\(from)")
+            XCTAssertTrue(arm.noteVisible(["a"], placement: to, at: t1), "\(from) → \(to)")
+            XCTAssertFalse(arm.isArmed("a", at: t1.addingTimeInterval(0.1)), "\(from) → \(to)")
+            XCTAssertFalse(arm.attempt("a", slot: 0, placement: to, at: t1.addingTimeInterval(0.1)), "\(from) → \(to)")
+            XCTAssertTrue(arm.attempt("a", slot: 0, placement: to, at: t1.addingTimeInterval(ApprovalArming.delay)))
+        }
+    }
+
+    /// The answer is refused when the card is drawn somewhere else at decide time, even
+    /// before the controller re-notes (the click lands on the new layout).
+    func testDecideRechecksPlacementAtDecideTime() {
+        var arm = ApprovalArming()
+        arm.noteVisible(["a"], placement: .peek, at: t0)
+        let later = t0.addingTimeInterval(5)
+        XCTAssertFalse(arm.attempt("a", slot: 0, placement: .expanded(header: false), at: later))
+        XCTAssertFalse(arm.attempt("a", slot: 0, placement: nil, at: later), "no cards drawn: never answered")
+        XCTAssertTrue(arm.attempt("a", slot: 0, placement: .peek, at: later))
+    }
+
+    func testPlacementFromMode() {
+        XCTAssertEqual(ApprovalPlacement(mode: .peek(.approval), count: 3), .peek)
+        XCTAssertEqual(ApprovalPlacement(mode: .expanded, count: 1), .expanded(header: false))
+        XCTAssertEqual(ApprovalPlacement(mode: .expanded, count: 2), .expanded(header: true))
+        XCTAssertNil(ApprovalPlacement(mode: .compact, count: 1))
+        XCTAssertNil(ApprovalPlacement(mode: .peek(.drop), count: 1))
+        XCTAssertNil(ApprovalPlacement(mode: .expanded, count: 0))
     }
 
     // MARK: Hidden characters
