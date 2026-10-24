@@ -112,6 +112,92 @@ final class DayTests: XCTestCase {
         }
     }
 
+    /// Review fix 1: month names never match inside words, and "may" needs date context.
+    func testQuickAddMonthNamesAreWholeWords() {
+        let now = date(2026, 10, 23, 14)
+        for text in ["order 6 decaf beans", "buy 2 marshmallows", "bring 3 mayo jars", "read 4 junk mail", "call may 3 times"] {
+            let q = parse(text, at: now)
+            XCTAssertNil(q.due, text)
+            XCTAssertEqual(q.title, text.prefix(1).uppercased() + text.dropFirst(), text)
+        }
+        // Real months still work, "may" with context too.
+        XCTAssertEqual(parse("dentist may 3", at: now).due, date(2027, 5, 3))
+        XCTAssertEqual(parse("dentist may 3rd", at: now).due, date(2027, 5, 3))
+        XCTAssertEqual(parse("dentist on may 3", at: now).due, date(2027, 5, 3))
+        XCTAssertEqual(parse("dentist may 3 at 9am", at: now).due, date(2027, 5, 3, 9))
+        XCTAssertEqual(parse("send card dec 6", at: now).due, date(2026, 12, 6))
+        XCTAssertEqual(parse("send card 6 dec.", at: now).due, date(2026, 12, 6))
+    }
+
+    /// Review fix 2: unprefixed weekdays use the injected clock (2020 here), never the real one.
+    func testQuickAddUnprefixedWeekdaysUseInjectedNow() {
+        let now = date(2020, 3, 4, 10)   // Wednesday 4 March 2020, 10:00
+        XCTAssertEqual(cal.component(.weekday, from: now), 4)
+        let wed = parse("call wed 3pm", at: now)
+        XCTAssertEqual(wed.title, "Call")
+        XCTAssertEqual(wed.due, date(2020, 3, 4, 15), "today is Wednesday and 15:00 is still ahead")
+        XCTAssertEqual(parse("call wed 9am", at: now).due, date(2020, 3, 11, 9), "today's time has passed: next week")
+        let fri = parse("fri review", at: now)
+        XCTAssertEqual(fri.title, "Review")
+        XCTAssertEqual(fri.due, date(2020, 3, 6))
+        XCTAssertFalse(fri.hasTime)
+        let thurs = parse("review Thurs", at: now)
+        XCTAssertEqual(thurs.title, "Review")
+        XCTAssertEqual(thurs.due, date(2020, 3, 5))
+        XCTAssertEqual(parse("standup tues 9:30", at: now).due, date(2020, 3, 10, 9, 30))
+        XCTAssertEqual(parse("gym mon", at: now).due, date(2020, 3, 9))
+        XCTAssertEqual(parse("brunch sun 11am", at: now).due, date(2020, 3, 8, 11))
+        XCTAssertEqual(parse("lunch with Ana sat", at: now).due, date(2020, 3, 7, 12))
+        XCTAssertEqual(parse("thursday", at: now).title, "Reminder")
+        // "sat"/"sun" as words stay text; detector answers without a year or number are discarded.
+        XCTAssertNil(parse("sat down with notes", at: now).due)
+        XCTAssertNil(parse("buy sun cream", at: now).due)
+        XCTAssertNil(parse("plan trip next week", at: now).due, "NSDataDetector's \"next week\" uses the real clock")
+        XCTAssertNil(parse("call mom now", at: now).due)
+        // Relative phrases all follow the injected 2020 clock.
+        XCTAssertEqual(parse("pay rent tomorrow", at: now).due, date(2020, 3, 5))
+        XCTAssertEqual(parse("call Priya at 5pm", at: now).due, date(2020, 3, 4, 17))
+    }
+
+    func testQuickAddDayWordRules() {
+        let now = date(2026, 10, 23, 14)
+        XCTAssertEqual(parse("gym tomorrow 9", at: now).due, date(2026, 10, 24, 9))
+        XCTAssertEqual(parse("gym tomorrow at 9", at: now).due, date(2026, 10, 24, 9))
+        XCTAssertEqual(parse("call Raj tomorrow 5", at: now).due, date(2026, 10, 24, 17), "1–7 mean the afternoon")
+        XCTAssertEqual(parse("buy 3 apples tomorrow", at: now).title, "Buy 3 apples")
+        let dat = parse("renew visa day after tomorrow", at: now)
+        XCTAssertEqual(dat.title, "Renew visa")
+        XCTAssertEqual(dat.due, date(2026, 10, 25))
+        XCTAssertEqual(parse("call mum day after tomorrow at 6pm", at: now).due, date(2026, 10, 25, 18))
+        // Midnight is the end of the day named.
+        XCTAssertEqual(parse("submit tomorrow midnight", at: now).due, date(2026, 10, 25, 0))
+        XCTAssertEqual(parse("submit tomorrow at midnight", at: now).due, date(2026, 10, 25, 0))
+        XCTAssertEqual(parse("submit at midnight", at: now).due, date(2026, 10, 24, 0))
+        // "tonight" after 20:00: now + 1 h, rounded up to the quarter hour.
+        XCTAssertEqual(parse("dinner tonight", at: date(2026, 10, 23, 19)).due, date(2026, 10, 23, 20))
+        XCTAssertEqual(parse("call back tonight", at: date(2026, 10, 23, 21, 10)).due, date(2026, 10, 23, 22, 15))
+        XCTAssertEqual(parse("call back tonight", at: date(2026, 10, 23, 20)).due, date(2026, 10, 23, 21))
+        XCTAssertEqual(parse("call back tonight at 11pm", at: date(2026, 10, 23, 21)).due, date(2026, 10, 23, 23))
+    }
+
+    /// 14 March 2027, New York: 2:00–3:00 does not exist. Both phrasings give 3:30.
+    func testQuickAddSpringForwardGap() {
+        let now = date(2027, 3, 13, 22)
+        let a = parse("feed cat at 2:30am", at: now).due
+        let b = parse("feed cat tomorrow at 2:30am", at: now).due
+        XCTAssertEqual(a, b)
+        XCTAssertEqual(a.map { cal.component(.day, from: $0) }, 14)
+        XCTAssertEqual(a.map { cal.component(.hour, from: $0) }, 3)
+        XCTAssertEqual(a.map { cal.component(.minute, from: $0) }, 30)
+    }
+
+    /// Detector answers are kept only with a year or a numeric date.
+    func testQuickAddDetectorNeedsAbsoluteDate() {
+        let now = date(2020, 3, 4, 10)
+        XCTAssertEqual(parse("file taxes 1 Dec 2027", at: now).due, date(2027, 12, 1), "phrase rule with a year")
+        XCTAssertEqual(parse("renew passport 2027-12-01", at: now).due, date(2027, 12, 1))
+    }
+
     /// Absolute dates the phrase rules do not cover go through NSDataDetector.
     func testQuickAddDetectorFallback() {
         let q = parse("renew passport 2027-12-01", at: date(2026, 10, 23, 14))

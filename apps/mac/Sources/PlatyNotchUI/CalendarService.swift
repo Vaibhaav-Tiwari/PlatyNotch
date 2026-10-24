@@ -36,6 +36,8 @@ public final class CalendarService {
     @ObservationIgnored private var storage: EKEventStore?
     @ObservationIgnored private var changeObserver: NSObjectProtocol?
     @ObservationIgnored private var requesting = false
+    /// Join links found per event (eventIdentifier), redone only when the event changes.
+    @ObservationIgnored private var joinCache: [String: (modified: Date?, url: URL?)] = [:]
     /// True while the meeting widget runs: only then are events read and changes observed.
     @ObservationIgnored public private(set) var watching = false
 
@@ -50,6 +52,12 @@ public final class CalendarService {
         let s = EKEventStore()
         storage = s
         return s
+    }
+
+    /// The authorization status right now, without storing it or prompting (safe to read
+    /// while a view is drawn).
+    public var accessNow: Access {
+        eventKit ? Self.currentAccess() : access
     }
 
     private static func currentAccess() -> Access {
@@ -88,6 +96,7 @@ public final class CalendarService {
             stopObservingChanges()
             meetings = []
             colors = [:]
+            joinCache = [:]
         }
     }
 
@@ -106,6 +115,7 @@ public final class CalendarService {
         stopObservingChanges()
         meetings = []
         colors = [:]
+        joinCache = [:]
     }
 
     /// Re-reads the next 12 hours (only while watching and allowed).
@@ -117,18 +127,27 @@ public final class CalendarService {
                                                  calendars: nil)
         var found: [CalendarMeeting] = []
         var colors: [String: CGColor] = [:]
+        var cache: [String: (modified: Date?, url: URL?)] = [:]
         for e in store.events(matching: predicate) {
-            let id = "\(e.eventIdentifier ?? e.calendarItemIdentifier)@\(Int(e.startDate.timeIntervalSince1970))"
+            let key = e.eventIdentifier ?? e.calendarItemIdentifier
+            let id = "\(key)@\(Int(e.startDate.timeIntervalSince1970))"
             let title = e.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let joinURL: URL?
+            if let hit = joinCache[key] ?? cache[key], hit.modified == e.lastModifiedDate {
+                joinURL = hit.url
+            } else {
+                joinURL = MeetingLinks.firstJoinURL(url: e.url, location: e.location, notes: e.notes)
+            }
+            cache[key] = (e.lastModifiedDate, joinURL)
             found.append(CalendarMeeting(id: id, title: title.isEmpty ? "Untitled event" : title,
                                          start: e.startDate, end: e.endDate, isAllDay: e.isAllDay,
-                                         declined: Self.isDeclined(e),
-                                         joinURL: MeetingLinks.firstJoinURL(url: e.url, location: e.location, notes: e.notes)))
+                                         declined: Self.isDeclined(e), joinURL: joinURL))
             if let c = e.calendar?.cgColor { colors[id] = c }
         }
+        joinCache = cache
         found.sort { $0.start != $1.start ? $0.start < $1.start : $0.id < $1.id }
         if found != meetings { meetings = found }
-        self.colors = colors
+        if colors != self.colors { self.colors = colors }
     }
 
     /// The tile's next meeting: the earliest one starting within 12 h or started in the last 10 min.

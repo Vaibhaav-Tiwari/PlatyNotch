@@ -4,7 +4,9 @@ import Foundation
 /// that order. Knows Google Meet, Zoom (and ZoomGov), Microsoft Teams, Webex, FaceTime,
 /// Jitsi, Whereby, Slack huddles, GoTo Meeting, Amazon Chime, BlueJeans, Skype, Discord,
 /// Around, Cal.com video and Gather. Outlook Safe Links and Google redirect wrappers are
-/// unwrapped first. Finding a link never opens it: only the Join button does.
+/// unwrapped first. Only https links and the meeting apps' own schemes count (plain
+/// http is refused; a link typed without a scheme, "zoom.us/j/1", is read as https).
+/// Finding a link never opens it: only the Join button does.
 public enum MeetingLinks {
     /// The first join link in an event's URL, then location, then notes.
     public static func firstJoinURL(url: URL?, location: String?, notes: String?) -> URL? {
@@ -18,7 +20,16 @@ public enum MeetingLinks {
         for text in texts where !text.isEmpty {
             let range = NSRange(text.startIndex..., in: text)
             for match in detector.matches(in: text, range: range) {
-                if let found = match.url.map(unwrap), isJoinURL(found) { return found }
+                guard var url = match.url else { continue }
+                // NSDataDetector adds "http://" to a link typed without a scheme.
+                let typed = (text as NSString).substring(with: match.range).lowercased()
+                if url.scheme?.lowercased() == "http", !typed.hasPrefix("http:"),
+                   var c = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+                    c.scheme = "https"
+                    url = c.url ?? url
+                }
+                let found = unwrap(url)
+                if isJoinURL(found) { return found }
             }
         }
         return nil
@@ -40,10 +51,15 @@ public enum MeetingLinks {
         return current
     }
 
-    /// Whether `url` is a meeting (not a provider's home or pricing page).
+    /// Meeting apps' own link schemes (they open only that app).
+    public static let appSchemes: Set<String> = ["zoommtg", "zoomus", "msteams", "webex", "wbx", "facetime"]
+
+    /// Whether `url` is a meeting (not a provider's home or pricing page): https only, or
+    /// a meeting app's own scheme.
     public static func isJoinURL(_ url: URL) -> Bool {
-        guard let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http",
-              let host = url.host?.lowercased() else { return false }
+        guard let scheme = url.scheme?.lowercased() else { return false }
+        if appSchemes.contains(scheme) { return true }
+        guard scheme == "https", let host = url.host?.lowercased() else { return false }
         let path = url.path.lowercased()
         let segments = path.split(separator: "/").map(String.init)
         func on(_ domain: String) -> Bool { host == domain || host.hasSuffix("." + domain) }

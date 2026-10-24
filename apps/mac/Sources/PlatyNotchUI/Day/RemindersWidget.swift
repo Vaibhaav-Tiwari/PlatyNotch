@@ -115,7 +115,7 @@ final class RemindersWidget: NotchWidget {
         let q = parsed(at: date)
         guard !q.title.isEmpty else { return nil }
         var text = QuickAddFormat.preview(q, now: date, calendar: cal())
-        if q.isEvent, calendar.access != .granted { text += " (saved as a reminder: Calendar access is off)" }
+        if q.isEvent, calendar.accessNow != .granted { text += " (saved as a reminder: Calendar access is off)" }
         return text
     }
 
@@ -124,6 +124,8 @@ final class RemindersWidget: NotchWidget {
         guard running, reminders.access == .granted else { return }
         let q = parsed()
         guard !q.title.isEmpty else { return }
+        // A grant or revoke made in System Settings since the last read counts (never prompts).
+        calendar.refreshAccess()
         do {
             if q.isEvent, calendar.access == .granted, let start = q.due, let end = q.eventEnd {
                 try calendar.addEvent(title: q.title, start: start, end: end)
