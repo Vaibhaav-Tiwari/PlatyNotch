@@ -110,7 +110,7 @@ public enum ShelfDropPolicy {
 
 /// The shelf's items, persisted in `<directory>/items.json` (0600) with owned copies in
 /// `<directory>/<item id>/` (0700); the directory itself is 0700
-/// (`~/Library/Application Support/PlatyNotch/shelf`, or under `PLATYNOTCH_HOME`).
+/// (`~/Library/Application Support/PlatyNotch/shelf.noindex`, or under `PLATYNOTCH_HOME`).
 /// The index is a file rather than `UserDefaults` because it can hold dropped text (the
 /// same rule as clipboard history, C22). Use from the main actor.
 public final class ShelfStore {

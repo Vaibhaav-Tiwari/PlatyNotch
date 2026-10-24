@@ -54,8 +54,8 @@ final class LaunchTests: DefaultsTestCase {
     func testFaviconsFolderFollowsHome() {
         let home = URL(fileURLWithPath: "/Users/me")
         XCTAssertEqual(CorePaths.favicons(env: [:], userHome: home).path,
-                       "/Users/me/Library/Application Support/PlatyNotch/favicons")
-        XCTAssertEqual(CorePaths.favicons(env: ["PLATYNOTCH_HOME": "/tmp/pn"], userHome: home).path, "/tmp/pn/favicons")
+                       "/Users/me/Library/Application Support/PlatyNotch/favicons.noindex")
+        XCTAssertEqual(CorePaths.favicons(env: ["PLATYNOTCH_HOME": "/tmp/pn"], userHome: home).path, "/tmp/pn/favicons.noindex")
     }
 
     // MARK: - Favicon policy

@@ -22,7 +22,7 @@ protocol ClipboardMenuControl: AnyObject {
 ///   never password managers or Memory's excluded apps (by frontmost app, best effort),
 ///   never items marked concealed, transient or auto-generated, never an item whose
 ///   `org.nspasteboard.source` is an excluded app.
-/// - History lives in `ClipboardStore` (`clipboard/history.json` 0600, images 0600, folders
+/// - History lives in `ClipboardStore` (`clipboard.noindex/history.json` 0600, images 0600, folders
 ///   0700), never in UserDefaults or logs. UserDefaults holds only settings (pause, limit,
 ///   age, shortcut).
 /// - The picker's shortcut is a Carbon hot key (no permission), registered only while the

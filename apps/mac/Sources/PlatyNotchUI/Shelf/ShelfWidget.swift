@@ -11,7 +11,7 @@ import SwiftUI
 ///   change count, polled only while the button is down. A drag near the notch opens the
 ///   drop zone through `WidgetContext.dragSession`; the panel's own drag destination
 ///   (registered when the panel is made) hands drops to `ShelfDropTarget`.
-/// - Storage (`ShelfStore`): `~/Library/Application Support/PlatyNotch/shelf` (0700).
+/// - Storage (`ShelfStore`): `~/Library/Application Support/PlatyNotch/shelf.noindex` (0700).
 ///   Files the user drops stay where they are (a bookmark follows renames and moves).
 ///   Promised files (Photos, Mail) and dropped images are copied in and, with text,
 ///   expire after 7 days unless pinned. Removing an item deletes only its own copy.

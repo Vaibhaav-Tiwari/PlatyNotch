@@ -545,8 +545,8 @@ final class ShelfTests: XCTestCase {
     // MARK: - Paths
 
     func testShelfPathUnderHome() {
-        XCTAssertEqual(CorePaths.shelf(env: ["PLATYNOTCH_HOME": "/tmp/pn"]).path, "/tmp/pn/shelf")
+        XCTAssertEqual(CorePaths.shelf(env: ["PLATYNOTCH_HOME": "/tmp/pn"]).path, "/tmp/pn/shelf.noindex")
         XCTAssertEqual(CorePaths.shelf(env: [:], userHome: URL(fileURLWithPath: "/Users/x")).path,
-                       "/Users/x/Library/Application Support/PlatyNotch/shelf")
+                       "/Users/x/Library/Application Support/PlatyNotch/shelf.noindex")
     }
 }

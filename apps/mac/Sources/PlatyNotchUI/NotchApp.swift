@@ -105,6 +105,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before any widget opens its folder: shelf, clipboard and favicons move to their
+        // `.noindex` names (Spotlight). Smoke runs read and write nothing.
+        if !options.smoke, !options.smokeSettings { PrivateFolder.migrateToNoIndex(home: CorePaths.home()) }
         handleTerminationSignals()
         TerminalFocus.startTracking()
         repointHookBinary()
