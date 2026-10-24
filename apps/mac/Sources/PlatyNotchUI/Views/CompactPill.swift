@@ -12,13 +12,16 @@ struct CompactPill: View {
     let hasNotch: Bool
     /// Width of the physical notch (0 without one).
     let notchWidth: CGFloat
-    /// `LiveArbiter.pickForEar` of the running widgets' activities.
+    /// `LiveArbiter.pick` of the running widgets' activities (agents have the other ear).
     var primary: LiveActivity?
     var bubble: LiveActivity?
     var liveSide: LiveSide = .right
     /// Room for the live ear's content (`PanelLayout.liveEarWidth`); what does not fit is
     /// dropped or truncated (`LiveEarFit`), never drawn past the ear.
     var earWidth: CGFloat = .infinity
+    /// Platy's mood, drawn first in the agents ear with the dots that fit beside it
+    /// (`PlatyEarFit`); nil = the plain look (Appearance › Show Platy off).
+    var platy: PlatyMood?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -36,9 +39,13 @@ struct CompactPill: View {
     }
 
     private var agentsEar: some View {
-        HStack(spacing: 4) {
-            ForEach(dots.dots, id: \.key) { AgentDot(tone: $0.tone) }
-            if dots.overflow > 0 {
+        let fit = platy.map { _ in PlatyEarFit(earWidth: earWidth, dots: dots.dots.count, overflow: dots.overflow) }
+        let shown = fit?.dots ?? dots.dots.count
+        let overflow = fit.map(\.showsOverflow) ?? (dots.overflow > 0)
+        return HStack(spacing: 4) {
+            if let platy { PlatyView(mood: platy, size: PlatyEarFit.platy) }
+            ForEach(dots.dots.prefix(shown), id: \.key) { AgentDot(tone: $0.tone) }
+            if overflow {
                 Text("+\(dots.overflow)")
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
@@ -85,6 +92,7 @@ struct CompactPill: View {
         var parts: [String] = []
         let live = dots.dots.count + dots.overflow
         parts.append(live == 1 ? "1 agent session" : "\(live) agent sessions")
+        if let platy { parts.append(platy.accessibilityLabel) }
         if approvalCount > 0 { parts.append("\(approvalCount) waiting for approval") }
         if connection != .connected { parts.append("reconnecting to core") }
         for a in [primary, bubble].compactMap({ $0 }) {

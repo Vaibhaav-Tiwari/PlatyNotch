@@ -5,6 +5,8 @@ extension EnvironmentValues {
     /// False while the panel is hidden or suppressed over full screen: timelines in the
     /// pill (countdowns, music bars) stop ticking. True elsewhere (tiles, previews).
     @Entry var panelTicking: Bool = true
+    /// Platy's mood for the panel's empty states; nil when Appearance › Show Platy is off.
+    @Entry var platyMood: PlatyMood? = nil
 }
 
 /// The built-in level HUD: a glyph for `kind` and a level bar. Widgets may supply their own.

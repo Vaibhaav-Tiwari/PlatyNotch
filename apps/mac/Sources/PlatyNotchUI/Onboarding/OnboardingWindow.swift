@@ -152,8 +152,12 @@ private struct AgentsPage: View {
     var body: some View {
         let agents = services.agents
         VStack(alignment: .leading, spacing: 8) {
-            PageTitle(title: "Your coding agents",
-                      text: "PlatyNotch shows what your agents are doing and lets you answer their permission prompts from the notch. Install hooks for the agents you use; you can change this later in Settings.")
+            HStack(alignment: .top, spacing: 16) {
+                // Platy says hello (the mascot; a still frame with Reduce Motion).
+                PlatyView(mood: .working, size: 72)
+                PageTitle(title: "Your coding agents",
+                          text: "PlatyNotch shows what your agents are doing and lets you answer their permission prompts from the notch. Install hooks for the agents you use; you can change this later in Settings.")
+            }
             ScrollView {
                 AgentList(services: services, compact: true)
             }

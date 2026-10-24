@@ -58,4 +58,22 @@ final class MenuBarTests: XCTestCase {
         XCTAssertFalse(menu.autoenablesItems)
         XCTAssertFalse(item.isEnabled, "isEnabled is ours, not AppKit's")
     }
+
+    /// C36: the menu bar icon is Platy's template silhouette (macOS tints it), 18 pt, and
+    /// actually draws something (opaque pixels, eyes cut out).
+    func testIconIsPlatyTemplate() throws {
+        for dot in [false, true] {
+            let image = MenuBarController.icon(dot: dot)
+            XCTAssertTrue(image.isTemplate)
+            XCTAssertEqual(image.size, NSSize(width: 18, height: 18))
+            let rep = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(image.tiffRepresentation)))
+            var opaque = 0
+            for x in 0..<rep.pixelsWide {
+                for y in 0..<rep.pixelsHigh where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.5 { opaque += 1 }
+            }
+            let total = rep.pixelsWide * rep.pixelsHigh
+            XCTAssertGreaterThan(opaque, total / 5, "a solid silhouette")
+            XCTAssertLessThan(opaque, total * 3 / 4, "with room around it")
+        }
+    }
 }

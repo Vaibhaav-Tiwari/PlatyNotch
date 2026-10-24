@@ -887,3 +887,31 @@ PLATYNOTCH_RENDER_DIR=/tmp/pn-renders PLATYNOTCH_HOME=<temp home> PLATYNOTCH_COR
 - [ ] **180. Compact pill width.** Pill width Compact with a timer running: beside a notch
   the live ear shows only the glyph (no clipped text); Standard shows the countdown; Wide
   shows the countdown and the bubble. Nothing is drawn under the camera housing.
+
+## Platy (Task 13)
+
+- [ ] **181. Platy in the pill.** Settings › Appearance › Show Platy is on by default:
+  Platy sits in the agents ear before the dots, about 22 pt tall, with no clipping beside
+  the camera housing. Pill width Compact shows Platy and one dot; Standard shows Platy and
+  up to three dots plus "+n". Turn Show Platy off: only the dots stay (the plain look), and the
+  Agents and Today empty states go back to text.
+- [ ] **182. Moods.** With `scripts/fake-events.sh`: a working session makes Platy paddle and bob;
+  an approval or a blocked session shows the amber rim and tail taps; when a session goes
+  from active to idle, a green check and sparkle show for about 4 s. Play music: headphones
+  and a bounce. Start a focus session: half-closed eyes, still. After 23:00 with nothing live:
+  closed eyes and a "z", breathing at one frame a second. Beat your best in a game:
+  paws up, sparkles and a jump for about 4 s.
+- [ ] **183. Idle cost.** Nothing live (idle mood): Activity Monitor shows PlatyNotch at
+  rest as before Platy (`scripts/perf-idle.sh`). Collapse or hide the panel while an agent works:
+  Platy stops moving (no frames while the panel is hidden).
+- [ ] **184. Reduce Motion.** System Settings › Accessibility › Display › Reduce motion:
+  Platy is a still frame in every mood, and the cue still shows (rim, headphones, check, z).
+- [ ] **185. Menu bar icon.** The menu bar shows Platy's silhouette (eyes as holes, the
+  bill set off by a gap), black on a light menu bar and white on a dark one. While
+  capture runs, a dot shows at the bottom right.
+- [ ] **186. App icon.** `scripts/build-app.sh`, then look at the app in Finder, the Dock (light
+  and dark), Spotlight and the ⌘-Tab switcher: the night-blue rounded square with the notch
+  and Platy, sharp at every size. Compare with the gallery (`PlatyNotch --platy-gallery <dir>`).
+- [ ] **187. Onboarding and empty states.** Settings › Permissions › Show onboarding: Platy
+  paddles beside "Your coding agents". With no sessions, the Agents tab shows Platy above "No
+  agent sessions". With every widget off, Today shows Platy above "No widgets are on."

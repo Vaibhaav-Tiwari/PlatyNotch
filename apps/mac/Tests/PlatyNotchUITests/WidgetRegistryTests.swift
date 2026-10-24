@@ -145,7 +145,7 @@ final class WidgetRegistryTests: XCTestCase {
         registry.start(context: context())
         XCTAssertEqual(registry.liveActivities.map(\.id), ["music:playing", "focus:session"])
         // Music playing and focus running: focus owns the pill, music gets the bubble.
-        let pick = LiveArbiter.pickForEar(registry.liveActivities, now: Date())
+        let pick = LiveArbiter.pick(registry.liveActivities, now: Date())
         XCTAssertEqual(pick.primary?.id, "focus:session")
         XCTAssertEqual(pick.bubble?.id, "music:playing")
         registry.setEnabled("music", false)

@@ -18,11 +18,6 @@ public enum LiveArbiter {
         return (primary, bubble)
     }
 
-    /// The pill's live ear: agents already have their own ear (the dots), so they are left out.
-    public static func pickForEar(_ items: [LiveActivity], now: Date) -> (primary: LiveActivity?, bubble: LiveActivity?) {
-        pick(items.filter { $0.widgetID != AgentsLive.widgetID }, now: now)
-    }
-
     /// Whether anything above ambient priority is live (Minimal mode keeps the pill up).
     public static func hasLive(_ items: [LiveActivity], now: Date) -> Bool {
         items.contains { !$0.isAmbient && !$0.isExpired(at: now) }

@@ -2,7 +2,7 @@ import AppKit
 import Observation
 import PlatyNotchKit
 
-/// The menu bar item: a template icon (placeholder until the Platy icon) with a dot
+/// The menu bar item: Platy's silhouette as a template icon (`PlatyMenuIcon`) with a dot
 /// while capture is running. Menu: Open PlatyNotch, Settings…, Check for Updates… (or the
 /// GitHub Releases page when updates are off), Pause/Resume capture, Pause/Resume
 /// clipboard history (only while that widget is on, C23), Quit.
@@ -185,24 +185,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         item.button?.toolTip = capturing ? "PlatyNotch — capturing on-screen text" : "PlatyNotch"
     }
 
-    /// Placeholder glyph (a notch outline) with an optional dot, as a template image.
+    /// Platy's monochrome silhouette with an optional dot, as a template image.
     static func icon(dot: Bool) -> NSImage {
-        let size = NSSize(width: 18, height: 18)
-        let image = NSImage(size: size, flipped: false) { rect in
-            NSColor.black.setStroke()
-            NSColor.black.setFill()
-            let body = NSBezierPath(roundedRect: rect.insetBy(dx: 1.5, dy: 4), xRadius: 3, yRadius: 3)
-            body.lineWidth = 1.5
-            body.stroke()
-            let notch = NSBezierPath(roundedRect: NSRect(x: 6, y: 10.5, width: 6, height: 3.5), xRadius: 1.2, yRadius: 1.2)
-            notch.fill()
-            if dot {
-                NSBezierPath(ovalIn: NSRect(x: 12.5, y: 0, width: 5.5, height: 5.5)).fill()
-            }
-            return true
-        }
-        image.isTemplate = true
-        image.accessibilityDescription = dot ? "PlatyNotch, capturing" : "PlatyNotch"
-        return image
+        PlatyMenuIcon.image(dot: dot)
     }
 }

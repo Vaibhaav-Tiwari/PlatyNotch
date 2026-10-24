@@ -36,13 +36,16 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     /// Hide the pill over full-screen apps (top edge reveals it). Never hides a pending
     /// approval, a ringing alarm or timer, the open panel or the drop zone.
     public var hideInFullScreen = true
+    /// Platy, the mascot, in the compact pill and the empty states (C36). Off gives the
+    /// plain look: agent dots only, no mascot.
+    public var showPlaty = true
 
     public static let hoverDelayRange: ClosedRange<Double> = 0...1
 
     public init(mode: Mode = .alwaysOn, openOn: OpenTrigger = .hover,
                 hoverDelay: Double = HoverDebouncer.defaultEnterDelay, pillWidth: PillWidth = .standard,
                 liveSide: Side = .right, displays: DisplayChoice = .main, theme: Theme = .dark,
-                spring: SpringParams = .standard, hideInFullScreen: Bool = true) {
+                spring: SpringParams = .standard, hideInFullScreen: Bool = true, showPlaty: Bool = true) {
         self.mode = mode
         self.openOn = openOn
         self.hoverDelay = hoverDelay
@@ -52,10 +55,11 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         self.theme = theme
         self.spring = spring
         self.hideInFullScreen = hideInFullScreen
+        self.showPlaty = showPlaty
     }
 
     private enum CodingKeys: String, CodingKey {
-        case mode, openOn, hoverDelay, pillWidth, liveSide, displays, theme, spring, hideInFullScreen
+        case mode, openOn, hoverDelay, pillWidth, liveSide, displays, theme, spring, hideInFullScreen, showPlaty
     }
 
     /// Missing keys and unknown cases keep the defaults, so `{}` (or a value from an older
@@ -72,6 +76,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         theme = (try? c.decodeIfPresent(Theme.self, forKey: .theme)) ?? d.theme
         spring = (try? c.decodeIfPresent(SpringParams.self, forKey: .spring)) ?? d.spring
         hideInFullScreen = (try? c.decodeIfPresent(Bool.self, forKey: .hideInFullScreen)) ?? d.hideInFullScreen
+        showPlaty = (try? c.decodeIfPresent(Bool.self, forKey: .showPlaty)) ?? d.showPlaty
     }
 
     /// The spring and hover delay inside their ranges.

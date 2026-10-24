@@ -6,7 +6,7 @@ public enum LiveGlyph: Equatable, Sendable {
     case symbol(String)
     /// Bouncing bars (music playing).
     case musicBars
-    /// One dot per session state (the agents source).
+    /// One dot per session state (for plugins; the built-in agent dots are `PillDots`).
     case agentDots([SessionState])
     /// A progress ring, 0...1.
     case ring(progress: Double)
@@ -78,7 +78,8 @@ public enum LivePriority {
     public static let approval = 100
     public static let alarmRinging = 95
     public static let timerFinished = 90
-    /// Emitted by `AgentsLive`, not a widget.
+    /// The plan's rank for a blocked agent. Agents own the other ear (`PillDots`) and
+    /// Platy's mood, so no built-in source emits it (AgentsLive was removed in Task 13).
     public static let agentBlocked = 80
     /// A meeting starting within `meetingSoonWindow`.
     public static let meetingSoon = 75
@@ -86,7 +87,7 @@ public enum LivePriority {
     public static let timerRunning = 55
     public static let stopwatch = 50
     public static let musicPlaying = 40
-    /// Emitted by `AgentsLive`, not a widget.
+    /// The plan's rank for a working agent (see `agentBlocked`).
     public static let agentActive = 30
     public static let download = 25
     public static let keepAwake = 22
@@ -100,23 +101,4 @@ public enum LivePriority {
 
     /// Matches the meeting reminders at 10 / 5 / 1 minutes.
     public static let meetingSoonWindow: TimeInterval = 10 * 60
-}
-
-/// The built-in live source for agent sessions (reads the store's sessions; not a widget).
-public enum AgentsLive {
-    public static let widgetID = "agents"
-
-    /// One activity: blocked (80) when any session is blocked, else active (30) when any
-    /// is working, else none.
-    public static func activities(sessions: [Session]) -> [LiveActivity] {
-        let states: [SessionState] = sessions.map(\.state).filter { $0 == .active || $0 == .blocked }
-        guard !states.isEmpty else { return [] }
-        let blocked = states.contains(.blocked)
-        // Plain locals keep the initializer call cheap to type-check (it took ~0.7 s inline).
-        let priority: Int = blocked ? LivePriority.agentBlocked : LivePriority.agentActive
-        let tint: LiveTint = blocked ? .warning : .accent
-        let label: String = blocked ? "An agent needs you" : "Agents working"
-        return [LiveActivity(id: "agents", widgetID: widgetID, priority: priority,
-                             glyph: .agentDots(states), tint: tint, accessibilityLabel: label)]
-    }
 }

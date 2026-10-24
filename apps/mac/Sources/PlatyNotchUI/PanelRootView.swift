@@ -65,12 +65,19 @@ struct PanelRootView: View {
         // not while hidden or suppressed over full screen.
         .environment(\.panelTicking, model.visible)
         .environment(\.musicVisualiser, today.visualiser)
+        .environment(\.platyMood, model.appearance.showPlaty ? platyMood : nil)
         // The games tab pauses unless the panel is open, on screen and not over full screen.
         .environment(\.gamePanel, GamePanelState(expanded: model.mode == .expanded, visible: model.visible,
                                                  fullScreen: model.fullScreen))
         .animation(modeAnimation, value: model.mode)
         .animation(.easeOut(duration: 0.15), value: model.visible)
         .onChange(of: model.mode) { settleBlur() }
+    }
+
+    /// Platy's mood from the store, music, focus and the timed inputs.
+    private var platyMood: PlatyMood {
+        today.platy.mood(sessions: store.sessions, approvals: store.approvals.count,
+                         musicPlaying: today.nowPlaying.isPlaying, focusActive: today.focus.focusActive)
     }
 
     /// Appearance › spring (clamped); a short ease with Reduce Motion.
@@ -99,12 +106,13 @@ struct PanelRootView: View {
         case .hidden:
             Color.clear
         case .compact:
-            let live = LiveArbiter.pickForEar(widgets.liveActivities, now: Date())
+            let live = LiveArbiter.pick(widgets.liveActivities, now: Date())
             CompactPill(dots: PillDots(sessions: store.sessions), approvalCount: store.approvals.count,
                         connection: store.connection, hasNotch: layout.hasNotch,
                         notchWidth: layout.hasNotch ? layout.anchor.width : 0,
                         primary: live.primary, bubble: live.bubble,
-                        liveSide: model.appearance.liveSide, earWidth: layout.liveEarWidth)
+                        liveSide: model.appearance.liveSide, earWidth: layout.liveEarWidth,
+                        platy: model.appearance.showPlaty ? platyMood : nil)
                 .contentShape(Rectangle())
                 .onTapGesture { model.onClick() }
         case .peek(.approval):

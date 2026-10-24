@@ -10,10 +10,29 @@ public enum NotchApp {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let options = LaunchOptions(arguments: CommandLine.arguments, env: ProcessInfo.processInfo.environment)
+        if let dir = options.renderIconDir { finishRender("RENDER ICON", PlatyRenders.writeIconset(to: url(dir))) }
+        if let dir = options.platyGalleryDir { finishRender("PLATY GALLERY", PlatyRenders.writeGallery(to: url(dir))) }
         let delegate = AppDelegate(coreBinary: coreBinary, plugins: plugins, options: options)
         app.delegate = delegate
         withExtendedLifetime(delegate) { app.run() }
         exit(0)
+    }
+
+    private static func url(_ path: String) -> URL { URL(fileURLWithPath: path, isDirectory: true) }
+
+    /// `--render-icon` / `--platy-gallery`: report and exit before anything starts.
+    @MainActor
+    private static func finishRender(_ label: String, _ result: Result<Int, PlatyRenders.Failure>) -> Never {
+        switch result {
+        case .success(let n):
+            print("\(label) OK files=\(n)")
+            fflush(stdout)
+            exit(0)
+        case .failure(let f):
+            print("\(label) FAIL \(f.message)")
+            fflush(stdout)
+            exit(1)
+        }
     }
 }
 
@@ -106,6 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             for p in self.plugins { p.handle(event: ext) }
         }
         events.start(client.events)
+        today.platy.start(store: store)
         Task { await client.start() }
 
         watchConfig()
@@ -406,6 +426,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         views += Self.wellbeingViews()
         views += Self.systemViews()
         views += Self.launchViews()
+        views += PlatyMood.allCases.map { AnyView(PlatyView(mood: $0, size: PlatyEarFit.platy)) }
         for v in views {
             NSHostingView(rootView: v.frame(width: 380).environment(\.colorScheme, .dark)).layoutSubtreeIfNeeded()
         }

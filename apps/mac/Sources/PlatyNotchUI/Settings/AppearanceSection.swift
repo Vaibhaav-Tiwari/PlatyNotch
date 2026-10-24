@@ -73,6 +73,9 @@ struct AppearanceSection: View {
         .pickerStyle(.segmented)
         Text("The side of the pill that shows music, timers and approvals; agent dots take the other.")
             .font(.caption).foregroundStyle(.secondary)
+        Toggle("Show Platy", isOn: $settings.showPlaty)
+        Text("Platy the platypus sits beside the agent dots and shows how things are going. Off gives the plain look.")
+            .font(.caption).foregroundStyle(.secondary)
     }
 
     @ViewBuilder private var displayRows: some View {

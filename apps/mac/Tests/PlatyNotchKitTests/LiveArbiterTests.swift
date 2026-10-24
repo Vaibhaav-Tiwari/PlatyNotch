@@ -71,29 +71,6 @@ final class LiveArbiterTests: XCTestCase {
         XCTAssertEqual(LivePriority.meetingSoonWindow, 10 * 60)
     }
 
-    func testAgentsLiveEmitsBlockedOverActive() {
-        func s(_ st: SessionState) -> Session {
-            Session(key: UUID().uuidString, agent: "claude-code", agentName: "Claude Code", sessionID: "1", state: st,
-                    startedAt: now, updatedAt: now)
-        }
-        XCTAssertTrue(AgentsLive.activities(sessions: [s(.idle), s(.exited)]).isEmpty)
-        XCTAssertEqual(AgentsLive.activities(sessions: [s(.active)]).map(\.priority), [LivePriority.agentActive])
-        let both = AgentsLive.activities(sessions: [s(.active), s(.blocked)])
-        XCTAssertEqual(both.map(\.priority), [LivePriority.agentBlocked])
-        XCTAssertEqual(both.first?.widgetID, AgentsLive.widgetID)
-        XCTAssertEqual(both.first?.glyph, .agentDots([.active, .blocked]))
-    }
-
-    /// The pill's live ear leaves agents to the agent-dots ear.
-    func testEarPickSkipsAgents() {
-        let agents = act("agents", LivePriority.agentBlocked, widget: AgentsLive.widgetID)
-        let music = act("music", LivePriority.musicPlaying)
-        XCTAssertEqual(LiveArbiter.pick([agents, music], now: now).primary?.id, "agents")
-        let ear = LiveArbiter.pickForEar([agents, music], now: now)
-        XCTAssertEqual(ear.primary?.id, "music")
-        XCTAssertNil(ear.bubble)
-    }
-
     func testPanelHasLiveCountsSessionsAndActivities() {
         let idle = Session(key: "k", agent: "a", agentName: "A", sessionID: "1", state: .idle, startedAt: now, updatedAt: now)
         XCTAssertFalse(PanelMode.hasLive(sessions: [idle], activities: [act("shelf", LivePriority.shelfItems)], now: now))
