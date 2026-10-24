@@ -155,6 +155,40 @@ final class MarkdownTasksTests: DefaultsTestCase {
         XCTAssertEqual(zip(before, after).filter { $0 != $1 }.count, 1)
     }
 
+    func testSkipsObsidianComments() {
+        let md = """
+        - [ ] before
+        %%
+        - [ ] in a comment
+        %%
+        %% - [ ] inline comment %%
+        - [ ] visible %% with a note %%
+        %% opens here
+        - [ ] still hidden
+        closes here %%
+        - [ ] after
+        """
+        let tasks = MarkdownTasks.parse(md, file: "c.md")
+        XCTAssertEqual(tasks.map(\.text), ["before", "visible %% with a note %%", "after"])
+        XCTAssertEqual(MarkdownTasks.toggle(md, line: 3), md)
+    }
+
+    func testRecurringTasksAreListedButNeverToggled() {
+        let md = "- [ ] stretch 🔁 every day\n"
+        let tasks = MarkdownTasks.parse(md, file: "r.md")
+        XCTAssertEqual(tasks.first?.isRecurring, true)
+        XCTAssertEqual(MarkdownTasks.toggle(md, line: 1), md)
+    }
+
+    func testNoteHashFollowsTheBytes() {
+        let a = MarkdownTasks.parse("- [ ] a\n", file: "f")
+        let b = MarkdownTasks.parse("- [ ] a\n", file: "f")
+        let c = MarkdownTasks.parse("- [ ] a\n\n", file: "f")
+        XCTAssertEqual(a.first?.noteHash, b.first?.noteHash)
+        XCTAssertNotEqual(a.first?.noteHash, c.first?.noteHash)
+        XCTAssertNotEqual(a.first?.noteHash, 0)
+    }
+
     func testStripMarkers() {
         XCTAssertEqual(MarkdownTasks.stripMarkers("a ⏳ 2026-01-01 b ✅ 2026-01-02"), "a b")
         XCTAssertEqual(MarkdownTasks.stripMarkers("📅 2026-01-01"), "📅 2026-01-01")

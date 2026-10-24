@@ -15,15 +15,23 @@ public struct MarkdownTask: Equatable, Sendable, Identifiable {
     /// The whole line as read, without its line ending. A toggle writes only when the line
     /// still reads exactly this (R18).
     public let raw: String
+    /// `MarkdownTasks.hash` of the whole note as it was parsed (0: unknown). The write-back
+    /// knows from it whether the note changed since (R18).
+    public let noteHash: UInt64
 
-    public init(file: String, line: Int, text: String, done: Bool, due: Date?, raw: String) {
+    public init(file: String, line: Int, text: String, done: Bool, due: Date?, raw: String, noteHash: UInt64 = 0) {
         self.file = file
         self.line = line
         self.text = text
         self.done = done
         self.due = due
         self.raw = raw
+        self.noteHash = noteHash
     }
+
+    /// A Tasks-plugin recurring task (`🔁 every week`): ticking it means making the next
+    /// one, which only the plugin does, so PlatyNotch never writes it.
+    public var isRecurring: Bool { MarkdownTasks.isRecurring(text) }
 
     public var id: String { file + ":" + String(line) }
 
@@ -40,7 +48,8 @@ public struct MarkdownTask: Equatable, Sendable, Identifiable {
 /// Other statuses (`[/]`, `[-]`, …) are not tasks here. Lines inside YAML frontmatter
 /// (`---` on the first line up to the next `---` or `...`) and inside fenced code blocks
 /// (``` or ~~~, closed by the same fence at least as long; an unclosed fence runs to the end)
-/// are never tasks.
+/// are never tasks, nor are lines inside or starting an Obsidian `%% … %%` comment.
+/// Recurring tasks (`🔁`) are listed but never toggled.
 public enum MarkdownTasks {
     public static func parse(_ md: String, file: String) -> [MarkdownTask] {
         parse(bytes: Array(md.utf8), file: file, calendar: .current)
@@ -61,10 +70,10 @@ public enum MarkdownTasks {
         return String(decoding: out, as: UTF8.self)
     }
 
-    /// The bytes with the task on `line` toggled, or nil when that line is not a task.
-    /// Exactly one byte differs (`' '` ↔ `'x'`; `'X'` becomes `' '`).
+    /// The bytes with the task on `line` toggled, or nil when that line is not a task (or is
+    /// a recurring one). Exactly one byte differs (`' '` ↔ `'x'`; `'X'` becomes `' '`).
     public static func toggled(bytes: [UInt8], line: Int) -> [UInt8]? {
-        guard let hit = locate(bytes, line: line) else { return nil }
+        guard let hit = locate(bytes, line: line), !hit.task.isRecurring else { return nil }
         var out = bytes
         out[hit.offset] = hit.task.done ? space : lowerX
         return out
@@ -76,6 +85,18 @@ public enum MarkdownTasks {
         guard line >= 1 else { return nil }
         return located(bytes, file: file, calendar: calendar, onlyLine: line).first
     }
+
+    /// FNV-1a (64-bit) of the note's bytes: equal bytes, equal hash.
+    public static func hash(_ bytes: [UInt8]) -> UInt64 {
+        var h: UInt64 = 0xcbf2_9ce4_8422_2325
+        for b in bytes {
+            h ^= UInt64(b)
+            h = h &* 0x0000_0100_0000_01B3
+        }
+        return h == 0 ? 1 : h
+    }
+
+    public static func isRecurring(_ text: String) -> Bool { text.contains("\u{1F501}") }
 
     // MARK: - Lines
 
@@ -146,6 +167,8 @@ public enum MarkdownTasks {
             }
         }
         var fence: Fence?
+        var inComment = false
+        let noteHash = hash(bytes)
         while index < spans.count {
             let span = spans[index]
             let lineNumber = index + 1
@@ -154,10 +177,18 @@ public enum MarkdownTasks {
                 if closesFence(bytes, span, f) { fence = nil }
                 continue
             }
+            // Obsidian comments: `%%` opens and closes; a line inside one, or starting one, is skipped.
+            let marks = commentMarks(bytes, span)
+            if inComment {
+                if marks % 2 == 1 { inComment = false }
+                continue
+            }
             if let f = opensFence(bytes, span) {
                 fence = f
                 continue
             }
+            if marks % 2 == 1 { inComment = true }
+            if startsWithComment(bytes, span) { continue }
             if let wanted = onlyLine {
                 if lineNumber < wanted { continue }
                 if lineNumber > wanted { break }
@@ -168,13 +199,35 @@ public enum MarkdownTasks {
             if onlyLine == nil, text.isEmpty { continue }
             let raw = String(decoding: bytes[span.start..<span.end], as: UTF8.self)
             let t = MarkdownTask(file: file, line: lineNumber, text: text, done: hit.done,
-                                 due: dueDate(in: text, calendar: calendar), raw: raw)
+                                 due: dueDate(in: text, calendar: calendar), raw: raw, noteHash: noteHash)
             out.append((t, hit.offset))
         }
         return out
     }
 
     private static func isBlank(_ b: UInt8) -> Bool { b == space || b == tab }
+
+    private static let percent: UInt8 = 0x25
+
+    /// How many `%%` the line holds (not overlapping).
+    private static func commentMarks(_ bytes: [UInt8], _ span: LineSpan) -> Int {
+        var n = 0
+        var i = span.start
+        while i + 1 < span.end {
+            if bytes[i] == percent, bytes[i + 1] == percent {
+                n += 1
+                i += 2
+            } else {
+                i += 1
+            }
+        }
+        return n
+    }
+
+    private static func startsWithComment(_ bytes: [UInt8], _ span: LineSpan) -> Bool {
+        let i = contentStart(bytes, span)
+        return i + 1 < span.end && bytes[i] == percent && bytes[i + 1] == percent
+    }
 
     private static func isDigit(_ b: UInt8) -> Bool { b >= 0x30 && b <= 0x39 }
 
