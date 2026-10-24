@@ -119,11 +119,35 @@ private final class FakeFiles: FileActions {
     func reveal(_ url: URL) { revealed.append(url) }
 }
 
+/// Paths that exist, readable from any thread (large batches are stat'ed off main).
+private final class FileSet: @unchecked Sendable {
+    private let lock = NSLock()
+    private var files: Set<String> = []
+    private(set) var statsOffMain = 0
+    var all: Set<String> {
+        get { lock.withLock { files } }
+        set { lock.withLock { files = newValue } }
+    }
+    func stat(_ p: String) -> FileStat? {
+        lock.withLock {
+            if !Thread.isMainThread { statsOffMain += 1 }
+            return files.contains(p) ? FileStat(size: 1) : nil
+        }
+    }
+}
+
 @MainActor
 private final class Disk {
-    var files: Set<String> = []
+    let store = FileSet()
+    var files: Set<String> {
+        get { store.all }
+        set { store.all = newValue }
+    }
     var probes: [String] = []
     var allow = true
+    /// The prompt stays up (the probe waits) until cancelled.
+    var hold = false
+    var identity = "cdhash:test-build"
     var shelf: [URL]? = nil   // nil: the shelf is off
 }
 
@@ -189,9 +213,11 @@ final class SystemWidgetTests: XCTestCase {
         let watches = FakeWatches()
         let files = FakeFiles()
         let disk = Disk()
-        let exists: (String) -> Bool = { path in MainActor.assumeIsolated { disk.files.contains(path) } }
+        let store = disk.store
+        let stat: @Sendable (String) -> FileStat? = { store.stat($0) }
         let probe: @MainActor (String) async -> Bool = { folder in
             disk.probes.append(folder)
+            if disk.hold { try? await Task.sleep(for: .seconds(30)) }
             return disk.allow
         }
         let addToShelf: @MainActor (URL) -> Bool = { url in
@@ -200,7 +226,8 @@ final class SystemWidgetTests: XCTestCase {
         }
         let shelf: @MainActor () -> (@MainActor (URL) -> Bool)? = { disk.shelf == nil ? nil : addToShelf }
         let services = SystemWidget.DownloadsServices(folder: "/Users/me/Downloads", watch: watches.factory,
-                                                      exists: exists, probe: probe, files: files, shelf: shelf)
+                                                      stat: stat, probe: probe, identity: { disk.identity },
+                                                      home: "/Users/me", files: files, shelf: shelf)
         let w = SystemWidget(power: power, asserter: asserter, headphones: headphones, downloads: services,
                              defaults: d, clock: { clock.now })
         let client = CoreClient(socketPath: "/nonexistent")
@@ -506,34 +533,144 @@ final class SystemWidgetTests: XCTestCase {
         XCTAssertEqual(r.files.revealed, [URL(fileURLWithPath: final)])
     }
 
-    func testMoveToShelfOnlyWhenTheShelfIsOn() async {
+    func testAddToShelfOnlyWhenTheShelfIsOn() async {
         let r = rig()
         await turnOnDownloads(r)
         let final = "\(folder)/a.zip"
         r.disk.files = [final]
         r.watches.live?.onPaths(["\(folder)/a.zip.crdownload", final])
-        XCTAssertFalse(r.widget.canMoveToShelf, "the shelf is off: no Move to Shelf")
-        XCTAssertFalse(r.widget.moveDownloadToShelf())
+        XCTAssertFalse(r.widget.canMoveToShelf, "the shelf is off: no Add to Shelf")
+        XCTAssertFalse(r.widget.addDownloadToShelf())
 
         r.disk.shelf = []
         XCTAssertTrue(r.widget.canMoveToShelf)
-        XCTAssertTrue(r.widget.moveDownloadToShelf())
+        XCTAssertTrue(r.widget.addDownloadToShelf())
         XCTAssertEqual(r.disk.shelf, [URL(fileURLWithPath: final)])
     }
 
-    func testDownloadsDeniedWatchesNothing() async {
-        let r = rig()
+    func testDownloadsDeniedPersistsAndWatchesNothing() async {
+        let d = defaults()
+        let r = rig(defaults: d)
         r.disk.allow = false
         await turnOnDownloads(r)
         XCTAssertTrue(r.watches.made.isEmpty)
         XCTAssertTrue(r.widget.downloadsDenied)
-        XCTAssertTrue(r.widget.options.downloads, "stays on so the settings show how to allow it")
+        XCTAssertFalse(r.widget.options.downloads, "never \"on\" while nothing works")
+        let saved = SystemWidget.Options.load(d)
+        XCTAssertTrue(saved.downloadsDenied, "denied is saved")
+        XCTAssertFalse(saved.downloads)
+
+        let relaunched = rig(defaults: d)
+        XCTAssertTrue(relaunched.widget.downloadsDenied, "Settings still says macOS refused")
+        XCTAssertTrue(relaunched.watches.made.isEmpty)
+        XCTAssertTrue(relaunched.disk.probes.isEmpty)
     }
 
     func testDownloadsAtLaunchWatchWithoutAsking() {
-        let r = rig(defaults: savedOptions(.init(downloads: true, extraFolder: "/Volumes/Work/In")))
+        let on = SystemWidget.Options(downloads: true, extraFolder: "/Users/me/Incoming", downloadsStamp: "cdhash:test-build")
+        let r = rig(defaults: savedOptions(on))
         XCTAssertTrue(r.disk.probes.isEmpty, "no folder listing at launch")
-        XCTAssertEqual(r.watches.live?.folders, [folder, "/Volumes/Work/In"], "plus the chosen folder")
+        XCTAssertEqual(r.watches.live?.folders, [folder, "/Users/me/Incoming"], "plus the chosen folder")
+    }
+
+    func testStampMismatchStartsNothing() {
+        let d = savedOptions(.init(downloads: true, downloadsStamp: "cdhash:old-build"))
+        let r = rig(defaults: d)
+        XCTAssertTrue(r.watches.made.isEmpty, "another build was granted: no stream, no stat")
+        XCTAssertTrue(r.disk.probes.isEmpty)
+        XCTAssertEqual(r.disk.store.statsOffMain, 0)
+        XCTAssertFalse(r.widget.options.downloads, "kept off until Turn On again")
+        XCTAssertTrue(r.widget.options.downloadsNeedReenable, "Settings says why")
+        XCTAssertFalse(SystemWidget.Options.load(d).downloads)
+
+        let noStamp = rig(defaults: savedOptions(.init(downloads: true)))
+        XCTAssertTrue(noStamp.watches.made.isEmpty, "a missing stamp counts as a different build")
+        XCTAssertTrue(noStamp.widget.options.downloadsNeedReenable)
+    }
+
+    func testQuitWhileThePromptIsUpLeavesDownloadsOff() async {
+        let d = defaults()
+        let r = rig(defaults: d)
+        r.disk.hold = true
+        r.widget.setDownloads(true)
+        XCTAssertTrue(r.widget.downloadsAsking)
+        XCTAssertFalse(r.widget.options.downloads, "not saved before macOS answers")
+        XCTAssertFalse(SystemWidget.Options.load(d).downloads)
+        let task = r.widget.downloadsTask
+        r.registry.stopAll()   // quit
+        await task?.value
+        XCTAssertFalse(SystemWidget.Options.load(d).downloads, "still off after quitting mid-prompt")
+        XCTAssertNil(SystemWidget.Options.load(d).downloadsStamp)
+        XCTAssertTrue(r.watches.made.isEmpty)
+    }
+
+    func testGrantSavesTheStamp() async {
+        let d = defaults()
+        let r = rig(defaults: d)
+        await turnOnDownloads(r)
+        XCTAssertEqual(SystemWidget.Options.load(d).downloadsStamp, "cdhash:test-build")
+        r.widget.setDownloads(false)
+        XCTAssertNil(SystemWidget.Options.load(d).downloadsStamp, "turning off forgets the grant")
+    }
+
+    func testProtectedSecondFolderIsRejected() async {
+        let r = rig()
+        await turnOnDownloads(r)
+        XCTAssertFalse(r.widget.setExtraFolder("/Users/me/Desktop/In"))
+        XCTAssertNotNil(r.widget.extraFolderRejection, "a clear reason in Settings")
+        XCTAssertNil(r.widget.options.extraFolder)
+        XCTAssertEqual(r.watches.made.count, 1, "the watch is unchanged")
+        XCTAssertFalse(r.widget.setExtraFolder("/Volumes/USB"))
+        XCTAssertTrue(r.widget.setExtraFolder("/Users/me/Incoming"))
+        XCTAssertNil(r.widget.extraFolderRejection)
+
+        // Saved by an older build: dropped at launch, with the reason, before any stat.
+        let old = SystemWidget.Options(downloads: true, extraFolder: "/Users/me/Documents/DL",
+                                       downloadsStamp: "cdhash:test-build")
+        let relaunched = rig(defaults: savedOptions(old))
+        XCTAssertEqual(relaunched.watches.live?.folders, [folder])
+        XCTAssertNil(relaunched.widget.options.extraFolder)
+        XCTAssertNotNil(relaunched.widget.extraFolderRejection)
+    }
+
+    func testLargeBatchIsStatedOffTheMainThread() async {
+        let r = rig()
+        await turnOnDownloads(r)
+        let names = (0..<100).map { "\(folder)/f\($0).crdownload" }
+        r.disk.files = Set(names)
+        r.watches.live?.onPaths(names)
+        await r.widget.downloadsPendingBatch?.value
+        XCTAssertEqual(r.widget.downloadsActive.count, 100)
+        XCTAssertGreaterThan(r.disk.store.statsOffMain, 0)
+        XCTAssertEqual(r.widget.liveActivities.first { $0.id == SystemWidget.downloadActivityID }?.trailing,
+                       "f99.crdownload".replacingOccurrences(of: ".crdownload", with: "") + " +99")
+        XCTAssertNotEqual(SystemWidget.downloadActivityID, SystemWidget.downloadPeekID)
+    }
+
+    // MARK: - Power fixes
+
+    func testPlugBurstPeeksOnceWithTheLastState() {
+        let r = rig()
+        r.power.set(charging)
+        XCTAssertEqual(r.widget.powerPeek?.change, .pluggedIn)
+        r.clock.advance(0.5)
+        r.power.set(onBattery)
+        XCTAssertEqual(r.widget.powerPeek?.change, .unplugged, "the peek on show follows the last state")
+        r.clock.advance(0.5)
+        r.power.set(charging)
+        XCTAssertEqual(r.widget.powerPeek?.change, .pluggedIn)
+        XCTAssertEqual(r.controller.mode, peek(SystemWidget.powerPeekID))
+    }
+
+    func testBatteryReadRetriedOnceWhenMissingAtStart() {
+        let r = rig(battery: nil)
+        XCTAssertEqual(r.power.starts, 0)
+        r.power.state = onBattery
+        r.widget.retryBatteryRead()
+        XCTAssertEqual(r.widget.battery, onBattery)
+        XCTAssertEqual(r.power.starts, 1, "a laptop whose first read failed gets its source")
+        r.widget.retryBatteryRead()
+        XCTAssertEqual(r.power.starts, 1, "once")
     }
 
     func testDownloadsStopWithTheWidgetAndTurnOff() async {
@@ -561,11 +698,18 @@ final class SystemWidgetTests: XCTestCase {
     func testChoosingASecondFolderRestartsTheWatch() async {
         let r = rig()
         await turnOnDownloads(r)
-        r.widget.setExtraFolder("/Volumes/Work/In")
+        r.widget.setExtraFolder("/Users/me/Incoming")
         XCTAssertEqual(r.watches.made.count, 2)
         XCTAssertTrue(r.watches.made[0].stopped)
-        XCTAssertEqual(r.watches.live?.folders, [folder, "/Volumes/Work/In"])
+        XCTAssertEqual(r.watches.live?.folders, [folder, "/Users/me/Incoming"])
         r.widget.setExtraFolder(nil)
         XCTAssertEqual(r.watches.live?.folders, [folder])
+    }
+
+    func testCodeIdentityIsStableWithinALaunch() {
+        let id = CodeIdentity.current
+        XCTAssertTrue(id.hasPrefix("cdhash:") || id.hasPrefix("dr:") || id == CodeIdentity.unsigned, id)
+        XCTAssertEqual(id, CodeIdentity.current)
+        print("CodeIdentity under swift test: \(id.prefix(20))…")
     }
 }

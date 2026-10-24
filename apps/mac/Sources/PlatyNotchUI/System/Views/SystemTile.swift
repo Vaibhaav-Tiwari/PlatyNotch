@@ -76,7 +76,7 @@ struct FinishedDownloadRow: View {
     }
 }
 
-/// Open, Show in Finder and (shelf on) Move to Shelf: the only ways a download is acted on.
+/// Open, Show in Finder and (shelf on) Add to Shelf: the only ways a download is acted on.
 struct DownloadButtons: View {
     let widget: SystemWidget
     var compact = false
@@ -87,8 +87,8 @@ struct DownloadButtons: View {
             Button(compact ? "Show" : "Show in Finder") { widget.revealDownload() }
                 .accessibilityLabel("Show in Finder")
             if widget.canMoveToShelf {
-                Button(compact ? "Shelf" : "Move to Shelf") { widget.moveDownloadToShelf() }
-                    .accessibilityLabel("Move to Shelf")
+                Button(compact ? "Shelf" : "Add to Shelf") { widget.addDownloadToShelf() }
+                    .accessibilityLabel("Add to Shelf")
             }
         }
         .buttonStyle(.borderless)
@@ -310,26 +310,14 @@ struct DownloadsSettings: View {
             HStack {
                 Label("Downloads", systemImage: "arrow.down.circle")
                 Spacer()
-                if widget.options.downloads {
-                    if widget.downloadsDenied {
-                        Button("Open System Settings") { Permissions.open(.filesAndFolders) }
-                    }
-                    Button("Turn Off") { widget.setDownloads(false) }
-                } else {
-                    Button("Turn On…") { widget.setDownloads(true) }
-                }
+                buttons
             }
             if widget.options.downloads {
-                HStack {
-                    Text(widget.options.extraFolder.map { "Also watching \(($0 as NSString).abbreviatingWithTildeInPath)" }
-                         ?? "Watching ~/Downloads")
-                        .font(.caption).lineLimit(1).truncationMode(.middle)
-                    Spacer()
-                    Button(widget.options.extraFolder == nil ? "Add a Folder…" : "Change…") { chooseFolder() }
-                    if widget.options.extraFolder != nil {
-                        Button("Remove") { widget.setExtraFolder(nil) }
-                    }
-                }
+                folderRow
+            }
+            if let why = widget.extraFolderRejection {
+                Text(why).font(.caption).foregroundStyle(Theme.tint(.warning))
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Text(status)
                 .font(.caption)
@@ -338,14 +326,53 @@ struct DownloadsSettings: View {
         }
     }
 
+    @ViewBuilder private var buttons: some View {
+        if widget.options.downloads {
+            Button("Turn Off") { widget.setDownloads(false) }
+        } else if widget.downloadsAsking {
+            ProgressView().controlSize(.small)
+        } else {
+            if widget.downloadsDenied {
+                Button("Open System Settings") { Permissions.open(.filesAndFolders) }
+            }
+            Button(turnOnTitle) { widget.setDownloads(true) }
+        }
+    }
+
+    private var turnOnTitle: String {
+        if widget.options.downloadsNeedReenable { return "Turn On Again…" }
+        return widget.downloadsDenied ? "Try Again" : "Turn On…"
+    }
+
+    private var folderRow: some View {
+        HStack {
+            Text(folderText).font(.caption).lineLimit(1).truncationMode(.middle)
+            Spacer()
+            Button(widget.options.extraFolder == nil ? "Add a Folder…" : "Change…") { chooseFolder() }
+            if widget.options.extraFolder != nil {
+                Button("Remove") { widget.setExtraFolder(nil) }
+            }
+        }
+    }
+
+    private var folderText: String {
+        guard let extra = widget.options.extraFolder else { return "Watching ~/Downloads" }
+        return "Also watching " + (extra as NSString).abbreviatingWithTildeInPath
+    }
+
     private var status: String {
-        if widget.options.downloads, widget.downloadsDenied {
+        if widget.downloadsAsking { return "Waiting for macOS to allow the Downloads folder." }
+        if widget.options.downloadsNeedReenable {
+            return "Turn on again (PlatyNotch was updated or reinstalled): macOS may need to ask once more."
+        }
+        if widget.downloadsDenied {
             return "macOS did not allow PlatyNotch to see your Downloads folder (System Settings › Privacy & "
-                + "Security › Files and Folders)."
+                + "Security › Files and Folders). Downloads stay off."
         }
         return "Shows a download in progress in the pill and a notice when it finishes, with Open, Show in "
-            + "Finder and Move to Shelf (when the shelf is on). Turning it on asks to see your Downloads folder. "
-            + "Only file names are read, never their contents, and nothing happens to a file unless you click."
+            + "Finder and Add to Shelf (when the shelf is on). Turning it on asks to see your Downloads folder. "
+            + "Only file names and sizes are read, never contents, and nothing happens to a file unless you click. "
+            + "A second folder must not be on the Desktop, in Documents, iCloud Drive or on an external drive."
     }
 
     private func chooseFolder() {
@@ -356,6 +383,12 @@ struct DownloadsSettings: View {
         panel.prompt = "Watch"
         panel.message = "Choose a second folder your browser saves downloads to."
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        // The path as chosen is checked first (a rejected one records why); it is resolved
+        // (symlinks) only when allowed, and the resolved path is checked again.
+        if case .rejected = WatchFolderPolicy.check(url.path, home: widget.downloads.home) {
+            widget.setExtraFolder(url.path)
+            return
+        }
         widget.setExtraFolder(DownloadsMonitor.canonical(url.path))
     }
 }

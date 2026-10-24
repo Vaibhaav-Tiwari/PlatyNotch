@@ -9,6 +9,20 @@ public enum DownloadFileState: Equatable, Sendable {
     case done
 }
 
+/// What a `stat` says about a path (metadata only, never contents).
+public struct FileStat: Equatable, Sendable {
+    public var isDirectory: Bool
+    public var size: Int64
+
+    public init(isDirectory: Bool = false, size: Int64) {
+        self.isDirectory = isDirectory
+        self.size = size
+    }
+
+    /// A bundle (Safari, an .app) or a non-empty file.
+    public var hasContent: Bool { isDirectory || size > 0 }
+}
+
 /// Names and paths only; pure.
 public enum DownloadDetector {
     public static let inProgressSuffixes = ["crdownload", "download", "part", "partial", "opdownload"]
@@ -65,6 +79,8 @@ public struct DownloadTracker: Sendable {
     /// An in-progress name with no writes for this long is no longer shown (a paused or
     /// abandoned download).
     public static let staleAfter: TimeInterval = 10 * 60
+    /// Above this many entries in one batch only known downloads are followed.
+    public static let maxBatchEntries = 500
 
     public struct Active: Equatable, Sendable {
         /// The in-progress path.
@@ -98,21 +114,39 @@ public struct DownloadTracker: Sendable {
         self.folders = folders
     }
 
-    /// One coalesced batch. `exists` answers for paths in the batch (a `stat`, never a read).
-    public mutating func apply(paths: [String], exists: (String) -> Bool, now: Date) -> [Event] {
-        var entries: [String] = []
+    /// Entries of one batch: watched-folder entries, each once, hidden names dropped. A
+    /// batch with more than `maxBatchEntries` (a big unzip or copy) keeps only the
+    /// downloads already in progress and their final names.
+    public func entries(_ paths: [String]) -> [String] {
+        var seen: Set<String> = []
+        var out: [String] = []
         for p in paths {
-            guard let e = DownloadDetector.entry(path: p, folders: folders), !entries.contains(e) else { continue }
-            let name = (e as NSString).lastPathComponent
-            if !DownloadDetector.isIgnored(fileName: name) { entries.append(e) }
+            guard let e = DownloadDetector.entry(path: p, folders: folders), seen.insert(e).inserted,
+                  !DownloadDetector.isIgnored(fileName: (e as NSString).lastPathComponent) else { continue }
+            out.append(e)
         }
+        guard out.count > Self.maxBatchEntries else { return out }
+        let known = Set(active.map(\.path))
+        let finals = Set(active.map { Self.finalPath($0.path) })
+        return out.filter { known.contains($0) || finals.contains($0) }
+    }
+
+    /// Every path `apply` may stat for this batch (to stat them off the main thread).
+    public func pathsToStat(_ paths: [String]) -> [String] {
+        let e = entries(paths)
+        let finals = e.filter { Self.isInProgress($0) }.map(Self.finalPath)
+        return Array(Set(e + finals))
+    }
+
+    /// One coalesced batch. `stat` answers for paths in the batch (metadata, never a read).
+    public mutating func apply(paths: [String], stat: (String) -> FileStat?, now: Date) -> [Event] {
+        let entries = entries(paths)
         var events: [Event] = []
-        let inProgress = entries.filter { DownloadDetector.state(fileName: ($0 as NSString).lastPathComponent) == .inProgress }
         var endedNow: [String] = []
-        for p in inProgress {
+        for p in entries where Self.isInProgress(p) {
             let final = Self.finalPath(p)
             let index = active.firstIndex { $0.path == p }
-            if exists(p) {
+            if stat(p) != nil {
                 if let index {
                     active[index].lastSeen = now
                 } else {
@@ -130,24 +164,31 @@ public struct DownloadTracker: Sendable {
                 endedNow.append(final)
             }
         }
-        for p in entries where DownloadDetector.state(fileName: (p as NSString).lastPathComponent) == .done {
-            guard exists(p) else {
+        for p in entries where !Self.isInProgress(p) {
+            guard let info = stat(p) else {
                 awaiting.remove(p)
                 continue
             }
             if active.contains(where: { Self.finalPath($0.path) == p }) {
                 awaiting.insert(p)
-            } else if let when = ended[p], now.timeIntervalSince(when) <= Self.finishGrace {
+            } else if let when = ended[p], now.timeIntervalSince(when) <= Self.finishGrace, info.hasContent {
                 ended[p] = nil
                 awaiting.remove(p)
                 events.append(Event(kind: .finished, path: p))
             }
         }
         // The final file was already there (Safari moved it out, Firefox's placeholder).
+        // An empty file is not finished (Firefox's placeholder left by a cancel): it waits
+        // for content within the grace, or goes.
         for final in endedNow where awaiting.contains(final) && ended[final] != nil {
+            guard let info = stat(final) else {
+                awaiting.remove(final)
+                continue
+            }
+            guard info.hasContent else { continue }
             awaiting.remove(final)
             ended[final] = nil
-            if exists(final) { events.append(Event(kind: .finished, path: final)) }
+            events.append(Event(kind: .finished, path: final))
         }
         ended = ended.filter { now.timeIntervalSince($0.value) <= Self.finishGrace }
         return events
@@ -164,6 +205,10 @@ public struct DownloadTracker: Sendable {
     /// When `pruneStale` should run next (nil: nothing in progress).
     public var nextStaleCheck: Date? {
         active.map(\.lastSeen).min().map { $0.addingTimeInterval(Self.staleAfter) }
+    }
+
+    static func isInProgress(_ path: String) -> Bool {
+        DownloadDetector.state(fileName: (path as NSString).lastPathComponent) == .inProgress
     }
 
     static func finalPath(_ inProgress: String) -> String {

@@ -666,18 +666,35 @@ Probe on the build Mac (macOS 26.4, nothing granted): IOBluetoothDevice answers
 - [ ] **134. Chrome / Edge / Arc.** Download a large file: within a second or two the pill
   shows ↓ and the file name (not "Unconfirmed …" for more than a moment); the tile lists
   it as Downloading. When done: a notice below the notch "Downloaded <name>" with Open,
-  Show in Finder and (shelf on) Move to Shelf, for about 8 s; it stays in the tile.
+  Show in Finder and (shelf on) Add to Shelf, for about 8 s; it stays in the tile.
 - [ ] **135. Safari.** The same with Safari (its `.download` bundle): one notice when it
   finishes, with the final name; no notice for the bundle's inner files.
 - [ ] **136. Firefox.** The same with Firefox (`.part` plus an empty placeholder): one
   notice when it finishes, not at the start.
 - [ ] **137. Buttons only.** Nothing opens, moves or is revealed until you click. Open
-  opens the file; Show in Finder selects it; Move to Shelf adds it to the shelf (the file
-  stays in Downloads). With the shelf widget off, there is no Move to Shelf button.
+  opens the file; Show in Finder selects it; Add to Shelf adds it to the shelf (the file
+  stays in Downloads). With the shelf widget off, there is no Add to Shelf button.
 - [ ] **138. Not downloads.** Copy a file into Downloads in Finder, unzip an archive there,
   cancel a download: no notice. A paused download leaves the pill after 10 minutes.
-- [ ] **139. Second folder.** Add a Folder… (e.g. a folder your browser saves to): downloads
-  there show too. Remove: only ~/Downloads again. No Safari-container lookup.
+- [ ] **139. Second folder.** Add a Folder… (e.g. ~/Incoming, a folder your browser saves
+  to): downloads there show too. Remove: only ~/Downloads again. No Safari-container lookup.
+  Choosing a folder on the Desktop, in Documents, in iCloud Drive, on a USB or network drive
+  or in another user's home is refused with the reason under the row.
 - [ ] **140. Off.** Turn Downloads off (or the System widget off): a download in progress
   leaves the pill at once; new downloads show nothing; `sample PlatyNotch 3` shows no
   FSEvents callbacks.
+
+### Task 9 fix round 1
+
+- [ ] **141. Quit mid-prompt.** Turn On… downloads, and quit PlatyNotch while the macOS
+  prompt is up. Relaunch: downloads are off, no prompt at launch.
+- [ ] **142. Rebuild or update asks again.** With downloads on, rebuild the app
+  (`scripts/build-app.sh`, a new ad-hoc signature) and relaunch: no prompt and no
+  file access at launch; Settings says "Turn on again (PlatyNotch was updated or
+  reinstalled)" with "Turn On Again…". Pressing it asks (or not, if macOS kept the grant)
+  and downloads work again.
+- [ ] **143. Denied stays denied.** Turn On… and click Don't Allow: Settings says macOS did
+  not allow it (with Open System Settings and Try Again), also after a relaunch, and never
+  says "on".
+- [ ] **144. Loose charger.** Plug and unplug the charger three times within a second or
+  two: one peek, showing the last state, not three.

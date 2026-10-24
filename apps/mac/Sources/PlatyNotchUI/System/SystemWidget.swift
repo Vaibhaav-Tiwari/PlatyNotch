@@ -20,7 +20,7 @@ import SwiftUI
 /// show the button again. Off (or the widget off): no Bluetooth notifications.
 ///
 /// Downloads (an in-progress live activity with the file name; a finished notice with
-/// Open, Show in Finder and, when the shelf is on, Move to Shelf) need the Downloads
+/// Open, Show in Finder and, when the shelf is on, Add to Shelf) need the Downloads
 /// folder: off until its Turn On button, which lists the folder once so macOS asks
 /// there. One FSEvents stream on `~/Downloads` (and an optional folder the user chose;
 /// no Safari-container lookup, C29), coalesced; names and existence only, never file
@@ -32,8 +32,8 @@ final class SystemWidget: NotchWidget {
     static let batteryActivityID = "system.battery"
     static let keepAwakeActivityID = "system.keepAwake"
     static let headphonesPeekID = "system.headphones"
-    static let downloadPeekID = "system.download"
-    static let downloadActivityID = "system.download"
+    static let downloadPeekID = "system.download.finished"
+    static let downloadActivityID = "system.download.active"
     static let downloadPeekDuration: TimeInterval = 8
 
     /// What the downloads sub-feature uses; tests pass fakes for all of it.
@@ -41,10 +41,14 @@ final class SystemWidget: NotchWidget {
         /// `~/Downloads`, canonical.
         var folder: String
         var watch: FolderWatcherFactory
-        /// A stat of a path from a batch, never a read.
-        var exists: (String) -> Bool
+        /// A stat of a path from a batch (type and size), never a read. May run off main.
+        var stat: @Sendable (String) -> FileStat?
         /// Lists the folder once (the macOS prompt), from the Turn On button only.
         var probe: @MainActor (String) async -> Bool
+        /// This build's code identity (`CodeIdentity`), saved with a grant.
+        var identity: @MainActor () -> String
+        /// The user's home (for `WatchFolderPolicy`).
+        var home: String
         var files: FileActions
         /// Adds a file to the shelf, or nil while the shelf is off.
         var shelf: @MainActor () -> (@MainActor (URL) -> Bool)?
@@ -52,15 +56,17 @@ final class SystemWidget: NotchWidget {
         static func system(shelf: @escaping @MainActor () -> (@MainActor (URL) -> Bool)? = { nil }) -> DownloadsServices {
             DownloadsServices(folder: DownloadsMonitor.defaultFolder(),
                               watch: { FSEventsWatcher.make(folders: $0, onPaths: $1) },
-                              exists: { FileManager.default.fileExists(atPath: $0) },
+                              stat: { DownloadsMonitor.statFile($0) },
                               probe: { await DownloadsMonitor.probeAccess($0) },
+                              identity: { CodeIdentity.current }, home: NSHomeDirectory(),
                               files: WorkspaceFileActions(), shelf: shelf)
         }
 
         /// Watches nothing, touches nothing (smoke runs).
         static var none: DownloadsServices {
-            DownloadsServices(folder: "/nonexistent", watch: { _, _ in nil }, exists: { _ in false },
-                              probe: { _ in false }, files: WorkspaceFileActions(), shelf: { nil })
+            DownloadsServices(folder: "/nonexistent", watch: { _, _ in nil }, stat: { _ in nil },
+                              probe: { _ in false }, identity: { CodeIdentity.unsigned }, home: "/nonexistent",
+                              files: WorkspaceFileActions(), shelf: { nil })
         }
     }
     static let headphonesPeekDuration: TimeInterval = 5
@@ -71,14 +77,36 @@ final class SystemWidget: NotchWidget {
     struct Options: Codable, Equatable {
         static let key = "system.options"
         var headphones = false
+        /// Saved true only after macOS granted the folder, with `downloadsStamp`.
         var downloads = false
         /// A second folder to watch for downloads (chosen in Settings), as a path.
         var extraFolder: String?
+        /// The `CodeIdentity` that was granted the Downloads folder.
+        var downloadsStamp: String?
+        /// macOS refused the folder at the last Turn On.
+        var downloadsDenied = false
+        /// Turned off at launch because this build is not the one that was granted.
+        var downloadsNeedReenable = false
 
-        init(headphones: Bool = false, downloads: Bool = false, extraFolder: String? = nil) {
+        init(headphones: Bool = false, downloads: Bool = false, extraFolder: String? = nil,
+             downloadsStamp: String? = nil, downloadsDenied: Bool = false, downloadsNeedReenable: Bool = false) {
             self.headphones = headphones
             self.downloads = downloads
             self.extraFolder = extraFolder
+            self.downloadsStamp = downloadsStamp
+            self.downloadsDenied = downloadsDenied
+            self.downloadsNeedReenable = downloadsNeedReenable
+        }
+
+        /// Missing keys take their defaults (options saved by an older build).
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            headphones = try c.decodeIfPresent(Bool.self, forKey: .headphones) ?? false
+            downloads = try c.decodeIfPresent(Bool.self, forKey: .downloads) ?? false
+            extraFolder = try c.decodeIfPresent(String.self, forKey: .extraFolder)
+            downloadsStamp = try c.decodeIfPresent(String.self, forKey: .downloadsStamp)
+            downloadsDenied = try c.decodeIfPresent(Bool.self, forKey: .downloadsDenied) ?? false
+            downloadsNeedReenable = try c.decodeIfPresent(Bool.self, forKey: .downloadsNeedReenable) ?? false
         }
 
         static func load(_ d: UserDefaults) -> Options {
@@ -87,6 +115,10 @@ final class SystemWidget: NotchWidget {
     }
     /// How long the plug-in / unplug peek stays.
     static let powerPeekDuration: TimeInterval = 4
+    /// Changes this soon after a peek update that peek in place (no new peek).
+    static let powerPeekDebounce: TimeInterval = 2
+    /// No battery at start: read once more after this (a slow IOPS at login).
+    static let batteryRetryDelay: Duration = .seconds(5)
 
     struct PowerPeek: Equatable {
         let change: BatteryState.Change
@@ -114,8 +146,12 @@ final class SystemWidget: NotchWidget {
     private(set) var downloadsActive: [DownloadTracker.Active] = []
     /// The last finished download (the notice and the tile).
     private(set) var finishedDownload: URL?
-    /// Downloads are on but macOS refused the folder.
-    private(set) var downloadsDenied = false
+    /// macOS refused the folder at the last Turn On (saved, so Settings never says "on").
+    var downloadsDenied: Bool { options.downloadsDenied }
+    /// Turn On was pressed and the answer is pending.
+    private(set) var downloadsAsking = false
+    /// Why the chosen second folder was not taken (or was dropped at launch).
+    private(set) var extraFolderRejection: String?
     /// The access check after Turn On (tests await it).
     @ObservationIgnored private(set) var downloadsTask: Task<Void, Never>?
     /// Mirrors `headphoneSource.access` for the settings (refreshed on changes).
@@ -131,6 +167,8 @@ final class SystemWidget: NotchWidget {
     @ObservationIgnored let persist: Bool
     @ObservationIgnored let clock: () -> Date
     @ObservationIgnored private(set) var context: WidgetContext?
+    @ObservationIgnored private var lastPowerPeekAt: Date?
+    @ObservationIgnored private var batteryRetryTask: Task<Void, Never>?
 
     init(power: PowerSourceReading = SystemPowerSource(), asserter: PowerAsserting = SystemPowerAsserter(),
          headphones: HeadphonesSource = SystemHeadphones(), downloads: DownloadsServices = .system(),
@@ -159,18 +197,39 @@ final class SystemWidget: NotchWidget {
         guard self.context == nil else { return }
         self.context = context
         battery = power.read()
-        // A desktop Mac has no battery and never gets one: no source at all.
+        // A desktop Mac has no battery and never gets one: no source at all. A laptop
+        // whose first read failed gets one more read a little later.
         if battery != nil {
-            power.start { [weak self] in self?.powerChanged() }
+            startPowerSource()
+        } else {
+            batteryRetryTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: Self.batteryRetryDelay)
+                guard !Task.isCancelled else { return }
+                self?.retryBatteryRead()
+            }
         }
         if options.headphones { startHeadphones(prompting: false) }
-        // Turned on from its button before, so already asked; no listing here.
-        if options.downloads { startDownloads() }
+        if options.downloads { resumeDownloads() }
+    }
+
+    private func startPowerSource() {
+        power.start { [weak self] in self?.powerChanged() }
+    }
+
+    /// The one retry when there was no battery at start (the retry sleep; tests call it).
+    func retryBatteryRead() {
+        batteryRetryTask = nil
+        guard isRunning, battery == nil, let b = power.read() else { return }
+        battery = b
+        startPowerSource()
     }
 
     func stop() {
         guard let context else { return }
         power.stop()
+        batteryRetryTask?.cancel()
+        batteryRetryTask = nil
+        lastPowerPeekAt = nil
         keepAwake.stop()
         stopHeadphones()
         stopDownloads()
@@ -192,9 +251,20 @@ final class SystemWidget: NotchWidget {
         let old = battery
         let new = power.read()
         battery = new
-        guard let change = BatteryState.change(from: old, to: new), let new else { return }
+        guard let change = BatteryState.change(from: old, to: new), let new else {
+            if let p = powerPeek, let new { powerPeek = PowerPeek(change: p.change, state: new) }
+            return
+        }
+        let now = clock()
+        // A burst (a loose connector): the peek on show follows the last state, no new peek.
+        if powerPeek != nil, let last = lastPowerPeekAt, now.timeIntervalSince(last) < Self.powerPeekDebounce {
+            powerPeek = PowerPeek(change: change, state: new)
+            lastPowerPeekAt = now
+            return
+        }
         powerPeek = PowerPeek(change: change, state: new)
-        if !context.peek(id: Self.powerPeekID, until: clock().addingTimeInterval(Self.powerPeekDuration)) {
+        lastPowerPeekAt = now
+        if !context.peek(id: Self.powerPeekID, until: now.addingTimeInterval(Self.powerPeekDuration)) {
             powerPeek = nil
         }
     }
@@ -310,32 +380,75 @@ final class SystemWidget: NotchWidget {
 
     // MARK: - Downloads
 
-    /// The settings button. Turning on lists the folder once (the macOS prompt shows here).
+    /// The settings button. Turning on lists the folder once (the macOS prompt shows here)
+    /// and is saved only when macOS grants it, with this build's identity. Quitting while
+    /// the prompt is up leaves it off.
     func setDownloads(_ on: Bool) {
-        updateOptions { $0.downloads = on }
         guard on else {
+            updateOptions {
+                $0.downloads = false
+                $0.downloadsStamp = nil
+                $0.downloadsDenied = false
+                $0.downloadsNeedReenable = false
+            }
             stopDownloads()
             return
         }
-        guard isRunning else { return }
+        guard isRunning, !options.downloads, !downloadsAsking else { return }
         downloadsTask?.cancel()
+        downloadsAsking = true
         let folder = downloads.folder
         let probe = downloads.probe
         downloadsTask = Task { @MainActor [weak self] in
             let granted = await probe(folder)
-            guard let self, !Task.isCancelled, self.isRunning, self.options.downloads else { return }
-            if granted { self.startDownloads() } else { self.downloadsDenied = true }
+            guard let self, !Task.isCancelled, self.isRunning, self.downloadsAsking else { return }
+            self.downloadsAsking = false
+            let stamp = self.downloads.identity()
+            self.updateOptions {
+                $0.downloads = granted
+                $0.downloadsStamp = granted ? stamp : nil
+                $0.downloadsDenied = !granted
+                $0.downloadsNeedReenable = false
+            }
+            if granted { self.startDownloads() }
         }
     }
 
-    /// A second folder to watch (Settings › Choose…), or nil to remove it.
-    func setExtraFolder(_ path: String?) {
+    /// At launch: only a grant made by this very build is used; anything else (an update,
+    /// a reinstall, an ad-hoc rebuild, a missing stamp) turns the sub-feature off with no
+    /// file-system access, until its button is pressed again.
+    private func resumeDownloads() {
+        guard let stamp = options.downloadsStamp, stamp == downloads.identity() else {
+            updateOptions {
+                $0.downloads = false
+                $0.downloadsStamp = nil
+                $0.downloadsNeedReenable = true
+            }
+            return
+        }
+        if let extra = options.extraFolder, case .rejected(let why) = WatchFolderPolicy.check(extra, home: downloads.home) {
+            updateOptions { $0.extraFolder = nil }
+            extraFolderRejection = why
+        }
+        startDownloads()
+    }
+
+    /// A second folder to watch (Settings › Choose…), or nil to remove it. False (and
+    /// `extraFolderRejection` says why) for a folder macOS guards with a prompt.
+    @discardableResult
+    func setExtraFolder(_ path: String?) -> Bool {
+        if let path, case .rejected(let why) = WatchFolderPolicy.check(path, home: downloads.home) {
+            extraFolderRejection = why
+            return false
+        }
+        extraFolderRejection = nil
         updateOptions { $0.extraFolder = path }
         if monitor != nil {
             monitor?.stop()
             monitor = nil
             startDownloads()
         }
+        return true
     }
 
     var downloadFolders: [String] {
@@ -344,20 +457,22 @@ final class SystemWidget: NotchWidget {
 
     private func startDownloads() {
         guard monitor == nil, isRunning else { return }
-        downloadsDenied = false
-        monitor = DownloadsMonitor(folders: downloadFolders, factory: downloads.watch, exists: downloads.exists,
+        monitor = DownloadsMonitor(folders: downloadFolders, factory: downloads.watch, stat: downloads.stat,
                                    clock: clock) { [weak self] events, tracker in
             self?.downloadEvents(events, tracker)
         }
     }
 
+    /// The monitor's latest off-main batch (tests await it).
+    var downloadsPendingBatch: Task<Void, Never>? { monitor?.pendingBatch }
+
     private func stopDownloads() {
         downloadsTask?.cancel()
         downloadsTask = nil
+        downloadsAsking = false
         monitor?.stop()
         monitor = nil
         downloadsActive = []
-        downloadsDenied = false
         if finishedDownload != nil { context?.endPeek(id: Self.downloadPeekID) }
         finishedDownload = nil
     }
@@ -385,9 +500,9 @@ final class SystemWidget: NotchWidget {
 
     var canMoveToShelf: Bool { downloads.shelf() != nil }
 
-    /// Adds the file to the shelf (it stays where it is; the shelf keeps a bookmark).
+    /// "Add to Shelf": the file stays where it is; the shelf keeps a bookmark.
     @discardableResult
-    func moveDownloadToShelf() -> Bool {
+    func addDownloadToShelf() -> Bool {
         guard let url = finishedDownload, let add = downloads.shelf() else { return false }
         let added = add(url)
         if added { context?.endPeek(id: Self.downloadPeekID) }

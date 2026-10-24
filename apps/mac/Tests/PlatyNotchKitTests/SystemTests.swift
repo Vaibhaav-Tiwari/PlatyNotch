@@ -199,10 +199,11 @@ final class SystemTests: XCTestCase {
     private let dl = "/Users/me/Downloads"
     private let t0 = Date(timeIntervalSince1970: 3_000_000)
 
-    /// Runs batches against a set of paths that exist.
+    /// Runs batches against a set of paths that exist (size 1 unless listed in `empty`).
     private struct Disk {
         var files: Set<String> = []
-        func exists(_ p: String) -> Bool { files.contains(p) }
+        var empty: Set<String> = []
+        func stat(_ p: String) -> FileStat? { files.contains(p) ? FileStat(size: empty.contains(p) ? 0 : 1) : nil }
     }
 
     func testChromeRenameSequence() {
@@ -210,18 +211,18 @@ final class SystemTests: XCTestCase {
         var disk = Disk()
         let temp = "\(dl)/Unconfirmed 123.crdownload", named = "\(dl)/report.pdf.crdownload", final = "\(dl)/report.pdf"
         disk.files = [temp]
-        XCTAssertEqual(tracker.apply(paths: [temp], exists: disk.exists, now: t0).map(\.kind), [.started])
+        XCTAssertEqual(tracker.apply(paths: [temp], stat: disk.stat, now: t0).map(\.kind), [.started])
         XCTAssertEqual(tracker.active.map(\.name), ["Unconfirmed 123"])
 
         disk.files = [named]
-        let renamed = tracker.apply(paths: [temp, named], exists: disk.exists, now: t0 + 1)
+        let renamed = tracker.apply(paths: [temp, named], stat: disk.stat, now: t0 + 1)
         XCTAssertEqual(renamed.map(\.kind), [.ended, .started], "the unconfirmed name goes, the real one starts")
         XCTAssertEqual(tracker.active.map(\.name), ["report.pdf"], "the live activity shows the file name")
 
-        XCTAssertEqual(tracker.apply(paths: [named], exists: disk.exists, now: t0 + 2), [], "writes: nothing new")
+        XCTAssertEqual(tracker.apply(paths: [named], stat: disk.stat, now: t0 + 2), [], "writes: nothing new")
 
         disk.files = [final]
-        let done = tracker.apply(paths: [named, final], exists: disk.exists, now: t0 + 30)
+        let done = tracker.apply(paths: [named, final], stat: disk.stat, now: t0 + 30)
         XCTAssertEqual(done, [.init(kind: .ended, path: named), .init(kind: .finished, path: final)])
         XCTAssertTrue(tracker.active.isEmpty)
     }
@@ -229,7 +230,7 @@ final class SystemTests: XCTestCase {
     func testFastDownloadInOneBatch() {
         var tracker = DownloadTracker(folders: [dl])
         let disk = Disk(files: ["\(dl)/tiny.png"])
-        let events = tracker.apply(paths: ["\(dl)/tiny.png.crdownload", "\(dl)/tiny.png"], exists: disk.exists, now: t0)
+        let events = tracker.apply(paths: ["\(dl)/tiny.png.crdownload", "\(dl)/tiny.png"], stat: disk.stat, now: t0)
         XCTAssertEqual(events, [.init(kind: .finished, path: "\(dl)/tiny.png")],
                        "created and renamed within one coalesced batch")
     }
@@ -239,14 +240,14 @@ final class SystemTests: XCTestCase {
         var disk = Disk()
         let bundle = "\(dl)/movie.mov.download", final = "\(dl)/movie.mov"
         disk.files = [bundle]
-        XCTAssertEqual(tracker.apply(paths: ["\(bundle)/Info.plist", "\(bundle)/movie.mov"], exists: disk.exists,
+        XCTAssertEqual(tracker.apply(paths: ["\(bundle)/Info.plist", "\(bundle)/movie.mov"], stat: disk.stat,
                                      now: t0).map(\.kind), [.started])
         // Safari moves the file out first, then removes the bundle in a later batch.
         disk.files = [bundle, final]
-        XCTAssertEqual(tracker.apply(paths: [final], exists: disk.exists, now: t0 + 5), [],
+        XCTAssertEqual(tracker.apply(paths: [final], stat: disk.stat, now: t0 + 5), [],
                        "the final name while its download is still in progress: wait")
         disk.files = [final]
-        XCTAssertEqual(tracker.apply(paths: [bundle, "\(bundle)/Info.plist"], exists: disk.exists, now: t0 + 6),
+        XCTAssertEqual(tracker.apply(paths: [bundle, "\(bundle)/Info.plist"], stat: disk.stat, now: t0 + 6),
                        [.init(kind: .ended, path: bundle), .init(kind: .finished, path: final)])
     }
 
@@ -255,40 +256,105 @@ final class SystemTests: XCTestCase {
         var disk = Disk()
         let part = "\(dl)/a.zip.part", final = "\(dl)/a.zip"
         disk.files = [final, part]   // Firefox creates an empty placeholder with the final name
-        XCTAssertEqual(tracker.apply(paths: [final, part], exists: disk.exists, now: t0).map(\.kind), [.started])
+        disk.empty = [final]
+        XCTAssertEqual(tracker.apply(paths: [final, part], stat: disk.stat, now: t0).map(\.kind), [.started])
         disk.files = [final]
-        XCTAssertEqual(tracker.apply(paths: [part, final], exists: disk.exists, now: t0 + 20).map(\.kind),
+        disk.empty = []
+        XCTAssertEqual(tracker.apply(paths: [part, final], stat: disk.stat, now: t0 + 20).map(\.kind),
                        [.ended, .finished])
     }
 
     func testCancelledAndCopiedFilesAreNoDownload() {
         var tracker = DownloadTracker(folders: [dl])
         var disk = Disk(files: ["\(dl)/b.iso.crdownload"])
-        _ = tracker.apply(paths: ["\(dl)/b.iso.crdownload"], exists: disk.exists, now: t0)
+        _ = tracker.apply(paths: ["\(dl)/b.iso.crdownload"], stat: disk.stat, now: t0)
         disk.files = []
-        XCTAssertEqual(tracker.apply(paths: ["\(dl)/b.iso.crdownload"], exists: disk.exists, now: t0 + 3).map(\.kind),
+        XCTAssertEqual(tracker.apply(paths: ["\(dl)/b.iso.crdownload"], stat: disk.stat, now: t0 + 3).map(\.kind),
                        [.ended], "cancelled: no finished notice")
         disk.files = ["\(dl)/b.iso"]
-        XCTAssertEqual(tracker.apply(paths: ["\(dl)/b.iso"], exists: disk.exists, now: t0 + 3 + DownloadTracker.finishGrace + 1),
+        XCTAssertEqual(tracker.apply(paths: ["\(dl)/b.iso"], stat: disk.stat, now: t0 + 3 + DownloadTracker.finishGrace + 1),
                        [], "a file of that name much later is not this download")
 
         disk.files = ["\(dl)/copied.txt", "\(dl)/.DS_Store"]
-        XCTAssertEqual(tracker.apply(paths: ["\(dl)/copied.txt", "\(dl)/.DS_Store"], exists: disk.exists, now: t0 + 60),
+        XCTAssertEqual(tracker.apply(paths: ["\(dl)/copied.txt", "\(dl)/.DS_Store"], stat: disk.stat, now: t0 + 60),
                        [], "a file copied or unzipped in is not a download")
-        XCTAssertEqual(tracker.apply(paths: ["/elsewhere/x.crdownload"], exists: { _ in true }, now: t0 + 61), [],
+        XCTAssertEqual(tracker.apply(paths: ["/elsewhere/x.crdownload"], stat: { _ in FileStat(size: 1) }, now: t0 + 61), [],
                        "outside the watched folders")
     }
 
     func testStaleDownloadIsDropped() {
         var tracker = DownloadTracker(folders: [dl])
         let p = "\(dl)/stuck.bin.crdownload"
-        _ = tracker.apply(paths: [p], exists: { _ in true }, now: t0)
+        _ = tracker.apply(paths: [p], stat: { _ in FileStat(size: 1) }, now: t0)
         XCTAssertEqual(tracker.nextStaleCheck, t0 + DownloadTracker.staleAfter)
         XCTAssertEqual(tracker.pruneStale(now: t0 + 60), [])
-        _ = tracker.apply(paths: [p], exists: { _ in true }, now: t0 + 60)   // still being written
+        _ = tracker.apply(paths: [p], stat: { _ in FileStat(size: 1) }, now: t0 + 60)   // still being written
         XCTAssertEqual(tracker.pruneStale(now: t0 + DownloadTracker.staleAfter + 1), [], "seen since")
         XCTAssertEqual(tracker.pruneStale(now: t0 + 60 + DownloadTracker.staleAfter).map(\.kind), [.ended],
                        "no writes for 10 minutes: no longer shown")
         XCTAssertNil(tracker.nextStaleCheck)
+    }
+
+    func testFirefoxCancelLeavesNoNotice() {
+        var tracker = DownloadTracker(folders: [dl])
+        var disk = Disk()
+        let part = "\(dl)/a.zip.part", final = "\(dl)/a.zip"
+        disk.files = [final, part]
+        disk.empty = [final]
+        _ = tracker.apply(paths: [final, part], stat: disk.stat, now: t0)
+        disk.files = [final]   // cancel: the .part goes first, the empty placeholder a batch later
+        XCTAssertEqual(tracker.apply(paths: [part], stat: disk.stat, now: t0 + 2).map(\.kind), [.ended],
+                       "an empty file is never a finished download")
+        disk.files = []
+        XCTAssertEqual(tracker.apply(paths: [final], stat: disk.stat, now: t0 + 3), [])
+    }
+
+    func testHugeBatchFollowsOnlyKnownDownloads() {
+        var tracker = DownloadTracker(folders: [dl])
+        var disk = Disk()
+        let temp = "\(dl)/big.iso.crdownload", final = "\(dl)/big.iso"
+        disk.files = [temp]
+        _ = tracker.apply(paths: [temp], stat: disk.stat, now: t0)
+        let unzipped = (0..<600).map { "\(dl)/file\($0).txt" } + (0..<5).map { "\(dl)/x\($0).crdownload" }
+        disk.files = Set(unzipped).union([final])
+        var stats = 0
+        let events = tracker.apply(paths: unzipped + [temp, final], stat: { p in stats += 1; return disk.stat(p) },
+                                   now: t0 + 5)
+        XCTAssertEqual(events.map(\.kind), [.ended, .finished], "the known download still finishes")
+        XCTAssertLessThanOrEqual(stats, 4, "the 600 other names are not stat'ed")
+        XCTAssertTrue(tracker.active.isEmpty, "unknown in-progress names in a huge batch are skipped")
+        XCTAssertLessThanOrEqual(tracker.pathsToStat(unzipped).count, 0 + 2)
+    }
+
+    func testEntriesAreUniqueAndCapped() {
+        let tracker = DownloadTracker(folders: [dl])
+        XCTAssertEqual(tracker.entries(["\(dl)/a", "\(dl)/a", "\(dl)/b.download/x", "\(dl)/b.download/y"]),
+                       ["\(dl)/a", "\(dl)/b.download"])
+        XCTAssertEqual(tracker.entries((0...DownloadTracker.maxBatchEntries).map { "\(dl)/f\($0)" }), [],
+                       "over the cap with nothing in progress: nothing")
+        XCTAssertEqual(Set(tracker.pathsToStat(["\(dl)/r.pdf.crdownload"])),
+                       ["\(dl)/r.pdf.crdownload", "\(dl)/r.pdf"], "the final name too")
+    }
+
+    // MARK: - Second download folder
+
+    func testWatchFolderPolicy() {
+        let home = "/Users/me"
+        let allowed = ["/Users/me/Downloads/Browser", "/Users/me/Incoming", "/Users/me/Pictures/Saved",
+                       "/Users/Shared/Downloads", "/opt/downloads", "/private/tmp/in",
+                       "/System/Volumes/Data/Users/me/Incoming"]
+        for p in allowed { XCTAssertEqual(WatchFolderPolicy.check(p, home: home), .allowed, p) }
+        let rejected = ["/Users/me/Desktop", "/Users/me/Desktop/In", "/Users/me/Documents/x", "/users/me/DOCUMENTS",
+                        "/Users/me/Library/Mobile Documents/com~apple~CloudDocs/In", "/Users/me/Library/Containers/x",
+                        "/Volumes/USB/In", "/Volumes", "/Network/Servers/nas/in", "/net/nas/in",
+                        "/Users/other/Downloads", "/System/Volumes/Data/Users/me/Desktop/x", "/", "/Users/me",
+                        "/Users/me/", "relative/path"]
+        for p in rejected {
+            guard case .rejected(let why) = WatchFolderPolicy.check(p, home: home) else {
+                XCTFail("\(p) should be rejected")
+                continue
+            }
+            XCTAssertFalse(why.isEmpty, p)
+        }
     }
 }

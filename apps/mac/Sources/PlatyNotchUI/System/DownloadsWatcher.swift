@@ -30,39 +30,64 @@ final class WorkspaceFileActions: FileActions {
 
 /// One FSEvents stream on the folders with file-level events, coalesced by macOS for
 /// `latency` (one callback per second at most while a download writes). No polling, no
-/// directory listing: only the changed paths; the tracker stats those paths, never
+/// directory listing: only the changed paths; the monitor stats those paths, never
 /// reads a file.
 final class FSEventsWatcher: FolderWatching {
     static let latency: CFTimeInterval = 1.0
     private static let log = Logger(subsystem: "dev.platynotch.app", category: "downloads")
 
-    private final class Box {
-        let onPaths: @MainActor ([String]) -> Void
-        init(_ onPaths: @escaping @MainActor ([String]) -> Void) { self.onPaths = onPaths }
+    /// The stream and its context (the stream's `info` points here, unretained; this
+    /// object outlives the stream). Its deinit is the safety net if `stop` did not run:
+    /// the stream delivers on the main queue, so it is torn down there, whichever thread
+    /// the last release happens on.
+    private final class Handle: @unchecked Sendable {
+        var onPaths: (@MainActor ([String]) -> Void)?
+        var stream: FSEventStreamRef?
+
+        func invalidate() {
+            guard let s = stream else { return }
+            stream = nil
+            Self.teardown(s)
+        }
+
+        static func teardown(_ s: FSEventStreamRef) {
+            FSEventStreamStop(s)
+            FSEventStreamInvalidate(s)
+            FSEventStreamRelease(s)
+        }
+
+        deinit {
+            guard let s = stream else { return }
+            nonisolated(unsafe) let ref = s
+            if Thread.isMainThread {
+                Self.teardown(ref)
+            } else {
+                DispatchQueue.main.async { Self.teardown(ref) }
+            }
+        }
     }
 
-    private var stream: FSEventStreamRef?
-    private let box: Box
+    private var handle: Handle?
 
-    private init(onPaths: @escaping @MainActor ([String]) -> Void) {
-        box = Box(onPaths)
-    }
+    private init() {}
 
     static func make(folders: [String], onPaths: @escaping @MainActor ([String]) -> Void) -> FolderWatching? {
-        let w = FSEventsWatcher(onPaths: onPaths)
-        return w.start(folders) ? w : nil
+        let w = FSEventsWatcher()
+        return w.start(folders, onPaths) ? w : nil
     }
 
-    private func start(_ folders: [String]) -> Bool {
-        var context = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(box).toOpaque(),
+    private func start(_ folders: [String], _ onPaths: @escaping @MainActor ([String]) -> Void) -> Bool {
+        let h = Handle()
+        h.onPaths = onPaths
+        var context = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(h).toOpaque(),
                                            retain: nil, release: nil, copyDescription: nil)
         let callback: FSEventStreamCallback = { _, info, _, paths, _, _ in
             guard let info else { return }
-            let box = Unmanaged<Box>.fromOpaque(info).takeUnretainedValue()
+            let h = Unmanaged<Handle>.fromOpaque(info).takeUnretainedValue()
             let list = (unsafeBitCast(paths, to: NSArray.self) as? [String]) ?? []
             guard !list.isEmpty else { return }
             // Delivered on the main queue (set below).
-            MainActor.assumeIsolated { box.onPaths(list) }
+            MainActor.assumeIsolated { h.onPaths?(list) }
         }
         let flags = UInt32(kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagFileEvents
                            | kFSEventStreamCreateFlagIgnoreSelf)
@@ -78,36 +103,41 @@ final class FSEventsWatcher: FolderWatching {
             FSEventStreamRelease(s)
             return false
         }
-        stream = s
+        h.stream = s
+        handle = h
         return true
     }
 
-    /// The box (callback context) lives as long as this object; the owner calls `stop`.
     func stop() {
-        guard let s = stream else { return }
-        FSEventStreamStop(s)
-        FSEventStreamInvalidate(s)
-        FSEventStreamRelease(s)
-        stream = nil
+        handle?.onPaths = nil
+        handle?.invalidate()
+        handle = nil
     }
 }
 
 /// Follows downloads in the watched folders (`DownloadTracker`) from one folder watch.
-/// While something is in progress, one sleep to the next stale check (no ticking).
+/// Small batches are stat'ed on the main thread; larger ones (an unzip, a big copy) off
+/// it, in order. While something is in progress, one sleep to the next stale check.
 @MainActor
 final class DownloadsMonitor {
+    /// Up to this many paths to stat, a batch is handled at once on the main thread.
+    static let mainThreadStats = 32
+
     private(set) var tracker: DownloadTracker
     private var watch: FolderWatching?
     private var staleTask: Task<Void, Never>?
-    private let exists: (String) -> Bool
+    /// The latest off-main batch; later batches wait for it (order matters).
+    private var pending: Task<Void, Never>?
+    private var generation = 0
+    private let stat: @Sendable (String) -> FileStat?
     private let clock: () -> Date
     private let onEvents: @MainActor ([DownloadTracker.Event], DownloadTracker) -> Void
 
     /// nil when the watch could not start.
-    init?(folders: [String], factory: FolderWatcherFactory, exists: @escaping (String) -> Bool,
+    init?(folders: [String], factory: FolderWatcherFactory, stat: @escaping @Sendable (String) -> FileStat?,
           clock: @escaping () -> Date, onEvents: @escaping @MainActor ([DownloadTracker.Event], DownloadTracker) -> Void) {
         tracker = DownloadTracker(folders: folders)
-        self.exists = exists
+        self.stat = stat
         self.clock = clock
         self.onEvents = onEvents
         weak var me: DownloadsMonitor?
@@ -121,11 +151,41 @@ final class DownloadsMonitor {
         watch = nil
         staleTask?.cancel()
         staleTask = nil
+        pending?.cancel()
+        pending = nil
     }
+
+    /// The latest off-main batch (tests await it).
+    var pendingBatch: Task<Void, Never>? { pending }
 
     private func batch(_ paths: [String]) {
         guard watch != nil else { return }
-        let events = tracker.apply(paths: paths, exists: exists, now: clock())
+        let toStat = tracker.pathsToStat(paths)
+        if pending == nil, toStat.count <= Self.mainThreadStats {
+            finish(paths, stat: stat)
+            return
+        }
+        generation += 1
+        let mine = generation
+        let previous = pending
+        let stat = self.stat
+        pending = Task { @MainActor [weak self] in
+            await previous?.value
+            let stats = await Task.detached(priority: .utility) { Self.statAll(toStat, stat) }.value
+            guard let self, !Task.isCancelled, self.watch != nil else { return }
+            self.finish(paths, stat: { stats[$0] })
+            if self.generation == mine { self.pending = nil }
+        }
+    }
+
+    private nonisolated static func statAll(_ paths: [String], _ stat: (String) -> FileStat?) -> [String: FileStat] {
+        var out: [String: FileStat] = [:]
+        for p in paths { if let s = stat(p) { out[p] = s } }
+        return out
+    }
+
+    private func finish(_ paths: [String], stat: (String) -> FileStat?) {
+        let events = tracker.apply(paths: paths, stat: stat, now: clock())
         scheduleStaleCheck()
         if !events.isEmpty { onEvents(events, tracker) }
     }
@@ -147,6 +207,13 @@ final class DownloadsMonitor {
             guard !Task.isCancelled else { return }
             self?.pruneStale()
         }
+    }
+
+    /// A `stat` (`attributesOfItem`): type and size, never contents.
+    nonisolated static func statFile(_ path: String) -> FileStat? {
+        guard let a = try? FileManager.default.attributesOfItem(atPath: path) else { return nil }
+        let isDir = (a[.type] as? FileAttributeType) == .typeDirectory
+        return FileStat(isDirectory: isDir, size: (a[.size] as? NSNumber)?.int64Value ?? 0)
     }
 
     /// `~/Downloads` (the real folder, symlinks resolved, as FSEvents reports paths).

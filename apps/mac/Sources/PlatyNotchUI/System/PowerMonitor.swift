@@ -17,8 +17,33 @@ public protocol PowerSourceReading: AnyObject {
 /// the main run loop for changes (plug-in, unplug, each percent step). Needs no
 /// permission. No timer: macOS calls back only when something changes.
 final class SystemPowerSource: PowerSourceReading {
-    private var source: CFRunLoopSource?
-    private var onChange: (@MainActor () -> Void)?
+    /// The source's context (retained until the source is gone, so a callback never sees
+    /// a freed object) and the source itself. Its deinit is the safety net if `stop` did
+    /// not run: it tears down on the main thread, where the source fires, whichever thread
+    /// the last release happens on.
+    private final class Handle: @unchecked Sendable {
+        var onChange: (@MainActor () -> Void)?
+        var source: CFRunLoopSource?
+
+        func invalidate() {
+            guard let s = source else { return }
+            source = nil
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), s, .commonModes)
+            CFRunLoopSourceInvalidate(s)
+        }
+
+        deinit {
+            guard let s = source else { return }
+            nonisolated(unsafe) let src = s
+            let teardown: @Sendable () -> Void = {
+                CFRunLoopRemoveSource(CFRunLoopGetMain(), src, .commonModes)
+                CFRunLoopSourceInvalidate(src)
+            }
+            if Thread.isMainThread { teardown() } else { DispatchQueue.main.async(execute: teardown) }
+        }
+    }
+
+    private var handle: Handle?
 
     init() {}
 
@@ -31,30 +56,29 @@ final class SystemPowerSource: PowerSourceReading {
         return BatteryState.internalBattery(from: descriptions)
     }
 
-    /// The source's context is this object, unretained: the owner calls `stop` before
-    /// letting it go (the System widget's `stop`).
     func start(onChange: @escaping @MainActor () -> Void) {
-        guard source == nil else { return }
-        self.onChange = onChange
-        let context = Unmanaged.passUnretained(self).toOpaque()
+        guard handle == nil else { return }
+        let h = Handle()
+        h.onChange = onChange
+        // The context holds no reference; `handle` keeps `h` alive while the source exists
+        // (and `h` removes the source before it goes).
         let callback: IOPowerSourceCallbackType = { context in
             guard let context else { return }
-            let me = Unmanaged<SystemPowerSource>.fromOpaque(context).takeUnretainedValue()
+            let h = Unmanaged<Handle>.fromOpaque(context).takeUnretainedValue()
             // Added to the main run loop below, so this runs on the main thread.
-            MainActor.assumeIsolated { me.onChange?() }
+            MainActor.assumeIsolated { h.onChange?() }
         }
-        guard let s = IOPSNotificationCreateRunLoopSource(callback, context)?.takeRetainedValue() else { return }
+        guard let s = IOPSNotificationCreateRunLoopSource(callback, Unmanaged.passUnretained(h).toOpaque())?
+            .takeRetainedValue() else { return }
         CFRunLoopAddSource(CFRunLoopGetMain(), s, .commonModes)
-        source = s
+        h.source = s
+        handle = h
     }
 
     func stop() {
-        if let s = source {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), s, .commonModes)
-            CFRunLoopSourceInvalidate(s)
-        }
-        source = nil
-        onChange = nil
+        handle?.onChange = nil
+        handle?.invalidate()
+        handle = nil
     }
 }
 
