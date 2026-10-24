@@ -71,18 +71,19 @@ public struct BasketRecord: Codable, Equatable, Sendable {
 /// The list is kept in memory. Only kept baskets (pinned, or holding a pinned item) are
 /// recorded in defaults (`recordsKey`: id, name, color, pin, place; never items) and come
 /// back at the next start; every other basket is cleared when the feature stops (quit or
-/// turned off). Use from the main actor.
+/// turned off).
+@MainActor
 public final class BasketStore {
     public static let maxBaskets = 6
     public static let maxItems = 50
     public static let recordsKey = "baskets.kept"
-    private static let log = Logger(subsystem: "dev.platynotch.app", category: "baskets")
+    private nonisolated static let log = Logger(subsystem: "dev.platynotch.app", category: "baskets")
 
     public let directory: URL
     /// Where `close(_:keepItems: true)` and `moveAllToShelf` put items (nil: the shelf is off).
-    public var shelf: () -> ShelfStore? = { nil }
+    public var shelf: @MainActor () -> ShelfStore? = { nil }
     /// Items arrived on the shelf (it re-reads its store).
-    public var shelfChanged: () -> Void = {}
+    public var shelfChanged: @MainActor () -> Void = {}
 
     private struct Entry {
         var meta: Basket   // `items` is filled from the store when read
@@ -91,7 +92,8 @@ public final class BasketStore {
 
     private var entries: [Entry] = []
     private let persist: Bool
-    private let defaults: UserDefaults?
+    /// Where kept baskets are recorded (nil: nowhere). Set before `restore`.
+    public var defaults: UserDefaults?
     private let bookmarks: ShelfBookmarks
     private let now: () -> Date
     private let renameFolder: ShelfStore.FolderRename
@@ -335,4 +337,48 @@ public final class BasketStore {
 
     /// Re-records after items changed (a pin on an item can make a basket kept).
     public func itemsChanged() { saveRecords() }
+}
+
+/// The basket switcher's shortcut (rebindable from presets; R6: none is the clipboard's
+/// or window snapping's) and the shake sensitivity, as saved in defaults.
+public enum BasketSettings {
+    /// `HotKeyCatalog` feature id.
+    public static let switcherFeature = "baskets.switcher"
+    public static let switcherKey = "baskets.switcherKey"
+    public static let sensitivityKey = "baskets.shakeSensitivity"
+    /// ⌃⌥B (the default), ⌃⇧B, ⌃⌥⌘B.
+    public static let switcherPresets: [KeyCombo] = [
+        KeyCombo(keyCode: 11, modifiers: KeyCombo.control | KeyCombo.option),
+        KeyCombo(keyCode: 11, modifiers: KeyCombo.control | KeyCombo.shift),
+        KeyCombo(keyCode: 11, modifiers: KeyCombo.control | KeyCombo.option | KeyCombo.command),
+    ]
+    private static let off = "off"
+
+    /// The chosen shortcut: the default until changed; nil when turned off. A saved combo
+    /// that is not a preset reads as the default.
+    public static func switcherCombo(_ defaults: UserDefaults) -> KeyCombo? {
+        if defaults.string(forKey: switcherKey) == off { return nil }
+        guard let data = defaults.data(forKey: switcherKey),
+              let combo = try? JSONDecoder().decode(KeyCombo.self, from: data),
+              switcherPresets.contains(combo) else { return switcherPresets[0] }
+        return combo
+    }
+
+    public static func setSwitcherCombo(_ combo: KeyCombo?, _ defaults: UserDefaults) {
+        guard let combo else { return defaults.set(off, forKey: switcherKey) }
+        guard switcherPresets.contains(combo), let data = try? JSONEncoder().encode(combo) else { return }
+        defaults.set(data, forKey: switcherKey)
+    }
+
+    /// 1…5, default 3 (`ShakeDetector`).
+    public static func sensitivity(_ defaults: UserDefaults) -> Int {
+        guard defaults.object(forKey: sensitivityKey) != nil else { return ShakeDetector.defaultSensitivity }
+        let v = defaults.integer(forKey: sensitivityKey)
+        return min(max(v, ShakeDetector.sensitivityRange.lowerBound), ShakeDetector.sensitivityRange.upperBound)
+    }
+
+    public static func setSensitivity(_ value: Int, _ defaults: UserDefaults) {
+        let v = min(max(value, ShakeDetector.sensitivityRange.lowerBound), ShakeDetector.sensitivityRange.upperBound)
+        defaults.set(v, forKey: sensitivityKey)
+    }
 }

@@ -9,6 +9,7 @@ private struct PathBookmarks: ShelfBookmarks {
     func resolve(_ data: Data) -> (url: URL, isStale: Bool)? { (URL(fileURLWithPath: String(decoding: data, as: UTF8.self)), false) }
 }
 
+@MainActor
 final class BasketTests: DefaultsTestCase {
     private var root: URL!
     private let t0 = Date(timeIntervalSinceReferenceDate: 800_000_000)
@@ -367,5 +368,35 @@ final class BasketTests: DefaultsTestCase {
                 XCTAssertTrue(screens.contains { $0.visibleFrame.contains(c) })
             }
         }
+    }
+}
+
+final class BasketSettingsTests: DefaultsTestCase {
+    func testSwitcherShortcutPresets() {
+        let d = defaults()
+        XCTAssertEqual(BasketSettings.switcherCombo(d)?.display, "⌃⌥B", "on by default")
+        BasketSettings.setSwitcherCombo(BasketSettings.switcherPresets[1], d)
+        XCTAssertEqual(BasketSettings.switcherCombo(d)?.display, "⌃⇧B")
+        BasketSettings.setSwitcherCombo(KeyCombo(keyCode: 0, modifiers: KeyCombo.command), d)
+        XCTAssertEqual(BasketSettings.switcherCombo(d)?.display, "⌃⇧B", "only presets are taken")
+        BasketSettings.setSwitcherCombo(nil, d)
+        XCTAssertNil(BasketSettings.switcherCombo(d), "off")
+        d.set(Data("junk".utf8), forKey: BasketSettings.switcherKey)
+        XCTAssertEqual(BasketSettings.switcherCombo(d), BasketSettings.switcherPresets[0])
+    }
+
+    func testSwitcherShortcutsNeverClash() {
+        var presets: [String: [KeyCombo]] = [BasketSettings.switcherFeature: BasketSettings.switcherPresets]
+        for t in SnapTarget.allCases { presets[t.hotKeyFeature] = [t.defaultCombo] }
+        XCTAssertTrue(HotKeyCatalog.clashes(in: presets).isEmpty, "not window snapping's nor the clipboard's")
+    }
+
+    func testSensitivity() {
+        let d = defaults()
+        XCTAssertEqual(BasketSettings.sensitivity(d), 3)
+        BasketSettings.setSensitivity(9, d)
+        XCTAssertEqual(BasketSettings.sensitivity(d), 5)
+        BasketSettings.setSensitivity(0, d)
+        XCTAssertEqual(BasketSettings.sensitivity(d), 1)
     }
 }

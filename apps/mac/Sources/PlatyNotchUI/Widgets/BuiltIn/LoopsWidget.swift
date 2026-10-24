@@ -88,6 +88,13 @@ enum BuiltInWidgets {
         registry.register(persist ? LaunchWidget() : LaunchWidget.inert())
         // v0.2 power features (Settings › Widgets › Power features), after the everyday ones.
         for w in powerWidgets(persist: persist) { registry.register(w) }
+        // Baskets: Move to Shelf only while the shelf runs; Actions only while File actions runs.
+        (registry.widget(BasketsWidget.widgetID) as? BasketsWidget)?.connect(
+            shelf: { [weak registry, weak shelf] in
+                guard let registry, let shelf, registry.running.contains(ShelfWidget.widgetID) else { return nil }
+                return shelf
+            },
+            fileActionsOn: { [weak registry] in registry?.running.contains(FileActionsWidget.widgetID) ?? false })
     }
 
     /// Every power feature (`WidgetCategory.power`); `persist: false` gives inert ones
@@ -102,6 +109,8 @@ enum BuiltInWidgets {
         list.append(persist ? MirrorWidget() : MirrorWidget.inert())
         // Mail only while it is running; never in smoke runs (no process, no Apple Event).
         list.append(persist ? MailWidget() : MailWidget.inert())
+        // Baskets: drag monitor, shortcut and windows only while on; never in smoke runs.
+        list.append(persist ? BasketsWidget() : BasketsWidget.inert())
         return list
     }
 }
