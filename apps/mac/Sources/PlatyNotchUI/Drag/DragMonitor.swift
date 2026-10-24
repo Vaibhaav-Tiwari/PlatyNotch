@@ -121,10 +121,12 @@ public final class DragSubscription {
         monitor?.unsubscribe(id)
     }
 
-    // Not `isolated deinit`: on macOS 15.4-15.x the OS Swift runtime's
+    // Not `isolated deinit`: on macOS 15.4 through 26.3 the OS Swift runtime's
     // `swift_task_deinitOnExecutor` frees a pointer it never allocated when it runs the
-    // deinit inline on the main thread outside a task, and the process aborts. Run inline
-    // on the main thread; from anywhere else hop with the values only.
+    // deinit inline on the main thread outside a task while a task-local is bound (XCTest
+    // binds one around every synchronous test), and the process aborts (swiftlang/swift
+    // #88036, fixed by #85204 in the macOS 26.4 runtime). Run inline on the main thread;
+    // from anywhere else hop with the values only.
     deinit {
         guard isActive else { return }
         let id = self.id

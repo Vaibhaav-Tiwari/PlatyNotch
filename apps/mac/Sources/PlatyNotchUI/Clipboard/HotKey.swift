@@ -95,7 +95,7 @@ final class HotKey: HotKeyRegistration {
         Self.handlers.remove(hotKeyID)
     }
 
-    // Not `isolated deinit`: it aborts on macOS 15.4-15.x (see `DragSubscription`'s deinit).
+    // Not `isolated deinit`: it can abort on macOS 15.4-26.3 (see `DragSubscription`'s deinit).
     deinit {
         guard let ref else { return }
         if Thread.isMainThread {
