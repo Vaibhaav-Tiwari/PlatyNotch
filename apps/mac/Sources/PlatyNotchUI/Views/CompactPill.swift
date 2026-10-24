@@ -40,13 +40,19 @@ struct CompactPill: View {
 
     private var agentsEar: some View {
         let fit = platy.map { _ in PlatyEarFit(earWidth: earWidth, dots: dots.dots.count, overflow: dots.overflow) }
-        let shown = fit?.dots ?? dots.dots.count
-        let overflow = fit.map(\.showsOverflow) ?? (dots.overflow > 0)
+        let shown: Int = fit?.dots ?? dots.dots.count
+        let count: Int = fit?.overflowCount ?? dots.overflow
+        let badge: Bool = fit?.badge ?? false
         return HStack(spacing: 4) {
-            if let platy { PlatyView(mood: platy, size: PlatyEarFit.platy) }
+            if let platy {
+                PlatyView(mood: platy, size: PlatyEarFit.platy)
+                    .overlay(alignment: .bottomTrailing) {
+                        if badge, count > 0 { OverflowBadge(count: count) }
+                    }
+            }
             ForEach(dots.dots.prefix(shown), id: \.key) { AgentDot(tone: $0.tone) }
-            if overflow {
-                Text("+\(dots.overflow)")
+            if count > 0, !badge {
+                Text("+\(count)")
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
             }
@@ -99,6 +105,20 @@ struct CompactPill: View {
             if let label = a.accessibilityLabel { parts.append(label) }
         }
         return parts.joined(separator: ", ")
+    }
+}
+
+/// "+n" on Platy's corner when the ear has no room for it after the dots.
+private struct OverflowBadge: View {
+    let count: Int
+
+    var body: some View {
+        Text("+\(count)")
+            .font(.system(size: 8, weight: .bold, design: .rounded))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 2)
+            .background(Color(white: 0.25), in: Capsule())
+            .offset(x: 3, y: 2)
     }
 }
 

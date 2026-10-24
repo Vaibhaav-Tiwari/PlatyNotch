@@ -94,6 +94,15 @@ final class PlatyMoodTests: XCTestCase {
         XCTAssertFalse(flags.justFinished(at: t0.addingTimeInterval(PlatyMoodFlags.doneLength)))
     }
 
+    /// The core removes a session only 10 min after it exited (store.Sweep); an active
+    /// session vanishes only from a snapshot after a core restart, which is not a finish.
+    func testRemovalWhileActiveIsNotDone() {
+        var watch = PlatyFinishWatch()
+        _ = watch.update(["a": .active, "b": .idle])
+        XCTAssertFalse(watch.update(["b": .idle]))
+        XCTAssertFalse(watch.update([:]))
+    }
+
     func testNextChangeIsTheEarliestExpiry() {
         let t0 = Date(timeIntervalSince1970: 0)
         var flags = PlatyMoodFlags()
@@ -127,6 +136,26 @@ final class PlatyMoodTests: XCTestCase {
         }
     }
 
+    /// The keyframes Core Animation plays (the app draws nothing per frame).
+    func testLoopKeyframes() throws {
+        let working = PlatyPoseValues.loop(.working)
+        XCTAssertEqual(working.first?.time, 0)
+        XCTAssertEqual(working.count, Int((PlatyMood.working.period / PlatyMood.pillTick).rounded(.up)))
+        for (t, pose) in working { XCTAssertEqual(pose, PlatyPoseValues.at(.working, time: t)) }
+        let waiting = PlatyPoseValues.loop(.waiting)
+        let p = PlatyMood.waiting.period
+        let last = try XCTUnwrap(waiting.last)
+        XCTAssertEqual(last.time, 0.5 * p, accuracy: 1e-9, "one frame holds the still half")
+        XCTAssertTrue(waiting.allSatisfy { $0.time <= 0.5 * p + 1e-9 })
+        XCTAssertEqual(PlatyPoseValues.loop(.idle).count, 1)
+        XCTAssertEqual(PlatyPoseValues.loop(.sleepy).count, 4, "1 fps over 4 s")
+        for m in PlatyMood.allCases {
+            let times = PlatyPoseValues.loop(m).map(\.time)
+            XCTAssertEqual(times, times.sorted(), "\(m)")
+            XCTAssertTrue(times.allSatisfy { $0 < m.period }, "\(m)")
+        }
+    }
+
     func testStaticMoodsDoNotTick() {
         for m in [PlatyMood.idle, .focused] {
             XCTAssertFalse(m.animates, "\(m)")
@@ -143,12 +172,53 @@ final class PlatyMoodTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(PlatyMood.sleepy.period, 4 * interval)
         for m in PlatyMood.allCases where m.animates {
             let i = try XCTUnwrap(m.frameInterval, "\(m)")
-            XCTAssertGreaterThanOrEqual(i, 1.0 / 30, "\(m): at most 30 fps")
+            XCTAssertGreaterThanOrEqual(i, 1.0 / 12, "\(m): the pill's 12 fps budget (MusicBars)")
         }
+        // Waiting can last hours (an unanswered approval): 6 fps at most.
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(PlatyMood.waiting.frameInterval), 1.0 / 6)
+    }
+
+    /// Frames come only while the pose can change: waiting taps in the first half of its
+    /// loop and holds still in the second, where no frame is scheduled.
+    func testWaitingSkipsItsStillHalf() throws {
+        let p = PlatyMood.waiting.period
+        let still = PlatyPoseValues.at(.waiting, time: 10 * p + 0.5 * p)
+        for k in 0..<20 {
+            let t = 10 * p + p * (0.5 + 0.49 * Double(k) / 20)
+            XCTAssertEqual(PlatyPoseValues.at(.waiting, time: t), still, "the second half is still")
+            XCTAssertEqual(PlatyMood.waiting.nextFrame(after: t), 11 * p, accuracy: 1e-9, "skips to the next loop")
+        }
+        let interval = try XCTUnwrap(PlatyMood.waiting.frameInterval)
+        let t0 = 10 * p + 0.1 * p
+        let n0 = PlatyMood.waiting.nextFrame(after: t0)
+        XCTAssertGreaterThan(n0, t0)
+        XCTAssertLessThanOrEqual(n0, t0 + interval + 1e-9)
+        XCTAssertEqual((n0 / interval).rounded() * interval, n0, accuracy: 1e-9, "on the shared grid")
+        // The last moving frame lands on the start of the still half, not past it.
+        let late = 10 * p + 0.5 * p - interval / 2
+        XCTAssertEqual(PlatyMood.waiting.nextFrame(after: late), 10 * p + 0.5 * p, accuracy: 1e-9)
+        // Other moods step on the shared 12 fps grid.
+        let w = try XCTUnwrap(PlatyMood.working.frameInterval)
+        XCTAssertEqual(w, PlatyMood.pillTick)
+        XCTAssertEqual(PlatyMood.working.nextFrame(after: 3.3), 40 * w, accuracy: 1e-9)
+        XCTAssertEqual(PlatyMood.working.nextFrame(after: 40 * w), 41 * w, accuracy: 1e-9, "always moves on")
+        // Frames per loop: waiting draws about half its loop's worth.
+        var t = 100 * p
+        var frames = 0
+        while t < 101 * p { t = PlatyMood.waiting.nextFrame(after: t); frames += 1 }
+        XCTAssertLessThanOrEqual(frames, Int((0.5 * p / interval).rounded(.up)) + 2)
     }
 
     /// Reduce Motion and paused panels draw `rest`: the mood must still read.
     func testRestFramesKeepTheMoodCues() {
+        // Working: the water line under Platy (paws are not drawn at pill size).
+        XCTAssertTrue(PlatyPoseValues.rest(.working).water)
+        for t in stride(from: 0.0, through: 2.0, by: 0.1) {
+            XCTAssertTrue(PlatyPoseValues.at(.working, time: t).water)
+        }
+        for m in PlatyMood.allCases where m != .working {
+            XCTAssertFalse(PlatyPoseValues.rest(m).water, "\(m)")
+        }
         XCTAssertEqual(PlatyPoseValues.rest(.waiting).tint, .amber)
         XCTAssertTrue(PlatyPoseValues.rest(.dancing).headphones)
         XCTAssertEqual(PlatyPoseValues.rest(.sleepy).eyesOpen, 0)
@@ -183,15 +253,23 @@ final class PlatyMoodTests: XCTestCase {
 
     func testEarFitsPlatyAndDots() {
         // Plenty of room: every dot and the +n.
-        XCTAssertEqual(PlatyEarFit(earWidth: 86, dots: 3, overflow: 2), PlatyEarFit(dots: 3, showsOverflow: true))
-        // Compact beside a notch (40 - 6): Platy and one dot.
-        let compact = PlatyEarFit(earWidth: 34, dots: 3, overflow: 0)
-        XCTAssertEqual(compact.dots, 1)
-        XCTAssertFalse(compact.showsOverflow)
-        XCTAssertEqual(PlatyEarFit(earWidth: 10, dots: 3, overflow: 1), PlatyEarFit(dots: 0, showsOverflow: false))
+        XCTAssertEqual(PlatyEarFit(earWidth: 86, dots: 3, overflow: 2), PlatyEarFit(dots: 3, overflowCount: 2, badge: false))
+        XCTAssertEqual(PlatyEarFit(earWidth: 86, dots: 2, overflow: 0), PlatyEarFit(dots: 2, overflowCount: 0, badge: false))
+        XCTAssertEqual(PlatyEarFit(earWidth: 34, dots: 1, overflow: 0), PlatyEarFit(dots: 1, overflowCount: 0, badge: false))
+        // Room for some dots and the label: the squeezed-out dots join the "+n".
+        XCTAssertEqual(PlatyEarFit(earWidth: 52, dots: 3, overflow: 0), PlatyEarFit(dots: 1, overflowCount: 2, badge: false))
+        XCTAssertEqual(PlatyEarFit(earWidth: 52, dots: 3, overflow: 4), PlatyEarFit(dots: 1, overflowCount: 6, badge: false))
+        // Compact beside a notch (40 - 6): no room for the label, so "+n" is a badge on Platy.
+        XCTAssertEqual(PlatyEarFit(earWidth: 34, dots: 3, overflow: 0), PlatyEarFit(dots: 1, overflowCount: 2, badge: true))
+        XCTAssertEqual(PlatyEarFit(earWidth: 10, dots: 3, overflow: 1), PlatyEarFit(dots: 0, overflowCount: 4, badge: true))
         for w in stride(from: 0.0, through: 120.0, by: 1) {
-            let fit = PlatyEarFit(earWidth: CGFloat(w), dots: 3, overflow: 4)
-            XCTAssertLessThanOrEqual(fit.width, max(CGFloat(w), PlatyEarFit.platy), "w=\(w)")
+            for dots in 0...3 {
+                for overflow in [0, 1, 4] {
+                    let fit = PlatyEarFit(earWidth: CGFloat(w), dots: dots, overflow: overflow)
+                    XCTAssertLessThanOrEqual(fit.width, max(CGFloat(w), PlatyEarFit.platy), "w=\(w)")
+                    XCTAssertEqual(fit.dots + fit.overflowCount, dots + overflow, "every session is counted, w=\(w)")
+                }
+            }
         }
     }
 

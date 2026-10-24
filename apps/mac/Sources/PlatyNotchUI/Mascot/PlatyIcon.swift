@@ -81,13 +81,15 @@ struct PlatyAppIconView: View {
     }
 }
 
-/// The menu bar icon: Platy's silhouette as a monochrome template image (macOS tints it
-/// for light and dark menu bars), the eyes cut out and the bill set off by a gap.
-/// An optional dot (bottom right) while capture runs.
+/// The menu bar icon: Platy in side profile as a one-color template image (macOS tints
+/// it for light and dark menu bars). Facing left: the flat duck bill sticks out in front,
+/// then the head, the long low body on flat webbed feet and the beaver tail behind. The
+/// eye and a thin gap round the bill are cut out. An optional dot (top right, with a
+/// cut-out ring) while capture runs.
 enum PlatyMenuIcon {
     static let size = NSSize(width: 18, height: 18)
-    /// The part of Platy's 100 box the icon shows (a little of the tail tip is cropped).
-    static let crop = CGRect(x: 10, y: 12, width: 86, height: 86)
+    /// The profile's box: 36 × 36 units, y down (2 units per point).
+    static let box: CGFloat = 36
 
     static func image(dot: Bool) -> NSImage {
         let image = NSImage(size: size, flipped: true) { rect in
@@ -100,64 +102,92 @@ enum PlatyMenuIcon {
         return image
     }
 
+    // MARK: Shapes (box units)
+
+    static let eye = CGPoint(x: 13, y: 15.6)
+    /// Flat webbed feet splayed under the body (front forward, back backward).
+    static let frontFoot = CGRect(x: 7.6, y: 22.6, width: 8.6, height: 3.4)
+    static let backFoot = CGRect(x: 20.6, y: 23, width: 8.6, height: 3.4)
+
+    /// Head and body in one long, low, streamlined shape (a platypus has no neck).
+    static func profile() -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: 7.5, y: 17))
+        p.addCurve(to: CGPoint(x: 18, y: 12.6), control1: CGPoint(x: 8.5, y: 13), control2: CGPoint(x: 13, y: 12.4))
+        p.addCurve(to: CGPoint(x: 28.5, y: 17.6), control1: CGPoint(x: 23, y: 12.8), control2: CGPoint(x: 27.5, y: 14.5))
+        p.addCurve(to: CGPoint(x: 26, y: 23.2), control1: CGPoint(x: 29.2, y: 20), control2: CGPoint(x: 28.4, y: 22.6))
+        p.addCurve(to: CGPoint(x: 7.5, y: 21), control1: CGPoint(x: 19, y: 24.8), control2: CGPoint(x: 10, y: 24.4))
+        p.closeSubpath()
+        return p.union(tail())
+    }
+
+    /// The duck bill: long, flat and wider at the rounded tip.
+    static func bill() -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: 9.2, y: 16.2))
+        p.addLine(to: CGPoint(x: 2.6, y: 15.4))
+        p.addQuadCurve(to: CGPoint(x: 2.6, y: 21), control: CGPoint(x: -0.9, y: 18.2))
+        p.addLine(to: CGPoint(x: 9.2, y: 20.2))
+        p.closeSubpath()
+        return p
+    }
+
+    /// The flat beaver tail: a paddle behind, narrow where it joins the body.
+    static func tail() -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: 27, y: 18.6))
+        p.addCurve(to: CGPoint(x: 35.4, y: 18), control1: CGPoint(x: 30, y: 17.6), control2: CGPoint(x: 34.6, y: 15.8))
+        p.addCurve(to: CGPoint(x: 27, y: 22.4), control1: CGPoint(x: 36.2, y: 21), control2: CGPoint(x: 30.5, y: 23.8))
+        p.closeSubpath()
+        return p
+    }
+
     /// Draws in black on clear into a y-down context.
     static func draw(in cg: CGContext, rect: CGRect, dot: Bool) {
         cg.saveGState()
-        let scale: CGFloat = rect.width / crop.width
+        let scale: CGFloat = rect.width / box
         cg.translateBy(x: rect.minX, y: rect.minY)
         cg.scaleBy(x: scale, y: scale)
-        cg.translateBy(x: -crop.minX, y: -crop.minY)
         cg.setFillColor(NSColor.black.cgColor)
-        cg.setStrokeColor(NSColor.black.cgColor)
-        fill(cg, PlatyShapes.tail(wag: 0))
-        fill(cg, PlatyShapes.silhouette())
-        fill(cg, Path(ellipseIn: PlatyShapes.leftFoot))
-        fill(cg, Path(ellipseIn: PlatyShapes.rightFoot))
-        cutOuts(cg)
-        fill(cg, billShape)
+        cg.translateBy(x: 0, y: 0.5)
+        fill(cg, profile())
+        fill(cg, Path(ellipseIn: frontFoot))
+        fill(cg, Path(ellipseIn: backFoot))
+        // The bill is set off by a thin gap: cut its outline, then fill it again.
+        clear(cg, stroke: bill(), width: 2.4)
+        fill(cg, bill())
+        clear(cg, ellipse: CGRect(x: eye.x - 1.7, y: eye.y - 1.7, width: 3.4, height: 3.4))
         cg.restoreGState()
         if dot { drawDot(cg, rect: rect) }
     }
-
-    /// At 18 pt the bill is drawn wider than the head, so the silhouette reads as a
-    /// duck-billed animal even in one color.
-    static let bill = CGRect(x: 15, y: 46, width: 70, height: 20)
-    static var billShape: Path { Path(roundedRect: bill, cornerRadius: 10, style: .continuous) }
 
     private static func fill(_ cg: CGContext, _ path: Path) {
         cg.addPath(path.cgPath)
         cg.fillPath()
     }
 
-    /// Eyes, the gap round the bill and the line under the body.
-    private static func cutOuts(_ cg: CGContext) {
+    private static func clear(_ cg: CGContext, stroke path: Path, width: CGFloat) {
         cg.saveGState()
         cg.setBlendMode(.clear)
-        let r: CGFloat = 6.4
-        for c in [PlatyShapes.leftEye, PlatyShapes.rightEye] {
-            cg.addEllipse(in: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))
-        }
-        cg.fillPath()
-        cg.setLineWidth(8)
-        cg.addPath(billShape.cgPath)
-        cg.strokePath()
-        cg.setLineWidth(3)
-        cg.addPath(Path(ellipseIn: PlatyShapes.leftFoot).cgPath)
-        cg.addPath(Path(ellipseIn: PlatyShapes.rightFoot).cgPath)
+        cg.setLineWidth(width)
+        cg.setLineJoin(.round)
+        cg.addPath(path.cgPath)
         cg.strokePath()
         cg.restoreGState()
-        // The feet again, inside their gap.
-        fill(cg, Path(ellipseIn: PlatyShapes.leftFoot.insetBy(dx: 1.5, dy: 1.5)))
-        fill(cg, Path(ellipseIn: PlatyShapes.rightFoot.insetBy(dx: 1.5, dy: 1.5)))
     }
 
-    private static func drawDot(_ cg: CGContext, rect: CGRect) {
-        let d: CGFloat = 6
-        let dot = CGRect(x: rect.maxX - d, y: rect.maxY - d, width: d, height: d)
+    private static func clear(_ cg: CGContext, ellipse: CGRect) {
         cg.saveGState()
         cg.setBlendMode(.clear)
-        cg.fillEllipse(in: dot.insetBy(dx: -1.5, dy: -1.5))
+        cg.fillEllipse(in: ellipse)
         cg.restoreGState()
+    }
+
+    /// The capture dot, top right, with a cut-out ring so it stands apart.
+    private static func drawDot(_ cg: CGContext, rect: CGRect) {
+        let d: CGFloat = 6
+        let dot = CGRect(x: rect.maxX - d - 0.5, y: rect.minY + 1, width: d, height: d)
+        clear(cg, ellipse: dot.insetBy(dx: -1.5, dy: -1.5))
         cg.setFillColor(NSColor.black.cgColor)
         cg.fillEllipse(in: dot)
     }

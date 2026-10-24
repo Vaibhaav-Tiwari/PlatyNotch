@@ -19,10 +19,15 @@ public final class PlatyMoodModel {
     @ObservationIgnored private var hourTask: Task<Void, Never>?
     @ObservationIgnored private let now: () -> Date
     @ObservationIgnored private var store: AppStore?
+    @ObservationIgnored private var calendar: Calendar
+    @ObservationIgnored private var zoneObserver: NSObjectProtocol?
 
-    public init(now: @escaping () -> Date = Date.init) {
+    /// `calendar` gives the hour (tests pass a fixed time zone); a system time zone change
+    /// re-reads it.
+    public init(now: @escaping () -> Date = Date.init, calendar: Calendar = .current) {
         self.now = now
-        hour = Calendar.current.component(.hour, from: now())
+        self.calendar = calendar
+        hour = calendar.component(.hour, from: now())
     }
 
     /// Follows the store's sessions and the clock (the app calls this once at launch).
@@ -30,12 +35,25 @@ public final class PlatyMoodModel {
         self.store = store
         observeSessions()
         scheduleHour()
+        zoneObserver = NotificationCenter.default.addObserver(
+            forName: .NSSystemTimeZoneDidChange, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.timeZoneChanged(to: .current) }
+        }
+    }
+
+    /// The Mac moved to another time zone: the hour (and night) follow at once.
+    func timeZoneChanged(to zone: TimeZone) {
+        calendar.timeZone = zone
+        scheduleHour()
     }
 
     public func stop() {
         store = nil
         expiry?.cancel()
         hourTask?.cancel()
+        if let zoneObserver { NotificationCenter.default.removeObserver(zoneObserver) }
+        zoneObserver = nil
     }
 
     /// A game ended with a new best.
@@ -93,7 +111,6 @@ public final class PlatyMoodModel {
     private func scheduleHour() {
         hourTask?.cancel()
         let t = now()
-        let calendar = Calendar.current
         let current = calendar.component(.hour, from: t)
         if current != hour { hour = current }
         guard let next = calendar.nextDate(after: t, matching: DateComponents(minute: 0, second: 0),

@@ -26,10 +26,17 @@
 #                           every 6 s while Music or Spotify runs). The reads need the app's
 #                           Automation permission for the player: measure that with
 #                           `--app --music-fallback` after granting it (verify-widgets #178).
+#   --state <s>             measure with something live instead of at rest (Platy's
+#                           moods; the panel stays on screen): `working` (one active
+#                           Claude Code session: the pill, Platy paddling), `waiting`
+#                           (a session waiting for input: the pill, Platy waiting), or
+#                           `approval` (a pending permission request: the approval peek).
+#                           Sent as fake hook events through the core after the warm-up.
 #   -h, --help              this help
 #
 # Environment: PN_PERF_LIMIT (default 1.0, percent of one core), PN_PERF_WARMUP (s,
-# default 10). Without --app the release executable uses the adapter in
+# default 10), PN_PERF_APPEARANCE (Appearance settings as a plist data literal, e.g.
+# "<7b2273686f77506c617479223a66616c73657d>" = {"showPlaty":false}; default: the defaults). Without --app the release executable uses the adapter in
 # build/mediaremote-adapter when build-app.sh has built it there, else the fallback.
 #
 # Settings: the release executable's UserDefaults domain is "PlatyNotch", the bundle
@@ -40,7 +47,7 @@ set -euo pipefail
 
 usage() {
   sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//'
-  echo "usage: scripts/perf-idle.sh [--app [PlatyNotch.app]] [--music-fallback]"
+  echo "usage: scripts/perf-idle.sh [--app [PlatyNotch.app]] [--music-fallback] [--state working|waiting|approval]"
 }
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -48,12 +55,16 @@ BUILD_DIR="${PLATYNOTCH_BUILD_DIR:-$ROOT/build}"
 PERF_ID="dev.platynotch.perf"
 APP_BUNDLE=""
 FALLBACK=0
+STATE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --app)
       if [[ $# -ge 2 && -n "$2" && "$2" != -* ]]; then APP_BUNDLE="$2"; shift 2
       else APP_BUNDLE="$BUILD_DIR/PlatyNotch.app"; shift; fi ;;
     --music-fallback) FALLBACK=1; shift ;;
+    --state)
+      case "${2:-}" in working|waiting|approval) STATE="$2"; shift 2 ;;
+        *) echo "--state needs working, waiting or approval" >&2; exit 2 ;; esac ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -74,8 +85,13 @@ cpu_seconds() {
 WORK=""
 SERVE_PID=""
 APP_PID=""
+HOOK_PID=""
 
 cleanup() {
+  if [[ -n "$HOOK_PID" ]] && kill -0 "$HOOK_PID" 2>/dev/null; then
+    pkill -P "$HOOK_PID" 2>/dev/null || true
+    kill "$HOOK_PID" 2>/dev/null || true
+  fi
   if [[ -n "$APP_PID" ]] && kill -0 "$APP_PID" 2>/dev/null; then
     kill "$APP_PID" 2>/dev/null || true
     for _ in $(seq 50); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.1; done
@@ -159,13 +175,33 @@ log "app: $APP_BIN"
 log "music: $MUSIC; players running: $RUNNING"
 # Argument-domain defaults (volatile, never saved): default widgets and Appearance.
 PLATYNOTCH_EXTERNAL_CORE=1 "$APP_BIN" \
-  -widgets.layout "" -appearance.settings "" \
+  -widgets.layout "" -appearance.settings "${PN_PERF_APPEARANCE:-}" \
   -appearance.minimal NO -appearance.showOnAllDisplays NO -appearance.liveSide right \
   >"$WORK/app.log" 2>&1 &
 APP_PID=$!
 
 log "waiting ${WARMUP}s for the app to settle (keep the pointer away from the notch)"
 sleep "$WARMUP"
+
+# hook <event> <json>: one fake Claude Code hook event through the core.
+hook() { printf '%s' "$2" | "$WORK/notch" hook claude-code "$1"; }
+if [[ -n "$STATE" ]]; then
+  SID='"perf-1"'
+  CWD="\"$WORK\""
+  log "state: $STATE"
+  hook session-start "{\"session_id\":$SID,\"cwd\":$CWD,\"hook_event_name\":\"SessionStart\",\"source\":\"startup\"}"
+  hook user-prompt-submit "{\"session_id\":$SID,\"cwd\":$CWD,\"hook_event_name\":\"UserPromptSubmit\",\"prompt\":\"perf\"}"
+  case "$STATE" in
+    waiting)
+      hook notification "{\"session_id\":$SID,\"cwd\":$CWD,\"hook_event_name\":\"Notification\",\"notification_type\":\"agent_needs_input\",\"message\":\"perf\"}" ;;
+    approval)
+      # Waits for an answer that never comes; killed at the end.
+      hook permission-request "{\"session_id\":$SID,\"cwd\":$CWD,\"hook_event_name\":\"PermissionRequest\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"true\",\"description\":\"perf\"},\"tool_use_id\":\"toolu_perf\"}" >/dev/null &
+      HOOK_PID=$! ;;
+  esac
+  sleep 5   # let the panel take the new state before sampling
+  "$WORK/notch" status | sed 's/^/    core: /'
+fi
 kill -0 "$APP_PID" 2>/dev/null || { echo "the app exited:"; cat "$WORK/app.log"; exit 1; }
 
 log "sampling: top -l $SAMPLES -s 1 -pid $APP_PID -stats cpu"
@@ -194,6 +230,7 @@ echo
 echo "samples: $N (first dropped)  mean: ${MEAN}%  min: ${MIN}%  max: ${MAX}%  limit: ${LIMIT}%"
 echo "cross-check (ps): $CROSS"
 echo "music: $MUSIC; players running: $RUNNING"
+echo "state: ${STATE:-rest}"
 if awk -v m="$MEAN" -v l="$LIMIT" 'BEGIN { exit !(m > l) }'; then
   echo "FAIL: idle CPU mean ${MEAN}% is above ${LIMIT}%"
   exit 1

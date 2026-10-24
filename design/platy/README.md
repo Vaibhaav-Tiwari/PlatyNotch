@@ -63,8 +63,12 @@ is added as the size grows (`PlatyDetail`):
 | 28–63 pt | Adds paws, nostrils, the smile and the body gradient. |
 | 64 pt and up | Adds the outline, tail texture, toes and webbing, and cheeks. |
 
-The **menu bar** icon is a one-colour template image (macOS tints it). The eyes are holes,
-and the bill is drawn wider than the head with a gap around it, so the duck bill reads.
+The **menu bar** icon is a one-colour template image (macOS tints it) of Platy in **side
+profile**, facing left: the long flat bill sticks out in front, set off by a thin gap, then
+a long, low body on flat webbed feet, and the beaver tail behind. The eye is a hole. At
+18 pt a side view reads as a platypus far better than the front view. The capture dot sits
+top right inside a cut-out ring. Shapes: `PlatyMenuIcon` in `PlatyIcon.swift`, in a 36 × 36
+box.
 
 The **app icon** follows the macOS grid: an 824 × 824 rounded square (radius 185, continuous)
 in a 1024 canvas with a soft shadow. It has a night-blue gradient, a black notch at the
@@ -78,7 +82,7 @@ Moods must read at pill size (22 pt). Each one has a cue that also shows in the 
 | Mood | Cue | Motion |
 |---|---|---|
 | idle | plain | none (still) |
-| working | paws out | paddling, a bob on each stroke (0.8 s) |
+| working | a blue water line at the feet | paddling, a bob on each stroke (0.8 s) |
 | thinking | head tilted | slow sway (3 s) |
 | waiting | amber rim and tail | two tail taps, then a pause (1.2 s) |
 | done | green check and a sparkle | small sparkle pulse (1.6 s) |
@@ -100,4 +104,7 @@ Moods must read at pill size (22 pt). Each one has a cue that also shows in the 
 - Don't add text, fonts or outside images to the drawing.
 - Don't tint the whole body for a mood: a tinted body looks unwell. Use a rim or a badge.
 - Don't animate while nothing is live. Idle and focused are still, and sleepy runs at 1 fps.
+- Don't animate from a SwiftUI timeline in the pill. Each frame there costs the app about
+  2% CPU at 12 fps. Platy's loop (at most 12 fps, waiting 6 fps) is drawn into images
+  once and played by Core Animation, so the app does nothing per frame.
 - Don't redraw the art from another mascot or stock image.

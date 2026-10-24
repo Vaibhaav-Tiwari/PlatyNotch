@@ -50,6 +50,16 @@ enum Theme {
     /// Line height of `mono`, used to size the approval summary.
     static let monoLineHeight: CGFloat = 14
 
+    /// `color(_:)` as an NSColor (layer-backed dots).
+    static func nsColor(_ tone: AgentTone) -> NSColor {
+        switch tone {
+        case .active: .systemGreen
+        case .attention: .systemOrange
+        case .idle: .systemGray
+        case .off: NSColor.systemGray.withAlphaComponent(0.35)
+        }
+    }
+
     static func color(_ tone: AgentTone) -> Color {
         switch tone {
         case .active: Color(nsColor: .systemGreen)
@@ -101,25 +111,91 @@ enum Theme {
     }
 }
 
-/// A session state dot; working sessions pulse.
+/// A session state dot; working sessions pulse (1 → 0.45 → 1, 1.8 s). The pulse is a
+/// Core Animation opacity animation played by the render server: the app does no work
+/// per frame. (It was a SwiftUI repeat-forever animation, redrawn by the app at the
+/// display's refresh rate: about 2.4% CPU with one working session.) It plays only while
+/// the panel ticks and Reduce Motion is off.
 struct AgentDot: View {
     let tone: AgentTone
     var size: CGFloat = 7
-    @State private var pulse = false
+    @Environment(\.panelTicking) private var ticking
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Circle()
-            .fill(Theme.color(tone))
+        AgentDotLayer(color: Theme.nsColor(tone), pulses: tone.pulses && ticking && !reduceMotion)
             .frame(width: size, height: size)
-            .opacity(tone.pulses && pulse ? 0.45 : 1)
-            .onAppear { startPulse() }
-            .onChange(of: tone) { startPulse() }
             .accessibilityHidden(true)
     }
+}
 
-    private func startPulse() {
-        guard tone.pulses else { pulse = false; return }
-        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { pulse = true }
+private struct AgentDotLayer: NSViewRepresentable {
+    let color: NSColor
+    let pulses: Bool
+
+    func makeNSView(context: Context) -> AgentDotNSView { AgentDotNSView() }
+
+    func updateNSView(_ view: AgentDotNSView, context: Context) {
+        view.configure(color: color, pulses: pulses)
+    }
+}
+
+final class AgentDotNSView: NSView {
+    static let pulseKey = "dot.pulse"
+    private let dot = CALayer()
+    private var color: NSColor = .systemGray
+    private var pulses = false
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        dot.actions = ["bounds": NSNull(), "position": NSNull(), "backgroundColor": NSNull(), "cornerRadius": NSNull()]
+        layer?.addSublayer(dot)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        dot.frame = bounds
+        dot.cornerRadius = min(bounds.width, bounds.height) / 2
+        CATransaction.commit()
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        applyColor()
+    }
+
+    func configure(color: NSColor, pulses: Bool) {
+        if color != self.color {
+            self.color = color
+            applyColor()
+        }
+        guard pulses != self.pulses || (pulses && !isPulsing) else { return }
+        self.pulses = pulses
+        dot.removeAnimation(forKey: Self.pulseKey)
+        guard pulses else { return }
+        let pulse = CABasicAnimation(keyPath: "opacity")
+        pulse.fromValue = 1
+        pulse.toValue = 0.45
+        pulse.duration = 0.9
+        pulse.autoreverses = true
+        pulse.repeatCount = .infinity
+        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        pulse.isRemovedOnCompletion = false
+        dot.add(pulse, forKey: Self.pulseKey)
+    }
+
+    var isPulsing: Bool { dot.animation(forKey: Self.pulseKey) != nil }
+
+    private func applyColor() {
+        var cg: CGColor = color.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance { cg = self.color.cgColor }
+        dot.backgroundColor = cg
     }
 }
 

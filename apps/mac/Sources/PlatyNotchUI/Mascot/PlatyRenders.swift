@@ -59,6 +59,9 @@ enum PlatyRenders {
             }
             try write(png(PlatyPillPreview(), scale: 2), to: dir.appendingPathComponent("pill@2x.png"))
             count += 1
+            // The live views (layer-backed, as in the pill) in a hosting view: still frames.
+            try write(hosted(PlatyLiveStrip()), to: dir.appendingPathComponent("pill-live-views.png"))
+            count += 1
             // Pill size on a Retina display (22 pt at 2x), blown up 4x without smoothing.
             try write(zoomed(png(PlatyPillStrip(), scale: 2), by: 4), to: dir.appendingPathComponent("pill-moods-22pt@2x-zoom4.png"))
             count += 1
@@ -75,6 +78,16 @@ enum PlatyRenders {
         renderer.scale = scale
         guard let image = renderer.cgImage else { return nil }
         return NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
+    }
+
+    /// A view drawn by an off-screen hosting view (layer-backed views included).
+    static func hosted<V: View>(_ view: V) -> Data? {
+        let host = NSHostingView(rootView: view)
+        host.frame = CGRect(origin: .zero, size: host.fittingSize)
+        host.layoutSubtreeIfNeeded()
+        guard host.bounds.width > 0, let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return nil }
+        host.cacheDisplay(in: host.bounds, to: rep)
+        return rep.representation(using: .png, properties: [:])
     }
 
     /// The PNG scaled up `factor` times with nearest-neighbour sampling (every pixel shows).
@@ -177,6 +190,20 @@ struct PlatyPillStrip: View {
         }
         .padding(6)
         .background(dark ? Color.black : Color(platyHex: 0xF4F4F2))
+    }
+}
+
+/// Every mood through `PlatyView` (the app's layer-backed view) and the agent dots.
+struct PlatyLiveStrip: View {
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(PlatyMood.allCases, id: \.self) { PlatyView(mood: $0, size: 22) }
+            AgentDot(tone: .active)
+            AgentDot(tone: .attention)
+        }
+        .padding(6)
+        .background(Color.black)
+        .environment(\.panelTicking, false)
     }
 }
 

@@ -76,8 +76,12 @@ struct PanelRootView: View {
 
     /// Platy's mood from the store, music, focus and the timed inputs.
     private var platyMood: PlatyMood {
-        today.platy.mood(sessions: store.sessions, approvals: store.approvals.count,
-                         musicPlaying: today.nowPlaying.isPlaying, focusActive: today.focus.focusActive)
+        // Typed locals keep the call cheap to type-check.
+        let sessions: [Session] = store.sessions
+        let approvals: Int = store.approvals.count
+        let music: Bool = today.nowPlaying.isPlaying
+        let focus: Bool = today.focus.focusActive
+        return today.platy.mood(sessions: sessions, approvals: approvals, musicPlaying: music, focusActive: focus)
     }
 
     /// Appearance › spring (clamped); a short ease with Reduce Motion.

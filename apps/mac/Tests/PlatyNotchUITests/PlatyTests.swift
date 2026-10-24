@@ -55,6 +55,45 @@ final class PlatyTests: XCTestCase {
         model.stop()
     }
 
+    /// The hour comes from the injected calendar and follows a time zone change.
+    func testHourFollowsCalendarAndTimeZone() throws {
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let twoAM = Date(timeIntervalSince1970: 2 * 3600)   // 1970-01-01 02:00 UTC
+        let model = PlatyMoodModel(now: { twoAM }, calendar: utc)
+        XCTAssertEqual(model.hour, 2)
+        XCTAssertEqual(model.mood(sessions: [], approvals: 0, musicPlaying: false, focusActive: false), .sleepy)
+        model.timeZoneChanged(to: try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo")))
+        XCTAssertEqual(model.hour, 11)
+        XCTAssertEqual(model.mood(sessions: [], approvals: 0, musicPlaying: false, focusActive: false), .idle)
+        model.stop()
+    }
+
+    /// The loop is a Core Animation keyframe animation: on while it should play, off
+    /// otherwise (still frame). Waiting's loop holds one frame through its still half.
+    func testLayerPlaysOnlyWhenAnimating() throws {
+        let view = PlatyLayerNSView(frame: NSRect(x: 0, y: 0, width: 22, height: 22))
+        view.configure(.init(mood: .working, size: 22, animates: true))
+        XCTAssertTrue(view.isPlaying)
+        view.configure(.init(mood: .working, size: 22, animates: false))
+        XCTAssertFalse(view.isPlaying, "hidden panel or Reduce Motion: a still frame")
+        view.configure(.init(mood: .idle, size: 22, animates: true))
+        XCTAssertFalse(view.isPlaying, "idle is still")
+        let waiting = PlatyFrames.frames(.waiting, size: 22, scale: 2)
+        XCTAssertEqual(waiting.images.count, PlatyPoseValues.loop(.waiting).count)
+        XCTAssertEqual(waiting.keyTimes.count, waiting.images.count + 1)
+        XCTAssertEqual(try XCTUnwrap(waiting.keyTimes.last).doubleValue, 1)
+        XCTAssertEqual(try XCTUnwrap(waiting.images.first).width, 44)
+    }
+
+    func testDotPulsesOnlyWhenAsked() {
+        let dot = AgentDotNSView(frame: NSRect(x: 0, y: 0, width: 7, height: 7))
+        dot.configure(color: .systemGreen, pulses: true)
+        XCTAssertTrue(dot.isPulsing)
+        dot.configure(color: .systemGreen, pulses: false)
+        XCTAssertFalse(dot.isPulsing)
+    }
+
     /// The frame loop runs only while the panel ticks, without Reduce Motion, for a moving mood.
     func testFrameLoopOnlyWhenVisibleAndMoving() {
         XCTAssertNotNil(PlatyView.frameInterval(mood: .working, ticking: true, reduceMotion: false))
@@ -62,6 +101,8 @@ final class PlatyTests: XCTestCase {
         XCTAssertNil(PlatyView.frameInterval(mood: .working, ticking: true, reduceMotion: true), "Reduce Motion")
         XCTAssertNil(PlatyView.frameInterval(mood: .idle, ticking: true, reduceMotion: false), "idle is still")
         XCTAssertEqual(PlatyView.frameInterval(mood: .sleepy, ticking: true, reduceMotion: false), 1)
+        XCTAssertEqual(PlatyView.frameInterval(mood: .working, ticking: true, reduceMotion: false), 1.0 / 12)
+        XCTAssertEqual(PlatyView.frameInterval(mood: .waiting, ticking: true, reduceMotion: false), 1.0 / 6)
     }
 
     /// C35: ten iconset images, 16 to 1024 px, named the way iconutil expects.

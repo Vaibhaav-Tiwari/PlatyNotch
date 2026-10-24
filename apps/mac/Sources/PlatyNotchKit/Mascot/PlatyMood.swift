@@ -26,15 +26,42 @@ public enum PlatyMood: String, CaseIterable, Sendable {
     }
 
     /// Seconds between redraws while animating; nil = never redrawn (a static frame).
-    /// Sleepy is what Platy shows at night with nothing live, so it keeps the idle budget:
-    /// one frame a second.
+    /// The pill's budget is 12 fps (as MusicBars). Waiting can last hours while an approval
+    /// sits unanswered: 6 fps, and nothing at all in the still half of its loop
+    /// (`nextFrame`). Sleepy is what Platy shows at night with nothing live: 1 fps.
     public var frameInterval: TimeInterval? {
         switch self {
         case .idle, .focused: nil
         case .sleepy: 1
-        default: 1.0 / 30
+        case .waiting: 2 * Self.pillTick
+        default: Self.pillTick
         }
     }
+
+    /// The fraction of the loop, from its start, in which the pose moves (waiting: the two
+    /// taps, then the tail rests).
+    public var movingFraction: Double {
+        self == .waiting ? 0.5 : 1
+    }
+
+    /// When the next frame is due after time `t` (seconds since the reference date): the
+    /// next tick of a grid of `frameInterval` steps from that epoch while the pose moves
+    /// (so Platy and the other pill timelines tick together and share frames); the start
+    /// of the next loop during a still stretch; the start of the still stretch for the last
+    /// moving frame. `t` itself for a still mood.
+    public func nextFrame(after t: TimeInterval) -> TimeInterval {
+        guard let interval = frameInterval else { return t }
+        var tick: Double = ((t / interval).rounded(.down) + 1) * interval
+        if tick <= t + 1e-9 { tick += interval }
+        if movingFraction >= 1 { return tick }
+        let loopStart: Double = (t / period).rounded(.down) * period
+        let stillStart: Double = loopStart + movingFraction * period
+        if t >= stillStart - 1e-9 { return loopStart + period }
+        return min(tick, stillStart)
+    }
+
+    /// The shared tick of the compact pill's timelines (12 fps, MusicBars' budget).
+    public static let pillTick: TimeInterval = 1.0 / 12
 
     /// What VoiceOver says for Platy.
     public var accessibilityLabel: String {
@@ -119,8 +146,10 @@ public struct PlatyMoodFlags: Equatable, Sendable {
     }
 }
 
-/// The compact pill's agents ear with Platy: Platy first, then as many agent dots (and
-/// the "+n") as fit in `earWidth`. Platy always shows.
+/// The compact pill's agents ear with Platy: Platy first, then as many agent dots as fit
+/// in `earWidth`, then "+n" for every live session without a dot (beyond `PillDots.limit`
+/// or squeezed out by Platy). With no room for the label (Compact beside a notch) the "+n"
+/// is a small badge on Platy instead. Platy always shows; every session is counted.
 public struct PlatyEarFit: Equatable, Sendable {
     /// Platy's size in the pill (points).
     public static let platy: CGFloat = 22
@@ -130,27 +159,38 @@ public struct PlatyEarFit: Equatable, Sendable {
     /// The "+n" label (two digits) and the space before it.
     public static let overflowLabel: CGFloat = 18
 
+    /// Dots drawn.
     public let dots: Int
-    public let showsOverflow: Bool
+    /// The n in "+n" (0: no label).
+    public let overflowCount: Int
+    /// "+n" sits on Platy as a badge rather than after the dots.
+    public let badge: Bool
 
-    public init(dots: Int, showsOverflow: Bool) {
+    public init(dots: Int, overflowCount: Int, badge: Bool) {
         self.dots = dots
-        self.showsOverflow = showsOverflow
+        self.overflowCount = overflowCount
+        self.badge = badge
     }
 
     public init(earWidth: CGFloat, dots: Int, overflow: Int) {
         let room: CGFloat = earWidth - Self.platy
-        let fitting = room > 0 ? Int((room / Self.dot).rounded(.down)) : 0
-        let shown = min(dots, max(fitting, 0))
-        let used: CGFloat = CGFloat(shown) * Self.dot
-        let overflowFits = shown == dots && overflow > 0 && used + Self.overflowLabel <= room
-        self.init(dots: shown, showsOverflow: overflowFits)
+        let allDots: CGFloat = CGFloat(dots) * Self.dot
+        let label: CGFloat = overflow > 0 ? Self.overflowLabel : 0
+        if allDots + label <= room {
+            self.init(dots: dots, overflowCount: overflow, badge: false)
+            return
+        }
+        let withLabel = room >= Self.overflowLabel
+        let dotRoom: CGFloat = withLabel ? room - Self.overflowLabel : room
+        let fitting: Int = dotRoom > 0 ? Int((dotRoom / Self.dot).rounded(.down)) : 0
+        let shown = min(dots, fitting)
+        self.init(dots: shown, overflowCount: dots - shown + overflow, badge: !withLabel)
     }
 
-    /// The width this fit draws.
+    /// The width this fit draws (the badge takes none).
     public var width: CGFloat {
         let dotsWidth: CGFloat = CGFloat(dots) * Self.dot
-        let label: CGFloat = showsOverflow ? Self.overflowLabel : 0
+        let label: CGFloat = overflowCount > 0 && !badge ? Self.overflowLabel : 0
         return Self.platy + dotsWidth + label
     }
 }

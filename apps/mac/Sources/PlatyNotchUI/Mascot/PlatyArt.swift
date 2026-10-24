@@ -27,6 +27,7 @@ enum PlatyPalette {
     static let check = Color(platyHex: 0x2FB75A)
     static let zzz = Color(platyHex: 0x9FB8FF)
     static let amber = Color(platyHex: 0xFFB020)
+    static let water = Color(platyHex: 0x4FC3F7)
     static let shadow = Color.black.opacity(0.22)
 }
 
@@ -77,9 +78,30 @@ enum PlatyShapes {
     /// Where Platy stands (lean and breath pivot here).
     static let ground = CGPoint(x: 50, y: 95)
 
-    /// Head and body as one shape.
-    static func silhouette() -> Path {
-        Path(ellipseIn: head).union(Path(ellipseIn: body))
+    /// Head and body as one shape (built once).
+    static let silhouetteShape: Path = Path(ellipseIn: head).union(Path(ellipseIn: body))
+
+    static func silhouette() -> Path { silhouetteShape }
+
+    /// The working water line across Platy's feet.
+    static func waterLine() -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: 4, y: 93))
+        for i in 0..<4 {
+            let x0: CGFloat = 4 + CGFloat(i) * 23
+            p.addQuadCurve(to: CGPoint(x: x0 + 11.5, y: 93), control: CGPoint(x: x0 + 5.75, y: 89))
+            p.addQuadCurve(to: CGPoint(x: x0 + 23, y: 93), control: CGPoint(x: x0 + 17.25, y: 97))
+        }
+        return p
+    }
+
+    /// The water below the line (clipped to the 100 box).
+    static func waterBody() -> Path {
+        var p = waterLine()
+        p.addLine(to: CGPoint(x: 96, y: 100))
+        p.addLine(to: CGPoint(x: 4, y: 100))
+        p.closeSubpath()
+        return p
     }
 
     /// The flat beaver tail along +x from its base at the origin.
@@ -403,8 +425,14 @@ enum PlatyArt {
         }
     }
 
-    /// Sparkles, the done check and the sleepy "z"s: they do not lean or bounce.
+    /// Sparkles, the done check, the sleepy "z"s and the water: they do not lean or bounce.
     private static func drawExtras(_ g: GraphicsContext, pose: PlatyPose, detail: PlatyDetail) {
+        if pose.water {
+            g.fill(PlatyShapes.waterBody(), with: .color(PlatyPalette.water.opacity(0.35)))
+            let width: CGFloat = detail == .tiny ? 4.5 : 3
+            g.stroke(PlatyShapes.waterLine(), with: .color(PlatyPalette.water),
+                     style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round))
+        }
         if pose.sparkle > 0 { drawSparkles(g, amount: pose.sparkle, detail: detail) }
         if pose.check {
             g.fill(Path(ellipseIn: PlatyShapes.checkBadge), with: .color(PlatyPalette.check))

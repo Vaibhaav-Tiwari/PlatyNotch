@@ -29,6 +29,9 @@ public struct PlatyPoseValues: Equatable, Sendable {
     public var zzz = false
     /// Both paws up (celebrating).
     public var cheer = false
+    /// A water line at Platy's feet (working: paddling along). Drawn at every size, so
+    /// working reads at 22 pt and in still frames.
+    public var water = false
     public var tint: Tint = .none
 
     public init() {}
@@ -43,13 +46,28 @@ public struct PlatyPoseValues: Equatable, Sendable {
         return animated(mood, phase: phase).rounded()
     }
 
+    /// One loop of `mood` as keyframes: (seconds from the loop's start, pose), on the
+    /// `PlatyMood.nextFrame` ticks, a frame only where the pose changes (waiting holds one
+    /// frame through its still half). A still mood is one frame.
+    public static func loop(_ mood: PlatyMood) -> [(time: TimeInterval, pose: PlatyPoseValues)] {
+        guard mood.animates, mood.frameInterval != nil else { return [(0, rest(mood))] }
+        var out: [(time: TimeInterval, pose: PlatyPoseValues)] = []
+        var t: TimeInterval = 0
+        while t < mood.period - 1e-9 {
+            let pose = at(mood, time: t)
+            if out.last?.pose != pose { out.append((t, pose)) }
+            t = mood.nextFrame(after: t)
+        }
+        return out
+    }
+
     /// The still frame: Reduce Motion, a paused panel, the gallery and the icon. Every
     /// mood's cue stays (amber, headphones, closed eyes, check, sparkle).
     public static func rest(_ mood: PlatyMood) -> PlatyPoseValues {
         var p = PlatyPoseValues()
         switch mood {
         case .idle: break
-        case .working: p.paddle = 0.6
+        case .working: p.paddle = 0.6; p.water = true
         case .thinking: p.lean = -6; p.billAngle = -4; p.eyesOpen = 0.85
         case .waiting: p.tint = .amber; p.tailWag = 0.6
         case .done: p.check = true; p.sparkle = 0.5
@@ -79,8 +97,8 @@ public struct PlatyPoseValues: Equatable, Sendable {
             p.lean = -6 + 3 * wave(phase)
             p.billAngle = -4 * wave(phase)
         case .waiting:
-            // Two quick taps, then a pause.
-            let tap: Double = phase < 0.5 ? max(0, wave(phase, 2)) : 0
+            // Two quick taps, then the tail rests (`PlatyMood.movingFraction`: no frames).
+            let tap: Double = phase < 0.5 ? abs(wave(phase, 2)) : 0
             p.tailWag = 1.6 * tap - 0.4
         case .done:
             p.sparkle = 0.5 + 0.15 * wave(phase)

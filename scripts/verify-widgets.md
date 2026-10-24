@@ -892,8 +892,10 @@ PLATYNOTCH_RENDER_DIR=/tmp/pn-renders PLATYNOTCH_HOME=<temp home> PLATYNOTCH_COR
 
 - [ ] **181. Platy in the pill.** Settings › Appearance › Show Platy is on by default:
   Platy sits in the agents ear before the dots, about 22 pt tall, with no clipping beside
-  the camera housing. Pill width Compact shows Platy and one dot; Standard shows Platy and
-  up to three dots plus "+n". Turn Show Platy off: only the dots stay (the plain look), and the
+  the camera housing. Pill width Compact shows Platy, one dot and a small "+n" badge on
+  Platy for the rest; Standard shows Platy, the dots that fit and "+n" for the rest (every
+  session is counted). While an agent works, a blue water line sits at Platy's feet (also
+  with Reduce Motion). Turn Show Platy off: only the dots stay (the plain look), and the
   Agents and Today empty states go back to text.
 - [ ] **182. Moods.** With `scripts/fake-events.sh`: a working session makes Platy paddle and bob;
   an approval or a blocked session shows the amber rim and tail taps; when a session goes
@@ -901,14 +903,17 @@ PLATYNOTCH_RENDER_DIR=/tmp/pn-renders PLATYNOTCH_HOME=<temp home> PLATYNOTCH_COR
   and a bounce. Start a focus session: half-closed eyes, still. After 23:00 with nothing live:
   closed eyes and a "z", breathing at one frame a second. Beat your best in a game:
   paws up, sparkles and a jump for about 4 s.
-- [ ] **183. Idle cost.** Nothing live (idle mood): Activity Monitor shows PlatyNotch at
-  rest as before Platy (`scripts/perf-idle.sh`). Collapse or hide the panel while an agent works:
-  Platy stops moving (no frames while the panel is hidden).
+- [ ] **183. Live cost.** `scripts/build-app.sh`, then `scripts/perf-idle.sh --app`, then
+  the same with `--state working`, `--state waiting` and `--state approval`. Keep the pointer
+  away from the notch and don't play music. Each mean must PASS (under 1%). Platy and the
+  pulsing agent dot are Core Animation keyframes, so the app does no work per frame. When
+  you hide the panel or go full screen while an agent works, Platy stops.
 - [ ] **184. Reduce Motion.** System Settings › Accessibility › Display › Reduce motion:
   Platy is a still frame in every mood, and the cue still shows (rim, headphones, check, z).
-- [ ] **185. Menu bar icon.** The menu bar shows Platy's silhouette (eyes as holes, the
-  bill set off by a gap), black on a light menu bar and white on a dark one. While
-  capture runs, a dot shows at the bottom right.
+- [ ] **185. Menu bar icon.** The menu bar shows Platy in side profile (bill to the left,
+  set off by a gap; low body on webbed feet; flat tail to the right; the eye a hole), black
+  on a light menu bar and white on a dark one. While capture runs, a dot with a cut-out
+  ring shows at the top right.
 - [ ] **186. App icon.** `scripts/build-app.sh`, then look at the app in Finder, the Dock (light
   and dark), Spotlight and the ⌘-Tab switcher: the night-blue rounded square with the notch
   and Platy, sharp at every size. Compare with the gallery (`PlatyNotch --platy-gallery <dir>`).
