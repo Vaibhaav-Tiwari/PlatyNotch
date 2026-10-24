@@ -98,7 +98,7 @@ final class SnapLayoutTests: DefaultsTestCase {
                                                  screens: [primary], primaryScreenHeight: primaryHeight, gap: 0))
         XCTAssertNil(plan.size, "a window whose size cannot be set is never resized")
         // Centered in the left half (AX x 0…720, y 25…900).
-        XCTAssertEqual(plan.position, CGPoint(x: 160, y: 313))
+        XCTAssertEqual(plan.position, CGPoint(x: 160, y: 312))
 
         // Larger than the screen: its top-left corner stays reachable.
         let huge = CGRect(x: 50, y: 60, width: 2000, height: 1200)
@@ -113,7 +113,7 @@ final class SnapLayoutTests: DefaultsTestCase {
         let plan = try XCTUnwrap(SnapLayout.plan(.center, windowAX: window, resizable: true,
                                                  screens: [primary], primaryScreenHeight: primaryHeight, gap: 0))
         XCTAssertNil(plan.size)
-        XCTAssertEqual(plan.position, CGPoint(x: 420, y: 263))  // 25 + (875 - 400) / 2 = 262.5
+        XCTAssertEqual(plan.position, CGPoint(x: 420, y: 262))  // 25 + (875 - 400) / 2 = 262.5, floored
 
         let tall = CGRect(x: 10, y: 40, width: 600, height: 2000)
         let shrunk = try XCTUnwrap(SnapLayout.plan(.center, windowAX: tall, resizable: true,
@@ -167,16 +167,45 @@ final class SnapLayoutTests: DefaultsTestCase {
         }
     }
 
+    /// Fix round 2: edges are floored, so an integer gap stays exact on a display with
+    /// negative coordinates too (to-nearest rounds -0.5 and 0.5 apart).
+    func testNegativeOriginScreenKeepsExactGaps() throws {
+        // An odd-sized display above and left of an odd-height primary.
+        let neg = SnapScreen(frame: CGRect(x: -1921, y: 901, width: 1921, height: 1081),
+                             visible: CGRect(x: -1921, y: 901, width: 1921, height: 1056))
+        let visibleAX = SnapLayout.axFrame(from: neg.visible, primaryScreenHeight: 901)
+        let window = CGRect(x: -1500, y: -700, width: 300, height: 200)
+        for gap in [CGFloat(0), CGFloat(4), CGFloat(8)] {
+            func edges(_ t: SnapTarget) throws -> (x: CGFloat, maxX: CGFloat, y: CGFloat, maxY: CGFloat) {
+                let p = try XCTUnwrap(SnapLayout.plan(t, windowAX: window, resizable: true, screens: [primary, neg],
+                                                      primaryScreenHeight: 901, gap: gap))
+                let size = try XCTUnwrap(p.size)
+                return (p.position.x, p.position.x + size.width, p.position.y, p.position.y + size.height)
+            }
+            let a = try edges(.leftThird), b = try edges(.centerThird), c = try edges(.rightThird)
+            XCTAssertEqual(a.x - visibleAX.minX, gap)
+            XCTAssertEqual(b.x - a.maxX, gap)
+            XCTAssertEqual(c.x - b.maxX, gap)
+            XCTAssertEqual(visibleAX.maxX - c.maxX, gap)
+            let l = try edges(.leftHalf), r = try edges(.rightHalf)
+            XCTAssertEqual(r.x - l.maxX, gap)
+            let top = try edges(.topLeft), bottom = try edges(.bottomLeft)
+            XCTAssertEqual(top.y - visibleAX.minY, gap, "top edge below the menu bar")
+            XCTAssertEqual(bottom.y - top.maxY, gap)
+            XCTAssertEqual(visibleAX.maxY - bottom.maxY, gap)
+        }
+    }
+
     func testCentringAKeptSize() throws {
         let p = try XCTUnwrap(SnapLayout.plan(.leftHalf, windowAX: CGRect(x: 0, y: 0, width: 10, height: 10),
                                               resizable: true, screens: [primary], primaryScreenHeight: primaryHeight,
                                               gap: 0))
         XCTAssertEqual(p.area, CGRect(x: 0, y: 25, width: 720, height: 875))
         XCTAssertEqual(p.bounds, CGRect(x: 0, y: 25, width: 1440, height: 875))
-        XCTAssertEqual(SnapLayout.position(centering: CGSize(width: 400, height: 300), in: p), CGPoint(x: 160, y: 313))
+        XCTAssertEqual(SnapLayout.position(centering: CGSize(width: 400, height: 300), in: p), CGPoint(x: 160, y: 312))
         XCTAssertEqual(SnapLayout.position(centering: CGSize(width: 2000, height: 1000), in: p), CGPoint(x: 0, y: 25),
                        "too large: top-left corner on screen")
-        XCTAssertEqual(SnapLayout.position(centering: CGSize(width: 1000, height: 300), in: p), CGPoint(x: 0, y: 313),
+        XCTAssertEqual(SnapLayout.position(centering: CGSize(width: 1000, height: 300), in: p), CGPoint(x: 0, y: 312),
                        "wider than the half: kept inside the screen")
     }
 

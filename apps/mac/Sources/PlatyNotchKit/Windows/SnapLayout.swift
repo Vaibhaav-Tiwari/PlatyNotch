@@ -223,16 +223,25 @@ public enum SnapLayout {
         if size.width >= b.width { x = b.minX } else { x = min(max(x, b.minX), b.maxX - size.width) }
         // AX y grows downwards: the top edge is minY.
         if size.height >= b.height { y = b.minY } else { y = min(max(y, b.minY), b.maxY - size.height) }
-        return CGPoint(x: x.rounded(), y: y.rounded())
+        return CGPoint(x: floored(x), y: floored(y))
     }
 
-    /// `r` with each edge on a whole point; the size follows from the edges.
+    /// `r` with each edge floored to a whole point; the size follows from the edges.
+    /// Flooring (not to-nearest, which rounds halves away from zero) treats negative
+    /// edges like positive ones, so an integer gap stays exact on every display.
     static func edgesRounded(_ r: CGRect) -> CGRect {
-        let minX: CGFloat = r.minX.rounded()
-        let minY: CGFloat = r.minY.rounded()
-        let maxX: CGFloat = r.maxX.rounded()
-        let maxY: CGFloat = r.maxY.rounded()
+        let minX: CGFloat = floored(r.minX)
+        let minY: CGFloat = floored(r.minY)
+        let maxX: CGFloat = floored(r.maxX)
+        let maxY: CGFloat = floored(r.maxY)
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    /// Floors to a whole point, after a nudge far below a point: a sum of thirds meant to
+    /// land on an edge (e.g. -8) can come out a hair below it in floating point.
+    static func floored(_ v: CGFloat) -> CGFloat {
+        let nudge: CGFloat = 0.001
+        return (v + nudge).rounded(.down)
     }
 
     private static func centered(_ size: CGSize, in area: CGRect) -> CGRect {
