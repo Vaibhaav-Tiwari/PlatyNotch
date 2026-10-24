@@ -29,7 +29,7 @@ public enum AXReadOutcome: Sendable, Equatable {
 
 /// Why a window was not captured, shown in the Memory tab.
 public enum CaptureSkip: String, Sendable, Equatable, CaseIterable {
-    case excludedApp, privateWindow, passwordField, noText, unchanged, accessibilityUnavailable
+    case excludedApp, privateWindow, passwordField, noText, unchanged, accessibilityUnavailable, idle
 
     public var label: String {
         switch self {
@@ -39,6 +39,7 @@ public enum CaptureSkip: String, Sendable, Equatable, CaseIterable {
         case .noText: "no readable text"
         case .unchanged: "unchanged"
         case .accessibilityUnavailable: "Accessibility not answering (allow this PlatyNotch again)"
+        case .idle: "idle (no input for 2 minutes)"
         }
     }
 }

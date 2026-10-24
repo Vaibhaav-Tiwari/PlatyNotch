@@ -45,6 +45,17 @@ final class CaptureDecisionTests: XCTestCase {
     }
 }
 
+final class CaptureIdleTests: XCTestCase {
+    func testIdleAfterTwoMinutesWithoutInput() {
+        XCTAssertFalse(CaptureFilter.isIdle(secondsSinceInput: 0))
+        XCTAssertFalse(CaptureFilter.isIdle(secondsSinceInput: 119))
+        XCTAssertTrue(CaptureFilter.isIdle(secondsSinceInput: 120))
+        var a = CaptureActivity()
+        a.skipped(.idle, app: "Safari", at: Date(timeIntervalSince1970: 0))
+        XCTAssertEqual(a.skipLine(now: Date(timeIntervalSince1970: 0)), "Skipped Safari just now: idle (no input for 2 minutes)")
+    }
+}
+
 final class CaptureActivityTests: XCTestCase {
     var calendar: Calendar = {
         var c = Calendar(identifier: .gregorian)

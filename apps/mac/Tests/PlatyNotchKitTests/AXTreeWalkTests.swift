@@ -7,9 +7,12 @@ private final class Node {
     let title: String?
     let value: String?
     let children: [Node]
+    weak var parent: Node?
     init(_ role: String, title: String? = nil, value: String? = nil, _ children: [Node] = []) {
         self.role = role; self.title = title; self.value = value; self.children = children
+        for c in children { c.parent = self }
     }
+    var window: Node? { role == "AXWindow" ? self : parent?.window }
 }
 
 final class AXTreeWalkTests: XCTestCase {
@@ -65,5 +68,50 @@ final class AXTreeWalkTests: XCTestCase {
         let field = Node("AXSecureTextField", value: "hunter2hunter2")
         let text = walk(Node("AXWindow", [field, Node("AXStaticText", value: "visible")]), budget: 100)
         XCTAssertEqual(text, "visible")
+    }
+
+    func testOutermostWebAreaNotTheIframe() {
+        let field = Node("AXTextField")
+        let iframe = Node("AXWebArea", title: "ad frame", [Node("AXGroup", [field])])
+        let page = Node("AXWebArea", title: "Article", [Node("AXGroup", [iframe])])
+        _ = Node("AXWindow", [Node("AXGroup", [page])])
+        let found = AXTreeWalk.outermostWebArea(from: field, role: field.role, maxSteps: 40, inTime: { true },
+                                                parent: { $0.parent }, role: { $0.role })
+        XCTAssertTrue(found === page)
+        let none = Node("AXTextField")
+        _ = Node("AXWindow", [Node("AXToolbar", [none])])   // the address bar
+        XCTAssertNil(AXTreeWalk.outermostWebArea(from: none, role: none.role, maxSteps: 40, inTime: { true },
+                                                 parent: { $0.parent }, role: { $0.role }))
+    }
+
+    /// The focused page is read first only when it is in the window whose title was
+    /// checked for private browsing.
+    func testPageOnlyFromTheCheckedWindow() {
+        let page = Node("AXWebArea")
+        let checked = Node("AXWindow", [page])
+        let other = Node("AXWindow", title: "Private Browsing")
+        func gate(_ window: Node, inTime: Bool = true) -> Node? {
+            AXTreeWalk.page(page, in: window, inTime: { inTime }, windowOf: { $0.window }, same: { $0 === $1 })
+        }
+        XCTAssertTrue(gate(checked) === page)
+        XCTAssertNil(gate(other))
+        XCTAssertNil(gate(checked, inTime: false))
+        XCTAssertNil(AXTreeWalk.page(Node("AXWebArea"), in: checked, inTime: { true }, windowOf: { $0.window },
+                                     same: { $0 === $1 }))   // no window at all
+    }
+
+    /// A value read that runs past the deadline ends the walk there.
+    func testSlowValueEndsTheWalk() {
+        var late = false
+        let slow = Node("AXStaticText", value: "slow")
+        let root = Node("AXWindow", [slow, Node("AXStaticText", value: "after")])
+        var collector = AXTextCollector(maxChars: 1_000, maxElements: 100)
+        AXTreeWalk.collect(root: root, into: &collector, inTime: { !late }, same: { $0 === $1 },
+                           head: { AXElementHead(role: $0.role, children: $0.children) },
+                           value: { n in
+                               if n === slow { late = true }
+                               return n.value
+                           })
+        XCTAssertEqual(collector.text, "slow")
     }
 }

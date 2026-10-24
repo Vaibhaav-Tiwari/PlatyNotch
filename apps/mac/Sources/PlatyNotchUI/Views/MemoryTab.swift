@@ -98,22 +98,9 @@ struct MemoryTab: View {
     let memory: MemoryServices
 
     var body: some View {
-        @Bindable var search = memory.search
+        let search = memory.search
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
-                TextField("Search memory", text: $search.query)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12))
-                if !search.query.isEmpty {
-                    Button { search.query = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Clear search")
-                }
-            }
-            .padding(6)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            MemorySearchField(search: search)
 
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -165,6 +152,27 @@ struct MemoryTab: View {
                 }
             }
         }
+    }
+}
+
+private struct MemorySearchField: View {
+    @Bindable var search: MemorySearchModel
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
+            TextField("Search memory", text: $search.query)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+            if !search.query.isEmpty {
+                Button { search.query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(6)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 

@@ -34,12 +34,18 @@ public final class CaptureService {
     @ObservationIgnored private var lastHashes: [String: Int] = [:]
     @ObservationIgnored private var interval: Duration = .seconds(CaptureSettings.defaultIntervalSeconds)
     @ObservationIgnored private var watcher: ConfigFileWatcher?
-    /// Processes already asked to build their accessibility tree (Chromium, Electron).
-    @ObservationIgnored private var manualAXPids: Set<pid_t> = []
+    /// Chromium/Electron accessibility turned on by capture; confined to `walkQueue`.
+    @ObservationIgnored private let manualAX: ManualAccessibility
+    /// Seconds since the last keyboard or mouse input (any app).
+    @ObservationIgnored private let secondsSinceInput: () -> Double
 
-    init(send: @escaping @Sendable (Envelope) async throws -> Void, defaults: UserDefaults = .standard) {
+    init(send: @escaping @Sendable (Envelope) async throws -> Void, defaults: UserDefaults = .standard,
+         manualAX: ManualAccessibilityAX = LiveManualAccessibilityAX(),
+         secondsSinceInput: @escaping () -> Double = CaptureService.secondsSinceLastInput) {
         self.send = send
         self.defaults = defaults
+        self.manualAX = ManualAccessibility(ax: manualAX)
+        self.secondsSinceInput = secondsSinceInput
         let day = defaults.double(forKey: Self.todayDayKey)
         activity = CaptureActivity(count: defaults.integer(forKey: Self.todayCountKey),
                                    countDay: day > 0 ? Date(timeIntervalSince1970: day) : nil)
@@ -87,6 +93,29 @@ public final class CaptureService {
         loop = nil
         lastHashes = [:]
         status = .off
+        revertManualAccessibility()
+    }
+
+    /// Turns `AXManualAccessibility` off again in every app capture turned it on in
+    /// (memory off, pause, quit). `wait` blocks until done (quit).
+    public func revertManualAccessibility(wait: Bool = false) {
+        let manualAX = self.manualAX
+        if wait {
+            walkQueue.sync { manualAX.disableAll() }
+        } else {
+            walkQueue.async { manualAX.disableAll() }
+        }
+    }
+
+    /// Turns `AXManualAccessibility` on for `pid` (once; only where settable).
+    func enableManualAccessibility(pid: pid_t) {
+        let manualAX = self.manualAX
+        walkQueue.async { manualAX.enable(pid: pid) }
+    }
+
+    nonisolated static func secondsSinceLastInput() -> Double {
+        let anyInput = CGEventType(rawValue: ~0)!
+        return CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInput)
     }
 
     // MARK: - Pause
@@ -100,6 +129,7 @@ public final class CaptureService {
         let until = Date().addingTimeInterval(duration)
         defaults.set(until.timeIntervalSince1970, forKey: Self.pausedUntilKey)
         refreshStatus()
+        revertManualAccessibility()
     }
 
     public func resume() {
@@ -138,12 +168,14 @@ public final class CaptureService {
             activity.skipped(.passwordField, app: appName, at: Date())
             return
         }
+        if CaptureFilter.isIdle(secondsSinceInput: secondsSinceInput()) {
+            activity.skipped(.idle, app: appName, at: Date())
+            return
+        }
         let pid = app.processIdentifier
-        if manualAXPids.count > 256 { manualAXPids = [] }
-        let enableManual = manualAXPids.insert(pid).inserted
+        enableManualAccessibility(pid: pid)
         walking = true
         walkQueue.async { [weak self] in
-            if enableManual { AXTextReader.enableManualAccessibility(pid: pid) }
             let outcome = AXTextReader.focusedWindowText(pid: pid)
             Task { @MainActor [weak self] in
                 self?.finish(outcome, bundleID: bundleID, appName: appName, pid: pid)

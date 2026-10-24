@@ -42,6 +42,12 @@ public struct CaptureFilter: Sendable {
     public static let privateMarkers = ["incognito", "inprivate", "private browsing", "private window",
                                         " — private", " - private"]
 
+    /// No keyboard or mouse input for this long: nothing new is on screen, so the
+    /// walk (load on the frontmost app) is skipped.
+    public static let idleAfterSeconds: Double = 120
+
+    public static func isIdle(secondsSinceInput: Double) -> Bool { secondsSinceInput >= idleAfterSeconds }
+
     public let excluded: Set<String>
 
     public init(excluded: Set<String>) {

@@ -94,4 +94,35 @@ final class MemoryModelsTests: DefaultsTestCase {
         let capture = CaptureService(send: { _ in }, defaults: defaults)
         XCTAssertEqual(capture.activity.capturedToday(now: Date()), 5)
     }
+
+    final class FakeAX: ManualAccessibilityAX, @unchecked Sendable {
+        private let lock = NSLock()
+        private var log: [String] = []
+        var calls: [String] { lock.withLock { log } }
+        func isSettable(pid: pid_t) -> Bool { true }
+        func set(_ on: Bool, pid: pid_t) { lock.withLock { log.append("\(on) \(pid)") } }
+    }
+
+    /// Capture turns Chromium/Electron accessibility on; pausing, memory off and quit
+    /// turn it off again in every app it was turned on in.
+    func testManualAccessibilityUndoneOnPauseStopAndQuit() async {
+        let ax = FakeAX()
+        let capture = CaptureService(send: { _ in }, defaults: defaults(), manualAX: ax)
+        capture.enableManualAccessibility(pid: 42)
+        capture.enableManualAccessibility(pid: 42)
+        capture.pause(for: 60)
+        await waitUntil { ax.calls.count == 2 }
+        XCTAssertEqual(ax.calls, ["true 42", "false 42"])
+
+        capture.resume()
+        capture.apply(CaptureSettings(enabled: true))
+        capture.enableManualAccessibility(pid: 7)
+        capture.apply(CaptureSettings(enabled: false))
+        await waitUntil { ax.calls.count == 4 }
+        XCTAssertEqual(ax.calls.suffix(2), ["true 7", "false 7"])
+
+        capture.enableManualAccessibility(pid: 9)
+        capture.revertManualAccessibility(wait: true)
+        XCTAssertEqual(ax.calls.suffix(2), ["true 9", "false 9"])
+    }
 }
