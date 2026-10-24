@@ -273,6 +273,39 @@ final class PlatyMoodTests: XCTestCase {
         }
     }
 
+    /// Feedback 5: with many sessions (6, 12, 40) Platy still shows in the pill at every
+    /// Appearance › Pill width, beside a notch and without one, and every session is counted.
+    func testPlatyShowsWithManySessionsAtEveryPillWidth() {
+        let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let visible = CGRect(x: 0, y: 0, width: 1512, height: 950)
+        let left = CGRect(x: 0, y: 950, width: 654, height: 32)
+        let right = CGRect(x: 858, y: 950, width: 654, height: 32)
+        let ext = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        let extVisible = CGRect(x: 0, y: 0, width: 1920, height: 1055)
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        for count in [6, 12, 40] {
+            let sessions = (0..<count).map { i in
+                Session(key: "s\(i)", agent: "claude-code", agentName: "Claude Code", sessionID: "s\(i)",
+                        state: i % 2 == 0 ? .active : .idle, startedAt: start, updatedAt: start)
+            }
+            let dots = PillDots(sessions: sessions)
+            for w in AppearanceSettings.PillWidth.allCases {
+                let layouts = [
+                    PanelLayout(screenFrame: screen, visibleFrame: visible, auxLeft: left, auxRight: right, pillWidth: w),
+                    PanelLayout(screenFrame: ext, visibleFrame: extVisible, auxLeft: nil, auxRight: nil, pillWidth: w),
+                ]
+                for l in layouts {
+                    let ear = l.liveEarWidth
+                    let fit = PlatyEarFit(earWidth: ear, dots: dots.dots.count, overflow: dots.overflow)
+                    let label = "\(count) sessions, \(w), notch=\(l.hasNotch), ear=\(ear)"
+                    XCTAssertGreaterThanOrEqual(ear, PlatyEarFit.platy, "Platy fits the ear: " + label)
+                    XCTAssertLessThanOrEqual(fit.width, ear, label)
+                    XCTAssertEqual(fit.dots + fit.overflowCount, count, "every session counted: " + label)
+                }
+            }
+        }
+    }
+
     // MARK: - Settings (C36)
 
     func testShowPlatyDefaultsOnAndDecodes() throws {

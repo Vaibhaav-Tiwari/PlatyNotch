@@ -45,6 +45,7 @@ struct HUDView: View {
 /// The Today tab tile: whether our HUD is on, and why not when it is not.
 struct HUDTile: View {
     let widget: HUDWidget
+    @State private var probe = WindowProbe()
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -60,7 +61,7 @@ struct HUDTile: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    HUDAccessButtons(widget: widget)
+                    HUDAccessButtons(widget: widget, probe: probe)
                 } else if let output = widget.outputName {
                     Text(verbatim: "Output: \(output)").font(.system(size: 11)).foregroundStyle(.secondary)
                 }
@@ -68,19 +69,22 @@ struct HUDTile: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(WindowReader(probe: probe))
+        .task(id: widget.status) { await HUDAccessButtons.watch(widget, probe: probe) }
     }
 }
 
 /// Settings › Widgets › Volume & brightness HUD.
 struct HUDSettingsView: View {
     let widget: HUDWidget
+    @State private var probe = WindowProbe()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let why = widget.explanation {
                 Label { Text(verbatim: why).fixedSize(horizontal: false, vertical: true) }
                     icon: { Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange) }
-                HUDAccessButtons(widget: widget)
+                HUDAccessButtons(widget: widget, probe: probe)
             } else if widget.status == .on {
                 Label("On: volume, brightness and keyboard-backlight keys show this HUD instead of the system's.",
                       systemImage: "checkmark.circle.fill")
@@ -98,6 +102,8 @@ struct HUDSettingsView: View {
             .fixedSize(horizontal: false, vertical: true)
         }
         .font(.system(size: 11))
+        .background(WindowReader(probe: probe))
+        .task(id: widget.status) { await HUDAccessButtons.watch(widget, probe: probe) }
     }
 }
 
@@ -105,12 +111,13 @@ struct HUDSettingsView: View {
 /// "Open System Settings" and, after a refused tap, "Retry".
 struct HUDAccessButtons: View {
     let widget: HUDWidget
+    let probe: WindowProbe
 
     var body: some View {
         HStack(spacing: 8) {
             switch widget.status {
             case .needsAccessibility:
-                Button("Allow Accessibility…") { widget.requestAccess() }
+                Button("Allow Accessibility…") { widget.requestAccess(isOnScreen: { [probe] in probe.isOnScreen }) }
                 Button("Open System Settings") { Permissions.open(.accessibility) }
             case .tapRefused:
                 Button("Retry") { widget.retry() }
@@ -120,5 +127,12 @@ struct HUDAccessButtons: View {
             }
         }
         .controlSize(.small)
+    }
+
+    /// Re-reads trust every couple of seconds while "Allow" is on screen (a grant made in
+    /// System Settings shows up without reopening anything).
+    static func watch(_ widget: HUDWidget, probe: WindowProbe) async {
+        guard widget.status == .needsAccessibility else { return }
+        await widget.watchTrustWhileVisible(isOnScreen: { probe.isOnScreen })
     }
 }

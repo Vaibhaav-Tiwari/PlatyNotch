@@ -47,7 +47,11 @@ func (a *app) doctor(_ context.Context, args []string) int {
 		line(true, "config %s", paths.Config())
 	}
 
-	if _, err := os.Stat(paths.HookBinary()); err != nil {
+	if dest, dangling := danglingLink(paths.HookBinary()); dangling {
+		// Every hook and the Claude status line run this path: nothing reaches the notch.
+		line(false, "hook binary %s points at %s, which no longer exists (the app was moved, rebuilt or deleted): open PlatyNotch to re-point it, or run `notch hooks install`",
+			paths.HookBinary(), dest)
+	} else if _, err := os.Stat(paths.HookBinary()); err != nil {
 		info("hook binary %s missing (created by `notch hooks install`)", paths.HookBinary())
 	} else {
 		line(true, "hook binary %s", paths.HookBinary())
@@ -99,4 +103,20 @@ func statuslineInstalled() (bool, error) {
 		return false, nil
 	}
 	return hookjson.IsOursStatusline(sl.Command), nil
+}
+
+// danglingLink reports whether p is a symlink whose target is gone, and the target.
+func danglingLink(p string) (string, bool) {
+	st, err := os.Lstat(p)
+	if err != nil || st.Mode()&os.ModeSymlink == 0 {
+		return "", false
+	}
+	dest, err := os.Readlink(p)
+	if err != nil {
+		return "", false
+	}
+	if _, err := os.Stat(p); err == nil {
+		return dest, false
+	}
+	return dest, true
 }

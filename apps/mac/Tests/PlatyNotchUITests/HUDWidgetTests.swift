@@ -94,10 +94,12 @@ final class HUDWidgetTests: DefaultsTestCase {
         var surfaces: PanelSurfaces!
         var widget: HUDWidget!
         var controllers: [NotchController] = []
+        var sleeps = 0
+        var reads = 0
     }
 
     /// A registry with the HUD widget and one panel per display in `displays`.
-    private func rig(trusted: Bool = true, displays: [CGDirectDisplayID] = [1]) -> Rig {
+    private func rig(trusted: Bool = true, displays: [CGDirectDisplayID] = [1], identity: String = "dr:this-build") -> Rig {
         let r = Rig()
         r.trusted = trusted
         let client = CoreClient(socketPath: "/nonexistent")
@@ -107,7 +109,10 @@ final class HUDWidgetTests: DefaultsTestCase {
         r.widget = HUDWidget(
             makeTap: { [unowned r] in r.taps += 1; return r.tap },
             makeControls: { [unowned r] in HUDControls(volume: r.volume, brightness: r.brightness, backlight: r.backlight) },
-            trust: AccessibilityTrust(isTrusted: { [unowned r] in r.trusted }, request: { [unowned r] in r.prompts += 1 }))
+            trust: AccessibilityTrust(isTrusted: { [unowned r] in r.reads += 1; return r.trusted }, request: { [unowned r] in r.prompts += 1 }),
+            identity: { identity },
+            pollSleep: { [unowned r] in r.sleeps += 1; await Task.yield() },
+            allowSleep: { await Task.yield() })
         r.registry.register(r.widget)
         let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("pnhud\(UUID().uuidString)")
         r.registry.start(context: WidgetContext(store: AppStore(), client: client,
@@ -382,5 +387,176 @@ final class HUDWidgetTests: DefaultsTestCase {
         XCTAssertFalse(r.surfaces.showHUD(kind: .volume, level: 0.3, display: 2),
                        "full screen on the target: false even though display 1 could show it")
         XCTAssertEqual(r.surfaces.hudReadiness, HUDReadiness(displays: [1]))
+    }
+
+    // MARK: - Feedback 7: "Allow Accessibility" stays after allowing
+
+    /// A first-time user (no grant ever seen) is never told "rebuilt", and nothing appears
+    /// on a timer: only after Allow and coming back does the conditional advice show.
+    func testFirstTimeUserGetsConditionalAdviceOnlyAfterComingBack() async {
+        let r = rig(trusted: false)
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        XCTAssertEqual(r.widget.advice, .none, "not before Allow")
+        r.widget.requestAccess()
+        for _ in 0..<5 { r.widget.recheckTrust() }
+        XCTAssertEqual(r.widget.advice, .none, "still finding the switch: no advice, however long")
+        NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: NSApp)
+        NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApp)
+        let shown = await eventually { r.widget.advice == .maybeStale }
+        XCTAssertTrue(shown)
+        let text = r.widget.explanation ?? ""
+        XCTAssertTrue(text.contains(PermissionAdvice.accessibilityMaybeStale), text)
+        XCTAssertFalse(text.contains("rebuilt"), text)
+        r.registry.setEnabled(HUDWidget.widgetID, false)
+    }
+
+    /// The system prompt going away can reactivate PlatyNotch before the user has been to
+    /// System Settings: no advice yet. Leaving System Settings counts as the visit.
+    func testReactivationWithoutLeavingAddsNothingUntilSettingsWasVisited() async {
+        let r = rig(trusted: false)
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        r.widget.requestAccess()
+        r.widget.userReturned()
+        r.widget.recheckTrust()
+        XCTAssertEqual(r.widget.advice, .none, "no deactivation since the click: only the prompt went away")
+        NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: NSApp)
+        r.widget.userReturned()
+        r.widget.recheckTrust()
+        XCTAssertEqual(r.widget.advice, .maybeStale)
+        r.registry.setEnabled(HUDWidget.widgetID, false)
+    }
+
+    /// The reads after Allow happen only while the Allow window is on screen, and stop
+    /// once trust is granted.
+    func testReadsAfterAllowWaitForTheWindowToBeOnScreen() async {
+        let r = rig(trusted: false)
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        var onScreen = false
+        r.widget.requestAccess(isOnScreen: { onScreen })
+        r.trusted = true
+        let before = r.reads
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(r.reads, before, "off screen: no trust reads")
+        XCTAssertEqual(r.widget.status, .needsAccessibility)
+        onScreen = true
+        let on = await eventually { r.widget.status == .on }
+        XCTAssertTrue(on)
+        let after = r.reads
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(r.reads, after, "granted: the loop is gone")
+        r.registry.setEnabled(HUDWidget.widgetID, false)
+    }
+
+    /// Turning the widget off ends the reads after Allow.
+    func testStopEndsTheReadsAfterAllow() async {
+        let r = rig(trusted: false)
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        r.widget.requestAccess()
+        r.registry.setEnabled(HUDWidget.widgetID, false)
+        let before = r.reads
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(r.reads, before)
+    }
+
+    /// Coming back without having clicked Allow adds nothing.
+    func testComingBackWithoutAllowAddsNothing() async {
+        let r = rig(trusted: false)
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        r.widget.userReturned()
+        r.widget.recheckTrust()
+        XCTAssertEqual(r.widget.advice, .none)
+        r.registry.setEnabled(HUDWidget.widgetID, false)
+    }
+
+    /// Trust seen for this very build, then lost: conditional advice after Allow and back.
+    func testThisBuildGrantLostGetsConditionalAdvice() {
+        defaults().set("dr:this-build", forKey: AccessibilityGrant.key)
+        let r = rig(trusted: false, identity: "dr:this-build")
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        XCTAssertEqual(r.widget.advice, .none)
+        r.widget.requestAccess()
+        NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: NSApp)
+        r.widget.userReturned()
+        r.widget.recheckTrust()
+        XCTAssertEqual(r.widget.advice, .maybeStale)
+        r.registry.setEnabled(HUDWidget.widgetID, false)
+    }
+
+    /// Trust once seen for another build: the definite "rebuilt" text at once, before any click.
+    func testGrantForAnotherBuildIsExplainedAtOnce() {
+        defaults().set("dr:old-build", forKey: AccessibilityGrant.key)
+        let r = rig(trusted: false, identity: "dr:new-build")
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        XCTAssertEqual(r.widget.advice, .rebuilt)
+        XCTAssertTrue(r.widget.explanation?.contains(PermissionAdvice.accessibilityRebuilt) == true,
+                      r.widget.explanation ?? "")
+        r.registry.setEnabled(HUDWidget.widgetID, false)
+    }
+
+    /// A working grant is stamped with this build, so a later rebuild can be recognised.
+    func testTrustIsStampedWithThisBuild() {
+        let r = rig(trusted: true, identity: "dr:this-build")
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        XCTAssertEqual(defaults().string(forKey: AccessibilityGrant.key), "dr:this-build")
+        r.registry.setEnabled(HUDWidget.widgetID, false)
+    }
+
+    /// Coming back to PlatyNotch, or the Settings window closing, re-reads trust.
+    func testBecomingActiveAndSettingsClosingRecheckTrust() async {
+        let r = rig(trusted: false)
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        r.trusted = true
+        NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApp)
+        let on = await eventually { r.widget.status == .on }
+        XCTAssertTrue(on)
+        r.trusted = false
+        let settings = NSWindow(contentRect: .init(x: 0, y: 0, width: 10, height: 10), styleMask: [.titled],
+                                backing: .buffered, defer: true)
+        settings.isReleasedWhenClosed = false
+        settings.identifier = AppWindowID.settings
+        NotificationCenter.default.post(name: NSWindow.willCloseNotification, object: settings)
+        let off = await eventually { r.widget.status == .needsAccessibility }
+        XCTAssertTrue(off)
+        r.registry.setEnabled(HUDWidget.widgetID, false)
+    }
+
+    /// Only the Settings and onboarding windows count; panels, pickers and alerts do not.
+    func testOnlySettingsLikeWindowsCount() {
+        let w = NSWindow(contentRect: .init(x: 0, y: 0, width: 10, height: 10), styleMask: [.titled],
+                         backing: .buffered, defer: true)
+        w.isReleasedWhenClosed = false
+        XCTAssertFalse(AppWindowID.isSettingsLike(w))
+        XCTAssertFalse(AppWindowID.isSettingsLike(nil))
+        w.identifier = AppWindowID.onboarding
+        XCTAssertTrue(AppWindowID.isSettingsLike(w))
+        w.identifier = AppWindowID.settings
+        XCTAssertTrue(AppWindowID.isSettingsLike(w))
+        w.identifier = NSUserInterfaceItemIdentifier("dev.platynotch.clip-picker")
+        XCTAssertFalse(AppWindowID.isSettingsLike(w))
+    }
+
+    /// The Allow UI's poll reads trust only while its window is really on screen, and
+    /// ends by itself once trusted.
+    func testPollReadsTrustOnlyWhileTheWindowIsOnScreen() async {
+        let r = rig(trusted: false)
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        var onScreen = false
+        let watch = Task { await r.widget.watchTrustWhileVisible(isOnScreen: { onScreen }) }
+        r.trusted = true
+        let polled = await eventually { r.sleeps >= 5 }
+        XCTAssertTrue(polled)
+        XCTAssertEqual(r.widget.status, .needsAccessibility, "covered or hidden window: no reads")
+        onScreen = true
+        let on = await eventually { r.widget.status == .on }
+        XCTAssertTrue(on)
+        await watch.value   // returns by itself once trusted
+        r.registry.setEnabled(HUDWidget.widgetID, false)
+    }
+
+    func testOnScreenNeedsVisibleAndUncovered() {
+        XCTAssertTrue(WindowProbe.isOnScreen(visible: true, occlusion: .visible))
+        XCTAssertFalse(WindowProbe.isOnScreen(visible: true, occlusion: []))
+        XCTAssertFalse(WindowProbe.isOnScreen(visible: false, occlusion: .visible))
+        XCTAssertFalse(WindowProbe.isOnScreen(nil))
     }
 }

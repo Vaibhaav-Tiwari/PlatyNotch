@@ -6,9 +6,12 @@ import SwiftUI
 
 /// A notice in the tile (and, for a finished shortcut, a short peek).
 struct LaunchNotice: Equatable {
+    typealias Help = PermissionHelp
+
     let id = UUID()
     var text: String
     var isError: Bool
+    var help: Help? = nil
 }
 
 /// Pinned sites (up to 12, opened in the default browser) and pinned Shortcuts (up to 8,
@@ -32,6 +35,7 @@ final class LaunchWidget: NotchWidget {
     static let widgetID = "launch"
     static let resultPeekID = "launch.result"
     static let noticeSeconds: Double = 8
+    static let helpNoticeSeconds: Double = 60
     static let peekSeconds: Double = 4
     /// How often a running widget checks for icons past 30 days.
     static let refreshInterval: Duration = .seconds(86_400)
@@ -62,6 +66,8 @@ final class LaunchWidget: NotchWidget {
     @ObservationIgnored private let tabs: BrowserTabReading
     @ObservationIgnored private let opener: @MainActor (URL) -> Bool
     @ObservationIgnored private let clock: @Sendable () -> Date
+    /// Which build each browser last answered (a refusal after a rebuild is explained).
+    @ObservationIgnored private let grants: AutomationGrants
     /// Made at the first start (no session exists while the widget was never on).
     @ObservationIgnored private(set) var cache: FaviconCache?
     @ObservationIgnored private(set) var running = false
@@ -81,7 +87,8 @@ final class LaunchWidget: NotchWidget {
          shortcuts: ShortcutsRunning = ShortcutsRunner(),
          tabs: BrowserTabReading? = nil,
          open: @escaping @MainActor (URL) -> Bool = { NSWorkspace.shared.open($0) },
-         clock: @escaping @Sendable () -> Date = Date.init) {
+         clock: @escaping @Sendable () -> Date = Date.init,
+         identity: @escaping () -> String = { CodeIdentity.current }) {
         self.defaults = defaults
         self.faviconDirectory = faviconDirectory
         makeFetcher = fetcher
@@ -89,6 +96,7 @@ final class LaunchWidget: NotchWidget {
         self.tabs = tabs ?? AppleScriptTabReader()
         opener = open
         self.clock = clock
+        grants = AutomationGrants(defaults: defaults, identity: identity)
         pins = defaults.map(LaunchPins.load(from:)) ?? LaunchPins()
     }
 
@@ -272,6 +280,7 @@ final class LaunchWidget: NotchWidget {
     private func handle(_ result: TabReadResult) {
         switch result {
         case .url(let url, let browser):
+            grants.noteAccepted(browser.rawValue)
             pin(url, from: browser)
         case .noBrowser:
             show("Open Safari, Chrome or Arc first.", error: true)
@@ -280,8 +289,9 @@ final class LaunchWidget: NotchWidget {
         case .notWebPage(let b):
             show("\(b.name)’s tab is not a web page (only http and https can be pinned).", error: true)
         case .denied(let b):
-            show("PlatyNotch may not ask \(b.name) for its tab. Allow it in System Settings › Privacy & Security › Automation.",
-                 error: true)
+            let history = grants.history(b.rawValue)
+            let text = "Could not read \(b.name)’s tab. " + PermissionAdvice.automationDenied(app: b.name, history: history)
+            show(text, error: true, help: .automation(reset: history != .thisBuild))
         case .timedOut(let b):
             show("\(b.name) did not answer.", error: true)
         case .busy(let b):
@@ -362,12 +372,14 @@ final class LaunchWidget: NotchWidget {
 
     // MARK: - Notices and saving
 
-    private func show(_ text: String, error: Bool) {
-        let n = LaunchNotice(text: text, isError: error)
+    private func show(_ text: String, error: Bool, help: LaunchNotice.Help? = nil) {
+        let n = LaunchNotice(text: text, isError: error, help: help)
         notice = n
         noticeTask?.cancel()
+        // Steps to follow stay long enough to read and act on.
+        let seconds: Double = help == nil ? Self.noticeSeconds : Self.helpNoticeSeconds
         noticeTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(Self.noticeSeconds))
+            try? await Task.sleep(for: .seconds(seconds))
             guard let self, !Task.isCancelled, self.notice?.id == n.id else { return }
             self.notice = nil
         }

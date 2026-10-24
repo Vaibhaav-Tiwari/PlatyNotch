@@ -499,6 +499,11 @@ struct ClipThumbnail: View {
 struct ClipboardSettings: View {
     let widget: ClipboardWidget
     @State private var trusted = false
+    /// "Allow Accessibility…" clicked (this window), and the user came back since: if trust
+    /// is still off, say what to try (feedback 7).
+    @State private var allowReturn = AllowReturn()
+    @State private var advice: PermissionAdvice.AccessibilityAdvice = .none
+    @State private var probe = WindowProbe()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -557,16 +562,53 @@ struct ClipboardSettings: View {
             } else {
                 Text("To paste with ↩, PlatyNotch needs Accessibility (to press ⌘V for you). Without it, ↩ copies and you press ⌘V.")
                     .fixedSize(horizontal: false, vertical: true)
+                if let text = advice.text {
+                    Text(verbatim: text)
+                        .foregroundStyle(Theme.color(.attention))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 HStack {
                     Button("Allow Accessibility…") {
+                        allowReturn.allowClicked()
                         widget.trust.request()
-                        trusted = widget.trust.isTrusted()
+                        recheck()
                     }
-                    Button("Check Again") { trusted = widget.trust.isTrusted() }
+                    Button("Check Again") { recheck() }
+                    Button("Open System Settings") { Permissions.open(.accessibility) }
                 }
             }
         }
         .font(.system(size: 12))
-        .onAppear { trusted = widget.trust.isTrusted() }
+        .background(WindowReader(probe: probe))
+        .onAppear { recheck() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            allowReturn.appResigned()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            allowReturn.appBecameActive()
+            recheck()
+        }
+        .task(id: trusted) { await pollWhileUntrusted() }
+    }
+
+    /// Reads trust (never prompts), stamps a working grant with this build, and works out
+    /// whether the "remove and allow again" advice applies.
+    private func recheck() {
+        let now = widget.trust.isTrusted()
+        let defaults = UserDefaults.standard
+        let identity = CodeIdentity.current
+        if now { AccessibilityGrant.note(defaults, identity: identity) }
+        let history = AccessibilityGrant.history(defaults, identity: identity)
+        advice = PermissionAdvice.accessibility(trusted: now, returnedAfterAllow: allowReturn.returned, history: history)
+        if trusted != now { trusted = now }
+    }
+
+    /// Every 2 s while the Allow row is shown and its window is really on screen.
+    private func pollWhileUntrusted() async {
+        while !Task.isCancelled, !trusted {
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            if probe.isOnScreen { recheck() }
+        }
     }
 }

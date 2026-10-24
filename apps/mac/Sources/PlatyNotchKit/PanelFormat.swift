@@ -34,6 +34,16 @@ public enum PanelFormat {
         "\(Int((usageFraction(usedPercent) * 100).rounded()))%"
     }
 
+    /// Shown under the usage bars while a Claude Code session is listed but no Claude limits
+    /// have arrived: they come only through Claude Code's status line (`notch statusline`),
+    /// which Claude Code runs after a reply, and only on Pro and Max plans.
+    public static func claudeLimitsHint(usage: Usage, sessions: [Session]) -> String? {
+        let hasClaude = sessions.contains { $0.agent == "claude-code" }
+        guard hasClaude else { return nil }
+        if let c = usage.claude, c.fiveHour != nil || c.weekly != nil { return nil }
+        return "Claude's limits appear after Claude Code's next reply (Pro and Max plans), with Settings › Agents › Claude Code status line on. Still nothing? Run diagnostics there."
+    }
+
     public static func stateLabel(_ state: SessionState) -> String {
         switch state {
         case .active: "Working"

@@ -23,6 +23,8 @@ final class PanelViewModel {
     var ringingChip: RingingItem?
     /// Stops a ringing alarm or timer (the chip; a card no running widget draws any more).
     var onStopRinging: (String) -> Void = { _ in }
+    /// The open panel's Settings gear (never in the approval peek, no keyboard shortcut).
+    var onOpenSettings: () -> Void = {}
     /// Settings › Appearance, clamped (live side, theme, spring).
     var appearance: AppearanceSettings = AppearanceSettings()
 }
@@ -136,7 +138,8 @@ struct PanelRootView: View {
             ExpandedPanel(store: store, responder: responder, arming: model.arming, today: today,
                           widgets: widgets, memory: memory, extraTabs: extraTabs,
                           selectedTab: Binding(get: { model.selectedTab }, set: { model.selectedTab = $0 }),
-                          onCollapse: model.onClick, onDecide: decide, onOpenTerminal: onOpenTerminal)
+                          onCollapse: model.onClick, onOpenSettings: model.onOpenSettings,
+                          onDecide: decide, onOpenTerminal: onOpenTerminal)
                 .padding(EdgeInsets(top: top, leading: 12, bottom: 10, trailing: 12))
                 .overlay(alignment: .bottom) { hudIndicator }
         case .peek(.widget(let id)):

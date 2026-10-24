@@ -953,3 +953,53 @@ cd apps/mac && swift build && PLATYNOTCH_RENDER_DIR=/tmp/pn-renders PLATYNOTCH_H
 - [ ] **191. Ringing card pulse.** Let a 5 s timer ring with the panel closed: the ring
   around the bell grows and fades smoothly; Activity Monitor shows PlatyNotch near 0% CPU
   while it rings. With Reduce Motion the ring is still.
+
+## User feedback round 1
+
+Use an installed build (`scripts/build-app.sh`). Never change privacy settings for the
+tester: these checks only read what the app says.
+
+- [ ] **192. Platy with many sessions.** Always-on, Show Platy on, six or more sessions
+  (`scripts/fake-events.sh` or real agents): at each Pill width (Compact, Standard, Wide),
+  with and without a notch, Platy shows first in the agents ear, then the dots that fit and
+  "+n" (a badge on Platy at Compact beside a notch); the count adds up to every session.
+- [ ] **193. Music heart.** Play a track in Music and open Today. The heart shows Music's
+  state (filled for a favourite) once PlatyNotch may control Music; it is read when the
+  tile appears and on a track change while it shows, never while the panel is closed. Click it: it fills or
+  empties and Music's heart follows. With Automation › PlatyNotch › Music off, a click says
+  so under the controls with the exact path, Open Automation Settings and, if the app was
+  rebuilt, Copy Command (`tccutil reset AppleEvents dev.platynotch.app`; the message says it
+  clears every Automation permission PlatyNotch has: terminal focus, Music, Spotify, browsers). Nothing playing:
+  "Music has no current track to favourite."
+- [ ] **194. HUD after allowing Accessibility.** Turn on the HUD, click Allow Accessibility…,
+  allow PlatyNotch in System Settings and come back: within 2 s the tile shows the HUD on,
+  without reopening anything. A first-time user who clicks Allow and leaves System Settings
+  without turning it on sees only "If you already turned PlatyNotch on in Accessibility and
+  this still shows, remove it (−) and allow it again" (never "rebuilt", and nothing on a
+  timer before coming back). Rebuild the app (new ad-hoc signature) and relaunch: the tile
+  says "PlatyNotch was rebuilt or updated: … remove PlatyNotch (−) and allow it again" at
+  once; doing that turns it on. The same texts show in Settings › Permissions ›
+  Accessibility and under Settings › Widgets › Clipboard history when ↩ cannot paste. With
+  Settings minimised or covered, Console shows no trust reads every 2 s.
+- [ ] **195. Calendar from the notch.** With Calendar access never asked (`tccutil reset
+  Calendar dev.platynotch.app`, run by the tester), open the notch, Today, and click Allow
+  Calendar Access on the meeting tile without opening Settings: macOS asks at once; after
+  answering, the app you were using has the keyboard again. The same for Reminders' Allow
+  Reminders Access.
+- [ ] **196. Settings from the notch.** Open the panel: a gear sits left of the close
+  chevron; clicking it opens Settings. It has no keyboard shortcut, and the approval peek has
+  no gear. `open platynotch://settings` and `open platynotch://settings/widgets` open Settings
+  (at Widgets).
+- [ ] **197. Claude's limits.** With Settings › Agents › Claude Code status line on and a
+  Pro or Max plan, send Claude Code one message: the Agents tab shows Claude's 5 h and Week
+  bars next to Codex's. Before that, with a Claude Code session listed, a line under the bars
+  says where Claude's limits come from. Move or delete the app bundle that
+  `~/Library/Application Support/PlatyNotch/bin/notch` points at: `notch doctor` (Settings ›
+  Agents › Run diagnostics) reports `FAIL hook binary … no longer exists`; opening the app
+  again re-points it.
+- [ ] **198. Add current tab after a rebuild.** Pin a Safari tab with Add current tab
+  (allow when asked). Rebuild the app and relaunch, then click Add current tab again: the
+  notice names Safari, says PlatyNotch was rebuilt and that macOS does not ask again, and
+  offers Copy Command (`tccutil reset AppleEvents dev.platynotch.app`). After the tester runs
+  it, the next click asks again. With Safari's switch simply off (same build), the notice
+  gives System Settings › Privacy & Security › Automation › PlatyNotch › Safari instead.

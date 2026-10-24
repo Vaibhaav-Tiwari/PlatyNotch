@@ -443,6 +443,49 @@ final class LaunchWidgetTests: DefaultsTestCase {
         r.widget.stop()
     }
 
+    /// Feedback 13: "Add current tab" worked once, then a rebuilt PlatyNotch was refused
+    /// (-1743) without macOS asking again. The notice says which browser, why, and how out:
+    /// the Automation path when this build had it, the reset command after a rebuild.
+    func testDeniedAfterARebuildExplainsTheReset() async throws {
+        let d = defaults()
+        let tabs = FakeTabs()
+        func widget(_ identity: String) -> LaunchWidget {
+            LaunchWidget(defaults: d, faviconDirectory: nil, fetcher: { RefusingFaviconFetcher() },
+                         shortcuts: FakeShortcuts(), tabs: tabs, open: { _ in true }, identity: { identity })
+        }
+        let first = widget("dr:build-A")
+        first.start(context: context())
+        tabs.result = .url(URL(string: "https://b.com/page")!, .safari)
+        first.addCurrentTab()
+        await waitFor { !first.readingTab }
+        XCTAssertEqual(first.notice?.text, "Pinned b.com from Safari")
+
+        // The same build, then the switch turned off: the exact Automation path.
+        tabs.result = .denied(.safari)
+        first.addCurrentTab()
+        await waitFor { !first.readingTab }
+        let off = try XCTUnwrap(first.notice)
+        XCTAssertTrue(off.text.contains("System Settings › Privacy & Security › Automation › PlatyNotch › Safari"), off.text)
+        XCTAssertFalse(off.text.contains("tccutil"), off.text)
+        XCTAssertEqual(off.help, .automation(reset: false))
+        first.stop()
+
+        // A rebuild (new code identity): macOS does not ask again; print the reset command.
+        let rebuilt = widget("dr:build-B")
+        rebuilt.start(context: context())
+        rebuilt.addCurrentTab()
+        await waitFor { !rebuilt.readingTab }
+        let notice = try XCTUnwrap(rebuilt.notice)
+        XCTAssertTrue(notice.text.contains("rebuilt"), notice.text)
+        XCTAssertTrue(notice.text.contains("Safari"), notice.text)
+        XCTAssertTrue(notice.text.contains(PermissionAdvice.resetAppleEvents), notice.text)
+        XCTAssertEqual(notice.help, .automation(reset: true))
+        rebuilt.stop()
+
+        // "Would need consent" with no prompt is the same refusal.
+        XCTAssertEqual(AppleScriptTabReader.result(.failure(-1744), browser: .chrome), .denied(.chrome))
+    }
+
     func testScriptResultsAreValidatedBeforePinning() {
         typealias R = AppleScriptTabReader
         XCTAssertEqual(R.result(.value("https://x.com/a"), browser: .chrome), .url(URL(string: "https://x.com/a")!, .chrome))

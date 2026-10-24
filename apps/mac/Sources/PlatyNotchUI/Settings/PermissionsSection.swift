@@ -17,6 +17,7 @@ struct PermissionsSection: View {
 /// Shared by Settings and onboarding.
 struct PermissionRows: View {
     let permissions: Permissions
+    @State private var probe = WindowProbe()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -25,8 +26,15 @@ struct PermissionRows: View {
                 why: "Reads the text of the window in front, for Memory, and lets the volume and brightness HUD take those keys.",
                 withoutIt: "Memory capture stays off and the system's volume and brightness HUD shows. Everything else works.",
                 state: permissions.accessibility ? .granted : .notAsked,
-                allow: { permissions.requestAccessibility() },
+                allow: { [probe] in permissions.requestAccessibility(isOnScreen: { probe.isOnScreen }) },
                 openSettings: { Permissions.open(.accessibility) })
+            if let advice = permissions.accessibilityAdvice.text {
+                Text(verbatim: advice)
+                    .font(.caption)
+                    .foregroundStyle(Theme.color(.attention))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 28)
+            }
             PermissionRow(
                 title: "Calendar", systemImage: "calendar",
                 why: "Shows your meetings, their join links and 10, 5 and 1-minute reminders; quick add can create events.",
@@ -64,6 +72,14 @@ struct PermissionRows: View {
                     }
                     .padding(.leading, 28)
                 }
+                if permissions.anyAutomationDenied {
+                    Text(verbatim: "Turned on but still refused, or macOS no longer asks? PlatyNotch was rebuilt or updated and macOS keeps the old answer. In Terminal run: \(PermissionAdvice.resetAppleEvents)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, 28)
+                }
             }
             PermissionRow(
                 title: "Notifications", systemImage: "bell.badge",
@@ -73,7 +89,15 @@ struct PermissionRows: View {
                 allow: { permissions.requestNotifications() },
                 openSettings: { Permissions.open(.notifications) })
         }
+        .background(WindowReader(probe: probe))
         .onAppear { permissions.refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            permissions.userLeft()
+        }
+        // Back from System Settings: show what was just allowed.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            permissions.userReturned()
+        }
     }
 
     private func state(_ access: CalendarService.Access) -> Permissions.State {

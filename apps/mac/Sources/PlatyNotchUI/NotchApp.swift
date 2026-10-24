@@ -135,6 +135,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         watchConfig()
         wireSettingsEntryPoints()
         if options.fakeNowPlaying { today.nowPlaying.fakePlaying = true }
+        // Smoke runs never script Music or Spotify (an unbundled run's Apple Events would
+        // be the terminal's, and could prompt for it).
+        if options.smoke || options.smokeSettings { today.nowPlaying.sendsAppleEvents = false }
         BuiltInWidgets.register(in: widgets, store: store, today: today,
                                 persist: !options.smoke && !options.smokeSettings, clipboard: clipboard)
         startPlugins()
@@ -328,6 +331,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                     onOpenTerminal: { TerminalFocus.focus(session: $0) },
                                     appearance: appearance,
                                     carryOver: state)
+            c.onOpenSettings = { [weak self] in self?.openSettings(section: nil) }
             c.attach(to: screen)
             return c
         }

@@ -80,6 +80,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 520),
                          styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
         w.title = "Welcome to PlatyNotch"
+        w.identifier = AppWindowID.onboarding
         w.titlebarAppearsTransparent = true
         // The window keeps this size. By default the hosting controller resizes the window
         // to the SwiftUI content's ideal size, which for these pages is thousands of points

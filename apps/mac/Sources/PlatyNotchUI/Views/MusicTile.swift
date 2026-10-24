@@ -31,6 +31,9 @@ struct MusicTile: View {
                     MusicScrubber(nowPlaying: nowPlaying)
                 }
                 controls
+                if let message = nowPlaying.likeMessage {
+                    LikeMessage(text: message, help: nowPlaying.likeHelp)
+                }
             }
             .padding(8)
             .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -77,6 +80,8 @@ struct MusicTile: View {
             if nowPlaying.canLike {
                 control(nowPlaying.liked == true ? "heart.fill" : "heart",
                         nowPlaying.liked == true ? "Remove from favourites" : "Add to favourites") { nowPlaying.toggleLike() }
+                    .disabled(nowPlaying.likeBusy)
+                    .opacity(nowPlaying.likeBusy ? 0.5 : 1)
             }
             Spacer(minLength: 0)
             control("backward.fill", "Previous track") { nowPlaying.previous() }
@@ -94,6 +99,23 @@ struct MusicTile: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
+    }
+}
+
+/// Why the heart did not work, with the Automation buttons when Music refused PlatyNotch.
+private struct LikeMessage: View {
+    let text: String
+    let help: PermissionHelp?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Label(text, systemImage: "exclamationmark.triangle")
+                .font(.system(size: 10))
+                .foregroundStyle(Theme.tint(.warning))
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+            if let help { PermissionHelpButtons(help: help) }
+        }
     }
 }
 

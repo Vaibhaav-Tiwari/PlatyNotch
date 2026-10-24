@@ -346,3 +346,26 @@ func TestDoctor(t *testing.T) {
 		t.Fatalf("doctor with core: %+v", r)
 	}
 }
+
+// A hook link left pointing into a deleted app bundle (a rebuilt or removed
+// PlatyNotch.app) breaks every hook and the Claude status line, so Claude's limits
+// never reach usage.json. Doctor names it as a failure and says how to fix it.
+func TestDoctorDanglingHookBinary(t *testing.T) {
+	_, user, _ := env(t)
+	if err := os.MkdirAll(filepath.Join(user, ".claude"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := paths.HookBinary()
+	if err := os.MkdirAll(filepath.Dir(link), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	gone := filepath.Join(t.TempDir(), "Old.app", "Contents", "MacOS", "notch")
+	if err := os.Symlink(gone, link); err != nil {
+		t.Fatal(err)
+	}
+	r := run(t, "", []string{"doctor"})
+	if !strings.Contains(r.stdout, "FAIL  hook binary "+link+" points at "+gone+", which no longer exists") ||
+		!strings.Contains(r.stdout, "open PlatyNotch") {
+		t.Fatalf("doctor output:\n%s", r.stdout)
+	}
+}
