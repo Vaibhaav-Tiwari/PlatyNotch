@@ -428,14 +428,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Task 9's views with an inert widget (no IOKit, no assertion, nothing saved): the
-    /// tile and settings, a battery row and the plug-in / unplug peeks with sample states.
+    /// tile and settings, a battery row, the plug-in / unplug peeks and the headphones
+    /// peek, row and settings with sample states (no Bluetooth).
     private static func systemViews() -> [AnyView] {
         let w = SystemWidget.inert()
         let charging = BatteryState(percent: 72, charging: true, pluggedIn: true, minutesRemaining: 48)
         let low = BatteryState(percent: 8, charging: false, pluggedIn: false, minutesRemaining: 12)
+        let airPods = HeadphonesInfo(id: "smoke", name: "AirPods Pro", battery: .init(left: 80, right: 75, case: 40))
         return [w.tileView(), w.settingsView(), AnyView(BatteryRow(state: low)),
                 AnyView(PowerPeekView(peek: .init(change: .pluggedIn, state: charging))),
-                AnyView(PowerPeekView(peek: .init(change: .unplugged, state: low)))].compactMap { $0 }
+                AnyView(PowerPeekView(peek: .init(change: .unplugged, state: low))),
+                AnyView(HeadphonesPeekView(info: airPods)), AnyView(HeadphonesRow(info: airPods)),
+                AnyView(HeadphonesPeekView(info: .init(id: "smoke2", name: "Headphones", battery: .init()))),
+                AnyView(HeadphonesSettings(widget: w))].compactMap { $0 }
     }
 
     /// `--smoke-settings`: builds the Settings window (every section) and the onboarding

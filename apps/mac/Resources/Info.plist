@@ -52,6 +52,8 @@
 	<string>PlatyNotch asks your terminal app to bring an agent's tab to the front, and asks Spotify or Music what is playing.</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>PlatyNotch listens to what your Mac is playing, only while music plays, to move the bars. Nothing is recorded or kept.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>PlatyNotch shows when your AirPods or other headphones connect, with their battery, after you turn this on in Settings. It never pairs or connects devices.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>PlatyNotch shows your meetings and their reminders in the notch, and adds events you type in quick add. Calendar data stays on your Mac.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>

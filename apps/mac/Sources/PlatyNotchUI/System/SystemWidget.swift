@@ -3,7 +3,7 @@ import Observation
 import PlatyNotchKit
 import SwiftUI
 
-/// Battery, keep-awake (and, as opt-in sub-features, headphones and downloads).
+/// Battery, keep-awake and, as opt-in sub-features, headphones and downloads.
 ///
 /// On by default with only the parts that need no permission: the battery (plug-in and
 /// unplug peeks with the percent; a low-battery live activity at `LivePriority.batteryLow`;
@@ -13,12 +13,40 @@ import SwiftUI
 /// Turned off it does nothing: no power-source run-loop source and no assertion
 /// (`stop` releases it; so do `disabled()` and quit). A keep-awake is never persisted,
 /// so nothing is re-created on launch. Desktop Macs have no battery: no source, no rows.
+///
+/// Headphones (AirPods connect peek with the battery, best effort) need Bluetooth access:
+/// off until turned on from its button in Settings, the only place the prompt can appear.
+/// At launch it registers only when access was already allowed; otherwise the settings
+/// show the button again. Off (or the widget off): no Bluetooth notifications.
 @MainActor @Observable
 final class SystemWidget: NotchWidget {
     static let widgetID = "system"
     static let powerPeekID = "system.power"
     static let batteryActivityID = "system.battery"
     static let keepAwakeActivityID = "system.keepAwake"
+    static let headphonesPeekID = "system.headphones"
+    static let headphonesPeekDuration: TimeInterval = 5
+    /// After the Bluetooth prompt, how long to watch for the answer (once a second).
+    static let accessWatch = 60
+
+    /// Which opt-in sub-features are on (`UserDefaults`, key `system.options`).
+    struct Options: Codable, Equatable {
+        static let key = "system.options"
+        var headphones = false
+        var downloads = false
+        /// A second folder to watch for downloads (chosen in Settings), as a path.
+        var extraFolder: String?
+
+        init(headphones: Bool = false, downloads: Bool = false, extraFolder: String? = nil) {
+            self.headphones = headphones
+            self.downloads = downloads
+            self.extraFolder = extraFolder
+        }
+
+        static func load(_ d: UserDefaults) -> Options {
+            d.data(forKey: key).flatMap { try? JSONDecoder().decode(Options.self, from: $0) } ?? Options()
+        }
+    }
     /// How long the plug-in / unplug peek stays.
     static let powerPeekDuration: TimeInterval = 4
 
@@ -37,16 +65,31 @@ final class SystemWidget: NotchWidget {
     /// The plug-in / unplug peek on show.
     private(set) var powerPeek: PowerPeek?
     let keepAwake: KeepAwake
+    private(set) var options: Options
+    /// Connected headphones (headphones on and running).
+    private(set) var headphones: [HeadphonesInfo] = []
+    /// The connect peek on show.
+    private(set) var headphonesPeek: HeadphonesInfo?
+    /// Headphones are on but Bluetooth is not allowed (not asked since launch, or denied).
+    private(set) var headphonesNeedAccess = false
+    /// Mirrors `headphoneSource.access` for the settings (refreshed on changes).
+    private(set) var bluetoothAccess: BluetoothAccess = .notDetermined
 
     @ObservationIgnored private let power: PowerSourceReading
+    @ObservationIgnored private let headphoneSource: HeadphonesSource
+    @ObservationIgnored private var headphonesWatching = false
+    @ObservationIgnored private var accessTask: Task<Void, Never>?
     @ObservationIgnored let defaults: UserDefaults
     @ObservationIgnored let persist: Bool
     @ObservationIgnored let clock: () -> Date
     @ObservationIgnored private(set) var context: WidgetContext?
 
     init(power: PowerSourceReading = SystemPowerSource(), asserter: PowerAsserting = SystemPowerAsserter(),
+         headphones: HeadphonesSource = SystemHeadphones(),
          defaults: UserDefaults = .standard, persist: Bool = true, clock: @escaping () -> Date = Date.init) {
         self.power = power
+        headphoneSource = headphones
+        options = Options.load(defaults)
         self.defaults = defaults
         self.persist = persist
         self.clock = clock
@@ -55,7 +98,7 @@ final class SystemWidget: NotchWidget {
 
     /// Reads no battery, asserts nothing and saves nothing (smoke runs).
     static func inert() -> SystemWidget {
-        SystemWidget(power: NoPowerSource(), asserter: NoPowerAsserter(),
+        SystemWidget(power: NoPowerSource(), asserter: NoPowerAsserter(), headphones: NoHeadphones(),
                      defaults: UserDefaults(suiteName: "dev.platynotch.inert-system") ?? .standard, persist: false)
     }
 
@@ -71,12 +114,14 @@ final class SystemWidget: NotchWidget {
         if battery != nil {
             power.start { [weak self] in self?.powerChanged() }
         }
+        if options.headphones { startHeadphones(prompting: false) }
     }
 
     func stop() {
         guard let context else { return }
         power.stop()
         keepAwake.stop()
+        stopHeadphones()
         if powerPeek != nil { context.endPeek(id: Self.powerPeekID) }
         powerPeek = nil
         battery = nil
@@ -106,6 +151,119 @@ final class SystemWidget: NotchWidget {
         guard powerPeek != nil else { return }
         powerPeek = nil
         context?.endPeek(id: Self.powerPeekID)
+    }
+
+    // MARK: - Headphones
+
+    /// The settings button (turn on / off). Turning on may show the Bluetooth prompt.
+    func setHeadphones(_ on: Bool) {
+        updateOptions { $0.headphones = on }
+        if on {
+            if isRunning { startHeadphones(prompting: true) }
+        } else {
+            stopHeadphones()
+        }
+    }
+
+    /// "Allow Bluetooth" in settings (headphones on, not asked since launch).
+    func requestHeadphonesAccess() {
+        guard isRunning, options.headphones else { return }
+        startHeadphones(prompting: true)
+    }
+
+    /// Re-reads battery (the tile appearing).
+    func refreshHeadphones() {
+        guard headphonesWatching else { return }
+        headphoneSource.refreshBattery()
+    }
+
+    /// `prompting`: from the button, so registering may ask for Bluetooth. At launch only
+    /// an allowed access registers.
+    private func startHeadphones(prompting: Bool) {
+        let access = headphoneSource.access
+        bluetoothAccess = access
+        guard access == .allowed || (prompting && access == .notDetermined) else {
+            headphonesNeedAccess = true
+            return
+        }
+        headphonesNeedAccess = false
+        registerHeadphones()
+        if access == .notDetermined { watchAccess() }
+    }
+
+    private func registerHeadphones() {
+        guard !headphonesWatching else { return }
+        headphonesWatching = true
+        headphoneSource.start { [weak self] event in self?.headphonesEvent(event) }
+    }
+
+    private func stopHeadphones() {
+        accessTask?.cancel()
+        accessTask = nil
+        headphonesNeedAccess = false
+        if headphonesWatching { headphoneSource.stop() }
+        headphonesWatching = false
+        headphones = []
+        if headphonesPeek != nil { context?.endPeek(id: Self.headphonesPeekID) }
+        headphonesPeek = nil
+    }
+
+    /// The prompt is up: once allowed, register afresh (a registration made before the
+    /// answer may have been refused) so connected headphones show. Bounded, button-only.
+    private func watchAccess() {
+        accessTask?.cancel()
+        accessTask = Task { @MainActor [weak self] in
+            for _ in 0..<Self.accessWatch {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled, let self, self.headphonesWatching else { return }
+                let access = self.headphoneSource.access
+                guard access != .notDetermined else { continue }
+                self.bluetoothAccess = access
+                self.headphoneSource.stop()
+                self.headphonesWatching = false
+                if access == .allowed { self.registerHeadphones() } else { self.headphonesNeedAccess = true }
+                return
+            }
+        }
+    }
+
+    private func headphonesEvent(_ event: HeadphonesEvent) {
+        guard headphonesWatching, let context else { return }
+        switch event {
+        case .present(let h):
+            upsert(h)
+        case .connected(let h):
+            let known = headphones.contains { $0.id == h.id }
+            upsert(h)
+            guard !known else { return }
+            headphonesPeek = h
+            if !context.peek(id: Self.headphonesPeekID, until: clock().addingTimeInterval(Self.headphonesPeekDuration)) {
+                headphonesPeek = nil
+            }
+        case .updated(let h):
+            upsert(h)
+            if headphonesPeek?.id == h.id { headphonesPeek = h }
+        case .disconnected(let id):
+            headphones.removeAll { $0.id == id }
+            if headphonesPeek?.id == id {
+                headphonesPeek = nil
+                context.endPeek(id: Self.headphonesPeekID)
+            }
+        }
+    }
+
+    private func upsert(_ h: HeadphonesInfo) {
+        if let i = headphones.firstIndex(where: { $0.id == h.id }) { headphones[i] = h } else { headphones.append(h) }
+    }
+
+    // MARK: - Options
+
+    func updateOptions(_ change: (inout Options) -> Void) {
+        var next = options
+        change(&next)
+        guard next != options else { return }
+        options = next
+        if persist, let data = try? JSONEncoder().encode(next) { defaults.set(data, forKey: Options.key) }
     }
 
     // MARK: - Keep awake (tile buttons)
@@ -154,6 +312,7 @@ final class SystemWidget: NotchWidget {
     func peekView(id: String) -> AnyView? {
         switch id {
         case Self.powerPeekID: powerPeek.map { AnyView(PowerPeekView(peek: $0)) }
+        case Self.headphonesPeekID: headphonesPeek.map { AnyView(HeadphonesPeekView(info: $0)) }
         default: nil
         }
     }

@@ -11,7 +11,58 @@ struct SystemTile: View {
                 BatteryRow(state: b)
             }
             KeepAwakeRow(widget: widget)
+            if widget.options.headphones {
+                ForEach(widget.headphones) { h in HeadphonesRow(info: h) }
+            }
         }
+        .onAppear { widget.refreshHeadphones() }
+    }
+}
+
+struct HeadphonesRow: View {
+    let info: HeadphonesInfo
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: HeadphonesText.symbol(info.name)).frame(width: 22).accessibilityHidden(true)
+            Text(verbatim: info.name).font(.system(size: 12)).lineLimit(1)
+            Spacer(minLength: 4)
+            if let summary = info.battery.summary {
+                Text(verbatim: summary).font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+enum HeadphonesText {
+    static func symbol(_ name: String) -> String {
+        let n = name.lowercased()
+        if n.contains("airpods max") { return "airpodsmax" }
+        if n.contains("airpods pro") { return "airpodspro" }
+        if n.contains("airpods") { return "airpods" }
+        return "headphones"
+    }
+}
+
+/// "AirPods Pro connected" with the battery when macOS reports it.
+struct HeadphonesPeekView: View {
+    let info: HeadphonesInfo
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: HeadphonesText.symbol(info.name))
+                .font(.system(size: 20, weight: .semibold))
+                .frame(width: 34, height: 34)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: info.name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                Text(info.battery.summary.map { "Connected · \($0)" } ?? "Connected")
+                    .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -119,6 +170,51 @@ struct SystemSettings: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            Divider()
+            HeadphonesSettings(widget: widget)
         }
+    }
+}
+
+/// The headphones button: the only place the Bluetooth prompt can appear.
+struct HeadphonesSettings: View {
+    let widget: SystemWidget
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label("AirPods and headphones", systemImage: "airpods")
+                Spacer()
+                if widget.options.headphones {
+                    if widget.headphonesNeedAccess {
+                        if widget.bluetoothAccess == .denied {
+                            Button("Open System Settings") { Permissions.open(.bluetooth) }
+                        } else {
+                            Button("Allow Bluetooth…") { widget.requestHeadphonesAccess() }
+                        }
+                    }
+                    Button("Turn Off") { widget.setHeadphones(false) }
+                } else {
+                    Button("Turn On…") { widget.setHeadphones(true) }
+                }
+            }
+            Text(status)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var status: String {
+        guard widget.options.headphones else {
+            return "Off. Turning it on asks for Bluetooth access, to show a peek when AirPods or other headphones "
+                + "connect, with their battery when macOS reports it. PlatyNotch never pairs or connects devices."
+        }
+        if widget.headphonesNeedAccess {
+            return widget.bluetoothAccess == .denied
+                ? "Bluetooth access is off for PlatyNotch (System Settings › Privacy & Security › Bluetooth)."
+                : "Waiting for Bluetooth access."
+        }
+        return widget.headphones.isEmpty ? "On. No headphones connected." : "On."
     }
 }

@@ -117,6 +117,41 @@ final class SystemTests: XCTestCase {
         XCTAssertFalse(forever.isExpired(at: t0.addingTimeInterval(1e7)), "until off never expires")
     }
 
+    // MARK: - Headphones
+
+    func testHeadphoneBatteryKeys() {
+        let b = HeadphoneBattery(values: ["BatteryPercentLeft": 80, "BatteryPercentRight": 75,
+                                          "BatteryPercentCase": 40, "BatteryPercentSingle": 0])
+        XCTAssertEqual(b.left, 80)
+        XCTAssertEqual(b.right, 75)
+        XCTAssertEqual(b.case, 40)
+        XCTAssertNil(b.single, "0 means not reported")
+        XCTAssertFalse(b.isEmpty)
+        XCTAssertEqual(b.summary, "L 80% · R 75% · Case 40%")
+        XCTAssertEqual(b.lowest, 75)
+    }
+
+    func testHeadphoneBatteryAbsentIsHidden() {
+        let none = HeadphoneBattery(values: [:])
+        XCTAssertTrue(none.isEmpty)
+        XCTAssertNil(none.summary, "no battery keys: the battery is hidden")
+        let junk = HeadphoneBattery(values: ["BatteryPercentLeft": 0, "BatteryPercentRight": 255, "Other": 50])
+        XCTAssertTrue(junk.isEmpty, "0 and out-of-range values are not readings")
+        let single = HeadphoneBattery(values: ["BatteryPercentSingle": 55])
+        XCTAssertEqual(single.summary, "55%")
+        let budsOnly = HeadphoneBattery(values: ["BatteryPercentLeft": 30])
+        XCTAssertEqual(budsOnly.summary, "L 30%")
+    }
+
+    func testHeadphonesFilter() {
+        XCTAssertTrue(HeadphoneKind.isHeadphones(majorClass: 0x04, name: "Sony WH-1000XM5"), "audio major class")
+        XCTAssertTrue(HeadphoneKind.isHeadphones(majorClass: 0, name: "Vaibhaav’s AirPods Pro"), "by name")
+        XCTAssertTrue(HeadphoneKind.isHeadphones(majorClass: 0, name: "Beats Studio Buds"))
+        XCTAssertFalse(HeadphoneKind.isHeadphones(majorClass: 0x05, name: "Magic Keyboard"), "peripheral")
+        XCTAssertFalse(HeadphoneKind.isHeadphones(majorClass: 0x02, name: "iPhone"), "phone")
+        XCTAssertFalse(HeadphoneKind.isHeadphones(majorClass: 0, name: nil))
+    }
+
     func testKeepAwakeSessionExpiresAcrossClockJumps() {
         // The deadline is a wall-clock date: a Mac asleep past it is expired on wake.
         let t0 = Date(timeIntervalSince1970: 2_000_000)

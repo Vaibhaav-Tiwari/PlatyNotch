@@ -628,3 +628,29 @@ System; that button is the only place their prompts can appear. Automated checks
 - [ ] **125. Idle cost.** With keep-awake off and the panel collapsed, `sample PlatyNotch 5`
   shows no timer for the System widget; with keep-awake on and the panel collapsed in
   Minimal mode (pill hidden), nothing ticks (one sleep to the deadline only).
+
+### AirPods and headphones
+
+Probe on the build Mac (macOS 26.4, nothing granted): IOBluetoothDevice answers
+`batteryPercentLeft/Right/Case/Single`; no `BatteryPercent…` keys were in the I/O Registry
+(no headphones connected). Battery is best effort and hidden when absent.
+
+- [ ] **126. Off by default, no prompt.** Fresh defaults (and `tccutil reset Bluetooth
+  dev.platynotch.app`): launch, open the panel and Settings: no Bluetooth prompt anywhere,
+  including Settings › Permissions (it has no Bluetooth row on purpose).
+- [ ] **127. The button asks.** Settings › Widgets › System › AirPods and headphones ›
+  Turn On…: the Bluetooth prompt appears now (installed .app with
+  `NSBluetoothAlwaysUsageDescription`; no crash). Allow: the status says "On".
+- [ ] **128. Connect peek.** Take AirPods out of the case (or connect any Bluetooth
+  headphones): within a few seconds a peek shows the name and "Connected · L 80% · R 75%
+  · Case 40%" (or just "Connected" when macOS reports no battery). The Today tile lists
+  them; reopening the panel refreshes the battery. Already-connected headphones at launch
+  are listed without a peek.
+- [ ] **129. Disconnect and turn off.** Put them away: the tile row goes. Turn Off: no
+  further peeks on connect.
+- [ ] **130. Denied.** Deny in System Settings › Privacy & Security › Bluetooth and
+  relaunch: no prompt at launch; the settings say access is off with "Open System
+  Settings". With access reset (not asked) and the sub-feature on: no prompt at launch;
+  "Allow Bluetooth…" asks.
+- [ ] **131. Widget off.** Turn System off: `sample PlatyNotch 3` shows nothing from
+  IOBluetooth notifications; connecting headphones shows nothing.

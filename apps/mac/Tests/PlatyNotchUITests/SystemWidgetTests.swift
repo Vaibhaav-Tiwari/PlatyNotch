@@ -60,6 +60,31 @@ private final class FakeAsserter: PowerAsserting {
     }
 }
 
+/// Never a real Bluetooth registration: the test sets the access and sends events.
+@MainActor
+private final class FakeHeadphones: HeadphonesSource {
+    var access: BluetoothAccess = .notDetermined
+    var starts = 0
+    var stops = 0
+    var refreshes = 0
+    private var onEvent: ((HeadphonesEvent) -> Void)?
+    var registered: Bool { onEvent != nil }
+
+    func start(onEvent: @escaping @MainActor (HeadphonesEvent) -> Void) {
+        starts += 1
+        self.onEvent = onEvent
+    }
+
+    func stop() {
+        stops += 1
+        onEvent = nil
+    }
+
+    func refreshBattery() { refreshes += 1 }
+
+    func send(_ e: HeadphonesEvent) { onEvent?(e) }
+}
+
 @MainActor
 private final class Clock {
     var now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -69,6 +94,8 @@ private final class Clock {
 private let onBattery = BatteryState(percent: 64, charging: false, pluggedIn: false, minutesRemaining: 200)
 private let charging = BatteryState(percent: 64, charging: true, pluggedIn: true, minutesRemaining: 50)
 private let low = BatteryState(percent: 8, charging: false, pluggedIn: false, minutesRemaining: 12)
+private let airPods = HeadphonesInfo(id: "aa-bb", name: "AirPods Pro",
+                                     battery: HeadphoneBattery(left: 80, right: 75, case: 40))
 
 /// The System widget through the real registry, `PanelSurfaces` and a `NotchController`
 /// (no window; the cursor is pinned). Every system service is a fake.
@@ -99,18 +126,23 @@ final class SystemWidgetTests: XCTestCase {
         let controller: NotchController
         let power: FakePower
         let asserter: FakeAsserter
+        let headphones: FakeHeadphones
         let clock: Clock
         let defaults: UserDefaults
     }
 
     /// `enabled: false` turns the widget off before the app starts widgets.
     private func rig(battery: BatteryState? = onBattery, enabled: Bool = true,
+                     bluetooth: BluetoothAccess = .notDetermined,
                      defaults givenDefaults: UserDefaults? = nil) -> Rig {
         let d = givenDefaults ?? defaults()
         let power = FakePower(battery)
         let asserter = FakeAsserter()
+        let headphones = FakeHeadphones()
+        headphones.access = bluetooth
         let clock = Clock()
-        let w = SystemWidget(power: power, asserter: asserter, defaults: d, clock: { clock.now })
+        let w = SystemWidget(power: power, asserter: asserter, headphones: headphones, defaults: d,
+                             clock: { clock.now })
         let client = CoreClient(socketPath: "/nonexistent")
         let registry = WidgetRegistry(defaults: defaults(), persist: false)
         registries.append(registry)
@@ -125,8 +157,8 @@ final class SystemWidgetTests: XCTestCase {
                                               config: ConfigFileStore(url: dir.appendingPathComponent("config.json")),
                                               events: CoreEventHub(), defaults: d, notify: NoopNotifier(),
                                               surfaces: surfaces, openPanel: { _ in }))
-        return Rig(widget: w, registry: registry, controller: c, power: power, asserter: asserter, clock: clock,
-                   defaults: d)
+        return Rig(widget: w, registry: registry, controller: c, power: power, asserter: asserter,
+                   headphones: headphones, clock: clock, defaults: d)
     }
 
     private func peek(_ id: String) -> PanelMode { .peek(.widget(id: id)) }
@@ -142,6 +174,8 @@ final class SystemWidgetTests: XCTestCase {
         XCTAssertEqual(r.widget.battery, onBattery)
         XCTAssertTrue(r.asserter.active.isEmpty, "keep-awake is never on by itself")
         XCTAssertEqual(r.asserter.begun, 0)
+        XCTAssertFalse(r.widget.options.headphones, "headphones are off until turned on")
+        XCTAssertEqual(r.headphones.starts, 0, "no Bluetooth registration, so no Bluetooth prompt")
     }
 
     func testDisabledDoesNoWork() {
@@ -277,5 +311,96 @@ final class SystemWidgetTests: XCTestCase {
         XCTAssertNil(r.widget.keepAwake.session, "no countdown without the assertion")
         XCTAssertTrue(r.widget.liveActivities.isEmpty)
         XCTAssertNotNil(r.widget.keepAwake.lastError)
+    }
+
+    // MARK: - Headphones (opt-in sub-feature)
+
+    private func savedOptions(_ o: SystemWidget.Options) -> UserDefaults {
+        let d = defaults()
+        d.set(try! JSONEncoder().encode(o), forKey: SystemWidget.Options.key)
+        return d
+    }
+
+    func testHeadphonesButtonRegistersAndTurningOffUnregisters() {
+        let r = rig()
+        r.widget.setHeadphones(true)   // the settings button: the only place the prompt can appear
+        XCTAssertEqual(r.headphones.starts, 1, "registers for connect notifications (may prompt here)")
+        XCTAssertTrue(r.widget.options.headphones)
+
+        r.headphones.send(.connected(airPods))
+        XCTAssertEqual(r.widget.headphones, [airPods])
+        XCTAssertEqual(r.widget.headphonesPeek, airPods)
+        XCTAssertEqual(r.controller.mode, peek(SystemWidget.headphonesPeekID), "connect peek with the device name")
+        XCTAssertNotNil(r.registry.peekView(id: SystemWidget.headphonesPeekID))
+
+        var updated = airPods
+        updated.battery = HeadphoneBattery(left: 70, right: 70)
+        r.headphones.send(.updated(updated))
+        XCTAssertEqual(r.widget.headphones.first?.battery.left, 70)
+
+        r.headphones.send(.disconnected(id: airPods.id))
+        XCTAssertTrue(r.widget.headphones.isEmpty)
+
+        r.widget.setHeadphones(false)
+        XCTAssertFalse(r.headphones.registered, "turning it off unregisters")
+        XCTAssertEqual(r.headphones.stops, 1)
+        XCTAssertFalse(r.widget.options.headphones)
+        let saved = SystemWidget.Options.load(r.defaults)
+        XCTAssertEqual(saved.headphones, false)
+    }
+
+    func testAlreadyConnectedHeadphonesAreListedWithoutAPeek() {
+        let r = rig(bluetooth: .allowed)
+        r.widget.setHeadphones(true)
+        r.headphones.send(.present(airPods))
+        XCTAssertEqual(r.widget.headphones, [airPods])
+        XCTAssertNil(r.widget.headphonesPeek)
+        XCTAssertEqual(r.controller.mode, .compact)
+        r.headphones.send(.connected(airPods))
+        XCTAssertNil(r.widget.headphonesPeek, "a device already listed is no new connection")
+    }
+
+    func testHeadphonesAtLaunchNeverPrompt() {
+        let on = SystemWidget.Options(headphones: true)
+        let notAsked = rig(bluetooth: .notDetermined, defaults: savedOptions(on))
+        XCTAssertEqual(notAsked.headphones.starts, 0, "not allowed yet: nothing registers at launch (no prompt)")
+        XCTAssertTrue(notAsked.widget.headphonesNeedAccess)
+        notAsked.widget.requestHeadphonesAccess()   // the button
+        XCTAssertEqual(notAsked.headphones.starts, 1)
+
+        let denied = rig(bluetooth: .denied, defaults: savedOptions(on))
+        XCTAssertEqual(denied.headphones.starts, 0)
+        XCTAssertTrue(denied.widget.headphonesNeedAccess)
+
+        let allowed = rig(bluetooth: .allowed, defaults: savedOptions(on))
+        XCTAssertEqual(allowed.headphones.starts, 1, "allowed before: registers at launch")
+        XCTAssertFalse(allowed.widget.headphonesNeedAccess)
+    }
+
+    func testHeadphonesStopWithTheWidget() {
+        let r = rig(bluetooth: .allowed, defaults: savedOptions(.init(headphones: true)))
+        XCTAssertTrue(r.headphones.registered)
+        r.headphones.send(.connected(airPods))
+        r.registry.setEnabled(SystemWidget.widgetID, false)
+        XCTAssertFalse(r.headphones.registered, "the widget off: no Bluetooth notifications")
+        XCTAssertTrue(r.widget.headphones.isEmpty)
+        XCTAssertNotEqual(r.controller.mode, peek(SystemWidget.headphonesPeekID))
+        r.widget.setHeadphones(true)
+        XCTAssertEqual(r.headphones.starts, 1, "the sub-feature cannot start while the widget is off")
+        XCTAssertTrue(r.widget.options.headphones)
+    }
+
+    func testHeadphonesBatteryHiddenWhenAbsent() {
+        let r = rig(bluetooth: .allowed)
+        r.widget.setHeadphones(true)
+        let noBattery = HeadphonesInfo(id: "cc", name: "Sony WH-1000XM5", battery: HeadphoneBattery())
+        r.headphones.send(.connected(noBattery))
+        XCTAssertNil(r.widget.headphones.first?.battery.summary)
+        let tile = NSHostingView(rootView: r.widget.tileView().frame(width: 360))
+        tile.layoutSubtreeIfNeeded()
+        XCTAssertGreaterThan(tile.fittingSize.width, 0)
+        let peekView = NSHostingView(rootView: r.registry.peekView(id: SystemWidget.headphonesPeekID)!.frame(width: 360))
+        peekView.layoutSubtreeIfNeeded()
+        XCTAssertGreaterThan(peekView.fittingSize.width, 0)
     }
 }

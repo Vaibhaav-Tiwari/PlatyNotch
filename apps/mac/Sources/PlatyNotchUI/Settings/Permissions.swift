@@ -145,6 +145,11 @@ final class Permissions {
         case reminders = "Privacy_Reminders"
         case automation = "Privacy_Automation"
         case notifications = "notifications"
+        /// Opened from the System widget's settings only (no Allow row: its button there
+        /// is the only place the Bluetooth prompt can appear).
+        case bluetooth = "Privacy_Bluetooth"
+        /// Files and Folders (the downloads sub-feature), for the same reason.
+        case filesAndFolders = "Privacy_FilesAndFolders"
     }
 
     static func open(_ pane: Pane) {
