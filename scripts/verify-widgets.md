@@ -944,7 +944,8 @@ cd apps/mac && swift build && PLATYNOTCH_RENDER_DIR=/tmp/pn-renders PLATYNOTCH_H
   the bars follow the sound again.
 - [ ] **189. Secrets are not kept.** With clipboard history on, copy an `sk-…` key, a GitHub
   token (`ghp_` and 36 letters), a JWT and the test card `4242 4242 4242 4242` from TextEdit:
-  none appears in the ⌥⇧V picker. An ordinary sentence copied next does.
+  none appears in the ⌥⇧V picker. An ordinary sentence, two dates (`2024-01-15 2024-03-02`)
+  and a row of numbers copied from Numbers or Excel all do.
 - [ ] **190. No keyboard focus without a click.** Open the panel, then Settings (menu bar ›
   Settings…), close Settings with ⌘W, and type: the keys go to the app you were using, not
   the notch panel (no game moves, no approval shortcut). The same after closing onboarding

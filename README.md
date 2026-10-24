@@ -70,7 +70,9 @@ notarizes the DMG.
 
 The open panel's **Today** tab is a column of widget tiles. Turn each widget on or
 off, and reorder them, in **Settings › Widgets**. A widget that is off does no work:
-no timers, no observers, no file or network access.
+no timers, no observers, no network access. The one exception: while the shelf or
+clipboard history is off, PlatyNotch still deletes their own expired files once at
+launch, so the retention below holds.
 
 | Widget | Default | What it does |
 | --- | --- | --- |
@@ -138,8 +140,8 @@ excluded from Time Machine and Spotlight (`.noindex`). Folders made by earlier b
 
 | What | Where | Kept |
 | --- | --- | --- |
-| Shelf | `shelf.noindex/`: the list, copies of dropped images and of files from apps like Photos or Mail, dropped text | Copies and text are deleted 7 days after you added them, unless pinned. Files you drop from disk stay where they are and are never deleted. |
-| Clipboard history | `clipboard.noindex/`: the history and copied images | 1, 7 (default) or 30 days, and at most 50–500 items (200 by default); pinned items stay. Text that looks like a password, API key, token, private key or card number is never saved. |
+| Shelf | `shelf.noindex/`: the list, copies of dropped images and of files from apps like Photos or Mail, dropped text | Copies and text are deleted 7 days after you added them, unless pinned. Files you drop from disk stay where they are and are never deleted. If the shelf's list is ever damaged, it is set aside with the copies it may have listed and nothing is deleted; Settings › Widgets › Shelf then shows how many were kept, with Delete Kept Copies. |
+| Clipboard history | `clipboard.noindex/`: the history and copied images | 1, 7 (default) or 30 days, and at most 50–500 items (200 by default); pinned items stay. Never saved: anything copied in a password manager or marked as a password by the app that copied it, and text that looks like an API key, token, private key or card number. A password copied from anywhere else (a note, a chat) can be saved; Clear deletes it. |
 | Pinned-site icons | `favicons.noindex/` | 30 days, then fetched again |
 | Settings and small state | The app's preferences (`dev.platynotch.app`): widget order, timers, alarms and world clocks, the focus session, pinned sites and Shortcuts, best game scores, the weather city, wellbeing settings and the water log | Until you change them; the water log keeps 14 days |
 

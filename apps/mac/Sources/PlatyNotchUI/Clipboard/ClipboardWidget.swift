@@ -507,7 +507,7 @@ struct ClipboardSettings: View {
             Text("Never recorded: anything copied in a password manager (1Password, Bitwarden, LastPass, KeePassXC, MacPass, Strongbox, Enpass, Proton Pass, NordPass, Keychain Access, Passwords and others) or in an app on Memory's excluded list, and anything an app marks as a password or as temporary. The app is the one in front when the copy happens, a best guess, since macOS does not say which app copied.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Passwords, keys and card numbers are never saved: copied text that looks like an API key, token, private key or card number is skipped.")
+            Text("Also never saved: text that looks like an API key, token, private key or card number. A password copied from somewhere else, such as a note, can be saved; Clear deletes it.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Text("History stays on this Mac in PlatyNotch's private folder. Turning the widget off keeps it; Clear deletes it, images too.")
