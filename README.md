@@ -136,8 +136,9 @@ click Rename, never replacing another file, with one Undo; it never renames your
 folder's own folders (Desktop, Documents, Downloads, Library, …) or anything else in
 PlatyNotch's folder (the shelf's own copies and results can be renamed, and stay there). Unzip uses PlatyNotch's own extractor, not ditto: it
 unpacks only the files an archive lists, each checked against its declared size and
-checksum, and refuses archives that are damaged, encrypted or would write outside their
-folder. Files in Downloads, Desktop
+checksum, and refuses archives that are damaged, encrypted, would write outside their
+folder or list more than 50,000 entries. Nothing it unpacks is writable by other users.
+Files in Downloads, Desktop
 or Documents may make macOS ask for access when an action reads them.
 
 **Finder service and links** (no new permission): Finder › Services › Add to

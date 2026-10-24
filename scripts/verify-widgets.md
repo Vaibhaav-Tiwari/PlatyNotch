@@ -1036,8 +1036,11 @@ OCRs small files made by the tests (`FileActionsEngineTests`); these checks use 
   `<name>.zip.partial`, renamed when done. An archive that would unpack to more than 2 GB
   (e.g. a zip of a large sparse disk image) is refused with "it would unpack to more than 2 GB".
   An archive that is damaged or hostile (entries outside its folder, headers that disagree,
-  entries its list does not show, a link to an absolute path or with `..`, whatever system
-  made it) says "the archive is damaged or unsafe"; one whose contents don't
+  entries its list does not show, whatever system made it) says "the archive is damaged
+  or unsafe"; one with a link to an absolute path or with `..` says "this archive contains
+  links that point outside their folder"; one listing more than 50,000 entries says "it
+  has more than 50,000 files and folders". A file stored as 0777 unpacks as 0755
+  (`ls -l`: never group- or world-writable). One whose contents don't
   match what it declares (size, checksum) says "the archive is damaged" and leaves
   nothing. Unzip is PlatyNotch's own extractor (no ditto process appears in Activity
   Monitor while it runs; Zip still uses ditto); an encrypted archive says "it is encrypted". With less free
