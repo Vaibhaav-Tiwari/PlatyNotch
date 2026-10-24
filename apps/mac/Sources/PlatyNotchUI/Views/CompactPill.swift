@@ -16,6 +16,9 @@ struct CompactPill: View {
     var primary: LiveActivity?
     var bubble: LiveActivity?
     var liveSide: LiveSide = .right
+    /// Room for the live ear's content (`PanelLayout.liveEarWidth`); what does not fit is
+    /// dropped or truncated (`LiveEarFit`), never drawn past the ear.
+    var earWidth: CGFloat = .infinity
 
     var body: some View {
         HStack(spacing: 0) {
@@ -25,7 +28,7 @@ struct CompactPill: View {
             (liveSide == .left ? AnyView(agentsEar) : AnyView(liveEar))
                 .frame(maxWidth: .infinity, alignment: hasNotch ? .center : .trailing)
         }
-        .padding(.horizontal, hasNotch ? 6 : 14)
+        .padding(.horizontal, PanelLayout.pillPadding(hasNotch: hasNotch))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilitySummary)
         .accessibilityAddTraits(.isButton)
@@ -51,23 +54,31 @@ struct CompactPill: View {
         } else if approvalCount > 0 {
             Text("\(approvalCount)")
                 .font(.system(size: 10, weight: .bold, design: .rounded))
-                .foregroundStyle(.black)
+                .foregroundStyle(.black)   // on the orange badge
                 .frame(minWidth: 14, minHeight: 14)
                 .background(Theme.color(.attention), in: Capsule())
         } else if let primary {
-            HStack(spacing: 4) {
+            let fit = LiveEarFit(earWidth: earWidth, hasTrailing: Self.hasTrailing(primary), hasBubble: bubble != nil)
+            HStack(spacing: LiveEarFit.spacing) {
                 LiveGlyphView(glyph: primary.glyph, tint: primary.tint)
-                LiveTrailing(activity: primary)
-                if let bubble {
+                    .frame(maxWidth: LiveEarFit.glyph)
+                if fit.trailingWidth > 0 {
+                    LiveTrailing(activity: primary)
+                        .frame(maxWidth: fit.trailingWidth, alignment: .leading)
+                }
+                if fit.showsBubble, let bubble {
                     LiveGlyphView(glyph: bubble.glyph, tint: bubble.tint)
                         .scaleEffect(0.75)
-                        .frame(width: 14, height: 14)
+                        .frame(width: LiveEarFit.bubble, height: LiveEarFit.bubble)
                         .background(Theme.card, in: Circle())
                 }
             }
             .lineLimit(1)
-            .fixedSize()
         }
+    }
+
+    private static func hasTrailing(_ a: LiveActivity) -> Bool {
+        a.countdownTo != nil || a.countUpFrom != nil || a.trailing != nil
     }
 
     private var accessibilitySummary: String {
@@ -149,6 +160,7 @@ private struct LiveTrailing: View {
         Text(verbatim: s)
             .font(.system(size: 10, weight: .semibold, design: .rounded))
             .monospacedDigit()
+            .truncationMode(.tail)
             .foregroundStyle(.secondary)
     }
 }

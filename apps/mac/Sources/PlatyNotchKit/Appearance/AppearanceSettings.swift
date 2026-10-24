@@ -29,7 +29,9 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var pillWidth: PillWidth = .standard
     public var liveSide: Side = .right
     public var displays: DisplayChoice = .main
-    public var theme: Theme = .system
+    /// Dark by default (Task 12 ruling, not the plan's `.system`): on a notched display the
+    /// panel joins the black camera housing, which a light panel would show as a hole.
+    public var theme: Theme = .dark
     public var spring: SpringParams = .standard
     /// Hide the pill over full-screen apps (top edge reveals it). Never hides a pending
     /// approval, a ringing alarm or timer, the open panel or the drop zone.
@@ -39,7 +41,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
 
     public init(mode: Mode = .alwaysOn, openOn: OpenTrigger = .hover,
                 hoverDelay: Double = HoverDebouncer.defaultEnterDelay, pillWidth: PillWidth = .standard,
-                liveSide: Side = .right, displays: DisplayChoice = .main, theme: Theme = .system,
+                liveSide: Side = .right, displays: DisplayChoice = .main, theme: Theme = .dark,
                 spring: SpringParams = .standard, hideInFullScreen: Bool = true) {
         self.mode = mode
         self.openOn = openOn

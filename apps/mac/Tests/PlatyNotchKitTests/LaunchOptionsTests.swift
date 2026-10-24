@@ -28,3 +28,11 @@ extension LaunchOptionsTests {
         XCTAssertFalse(LaunchOptions(arguments: ["PlatyNotch", "--smoke"], env: [:]).smokeSettings)
     }
 }
+
+extension LaunchOptionsTests {
+    func testRenderDir() {
+        XCTAssertNil(LaunchOptions(arguments: [], env: [:]).renderDir)
+        XCTAssertNil(LaunchOptions(arguments: [], env: ["PLATYNOTCH_RENDER_DIR": ""]).renderDir)
+        XCTAssertEqual(LaunchOptions(arguments: [], env: ["PLATYNOTCH_RENDER_DIR": "/tmp/r"]).renderDir, "/tmp/r")
+    }
+}

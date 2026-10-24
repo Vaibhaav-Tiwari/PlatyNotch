@@ -8,6 +8,17 @@ public struct PanelLayout: Equatable, Sendable {
     /// Compact pill width on screens without a notch (standard pill width).
     public static let pillWidth: CGFloat = 200
 
+    /// Horizontal padding inside the compact pill, each side (`CompactPill`).
+    public static func pillPadding(hasNotch: Bool) -> CGFloat { hasNotch ? 6 : 14 }
+
+    /// Room for the live ear's content in the compact pill: beside a notch, the ear less
+    /// the pill's padding; without one, half the pill less its padding (the agent dots
+    /// take the other half).
+    public var liveEarWidth: CGFloat {
+        let pad = Self.pillPadding(hasNotch: hasNotch)
+        return hasNotch ? ear - pad : (anchor.width - 2 * pad) / 2
+    }
+
     /// Ear width beside a notch for each Appearance › Pill width.
     public static func ear(_ width: AppearanceSettings.PillWidth) -> CGFloat {
         switch width {

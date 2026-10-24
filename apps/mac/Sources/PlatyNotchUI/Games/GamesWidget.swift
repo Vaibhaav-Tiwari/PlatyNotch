@@ -131,7 +131,7 @@ struct GamesTile: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 5)
-        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
         .contentShape(Rectangle())
     }
 

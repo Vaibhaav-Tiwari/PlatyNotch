@@ -29,7 +29,7 @@ final class AppearanceTests: XCTestCase {
         XCTAssertEqual(s.pillWidth, .standard)
         XCTAssertEqual(s.liveSide, .right)
         XCTAssertEqual(s.displays, .main)
-        XCTAssertEqual(s.theme, .system)
+        XCTAssertEqual(s.theme, .dark, "Task 12 ruling: dark, the panel joins the black camera housing")
         XCTAssertEqual(s.spring, SpringParams(response: 0.42, dampingFraction: 0.78, blur: 8))
         XCTAssertTrue(s.hideInFullScreen)
     }
@@ -64,7 +64,7 @@ final class AppearanceTests: XCTestCase {
         let partial = Data(#"{"mode":"minimal","theme":"sepia","spring":{"response":0.3},"future":1}"#.utf8)
         let p = try JSONDecoder().decode(AppearanceSettings.self, from: partial)
         XCTAssertEqual(p.mode, .minimal)
-        XCTAssertEqual(p.theme, .system)
+        XCTAssertEqual(p.theme, .dark, "an unknown theme keeps the default")
         XCTAssertEqual(p.spring, SpringParams(response: 0.3, dampingFraction: 0.78, blur: 8))
         XCTAssertEqual(p.openOn, .hover)
     }
@@ -226,5 +226,69 @@ final class AppearanceTests: XCTestCase {
             XCTAssertFalse(suppressed(mode, hide: true), "\(mode)")
             XCTAssertFalse(suppressed(mode, hide: false), "\(mode)")
         }
+    }
+
+    // MARK: - Live ear
+
+    func testLiveEarNeverOverflows() {
+        let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let visible = CGRect(x: 0, y: 0, width: 1512, height: 950)
+        let left = CGRect(x: 0, y: 950, width: 654, height: 32)
+        let right = CGRect(x: 858, y: 950, width: 654, height: 32)
+        let ext = CGRect(x: 0, y: 0, width: 1920, height: 1080)
+        let extVisible = CGRect(x: 0, y: 0, width: 1920, height: 1055)
+        for w in AppearanceSettings.PillWidth.allCases {
+            let layouts = [
+                PanelLayout(screenFrame: screen, visibleFrame: visible, auxLeft: left, auxRight: right, pillWidth: w),
+                PanelLayout(screenFrame: ext, visibleFrame: extVisible, auxLeft: nil, auxRight: nil, pillWidth: w),
+            ]
+            for l in layouts {
+                for (text, bubble) in [(true, true), (true, false), (false, true), (false, false)] {
+                    let fit = LiveEarFit(earWidth: l.liveEarWidth, hasTrailing: text, hasBubble: bubble)
+                    XCTAssertLessThanOrEqual(fit.usedWidth, l.liveEarWidth, "\(w) notch=\(l.hasNotch) \(text) \(bubble)")
+                    if fit.trailingWidth > 0 { XCTAssertGreaterThanOrEqual(fit.trailingWidth, LiveEarFit.minTrailing) }
+                    if !text { XCTAssertEqual(fit.trailingWidth, 0) }
+                    if !bubble { XCTAssertFalse(fit.showsBubble) }
+                }
+            }
+        }
+    }
+
+    func testLiveEarAtEachWidth() {
+        func ear(_ w: AppearanceSettings.PillWidth) -> CGFloat {
+            PanelLayout(screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),
+                        visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 950),
+                        auxLeft: CGRect(x: 0, y: 950, width: 654, height: 32),
+                        auxRight: CGRect(x: 858, y: 950, width: 654, height: 32), pillWidth: w).liveEarWidth
+        }
+        let compact = LiveEarFit(earWidth: ear(.compact), hasTrailing: true, hasBubble: true)
+        XCTAssertEqual(compact.trailingWidth, 0, "compact beside a notch: glyph only, the text is hidden")
+        XCTAssertFalse(compact.showsBubble)
+        let standard = LiveEarFit(earWidth: ear(.standard), hasTrailing: true, hasBubble: true)
+        XCTAssertGreaterThan(standard.trailingWidth, 0, "standard keeps the countdown")
+        let wide = LiveEarFit(earWidth: ear(.wide), hasTrailing: true, hasBubble: true)
+        XCTAssertGreaterThan(wide.trailingWidth, 0)
+        XCTAssertTrue(wide.showsBubble, "wide has room for the bubble too")
+        XCTAssertTrue(LiveEarFit(earWidth: ear(.standard), hasTrailing: false, hasBubble: true).showsBubble)
+    }
+
+    // MARK: - Palette
+
+    func testWarningTextContrast() {
+        let light = PanelPalette.lightSurface
+        let lightCard = light.under(RGB(hex: 0x000000), alpha: PanelPalette.cardOverlay)
+        XCTAssertGreaterThanOrEqual(RGB.contrast(PanelPalette.warningLight, light), 4.5)
+        XCTAssertGreaterThanOrEqual(RGB.contrast(PanelPalette.warningLight, lightCard), 4.5)
+        let dark = PanelPalette.darkSurface
+        let darkCard = dark.under(RGB(hex: 0xFFFFFF), alpha: PanelPalette.cardOverlay)
+        XCTAssertGreaterThanOrEqual(RGB.contrast(PanelPalette.warningDark, dark), 4.5)
+        XCTAssertGreaterThanOrEqual(RGB.contrast(PanelPalette.warningDark, darkCard), 4.5)
+        XCTAssertLessThan(RGB.contrast(PanelPalette.warningDark, light), 4.5, "why light needs its own orange")
+        XCTAssertEqual(RGB.contrast(RGB(hex: 0), RGB(hex: 0xFFFFFF)), 21, accuracy: 0.01)
+        // Allow: its text on its own tinted fill over a light card.
+        let allowFill = lightCard.under(PanelPalette.allowLight, alpha: PanelPalette.tintedFill)
+        XCTAssertGreaterThanOrEqual(RGB.contrast(PanelPalette.allowLight, allowFill), 4.5)
+        let greenFill = lightCard.under(PanelPalette.systemGreenLight, alpha: PanelPalette.tintedFill)
+        XCTAssertLessThan(RGB.contrast(PanelPalette.systemGreenLight, greenFill), 4.5, "why light needs its own green")
     }
 }

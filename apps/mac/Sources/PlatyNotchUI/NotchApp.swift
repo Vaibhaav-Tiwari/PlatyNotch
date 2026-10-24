@@ -332,6 +332,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if failure == nil { buildSurfaceViews() }
         if failure == nil, let problem = Self.checkGameViews() { failure = "games: \(problem)" }
+        var renders = ""
+        if failure == nil, let dir = options.renderDir {
+            switch ThemeRenders.write(to: URL(fileURLWithPath: dir, isDirectory: true)) {
+            case .success(let n): renders = " renders=\(n) theme=\(appearance.theme.rawValue)"
+            case .failure(let e): failure = "renders: \(e.message)"
+            }
+        }
         if failure == nil, let menuBar,
            !menuBar.menuTitles.contains("Pause clipboard history") || menuBar.menuAutoenables {
             failure = "menu bar clipboard item missing or menu autoenables"
@@ -350,7 +357,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         print("SMOKE OK panels=\(controllers.count) mode=\(mode) menubar=\(menuBar != nil)"
               + " updates=\(updater.isEnabled ? "on" : "off") hooklink=\(Self.describe(hookLink))"
-              + " widgets=\(built.count) surfaces=ok sounds=\(sounds) games=\(GameKind.allCases.count)")
+              + " widgets=\(built.count) surfaces=ok sounds=\(sounds) games=\(GameKind.allCases.count)" + renders)
         fflush(stdout)
         exit(0)
     }

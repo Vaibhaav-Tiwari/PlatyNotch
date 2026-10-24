@@ -14,6 +14,7 @@ struct GamesTab: View {
     let host: GameHost
     @Environment(\.gamePanel) private var panel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
     @State private var surfaceID = UUID()
     @State private var focused = false
 
@@ -99,7 +100,7 @@ struct GamesTab: View {
             overlay
                 .allowsHitTesting(false)
         }
-        .background(Color.white.opacity(0.02), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.primary.opacity(0.02), in: RoundedRectangle(cornerRadius: 10))
     }
 
     private func setFocused(_ on: Bool) {
@@ -116,7 +117,7 @@ struct GamesTab: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(Color.black.opacity(0.75), in: RoundedRectangle(cornerRadius: 8))
+            .background(Theme.surface(scheme).opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
         }
     }
 

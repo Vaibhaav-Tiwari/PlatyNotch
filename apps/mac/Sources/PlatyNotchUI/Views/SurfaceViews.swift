@@ -18,13 +18,13 @@ struct HUDBar: View {
                 .frame(width: 18)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.18))
-                    Capsule().fill(.white).frame(width: geo.size.width * state.level)
+                    Capsule().fill(Theme.track)
+                    Capsule().fill(.primary).frame(width: geo.size.width * state.level)
                 }
             }
             .frame(height: 5)
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(.primary)
         .frame(maxWidth: .infinity, minHeight: 20)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(Self.name(state.kind)) \(Int((state.level * 100).rounded())) percent")
@@ -54,7 +54,7 @@ struct HUDIndicator: View {
 
     var body: some View {
         GeometryReader { geo in
-            Capsule().fill(.white.opacity(0.7))
+            Capsule().fill(.primary.opacity(0.7))
                 .frame(width: max(2, geo.size.width * state.level), height: 2)
         }
         .frame(width: 80, height: 2)
@@ -91,7 +91,7 @@ struct RingingChip: View {
                     .font(.system(size: 10, weight: .semibold))
                 Text("Stop").font(.system(size: 11, weight: .semibold))
             }
-            .foregroundStyle(.black)
+            .foregroundStyle(.black)   // on the orange chip in every theme
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.color(.attention), in: Capsule())
             .contentShape(Capsule())

@@ -17,8 +17,9 @@ cd apps/mac && PLATYNOTCH_EXTERNAL_CORE=1 PLATYNOTCH_HOME=… PLATYNOTCH_SOCKET=
 
 Widget order and on/off live in `UserDefaults.standard` under `widgets.layout` (JSON).
 Under `swift run` the domain is the executable name: reset with
-`defaults delete PlatyNotch widgets.layout`. The live ear side:
-`defaults write PlatyNotch appearance.liveSide left` (undo: `defaults delete PlatyNotch appearance.liveSide`).
+`defaults delete PlatyNotch widgets.layout`. The live ear side, Minimal mode and the other
+panel settings are in Settings › Appearance and apply at once (one JSON value,
+`appearance.settings`; `defaults delete PlatyNotch appearance.settings` resets them).
 
 Note the Mac model and macOS version next to each tick.
 
@@ -41,11 +42,11 @@ Note the Mac model and macOS version next to each tick.
   (`fake-events.sh` step). While the panel is compact (after the peek, or answer from the
   expanded panel and wait), the ear shows the amber count, never the live glyphs. When the
   core is down the amber bolt shows instead.
-- [ ] **5. liveSide swaps the ears.** Set `appearance.liveSide` to `left`, restart: the live
-  glyph and badge are in the left ear, the agent dots in the right. Delete the key: back to
+- [ ] **5. liveSide swaps the ears.** Settings › Appearance › Live activities: Left. The live
+  glyph and badge move to the left ear, the agent dots to the right, at once. Right: back to
   dots left, live right.
-- [ ] **6. Minimal mode.** `defaults write PlatyNotch appearance.minimal -bool true`,
-  restart, no agent sessions: the pill is hidden. Start music: the pill appears with the
+- [ ] **6. Minimal mode.** Settings › Appearance › Notch: Minimal, no agent sessions: the
+  pill is hidden at once. Start music: the pill appears with the
   bars. Stop music: hidden again. Start focus: the pill appears. (Shelf/weather, once
   they exist, never bring it back on their own.)
 - [ ] **7. Settings › Widgets.** Lists the four widgets with a switch each. Turn Music
@@ -823,7 +824,8 @@ Automated: `AppearanceTests` (Kit: defaults with `hoverDelay` 0.12, spring and h
 clamping, `{}` and partial / unknown values decode to the defaults, migration from
 `appearance.minimal` / `appearance.showOnAllDisplays` / `appearance.liveSide`, which
 changes rebuild the panels, display choice, pill widths, click mode, full-screen hiding
-never hides approvals or ringing) and `AppearanceControllerTests` (the real
+never hides approvals or ringing, live-ear fit at every pill width, warning and Allow
+contrast in light) and `AppearanceControllerTests` (the real
 `NotchController`: approvals and ringing show over full screen with hiding on; the pill
 stays with it off; mode, open trigger and hover delay applied live; a HUD for a display
 without a panel is not taken).
@@ -834,7 +836,14 @@ away from the notch):
 ```sh
 scripts/perf-idle.sh                    # mediaremote-adapter from build/ when built there
 scripts/perf-idle.sh --music-fallback   # AppleScript now-playing fallback
-scripts/perf-idle.sh --app build/PlatyNotch.app
+scripts/perf-idle.sh --app                    # build/PlatyNotch.app, run as a dev.platynotch.perf copy
+```
+
+Themed views in both schemes (HUD, approval card, game boards, shelf), as PNGs to look at:
+
+```sh
+PLATYNOTCH_RENDER_DIR=/tmp/pn-renders PLATYNOTCH_HOME=<temp home> PLATYNOTCH_CORE_BIN=<core> \
+  .build/debug/PlatyNotch --smoke    # SMOKE OK … renders=18 theme=<current theme>
 ```
 
 - [ ] **171. Idle under 1%.** On a notched M1 both runs print PASS (mean of 60 one-second
@@ -859,3 +868,22 @@ scripts/perf-idle.sh --app build/PlatyNotch.app
   show. Off: the pill stays over the video (volume keys still show the system HUD there).
 - [ ] **177. Reduce Motion.** System Settings › Accessibility › Display › Reduce motion:
   the panel opens with a short ease and no blur.
+- [ ] **178. AppleScript fallback, measured.** Needs Automation, which only you can grant:
+  `scripts/build-app.sh`, then start Music or Spotify **playing** and run
+  `scripts/perf-idle.sh --app --music-fallback`. During the 10 s warm-up, hover the notch
+  to open the panel and click Today (idle polls never prompt; the music tile does): macOS asks
+  whether PlatyNotch may control Music. Allow (it is the `dev.platynotch.perf` copy, not
+  your installed app; revoke later in System Settings › Privacy & Security › Automation),
+  then move the pointer away so the panel collapses. That run counts only if the prompt was
+  answered before sampling began; run it again if not. It measures the 2 s reads while
+  playing (the pill is live: music bars). Then pause the player and run the
+  same command again: it measures the 6 s idle read of a granted player, which must PASS.
+  Note both means and the player.
+- [ ] **179. Light theme legible.** Theme Light (and System in light mode): the HUD bar and
+  its level, the HUD line under an approval, the HUD tile icon, Snake and 2048 boards, shelf
+  cards (selected and not) and the games overlay text are all visible; "Contains hidden
+  characters" is a dark orange and Allow a dark green, both easy to read. Compare with the
+  PNGs from `PLATYNOTCH_RENDER_DIR`.
+- [ ] **180. Compact pill width.** Pill width Compact with a timer running: beside a notch
+  the live ear shows only the glyph (no clipped text); Standard shows the countdown; Wide
+  shows the countdown and the bubble. Nothing is drawn under the camera housing.

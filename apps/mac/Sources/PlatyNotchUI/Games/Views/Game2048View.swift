@@ -14,7 +14,7 @@ struct Game2048View: View {
     }
 
     static func tileColor(_ value: Int) -> Color {
-        guard value > 0 else { return Color.white.opacity(0.06) }
+        guard value > 0 else { return Color.primary.opacity(0.06) }
         let step = Double(value.trailingZeroBitCount)   // 2 → 1, 2048 → 11
         let hue: Double = max(0, 0.13 - step * 0.012)
         let brightness: Double = min(1, 0.55 + step * 0.04)
@@ -33,7 +33,7 @@ struct Game2048View: View {
                 ctx.fill(Path(roundedRect: r, cornerRadius: 6), with: .color(Self.tileColor(v)))
                 guard v > 0 else { continue }
                 let fontSize: CGFloat = v < 1000 ? 20 : 15
-                let label = Text(verbatim: "\(v)").font(.system(size: fontSize, weight: .bold)).foregroundColor(.white)
+                let label = Text(verbatim: "\(v)").font(.system(size: fontSize, weight: .bold)).foregroundColor(.white)   // on the colored tile, every theme
                 ctx.draw(label, at: CGPoint(x: r.midX, y: r.midY))
             }
         }

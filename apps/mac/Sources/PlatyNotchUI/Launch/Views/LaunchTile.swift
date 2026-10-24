@@ -122,7 +122,7 @@ struct SiteIcon: View {
         } else {
             Text(verbatim: letter)
                 .font(.system(size: size * 0.5, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(.white)   // on the green letter tile, every theme
                 .frame(width: size, height: size)
                 .background(Theme.tint(.accent).opacity(0.7), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .accessibilityHidden(true)
@@ -198,6 +198,7 @@ private struct ShortcutPicker: View {
             }
         }
         .padding(6)
+        // A darker well in both schemes; its text is semantic, so it stays legible in light.
         .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }

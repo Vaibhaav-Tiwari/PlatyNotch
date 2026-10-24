@@ -11,33 +11,42 @@ struct ShelfTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Label("Shelf", systemImage: "tray.full").font(.system(size: 12, weight: .semibold))
-                Spacer()
-                if shelf.items.contains(where: { !$0.pinned }) {
-                    Button("Clear") { shelf.clearUnpinned() }
-                        .buttonStyle(.borderless)
-                        .font(.system(size: 11))
-                        .help("Remove every unpinned item")
-                }
-            }
-            if shelf.items.isEmpty {
-                Text("Drag files, images, links or text to the notch to keep them here.")
+            header
+            items
+        }
+        .onAppear { shelf.refreshMissing() }
+    }
+
+    // Split out of `body`: one expression was slow for the type checker (25 ms probe).
+    private var header: some View {
+        HStack {
+            Label("Shelf", systemImage: "tray.full").font(.system(size: 12, weight: .semibold))
+            Spacer()
+            if shelf.items.contains(where: { !$0.pinned }) {
+                Button("Clear") { shelf.clearUnpinned() }
+                    .buttonStyle(.borderless)
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
-                        ForEach(shelf.items) { item in
-                            ShelfCard(shelf: shelf, item: item, missing: shelf.missing.contains(item.id),
-                                      selected: shelf.selection.contains(item.id))
-                        }
+                    .help("Remove every unpinned item")
+            }
+        }
+    }
+
+    @ViewBuilder private var items: some View {
+        if shelf.items.isEmpty {
+            Text("Drag files, images, links or text to the notch to keep them here.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(shelf.items) { item in
+                        ShelfCard(shelf: shelf, item: item, missing: shelf.missing.contains(item.id),
+                                  selected: shelf.selection.contains(item.id))
                     }
                 }
             }
         }
-        .onAppear { shelf.refreshMissing() }
     }
 }
 
@@ -83,7 +92,7 @@ struct ShelfCard: View {
         }
         .padding(4)
         .frame(width: Self.size.width, height: Self.size.height)
-        .background(RoundedRectangle(cornerRadius: 8).fill(.white.opacity(selected ? 0.18 : 0.06)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(.primary.opacity(selected ? 0.18 : 0.06)))
         .overlay {
             if !missing {
                 // Clicks, drags out and the menu (AppKit: a real NSDraggingSource with file URLs).

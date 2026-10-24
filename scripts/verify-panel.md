@@ -42,9 +42,10 @@ those with a notch), open on hover or click, pill width, live side, theme, motio
 "Hide in full screen" are in Settings › Appearance and apply at once, no restart. They are
 one JSON value under `appearance.settings` (the domain is the executable name under
 `swift run`: `defaults read PlatyNotch appearance.settings`; `defaults delete PlatyNotch
-appearance.settings` resets them). The Plan 3 keys `appearance.minimal`,
-`appearance.showOnAllDisplays` and `appearance.liveSide` are read once as the starting
-values while `appearance.settings` does not exist, and never again.
+appearance.settings` resets them). Until the first change in Settings › Appearance saves
+`appearance.settings`, the Plan 3 keys `appearance.minimal`, `appearance.showOnAllDisplays`
+and `appearance.liveSide` (if set) give the starting values; once it is saved they are
+ignored. The theme is Dark by default.
 
 ## Cases
 

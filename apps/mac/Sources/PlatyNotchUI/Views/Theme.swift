@@ -9,11 +9,25 @@ enum Theme {
     static let corner: CGFloat = 14
     /// The dark surface (also what the compact pill on a notch always uses).
     static let surface = Color.black
-    /// The light surface.
-    static let lightSurface = Color(nsColor: .windowBackgroundColor)
+    /// The light surface (`PanelPalette.lightSurface`, the contrast tests' reference).
+    static let lightSurface = Color(PanelPalette.lightSurface)
+    /// Level tracks (HUD bars) on either surface.
+    static let track = Color.primary.opacity(0.18)
 
     static func surface(_ scheme: ColorScheme) -> Color {
         scheme == .light ? lightSurface : surface
+    }
+
+    /// The Allow button's tint: systemGreen in dark, a darker green in light (4.5:1 on
+    /// its tinted fill, `PanelPalette.allowLight`).
+    static func allow(_ scheme: ColorScheme) -> Color {
+        scheme == .light ? Color(PanelPalette.allowLight) : color(.active)
+    }
+
+    /// Small warning text ("Contains hidden characters"): systemOrange in dark, a darker
+    /// orange in light so it stays at 4.5:1 or more (`PanelPalette`, AppearanceTests).
+    static func warning(_ scheme: ColorScheme) -> Color {
+        Color(scheme == .light ? PanelPalette.warningLight : PanelPalette.warningDark)
     }
 
     /// The panel's color scheme for `theme`. The resting pill on a notch stays dark in
@@ -121,5 +135,11 @@ struct Tag: View {
             .padding(.vertical, 1)
             .background(Theme.card, in: Capsule())
             .foregroundStyle(.secondary)
+    }
+}
+
+extension Color {
+    init(_ rgb: RGB) {
+        self.init(.sRGB, red: rgb.r, green: rgb.g, blue: rgb.b, opacity: 1)
     }
 }

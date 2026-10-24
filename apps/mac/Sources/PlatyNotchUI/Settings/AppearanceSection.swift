@@ -45,7 +45,8 @@ struct AppearanceSection: View {
         }
         .pickerStyle(.segmented)
         if settings.openOn == .hover {
-            LabeledSlider(title: "Hover delay", value: $settings.hoverDelay, range: 0...0.6, step: 0.01,
+            LabeledSlider(title: "Hover delay", value: $settings.hoverDelay,
+                          range: AppearanceSettings.hoverDelayRange, step: 0.01,
                           format: Self.seconds)
         }
         Picker("Theme", selection: $settings.theme) {
@@ -54,7 +55,7 @@ struct AppearanceSection: View {
             Text("Light").tag(AppearanceSettings.Theme.light)
         }
         .pickerStyle(.segmented)
-        Text("The resting pill on a notch stays black, like the camera housing.")
+        Text("Dark by default: on a notch the panel joins the black camera housing. The resting pill there stays black in every theme.")
             .font(.caption).foregroundStyle(.secondary)
     }
 

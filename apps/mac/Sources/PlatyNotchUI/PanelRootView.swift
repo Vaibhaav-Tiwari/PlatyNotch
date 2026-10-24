@@ -24,7 +24,7 @@ final class PanelViewModel {
     /// Stops a ringing alarm or timer (the chip; a card no running widget draws any more).
     var onStopRinging: (String) -> Void = { _ in }
     /// Settings › Appearance, clamped (live side, theme, spring).
-    var appearance = AppearanceSettings()
+    var appearance: AppearanceSettings = AppearanceSettings()
 }
 
 /// Places the mode's content inside the fixed-size panel window.
@@ -104,7 +104,7 @@ struct PanelRootView: View {
                         connection: store.connection, hasNotch: layout.hasNotch,
                         notchWidth: layout.hasNotch ? layout.anchor.width : 0,
                         primary: live.primary, bubble: live.bubble,
-                        liveSide: model.appearance.liveSide)
+                        liveSide: model.appearance.liveSide, earWidth: layout.liveEarWidth)
                 .contentShape(Rectangle())
                 .onTapGesture { model.onClick() }
         case .peek(.approval):

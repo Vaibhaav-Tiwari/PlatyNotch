@@ -16,21 +16,21 @@ struct HUDView: View {
                 .contentTransition(.symbolEffect(.replace))
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.18))
-                    Capsule().fill(.white).frame(width: geo.size.width * min(max(level, 0), 1))
+                    Capsule().fill(Theme.track)
+                    Capsule().fill(.primary).frame(width: geo.size.width * min(max(level, 0), 1))
                 }
             }
             .frame(height: 5)
             if let output {
                 Text(verbatim: output)
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(maxWidth: 110, alignment: .trailing)
             }
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(.primary)
         .frame(maxWidth: .infinity, minHeight: 20)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
@@ -50,7 +50,7 @@ struct HUDTile: View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: widget.status == .on ? "speaker.wave.2.fill" : "speaker.slash")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(widget.status == .on ? Color.white : Color.secondary)
+                .foregroundStyle(widget.status == .on ? Color.primary : Color.secondary)
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 4) {
                 Text(widget.status == .on ? "Volume & brightness HUD on" : "Volume & brightness HUD off")

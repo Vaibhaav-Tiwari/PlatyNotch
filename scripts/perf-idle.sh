@@ -13,45 +13,52 @@
 # session (ideally a notched M1). Not part of CI.
 #
 # Options:
-#   --app <PlatyNotch.app>  run a bundle built by scripts/build-app.sh (its bundled
-#                           mediaremote-adapter feeds now-playing) instead of the
-#                           SwiftPM release executable
-#   --music-fallback        no mediaremote-adapter: now-playing falls back to AppleScript
-#                           polling (an idle wake every 2 s, a read every 6 s while Music or
-#                           Spotify runs). Not with --app.
+#   --app [PlatyNotch.app]  run a bundle built by scripts/build-app.sh (default
+#                           build/PlatyNotch.app; its bundled mediaremote-adapter feeds
+#                           now-playing) instead of the SwiftPM release executable. It runs
+#                           as a copy, build/perf/PlatyNotch.app, with the bundle id
+#                           dev.platynotch.perf (ad-hoc re-signed), so it never reads or
+#                           writes the installed app's settings or permissions. The copy is
+#                           refreshed only when the source bundle is newer, so a permission
+#                           granted to it (Automation) lasts across runs.
+#   --music-fallback        no mediaremote-adapter (PLATYNOTCH_NO_MEDIAREMOTE=1): now-playing
+#                           falls back to AppleScript polling (an idle wake every 2 s, a read
+#                           every 6 s while Music or Spotify runs). The reads need the app's
+#                           Automation permission for the player: measure that with
+#                           `--app --music-fallback` after granting it (verify-widgets #178).
 #   -h, --help              this help
 #
 # Environment: PN_PERF_LIMIT (default 1.0, percent of one core), PN_PERF_WARMUP (s,
 # default 10). Without --app the release executable uses the adapter in
 # build/mediaremote-adapter when build-app.sh has built it there, else the fallback.
 #
-# Settings: the release executable's UserDefaults domain is "PlatyNotch" (not the
-# installed app's dev.platynotch.app). Widget layout and Appearance are forced to their
+# Settings: the release executable's UserDefaults domain is "PlatyNotch", the bundle
+# copy's dev.platynotch.perf (never the installed app's dev.platynotch.app). Widget layout and Appearance are forced to their
 # defaults for this run through the volatile argument domain; nothing is written.
 # Nothing touches ~/Library/Application Support/PlatyNotch.
 set -euo pipefail
 
 usage() {
-  sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'
-  echo "usage: scripts/perf-idle.sh [--app <PlatyNotch.app>] [--music-fallback]"
+  sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//'
+  echo "usage: scripts/perf-idle.sh [--app [PlatyNotch.app]] [--music-fallback]"
 }
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BUILD_DIR="${PLATYNOTCH_BUILD_DIR:-$ROOT/build}"
+PERF_ID="dev.platynotch.perf"
 APP_BUNDLE=""
 FALLBACK=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --app) [[ $# -ge 2 && -n "$2" ]] || { usage >&2; exit 2; }; APP_BUNDLE="$2"; shift 2 ;;
+    --app)
+      if [[ $# -ge 2 && -n "$2" && "$2" != -* ]]; then APP_BUNDLE="$2"; shift 2
+      else APP_BUNDLE="$BUILD_DIR/PlatyNotch.app"; shift; fi ;;
     --music-fallback) FALLBACK=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
-if [[ -n "$APP_BUNDLE" && $FALLBACK -eq 1 ]]; then
-  echo "--music-fallback needs the SwiftPM executable (a bundle has the adapter)" >&2
-  exit 2
-fi
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LIMIT="${PN_PERF_LIMIT:-1.0}"
 WARMUP="${PN_PERF_WARMUP:-10}"
 SAMPLES=61   # the first is dropped
@@ -74,7 +81,7 @@ cleanup() {
     for _ in $(seq 50); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.1; done
     kill -9 "$APP_PID" 2>/dev/null || true
   fi
-  if [[ -n "$SERVE_PID" ]]; then
+  if [[ -n "$SERVE_PID" ]] && kill -0 "$SERVE_PID" 2>/dev/null; then
     kill "$SERVE_PID" 2>/dev/null || true
     wait "$SERVE_PID" 2>/dev/null || true
   fi
@@ -94,14 +101,32 @@ log "building core: $WORK/notch"
 (cd "$ROOT/core" && go build -o "$WORK/notch" ./cmd/notch)
 
 if [[ -n "$APP_BUNDLE" ]]; then
-  APP_BIN="$APP_BUNDLE/Contents/MacOS/PlatyNotch"
-  [[ -x "$APP_BIN" ]] || { echo "no executable at $APP_BIN" >&2; exit 1; }
-  MUSIC="bundled mediaremote-adapter"
+  SRC_BIN="$APP_BUNDLE/Contents/MacOS/PlatyNotch"
+  [[ -x "$SRC_BIN" ]] || { echo "no executable at $SRC_BIN (scripts/build-app.sh builds it)" >&2; exit 1; }
+  PERF_APP="$BUILD_DIR/perf/PlatyNotch.app"
+  if [[ ! -x "$PERF_APP/Contents/MacOS/PlatyNotch" || "$SRC_BIN" -nt "$PERF_APP/Contents/MacOS/PlatyNotch" ]]; then
+    log "copying $APP_BUNDLE to $PERF_APP as $PERF_ID"
+    rm -rf "$PERF_APP"
+    mkdir -p "$(dirname "$PERF_APP")"
+    ditto "$APP_BUNDLE" "$PERF_APP"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $PERF_ID" "$PERF_APP/Contents/Info.plist"
+    codesign --force --deep --sign - "$PERF_APP" >/dev/null
+  fi
+  APP_BIN="$PERF_APP/Contents/MacOS/PlatyNotch"
+  unset PLATYNOTCH_MEDIAREMOTE_DIR
+  if [[ $FALLBACK -eq 1 ]]; then
+    export PLATYNOTCH_NO_MEDIAREMOTE=1
+    MUSIC="AppleScript fallback (bundle, adapter turned off)"
+  else
+    unset PLATYNOTCH_NO_MEDIAREMOTE
+    MUSIC="bundled mediaremote-adapter"
+  fi
 else
   log "swift build (release)"
   (cd "$ROOT/apps/mac" && swift build -c release --product PlatyNotch)
   APP_BIN="$(cd "$ROOT/apps/mac" && swift build -c release --show-bin-path)/PlatyNotch"
-  ADAPTER_DIR="$ROOT/build/mediaremote-adapter"
+  unset PLATYNOTCH_NO_MEDIAREMOTE
+  ADAPTER_DIR="$BUILD_DIR/mediaremote-adapter"
   if [[ $FALLBACK -eq 0 && -f "$ADAPTER_DIR/mediaremote-adapter.pl" ]]; then
     export PLATYNOTCH_MEDIAREMOTE_DIR="$ADAPTER_DIR"
     MUSIC="mediaremote-adapter from $ADAPTER_DIR"

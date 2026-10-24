@@ -3,8 +3,8 @@ import SwiftUI
 
 /// Colors shared by the boards.
 enum GameColors {
-    static let board = Color.white.opacity(0.05)
-    static let grid = Color.white.opacity(0.03)
+    static let board = Color.primary.opacity(0.05)
+    static let grid = Color.primary.opacity(0.03)
     static let accent = Color(nsColor: .systemGreen)
     static let food = Color(nsColor: .systemRed)
 }

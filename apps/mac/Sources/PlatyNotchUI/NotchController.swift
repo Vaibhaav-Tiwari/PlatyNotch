@@ -24,7 +24,7 @@ public final class NotchController {
     private let memory: MemoryServices
 
     private var machine: PanelStateMachine
-    private let model = PanelViewModel()
+    private let model: PanelViewModel = PanelViewModel()
     private let tracker = HoverTracker()
     private var debouncer = HoverDebouncer()
     private var panel: NotchPanel?

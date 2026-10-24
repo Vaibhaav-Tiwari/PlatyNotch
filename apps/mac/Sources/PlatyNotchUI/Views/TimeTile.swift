@@ -222,7 +222,7 @@ private struct WeekdayChips: View {
                     Text(verbatim: symbols[day - 1])
                         .font(.system(size: 9, weight: .semibold))
                         .frame(width: 18, height: 16)
-                        .foregroundStyle(on ? Color.black : .secondary)
+                        .foregroundStyle(on ? Color.black : .secondary)   // black on the orange chip
                         .background(on ? Color.orange : Color.secondary.opacity(0.15), in: Capsule())
                 }
                 .buttonStyle(.plain)

@@ -10,11 +10,15 @@ public struct LaunchOptions: Equatable, Sendable {
     /// `PLATYNOTCH_EXTERNAL_CORE=1`: connect to an already running `notch serve`
     /// (e.g. `scripts/fake-events.sh`) instead of supervising one.
     public var externalCore: Bool
+    /// `PLATYNOTCH_RENDER_DIR`: `--smoke` also writes PNGs of themed views (HUD, approval
+    /// card, game boards, shelf) in the dark and light schemes into this directory.
+    public var renderDir: String?
 
     public init(arguments: [String], env: [String: String]) {
         smoke = arguments.dropFirst().contains("--smoke")
         smokeSettings = arguments.dropFirst().contains("--smoke-settings")
         smokeDelay = env["PLATYNOTCH_SMOKE_DELAY"].flatMap(Double.init).flatMap { $0 > 0 ? $0 : nil } ?? 3
         externalCore = env["PLATYNOTCH_EXTERNAL_CORE"] == "1"
+        renderDir = env["PLATYNOTCH_RENDER_DIR"].flatMap { $0.isEmpty ? nil : $0 }
     }
 }

@@ -309,9 +309,13 @@ struct AdapterFiles: Sendable {
     let framework: URL
 
     /// `PLATYNOTCH_MEDIAREMOTE_DIR` (development), else the app's `Resources/mediaremote-adapter/`.
+    /// `PLATYNOTCH_NO_MEDIAREMOTE=1` finds none, so even a bundle uses the AppleScript
+    /// fallback (`scripts/perf-idle.sh --app --music-fallback`).
     static func locate() -> AdapterFiles? {
+        let env = ProcessInfo.processInfo.environment
+        if env["PLATYNOTCH_NO_MEDIAREMOTE"] == "1" { return nil }
         var dirs: [URL] = []
-        if let env = ProcessInfo.processInfo.environment["PLATYNOTCH_MEDIAREMOTE_DIR"], !env.isEmpty {
+        if let env = env["PLATYNOTCH_MEDIAREMOTE_DIR"], !env.isEmpty {
             dirs.append(URL(fileURLWithPath: env, isDirectory: true))
         }
         if let res = Bundle.main.resourceURL { dirs.append(res.appendingPathComponent(directoryName, isDirectory: true)) }
