@@ -6,6 +6,7 @@ import SwiftUI
 @MainActor
 public final class MemoryServices {
     public let search: MemorySearchModel
+    public let graph: MemoryGraphModel
     /// Nil when capture is not running in this process (tests, previews).
     public let capture: CaptureService?
     /// Opens Settings at the memory section (wired by the Settings task).
@@ -13,6 +14,7 @@ public final class MemoryServices {
 
     public init(client: CoreClient, capture: CaptureService? = nil, onOpenSettings: @escaping () -> Void = {}) {
         search = MemorySearchModel(client: client)
+        graph = MemoryGraphModel(client: client)
         self.capture = capture
         self.onOpenSettings = onOpenSettings
     }
@@ -92,25 +94,60 @@ public final class MemorySearchModel {
     }
 }
 
-/// Search what you have read and written, plus memory and capture status.
+/// Search what you have read and written, or see it as a graph, plus memory and
+/// capture status.
 struct MemoryTab: View {
     let store: AppStore
     let memory: MemoryServices
+    @State private var mode: Mode = .search
+
+    enum Mode: String, CaseIterable {
+        case search = "Search", graph = "Graph"
+    }
 
     var body: some View {
         let search = memory.search
         VStack(alignment: .leading, spacing: 6) {
-            MemorySearchField(search: search)
+            HStack(spacing: 8) {
+                Picker("View", selection: $mode) {
+                    ForEach(Mode.allCases, id: \.self) { Text(verbatim: $0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+                .controlSize(.small)
+                switch mode {
+                case .search:
+                    MemorySearchField(search: search)
+                case .graph:
+                    Spacer(minLength: 4)
+                    MemoryGraphControls(model: memory.graph)
+                }
+            }
 
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            switch mode {
+            case .search:
+                content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            case .graph:
+                // Asks the core when shown; static afterwards.
+                MemoryGraphView(model: memory.graph, onOpenSettings: memory.onOpenSettings)
+            }
 
             MemoryStatusLine(status: store.memory, capture: memory.capture)
         }
-        .onAppear { search.refresh() }
-        .onChange(of: store.memory.enabled) { _, _ in search.refresh() }
-        .onChange(of: store.connection) { _, c in if c == .connected { search.refresh() } }
-        .onChange(of: lastCapture) { _, _ in search.captureArrived() }
+        .onAppear { if mode == .search { search.refresh() } }
+        .onChange(of: mode) { _, m in if m == .search { search.refresh() } }
+        .onChange(of: store.memory.enabled) { _, _ in refreshShown() }
+        .onChange(of: store.connection) { _, c in if c == .connected { refreshShown() } }
+        .onChange(of: lastCapture) { _, _ in if mode == .search { search.captureArrived() } }
+    }
+
+    private func refreshShown() {
+        switch mode {
+        case .search: memory.search.refresh()
+        case .graph: memory.graph.refresh()
+        }
     }
 
     private var lastCapture: Date? { memory.capture?.activity.lastCaptureAt }

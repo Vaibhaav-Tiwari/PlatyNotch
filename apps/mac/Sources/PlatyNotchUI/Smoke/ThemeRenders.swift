@@ -78,7 +78,23 @@ enum ThemeRenders {
         out += games().map { ($0.0, $0.1, false) }
         out.append(("shelf-tile-empty", AnyView(shelf), false))
         out.append(("shelf-cards", shelfCards(), true))
+        out.append(("memory-graph", memoryGraph(selection: nil), true))
+        out.append(("memory-graph-selected", memoryGraph(selection: "t-pr"), true))
+        out.append(("memory-graph-empty", memoryGraph(MemoryGraph(nodes: [], edges: []), selection: nil), true))
         return out
+    }
+
+    /// The Memory tab's Graph mode at the panel's content size, with a sample week.
+    private static func memoryGraph(_ graph: MemoryGraph = MemoryGraphSample.week, selection: String?) -> AnyView {
+        let model = MemoryGraphModel(preset: graph)
+        let view = VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Spacer(minLength: 4)
+                MemoryGraphControls(model: model)
+            }
+            MemoryGraphView(model: model, fadeIn: false, initialSelection: selection)
+        }
+        return AnyView(view.frame(width: 536, height: 270))
     }
 
     private static func approvalCard() -> AnyView {

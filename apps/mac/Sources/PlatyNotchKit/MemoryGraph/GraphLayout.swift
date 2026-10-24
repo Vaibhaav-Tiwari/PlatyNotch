@@ -23,7 +23,7 @@ public struct GraphLayout: Sendable, Equatable {
 
     /// `aspect` is width / height (clamped to 0.25...8); `padding` is in box units.
     public static func compute(_ graph: MemoryGraph, aspect: Double = 1, seed: UInt64 = 1,
-                               iterations: Int = GraphLayout.iterations, padding: Double = 0.08) -> GraphLayout {
+                               iterations: Int = GraphLayout.iterations, padding: Double = 0.12) -> GraphLayout {
         let w = min(max(aspect, 0.25), 8)
         // Sorted ids and springs: the sums run in one order whatever order the core sent.
         let ids = Array(Set(graph.nodes.map(\.id))).sorted()
@@ -49,7 +49,7 @@ public struct GraphLayout: Sendable, Equatable {
             y[i] = rng.unit()
         }
 
-        let k = (w / Double(n)).squareRoot() * 0.9
+        let k = (w / Double(n)).squareRoot()
         let k2 = k * k
         let t0 = w / 10
         let steps = max(iterations, 1)
@@ -79,18 +79,20 @@ public struct GraphLayout: Sendable, Equatable {
                 dx[a] -= ddx * f; dy[a] -= ddy * f
                 dx[b] += ddx * f; dy[b] += ddy * f
             }
-            // Gentle gravity keeps separate clusters on screen.
+            // Gravity toward the centre packs separate clusters together; stronger
+            // vertically in a wide box, so the result has about the box's shape.
             for i in 0..<n {
-                dx[i] += (w / 2 - x[i]) * 0.05 / k
-                dy[i] += (0.5 - y[i]) * 0.05 / k
+                dx[i] += (w / 2 - x[i]) * 0.5
+                dy[i] += (0.5 - y[i]) * 0.5 * w
             }
             let t = t0 * (1 - Double(step) / Double(steps))
             for i in 0..<n {
                 let len = (dx[i] * dx[i] + dy[i] * dy[i]).squareRoot()
                 guard len > 0 else { continue }
                 let move = min(len, t)
-                x[i] = min(max(x[i] + dx[i] / len * move, 0), w)
-                y[i] = min(max(y[i] + dy[i] / len * move, 0), 1)
+                // Unbounded: walls would pile nodes up along the edges. `fit` scales after.
+                x[i] += dx[i] / len * move
+                y[i] += dy[i] / len * move
             }
         }
         return GraphLayout(positions: fit(ids: ids, x: x, y: y, width: w, padding: padding), aspect: w)
