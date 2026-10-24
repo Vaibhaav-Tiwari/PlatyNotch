@@ -52,18 +52,21 @@ public final class ClipboardStore {
     // MARK: - Recording
 
     /// Records text, a URL or files (not images: `recordImage`). Blank text, text over
-    /// `maxTextLength` and an empty file list are refused (nil). Returns the item now at
-    /// the top (an existing one when the content was already there).
+    /// `maxTextLength`, text or a URL holding an obvious secret (`SecretText`: keys,
+    /// tokens, card numbers; skipped, never stored redacted) and an empty file list are
+    /// refused (nil). Returns the item now at the top (an existing one when the content
+    /// was already there).
     @discardableResult
     public func record(_ kind: ClipItem.Kind, source: String?) -> ClipItem? {
         switch kind {
         case .text(let t):
             guard t.count <= Self.maxTextLength,
-                  !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+                  !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !SecretText.containsSecret(t) else { return nil }
         case .files(let urls):
             guard !urls.isEmpty else { return nil }
-        case .url:
-            break
+        case .url(let u):
+            guard !SecretText.containsSecret(u.absoluteString) else { return nil }
         case .image:
             return nil
         }

@@ -273,6 +273,18 @@ final class ClipboardTests: XCTestCase {
         XCTAssertTrue(store.items.isEmpty)
     }
 
+    /// Final review B3: obvious secrets never enter history (skipped, not redacted).
+    func testStoreSkipsSecrets() {
+        let store = ClipboardStore(directory: tempDir(), now: { self.t0 })
+        XCTAssertNil(store.record(.text("export OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwx1234"), source: nil))
+        XCTAssertNil(store.record(.text("4242 4242 4242 4242"), source: nil))
+        XCTAssertNil(store.record(.url(URL(string: "https://example.com/cb?token=ghp_" + String(repeating: "a", count: 36))!),
+                                  source: nil))
+        XCTAssertTrue(store.history.items.isEmpty)
+        XCTAssertNotNil(store.record(.text("an ordinary note, 4242"), source: nil))
+        XCTAssertNotNil(store.record(.url(URL(string: "https://example.com/page")!), source: nil))
+    }
+
     func testLimitTrimDeletesImages() throws {
         let dir = tempDir()
         let store = ClipboardStore(directory: dir, limit: 2, now: { self.t0 })
