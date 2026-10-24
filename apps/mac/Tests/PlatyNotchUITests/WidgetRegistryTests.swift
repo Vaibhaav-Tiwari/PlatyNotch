@@ -168,7 +168,7 @@ final class WidgetRegistryTests: DefaultsTestCase {
         let registry = WidgetRegistry(defaults: defaults())
         let today = TodayServices(client: CoreClient(socketPath: "/nonexistent"))
         BuiltInWidgets.register(in: registry, store: AppStore(), today: today, persist: false)
-        XCTAssertEqual(registry.orderedWidgets.map(\.id), ["music", "meeting", "focus", "loops", "time", "hud", "shelf", "clipboard",
+        XCTAssertEqual(registry.orderedWidgets(in: .everyday).map(\.id), ["music", "meeting", "focus", "loops", "time", "hud", "shelf", "clipboard",
                                                            "reminders", "weather", "wellbeing", "system", "games", "launch"])
         XCTAssertEqual(registry.visibleWidgets.count, 9,
                        "the HUD (needs Accessibility), clipboard history (C22), Reminders (private data), weather (network) "
@@ -182,6 +182,8 @@ final class WidgetRegistryTests: DefaultsTestCase {
         XCTAssertTrue(registry.isEnabled(ShelfWidget.widgetID), "the shelf needs no permission and is on")
         XCTAssertFalse(registry.isEnabled(HUDWidget.widgetID))
         XCTAssertTrue(registry.isEnabled(SystemWidget.widgetID), "battery and keep-awake need no permission")
+        XCTAssertTrue(registry.orderedWidgets(in: .power).contains { $0.id == WindowSnapWidget.widgetID })
+        XCTAssertFalse(registry.isEnabled(WindowSnapWidget.widgetID), "power features are off by default")
     }
 
     /// Turning a widget off calls `disabled()` after `stop`; quitting (`stopAll`) does not.
