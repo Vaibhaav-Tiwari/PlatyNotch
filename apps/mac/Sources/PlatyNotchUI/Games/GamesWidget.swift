@@ -3,7 +3,7 @@ import Observation
 import PlatyNotchKit
 import SwiftUI
 
-/// Snake, Tetris, 2048 and Flappy in the expanded panel's Games tab; the Today tile picks
+/// Snake, Tetris, 2048, Flappy and Platy Chase in the expanded panel's Games tab; the Today tile picks
 /// one and shows the best scores.
 ///
 /// On by default, and does nothing until a game is opened and played: `start` only wires
@@ -124,7 +124,7 @@ struct GamesTile: View {
     private func label(_ kind: GameKind) -> some View {
         let best = host.session.scores.best(kind.rawValue)
         return VStack(spacing: 2) {
-            Text(verbatim: kind.title).font(.system(size: 11, weight: .medium))
+            Text(verbatim: kind.shortTitle).font(.system(size: 11, weight: .medium))
             Text(best > 0 ? "Best \(best)" : "New")
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)

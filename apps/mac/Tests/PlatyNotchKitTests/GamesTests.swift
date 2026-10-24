@@ -370,7 +370,7 @@ final class FlappyTests: XCTestCase {
         f.velocity = 0
         f.pipes = [Flappy.Pipe(x: Flappy.birdX - Flappy.pipeWidth + 1, gapY: 70, gapHeight: 60)]
         for _ in 0..<5 {
-            f.flap()   // hold height
+            f.velocity = 0   // hold height (a flap now would hop out of a gap this small)
             f.step(dt: 0.02)
         }
         XCTAssertFalse(f.isOver)
@@ -474,7 +474,8 @@ final class GameSessionTests: XCTestCase {
         var s = playing(.snake)
         let head = s.snake.body[0]
         s.advance(to: 10)   // the first frame only sets the clock
-        s.advance(to: 10 + GameSession.snakeStep * 2 + 0.001)
+        s.advance(to: 10 + GameSession.snakeStep + 0.001)
+        s.advance(to: 10 + GameSession.snakeStep * 2 + 0.001)   // two frames: one is capped at maxFrameGap
         XCTAssertEqual(s.snake.body[0].x, head.x + 2)
         XCTAssertTrue(s.isRunning)
     }

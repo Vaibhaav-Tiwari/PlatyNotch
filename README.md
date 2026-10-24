@@ -83,7 +83,7 @@ launch, so the retention below holds.
 | Time | on | Timers, a pomodoro, a stopwatch with laps, alarms and world clocks; a system notification backs up each timer and alarm in case the app is quit. |
 | Shelf | on | Drag files, images, links or text to the notch to keep them; drag them back out, AirDrop, share or Quick Look them. |
 | System | on | Battery (plug-in and unplug peeks) and keep-awake. Headphones (AirPods battery) and Downloads (progress and a finished notice) are sub-features, off until you turn them on in its settings. |
-| Games | on | Snake, Tetris, 2048 and Flappy in a Games tab; best scores on the tile. |
+| Games | on | Snake, Tetris, 2048, Flappy and Platy Chase (a maze chase with classic arcade rules on our own maze and art) in a Games tab; best scores on the tile. |
 | Sites & Shortcuts | on | Pinned websites (http and https only) and pinned Shortcuts, run on a click. |
 | Volume & brightness HUD | off | Replaces the system volume, brightness and keyboard-backlight HUD with one under the notch. |
 | Clipboard history | off | Keeps what you copy; ⌥⇧V opens a searchable picker. |
