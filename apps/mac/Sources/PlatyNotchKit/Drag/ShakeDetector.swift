@@ -3,13 +3,16 @@ import Foundation
 /// Recognises a shake of the pointer while dragging (R3, groundwork for baskets): the
 /// horizontal direction reverses at least `threshold` times within `window` seconds, and
 /// every leg between two turns travels at least `minTravel` points. Pure: feed it pointer
-/// samples (the drag monitor's 0.05 s poll gives about 10 in the window).
+/// samples (the drag monitor's 0.05 s poll).
 ///
 /// `threshold = 8 - sensitivity`, sensitivity 1…5 (clamped), so 7 reversals at the
-/// least sensitive setting and 3 at the most.
+/// least sensitive setting and 3 at the most. The window grows with the threshold
+/// (`windowPerReversal` each: 0.45 s for 3 reversals, 0.75 s for 5, 1.05 s for 7), so a
+/// hand shaking at about 3 Hz reaches every level, while a slow wiggle (1 Hz) reaches none.
 public struct ShakeDetector: Equatable, Sendable {
     public static let minTravel: Double = 30
-    public static let window: TimeInterval = 0.5
+    /// Seconds of window per reversal needed (`window = windowPerReversal * threshold`).
+    public static let windowPerReversal: TimeInterval = 0.15
     public static let sensitivityRange: ClosedRange<Int> = 1...5
     public static let defaultSensitivity = 3
 
@@ -19,6 +22,8 @@ public struct ShakeDetector: Equatable, Sendable {
     }
 
     public let threshold: Int
+    /// How recent the `threshold` reversals must be.
+    public let window: TimeInterval
     /// +1 right, -1 left, 0 before the first leg of `minTravel`.
     private var direction: Double = 0
     /// Where the current leg started (the last turn, or the first sample).
@@ -30,6 +35,7 @@ public struct ShakeDetector: Equatable, Sendable {
 
     public init(sensitivity: Int = ShakeDetector.defaultSensitivity) {
         threshold = Self.threshold(sensitivity: sensitivity)
+        window = Self.windowPerReversal * Double(threshold)
     }
 
     /// One pointer sample (`x` in points, `time` in seconds, increasing). True when this
@@ -56,7 +62,7 @@ public struct ShakeDetector: Equatable, Sendable {
         direction = -direction
         extreme = x
         reversals.append(time)
-        reversals.removeAll { time - $0 > Self.window }
+        reversals.removeAll { time - $0 > window }
         guard reversals.count >= threshold else { return false }
         reset()
         return true

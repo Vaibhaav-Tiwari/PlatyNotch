@@ -125,6 +125,8 @@ final class PowerSmokeTests: DefaultsTestCase {
         XCTAssertTrue(list.contains { $0.id == MirrorWidget.widgetID })
         XCTAssertTrue(list.contains { $0.id == MailWidget.widgetID })
         XCTAssertTrue(list.contains { $0.id == NotesWidget.widgetID })
+        XCTAssertTrue(list.contains { $0.id == BasketsWidget.widgetID })
+        XCTAssertFalse(list.first { $0.id == BasketsWidget.widgetID }?.hasTile ?? true, "baskets are headless")
         XCTAssertTrue(list.allSatisfy { !$0.defaultEnabled })
         XCTAssertFalse(list.first { $0.id == FileActionsWidget.widgetID }?.hasTile ?? true)
         XCTAssertEqual(NotchApp.powerSmoke(list), .success(list.count))

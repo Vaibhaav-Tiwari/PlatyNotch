@@ -1272,6 +1272,48 @@ Settings › Widgets › Power features › Mail, on an installed build.
 - [ ] **248. Nothing kept.** Turn Mail off and on: the tile reads again (nothing was saved).
   `defaults read dev.platynotch.app | grep -i mail` shows only `automationGrant.com.apple.mail`.
 
+## Baskets (v0.2)
+
+Automated: `BasketTests` (shake thresholds, the file-or-URL gate, moves between baskets by
+`ShelfStore.transfer`, caps, what is kept after quit, placement clear of every notch
+surface) and `BasketControllerTests` (fake drag monitor and system: no basket for text or
+drawing, nothing while off, approval card never covered, merge, close, switcher, full
+screen). Turn on Settings › Widgets › Power features › Baskets.
+
+- [ ] **249. Shake to summon.** Drag a file from Finder and shake the pointer left and right a
+  few times: a basket appears under the pointer; release over it and the file is in it.
+  The shelf's drop zone at the notch still takes drops made there.
+- [ ] **250. No basket for text or drawing.** Select text in TextEdit and drag it while
+  shaking; draw in Preview's markup or Freeform while shaking; move a window while
+  shaking: no basket appears.
+- [ ] **251. Approvals win.** With a pending approval card under the notch, drag a file and
+  shake right on the notch, then on the card: the basket appears below or beside the
+  card, never over it, and Allow and Deny still work. Drag the basket by its title up
+  into the notch: it stops short. Open the panel: it never overlaps a basket.
+- [ ] **252. Drag out and actions.** Drag an item from the basket into Finder (a copy).
+  Right-click an item: the shelf's menu, with Actions › while File actions is on.
+- [ ] **253. Basket menu.** Right-click a basket's title: Pin, Color, Rename…, Actions,
+  Move All to Shelf (moves them; turn the Shelf off and it is greyed), Clear, Close.
+- [ ] **254. Merge and close.** Drag one basket's title onto another: its items move there
+  and it closes. Close a basket with items: it asks inside the basket (Move to Shelf / Discard /
+  Cancel), no alert, and a pending approval card stays clickable meanwhile; Discard
+  deletes only copies in `baskets.noindex`, never your own file. Rename… opens a small
+  field beside the basket; the frontmost app stays frontmost.
+- [ ] **255. Switcher.** Press ⌃⌥B a few times: each basket comes forward in turn with a
+  strip naming them; with no baskets it makes one at the pointer. Choose another
+  shortcut or Off in Settings: the old one stops working.
+- [ ] **256. Quit and pin.** Pin one basket, leave another unpinned, quit and relaunch: only
+  the pinned one comes back, where it was. `ls ~/Library/Application\ Support/PlatyNotch/baskets.noindex`
+  lists only its folder.
+- [ ] **257. Full screen.** With Appearance › Hide in full screen on, make a basket, then
+  enter a full-screen app on that display: the basket hides (one on another display
+  stays); shake a file drag or press ⌃⌥B: it shows. At the default sensitivity a
+  brisk shake (about 3 per second) is enough; a slow wiggle never is.
+  On a display that shows no notch panel (Appearance › Displays set to the main one
+  only), baskets there do not hide for a full-screen app: hiding follows the panels.
+- [ ] **258. Off means off.** Turn Baskets off: every basket closes (unpinned ones cleared),
+  ⌃⌥B does nothing and shaking a drag makes nothing.
+
 ## Notes and tasks (v0.2)
 
 Settings › Widgets › Power features › Notes & Tasks. Use a throwaway vault (a copy of an

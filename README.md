@@ -141,6 +141,16 @@ folder or list more than 50,000 entries. Nothing it unpacks is writable by other
 Files in Downloads, Desktop
 or Documents may make macOS ask for access when an action reads them.
 
+**Baskets** needs no permission and no network: while dragging a file or link, shake
+the pointer and a small basket appears there to drop it into (up to 6 baskets of 50
+items; ⌃⌥B brings the next one forward). Shaking while selecting text or drawing never
+makes one, and a basket never covers the notch or an approval request. Baskets are
+cleared when PlatyNotch quits or Baskets is turned off, deleting only the copies they
+made, unless the basket or one of its items is pinned. To keep a copy a basket made
+(a dropped image, a file from Photos, an action's result), drag it out to a folder or
+use Save As…: anything that points at the copy inside `baskets.noindex` stops working
+once the basket is cleared.
+
 **Finder service and links** (no new permission): Finder › Services › Add to
 PlatyNotch Shelf is always listed but only shows "Turn on the Shelf" while the shelf is
 off. `platynotch://shelf/add?path=…`, `platynotch://timer/start?d=25m` and
@@ -173,6 +183,7 @@ excluded from Time Machine and Spotlight (`.noindex`). Folders made by earlier b
 | What | Where | Kept |
 | --- | --- | --- |
 | Shelf | `shelf.noindex/`: the list, copies of dropped images and of files from apps like Photos or Mail, dropped text | Copies and text are deleted 7 days after you added them, unless pinned. Files you drop from disk stay where they are and are never deleted. If the shelf's list is ever damaged, it is set aside with the copies it may have listed and nothing is deleted; Settings › Widgets › Shelf then shows how many were kept, with Delete Kept Copies. |
+| Baskets | `baskets.noindex/<basket>/`: the same as the shelf, one folder per basket | Cleared at quit or when Baskets is turned off, unless the basket or an item in it is pinned; copies in a pinned basket are deleted 7 days after you added them unless pinned. Your own files are never deleted. |
 | Clipboard history | `clipboard.noindex/`: the history and copied images | 1, 7 (default) or 30 days, and at most 50–500 items (200 by default); pinned items stay. Never saved: anything copied in a password manager or marked as a password by the app that copied it, and text that looks like an API key, token, private key or card number. A password copied from anywhere else (a note, a chat) can be saved; Clear History (or Clear All, Including Pinned, for a pinned one) deletes it. |
 | Pinned-site icons | `favicons.noindex/` | 30 days, then fetched again |
 | Settings and small state | The app's preferences (`dev.platynotch.app`): widget order, timers, alarms and world clocks, the focus session, pinned sites and Shortcuts, best game scores, the weather city, wellbeing settings and the water log | Until you change them; the water log keeps 14 days |
