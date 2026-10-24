@@ -145,6 +145,17 @@ final class MemoryGraphTests: XCTestCase {
         XCTAssertFalse(l.unicodeScalars.contains("\u{202E}"))
     }
 
+    func testShortLabelCutsBeforeSanitising() {
+        XCTAssertEqual(MemoryGraphFormat.shortLabel(node("t", .thread, "Inbox"), max: 28), "Inbox")
+        XCTAssertEqual(MemoryGraphFormat.shortLabel(node("t", .thread, "abcdefghij klm"), max: 10), "abcdefghij…")
+        XCTAssertEqual(MemoryGraphFormat.shortLabel(node("t", .thread, "   "), max: 10), "Untitled")
+        // A hidden character inside the cut is made visible whole, never half-escaped.
+        let s = MemoryGraphFormat.shortLabel(node("t", .thread, "ab\u{202E}cdefghijklmnop"), max: 4)
+        XCTAssertTrue(s.hasSuffix("…"))
+        XCTAssertFalse(s.unicodeScalars.contains("\u{202E}"))
+        XCTAssertEqual(s, MemoryFormat.title("ab\u{202E}c") + "…")
+    }
+
     func testRadius() {
         XCTAssertEqual(MemoryGraphFormat.radius(weight: 9, maxWeight: 9), 10)
         XCTAssertEqual(MemoryGraphFormat.radius(weight: 0, maxWeight: 9), 4)

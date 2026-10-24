@@ -24,7 +24,10 @@ public final class MemoryGraphModel {
 
     @ObservationIgnored private let request: (@Sendable (Envelope) async throws -> Envelope)?
     @ObservationIgnored private var task: Task<Void, Never>?
-    @ObservationIgnored private var cached: (graph: MemoryGraph, aspect: Double, layout: GraphLayout)?
+    /// Layouts of `cachedGraph` by rounded aspect (at most `cacheLimit`).
+    @ObservationIgnored private var cachedGraph: MemoryGraph?
+    @ObservationIgnored private var cached: [Double: GraphLayout] = [:]
+    static let cacheLimit = 4
 
     init(request: @escaping @Sendable (Envelope) async throws -> Envelope) {
         self.request = request
@@ -72,9 +75,14 @@ public final class MemoryGraphModel {
     /// shape (hover and selection redraw without moving anything).
     func layout(_ graph: MemoryGraph, aspect: Double) -> GraphLayout {
         let rounded = (aspect * 10).rounded() / 10
-        if let c = cached, c.graph == graph, c.aspect == rounded { return c.layout }
+        if cachedGraph != graph {
+            cachedGraph = graph
+            cached = [:]
+        }
+        if let l = cached[rounded] { return l }
+        if cached.count >= Self.cacheLimit { cached = [:] }
         let l = GraphLayout.compute(graph, aspect: rounded)
-        cached = (graph, rounded, l)
+        cached[rounded] = l
         return l
     }
 }
@@ -219,10 +227,12 @@ private struct MemoryGraphBody: View {
             .onContinuousHover { phase in
                 switch phase {
                 case .active(let p):
-                    hovered = layout.nearest(x: Double(p.x), y: Double(p.y), width: width, height: height,
+                    // Written only on a change: every write redraws the canvas.
+                    let hit = layout.nearest(x: Double(p.x), y: Double(p.y), width: width, height: height,
                                              within: 12, order: order)
+                    if hit != hovered { hovered = hit }
                 case .ended:
-                    hovered = nil
+                    if hovered != nil { hovered = nil }
                 }
             }
             .onTapGesture(coordinateSpace: .local) { p in
@@ -237,7 +247,9 @@ private struct MemoryGraphBody: View {
 }
 
 /// What VoiceOver reads instead of the drawing: every node, heaviest first, with its
-/// kind and number of connections; activating one shows its links in the detail line.
+/// kind and number of connections; activating one selects it, and the selected row
+/// reads its links as its value. (Moving between nodes with the keyboard alone is a
+/// follow-up.)
 private struct MemoryGraphAccessibleList: View {
     let graph: MemoryGraph
     @Binding var selected: String?
@@ -245,11 +257,18 @@ private struct MemoryGraphAccessibleList: View {
     var body: some View {
         VStack {
             ForEach(MemoryGraphFormat.accessibleRows(graph), id: \.id) { row in
+                let isSelected = row.id == selected
                 Text(verbatim: row.label)
-                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+                    .accessibilityValue(Text(verbatim: isSelected ? value(row.id) : ""))
                     .accessibilityAction { selected = row.id }
             }
         }
+    }
+
+    private func value(_ id: String) -> String {
+        guard let node = graph.nodes.first(where: { $0.id == id }) else { return "" }
+        return MemoryGraphFormat.detail(node, in: graph)
     }
 }
 
@@ -311,8 +330,8 @@ struct GraphScene {
         let show = n.id == focus || (kind == .app && (focus == nil || near.contains(n.id)))
         guard show else { return }
         let r = CGFloat(MemoryGraphFormat.radius(weight: n.weight, maxWeight: maxWeight))
-        let label = String(MemoryGraphFormat.label(n).prefix(28))
-        let text = Text(verbatim: label).font(.system(size: 9, weight: n.id == focus ? .semibold : .regular))
+        let label = MemoryGraphFormat.shortLabel(n, max: 28)
+        let text = Text(verbatim: label).font(.system(size: 10, weight: n.id == focus ? .semibold : .regular))
             .foregroundStyle(.primary)
         let resolved = ctx.resolve(text)
         let at = CGPoint(x: c.x, y: c.y + r + 2)

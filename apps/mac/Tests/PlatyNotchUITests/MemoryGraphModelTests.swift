@@ -1,4 +1,5 @@
 import Foundation
+import os
 import PlatyNotchKit
 import XCTest
 @testable import PlatyNotchUI
@@ -9,7 +10,13 @@ final class MemoryGraphModelTests: XCTestCase {
         for _ in 0..<400 where !condition() { try? await Task.sleep(for: .milliseconds(5)) }
     }
 
-    final class Box: @unchecked Sendable { var queries: [MemoryGraphQuery] = [] }
+    /// Requests seen by the fake core, recorded under a lock (the request closure is
+    /// not on the main actor).
+    final class Box: Sendable {
+        private let lock = OSAllocatedUnfairLock(initialState: [MemoryGraphQuery]())
+        func record(_ q: MemoryGraphQuery) { lock.withLock { $0.append(q) } }
+        var queries: [MemoryGraphQuery] { lock.withLock { $0 } }
+    }
 
     private let graph = MemoryGraph(
         nodes: [GraphNode(id: "app:mail", kind: "app", label: "Mail", weight: 2),
@@ -21,7 +28,7 @@ final class MemoryGraphModelTests: XCTestCase {
     private func model(_ box: Box) -> MemoryGraphModel {
         let graph = self.graph
         return MemoryGraphModel { env in
-            box.queries.append(try env.decode(MemoryGraphQuery.self))
+            box.record(try env.decode(MemoryGraphQuery.self))
             return try Envelope.make(.memoryGraph, id: env.id, graph)
         }
     }
@@ -70,6 +77,9 @@ final class MemoryGraphModelTests: XCTestCase {
         let b = m.layout(g, aspect: 1.99)   // same rounded shape: same layout
         XCTAssertEqual(a, b)
         XCTAssertEqual(a, GraphLayout.compute(g, aspect: 2))
+        // Several shapes stay cached (window resizes back and forth), up to the limit.
+        for aspect in [1.0, 3.0, 4.0, 5.0, 6.0] { _ = m.layout(g, aspect: aspect) }
+        XCTAssertEqual(m.layout(g, aspect: 6), GraphLayout.compute(g, aspect: 6))
         XCTAssertEqual(Set(a.positions.keys), ["app:mail", "t1"])
     }
 

@@ -107,6 +107,15 @@ public enum MemoryGraphFormat {
         MemoryFormat.title(node.label)
     }
 
+    /// `label` for a canvas: the raw text is cut to `max` characters first, then
+    /// sanitised (so a made-visible escape is never cut in half), then "…" added.
+    public static func shortLabel(_ node: GraphNode, max: Int) -> String {
+        let raw = node.label.trimmingCharacters(in: .whitespaces)
+        guard raw.count > max else { return label(node) }
+        let cut = String(raw.prefix(max)).trimmingCharacters(in: .whitespaces)
+        return MemoryFormat.title(cut) + "…"
+    }
+
     public static func connections(_ n: Int) -> String {
         n == 1 ? "1 connection" : "\(n) connections"
     }
