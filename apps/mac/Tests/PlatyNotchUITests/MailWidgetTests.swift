@@ -295,6 +295,18 @@ final class MailWidgetTests: DefaultsTestCase {
         XCTAssertEqual(Permissions.shownState(.denied, bundleID: MailSystem.mailID, name: "Mail"), .denied)
     }
 
+    func testSettingsReadsMailOnlyWhileTheWidgetIsOn() {
+        let p = Permissions(calendar: CalendarService(eventKit: false), reminders: RemindersService(eventKit: false),
+                            trust: .never)
+        let installed = ["com.apple.Music", MailSystem.mailID]
+        XCTAssertEqual(p.automationTargetsToRead(installed: installed), ["com.apple.Music"], "off by default")
+        var on = false
+        p.mailWidgetOn = { on }
+        XCTAssertEqual(p.automationTargetsToRead(installed: installed), ["com.apple.Music"])
+        on = true
+        XCTAssertEqual(p.automationTargetsToRead(installed: installed), installed)
+    }
+
     func testRegisteredAsAPowerFeature() {
         XCTAssertTrue(BuiltInWidgets.powerWidgets(persist: false).map(\.id).contains(MailWidget.widgetID))
         let registry = WidgetRegistry(defaults: defaults())

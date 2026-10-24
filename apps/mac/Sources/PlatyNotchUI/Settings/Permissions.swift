@@ -85,13 +85,22 @@ final class Permissions {
         reminders.refreshAccess()
         refreshNotifications()
         readCamera()
-        for t in installedAutomationTargets {
-            let id = t.id
+        for id in automationTargetsToRead() {
             Task.detached {
                 let s = Self.automationStatus(bundleID: id, ask: false)
                 await MainActor.run { self.automation[id] = s }
             }
         }
+    }
+
+    /// Whether the Mail widget is on (the app's registry; Settings sets it). While it is
+    /// off Mail's status is never read.
+    @ObservationIgnored var mailWidgetOn: @MainActor () -> Bool = { false }
+
+    /// The Automation targets `refresh` reads: installed ones, Mail only while its widget is on.
+    func automationTargetsToRead(installed: [String]? = nil) -> [String] {
+        (installed ?? installedAutomationTargets.map(\.id))
+            .filter { Self.listsAutomation($0, mailWidgetOn: mailWidgetOn()) }
     }
 
     var installedAutomationTargets: [(id: String, name: String)] {
@@ -273,5 +282,12 @@ struct CameraAccess: Sendable {
 
     static let system = CameraAccess(
         status: { AVCaptureDevice.authorizationStatus(for: .video) },
-        request: { await AVCaptureDevice.requestAccess(for: .video) })
+        // An explicit continuation, not the compiler's async form of this completion-handler
+        // API: the generated form of AVAssetWriter.finishWriting crashed on resume on macOS
+        // 15.7 (CI), and this AVFoundation call is not proven safe there.
+        request: {
+            await withCheckedContinuation { done in
+                AVCaptureDevice.requestAccess(for: .video) { done.resume(returning: $0) }
+            }
+        })
 }

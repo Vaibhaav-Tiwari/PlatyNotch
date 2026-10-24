@@ -28,6 +28,7 @@ final class SettingsServices {
         self.store = store
         self.capture = capture
         permissions = Permissions(calendar: calendar, reminders: reminders)
+        permissions.mailWidgetOn = { [weak widgets] in widgets?.isEnabled(MailWidget.widgetID) ?? false }
         agents = AgentsModel(runner: runner)
     }
 }
