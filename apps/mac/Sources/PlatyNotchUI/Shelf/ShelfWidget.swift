@@ -41,7 +41,8 @@ final class ShelfWidget: NotchWidget {
 
     /// Newest first (a copy of the store's, for observation).
     private(set) var items: [ShelfItem] = []
-    /// File items whose file is gone (refreshed when the tile shows and before drags).
+    /// File items whose file is gone (refreshed when the tile shows, after the user changes
+    /// the shelf and after drags; never at start).
     private(set) var missing: Set<UUID> = []
     /// Selected in the tile (a drag of a selected item takes all of them).
     var selection: Set<UUID> = []
@@ -61,6 +62,8 @@ final class ShelfWidget: NotchWidget {
     /// Owned folders a file promise is still being written into.
     @ObservationIgnored private var receiving: Set<UUID> = []
     @ObservationIgnored private var refreshGeneration = 0
+    /// How many missing-file checks ran (tests: none at start).
+    @ObservationIgnored private(set) var refreshCount = 0
     /// The latest missing-file check (tests await it).
     @ObservationIgnored private(set) var refreshTask: Task<Void, Never>?
     /// The latest image conversion from a drop (tests await it).
@@ -102,7 +105,9 @@ final class ShelfWidget: NotchWidget {
         store.expireOwned(olderThan: ShelfStore.ownedLifetime, now: clock())
         store.sweepOrphans(keeping: receiving)
         sync()
-        refreshMissing()
+        // No `refreshMissing` here: resolving bookmarks and checking paths of files in
+        // Downloads, Desktop or Documents can make macOS ask for access, so it happens
+        // only when the tile shows or a drag out ends (B1), never at launch or login.
         scheduleExpiry()
         let detector = DragDetector(signals: makeSignals())
         detector.onEvent = { [weak self] event in self?.dragEvent(event) }
@@ -298,6 +303,7 @@ final class ShelfWidget: NotchWidget {
     /// the tile shows them; a gone one is marked missing.
     func refreshMissing() {
         guard let store else { return }
+        refreshCount += 1
         refreshGeneration += 1
         let generation = refreshGeneration
         let refs = store.fileRefs
@@ -404,7 +410,9 @@ final class ShelfWidget: NotchWidget {
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled, let self else { return }
             self.store?.expireOwned(olderThan: ShelfStore.ownedLifetime, now: self.clock())
-            self.afterChange()
+            // Only owned copies expire: no file of the user's needs checking (B1).
+            self.sync()
+            self.scheduleExpiry()
         }
     }
 }

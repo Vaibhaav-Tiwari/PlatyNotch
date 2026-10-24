@@ -527,6 +527,40 @@ final class ShelfWidgetTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: found.path), "removing never deletes a user's file")
     }
 
+    /// Final review B1: starting the shelf (launch, login, turning it on) resolves no
+    /// bookmark and checks no file path: a file in Downloads could make macOS ask.
+    func testStartResolvesNothing() async throws {
+        let r = rig()
+        let pb = try filePasteboard(r, "doc.txt")
+        defer { pb.releaseGlobally() }
+        r.shelf.receive(pasteboard: pb)
+        await r.shelf.refreshTask?.value
+        try FileManager.default.removeItem(at: r.root.appendingPathComponent("user/doc.txt"))
+
+        // Off and on again (the same store) and a fresh widget on the same folder (a relaunch).
+        r.registry.setEnabled(ShelfWidget.widgetID, false)
+        let before = r.shelf.refreshCount
+        r.registry.setEnabled(ShelfWidget.widgetID, true)
+        XCTAssertEqual(r.shelf.refreshCount, before, "turning the shelf on checks no file")
+        XCTAssertTrue(r.shelf.missing.isEmpty)
+
+        let relaunch = ShelfWidget(directory: r.shelf.directory, makeSignals: { FakeDragSignals() })
+        let registry = WidgetRegistry(defaults: defaults(), persist: false)
+        registry.register(relaunch)
+        registry.start(context: WidgetContext(store: AppStore(), client: CoreClient(socketPath: "/nonexistent"),
+                                              config: ConfigFileStore(url: r.root.appendingPathComponent("c2.json")),
+                                              events: CoreEventHub(), defaults: defaults(), notify: NoopNotifier(),
+                                              surfaces: PanelSurfaces(registry: registry), openPanel: { _ in }))
+        XCTAssertTrue(relaunch.isRunning)
+        XCTAssertEqual(relaunch.items.count, 1, "the index is read")
+        XCTAssertEqual(relaunch.refreshCount, 0, "no bookmark resolved, no path checked")
+        XCTAssertNil(relaunch.refreshTask)
+        XCTAssertTrue(relaunch.missing.isEmpty, "missing is only known once the tile shows")
+        relaunch.refreshMissing()   // what the tile's onAppear does
+        await relaunch.refreshTask?.value
+        XCTAssertEqual(relaunch.missing.count, 1)
+    }
+
     /// Fix round 1 (5): a file renamed in Finder shows its new name after a refresh.
     func testRefreshSavesRenamedPath() async throws {
         let r = rig()
