@@ -49,6 +49,21 @@ final class ShelfTransferTests: DefaultsTestCase {
         XCTAssertTrue(fm.fileExists(atPath: try XCTUnwrap(owned.fileRef?.path)), "the copy did not move")
     }
 
+    /// Fix round 1: several files from disk, one index write, the first ending up first.
+    func testAddFilesWritesTheIndexOnce() throws {
+        let writes = FlakyWriter()
+        let shelf = store("shelf", write: writes.write)
+        let a = root.appendingPathComponent("a.txt"), b = root.appendingPathComponent("b.txt")
+        for u in [a, b] { try Data("x".utf8).write(to: u) }
+        let before = writes.count
+        let added = shelf.addFiles([a, b])
+        XCTAssertEqual(writes.count - before, 1)
+        XCTAssertEqual(added.map(\.fileRef?.name), ["a.txt", "b.txt"])
+        XCTAssertEqual(shelf.items.map(\.fileRef?.name), ["a.txt", "b.txt"])
+        XCTAssertTrue(shelf.items.allSatisfy { !$0.ownsFile })
+        XCTAssertEqual(store("shelf").items.count, 2)
+    }
+
     /// A rename that fails after the target's index listed the item: written again without it.
     func testFailedRenameWritesTheTargetAgain() throws {
         let shelf = store("shelf", rename: { _, _ in EXDEV })

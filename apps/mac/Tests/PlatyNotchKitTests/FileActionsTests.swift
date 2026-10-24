@@ -82,7 +82,17 @@ final class FileActionsTests: DefaultsTestCase {
         XCTAssertEqual(FileNames.safe("a/b:c.txt"), "b-c.txt", "the last component, separators replaced")
         XCTAssertEqual(FileNames.safe("..hidden"), "hidden")
         XCTAssertEqual(FileNames.safe("  "), "Item")
-        XCTAssertEqual(FileNames.safe(String(repeating: "x", count: 300)).count, FileNames.maxLength)
+        XCTAssertEqual(FileNames.safe(String(repeating: "x", count: 300)).utf8.count, FileNames.maxBytes)
+        // Fix round 1: cut by UTF-8 bytes, never inside a character.
+        let cjk = FileNames.safe(String(repeating: "写真", count: 100))   // 3 bytes each
+        XCTAssertLessThanOrEqual(cjk.utf8.count, FileNames.maxBytes)
+        XCTAssertEqual(cjk.count, 66)
+        XCTAssertTrue(cjk.allSatisfy { $0 == "写" || $0 == "真" })
+        let emoji = FileNames.safe(String(repeating: "👩‍👩‍👧‍👦", count: 20))   // 25 bytes each, one character
+        XCTAssertEqual(emoji.utf8.count, 200, "whole family emoji only")
+        XCTAssertEqual(emoji.count, 8)
+        let mixed = FileNames.safe(String(repeating: "x", count: 199) + "写真")
+        XCTAssertEqual(mixed.utf8.count, 199, "the 3-byte character that would cross 200 is left out")
         XCTAssertEqual(FileNames.split("photo.jpg").base, "photo")
         XCTAssertEqual(FileNames.split("archive.tar.gz").ext, "gz")
         XCTAssertEqual(FileNames.split("README").ext, "")
@@ -160,7 +170,7 @@ final class FileActionsTests: DefaultsTestCase {
         XCTAssertGreaterThanOrEqual(summary.uncompressedBytes, 12_345)
         XCTAssertLessThan(summary.uncompressedBytes, 12_345 + 16_384)
         XCTAssertGreaterThanOrEqual(summary.entries, 3, "the folder and both files")
-        XCTAssertFalse(summary.hasUnsafeNames)
+        XCTAssertNil(summary.problem, "a real archive passes every check")
     }
 
     func testZipSlipNames() {
@@ -179,21 +189,107 @@ final class FileActionsTests: DefaultsTestCase {
         XCTAssertNil(ZipInspector.summary(of: root.appendingPathComponent("nothing.zip")))
     }
 
-    /// A hand-made archive that declares a 3 GiB entry through zip64 (no data at all).
+    private func inspect(_ entries: [ZipFixture.Entry]) throws -> ZipInspector.Summary? {
+        let url = root.appendingPathComponent("\(UUID().uuidString).zip")
+        try ZipFixture.build(entries).write(to: url)
+        return ZipInspector.summary(of: url)
+    }
+
+    /// An archive that declares a 3 GiB entry through zip64 in both headers (no data at all).
     func testZipSummaryReadsZip64Sizes() throws {
-        var dir = Data()
-        func le<T: FixedWidthInteger>(_ v: T) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
-        let name = Data("big.bin".utf8)
-        let extra = le(UInt16(1)) + le(UInt16(8)) + le(UInt64(3 << 30))
-        dir += le(UInt32(0x0201_4B50)) + Data(count: 16) + le(UInt32(0)) + le(UInt32(0xFFFF_FFFF))
-        dir += le(UInt16(name.count)) + le(UInt16(extra.count)) + le(UInt16(0)) + Data(count: 12)
-        dir += name + extra
-        var file = dir
-        file += le(UInt32(0x0605_4B50)) + le(UInt16(0)) + le(UInt16(0)) + le(UInt16(1)) + le(UInt16(1))
-        file += le(UInt32(dir.count)) + le(UInt32(0)) + le(UInt16(0))
-        let url = root.appendingPathComponent("big.zip")
-        try file.write(to: url)
-        XCTAssertEqual(ZipInspector.summary(of: url), ZipInspector.Summary(entries: 1, uncompressedBytes: 3 << 30))
+        var big = ZipFixture.Entry("big.bin")
+        big.zip64 = true
+        big.centralSize = 3 << 30
+        XCTAssertEqual(try inspect([big]), ZipInspector.Summary(entries: 1, uncompressedBytes: 3 << 30))
+    }
+
+    /// Fix round 1: ditto reads the local headers; the directory must say the same.
+    func testZipHeadersThatDisagreeAreRefused() throws {
+        // The directory declares 9 bytes; the local header (what ditto reads) 52 MB.
+        var liar = ZipFixture.Entry("bomb.bin", Data(repeating: 0, count: 9))
+        liar.localSize = 52_000_000
+        XCTAssertEqual(try inspect([liar])?.problem, .mismatchedHeaders)
+        var renamed = ZipFixture.Entry("a.txt")
+        renamed.localName = "../../evil.txt"
+        XCTAssertEqual(try inspect([renamed])?.problem, .mismatchedHeaders)
+        XCTAssertNil(try inspect([ZipFixture.Entry("ok.txt"), ZipFixture.Entry("dir/ok2.txt")])?.problem)
+    }
+
+    func testZipDataDescriptors() throws {
+        var good = ZipFixture.Entry("streamed.txt", Data("hello".utf8))
+        good.descriptor = .matching
+        XCTAssertNil(try inspect([good])?.problem)
+        var missing = good
+        missing.descriptor = .missing
+        XCTAssertEqual(try inspect([missing])?.problem, .unknownSizes)
+        var lying = good
+        lying.centralSize = 1   // the descriptor (and directory) disagree with the data
+        lying.descriptor = .matching
+        XCTAssertNil(try inspect([lying])?.problem, "descriptor and directory agree: the live watch covers the rest")
+    }
+
+    func testZipSymbolicLinks() throws {
+        func link(_ target: String) -> ZipFixture.Entry {
+            var e = ZipFixture.Entry("link", Data(target.utf8))
+            e.mode = 0o120755
+            return e
+        }
+        XCTAssertEqual(try inspect([link("/etc/passwd")])?.problem, .unsafeLink)
+        XCTAssertEqual(try inspect([link("../../.ssh")])?.problem, .unsafeLink)
+        XCTAssertEqual(try inspect([link("a/../../b")])?.problem, .unsafeLink)
+        XCTAssertNil(try inspect([link("sibling.txt")])?.problem)
+        var file = ZipFixture.Entry("plain.txt", Data("/etc/passwd".utf8))
+        file.mode = 0o100644
+        XCTAssertNil(try inspect([file])?.problem, "a file's contents are not a link target")
+    }
+
+    /// A real archive with a relative link (as ditto stores it) passes.
+    func testDittoArchiveWithALinkPasses() throws {
+        let src = root.appendingPathComponent("linked")
+        try fm.createDirectory(at: src, withIntermediateDirectories: true)
+        try Data("t".utf8).write(to: src.appendingPathComponent("target.txt"))
+        try fm.createSymbolicLink(atPath: src.appendingPathComponent("link").path, withDestinationPath: "target.txt")
+        let zip = root.appendingPathComponent("linked.zip")
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        p.arguments = ["-c", "-k", "--sequesterRsrc", "--keepParent", src.path, zip.path]
+        try p.run()
+        p.waitUntilExit()
+        XCTAssertNil(try XCTUnwrap(ZipInspector.summary(of: zip)).problem)
+    }
+
+    /// Fix round 1: attacker-chosen zip64 offsets near UInt64.max never trap.
+    func testZip64OffsetsCannotOverflow() throws {
+        func archive(dirSize: UInt64, dirOffset: UInt64) throws -> URL {
+            var b = Bytes()
+            b.raw(Data("PK-junk".utf8))
+            let record = UInt64(b.count)
+            b.u32(0x0606_4B50); b.u64(44); b.u16(45); b.u16(45); b.u32(0); b.u32(0)
+            b.u64(1); b.u64(1); b.u64(dirSize); b.u64(dirOffset)
+            b.u32(0x0706_4B50); b.u32(0); b.u64(record); b.u32(1)
+            b.u32(0x0605_4B50); b.u16(0); b.u16(0); b.u16(0xFFFF); b.u16(0xFFFF)
+            b.u32(0xFFFF_FFFF); b.u32(0xFFFF_FFFF); b.u16(0)
+            let url = root.appendingPathComponent("\(UUID().uuidString).zip")
+            try b.data.write(to: url)
+            return url
+        }
+        XCTAssertNil(ZipInspector.summary(of: try archive(dirSize: 100, dirOffset: .max - 10)))
+        XCTAssertNil(ZipInspector.summary(of: try archive(dirSize: .max, dirOffset: 5)))
+        XCTAssertNil(ZipInspector.summary(of: try archive(dirSize: 64, dirOffset: .max)))
+        // A central record whose local offset says "in zip64" without a zip64 field: unreadable.
+        var data = ZipFixture.build([ZipFixture.Entry("far.txt")])
+        let cd = try XCTUnwrap(data.range(of: Data([0x50, 0x4B, 0x01, 0x02]))).lowerBound
+        data.replaceSubrange((cd + 42)..<(cd + 46), with: Data([0xFF, 0xFF, 0xFF, 0xFF]))
+        let url = root.appendingPathComponent("far.zip")
+        try data.write(to: url)
+        XCTAssertNil(ZipInspector.summary(of: url))
+        // A plain local offset past the end of the file: refused, not a crash.
+        var past = ZipFixture.build([ZipFixture.Entry("past.txt")])
+        let cd2 = try XCTUnwrap(past.range(of: Data([0x50, 0x4B, 0x01, 0x02]))).lowerBound
+        past.replaceSubrange((cd2 + 42)..<(cd2 + 46), with: Data([0x00, 0x00, 0x00, 0x7F]))
+        let pastURL = root.appendingPathComponent("past.zip")
+        try past.write(to: pastURL)
+        XCTAssertEqual(ZipInspector.summary(of: pastURL)?.problem, .mismatchedHeaders)
     }
 
     // MARK: - platynotch:// routes (R7)
@@ -236,6 +332,28 @@ final class FileActionsTests: DefaultsTestCase {
         XCTAssertEqual(ShelfAddPolicy.accept([dotted], home: home, exists: exists), [mine.standardizedFileURL])
         XCTAssertNil(ShelfAddPolicy.accept(Array(repeating: mine.path, count: 21), home: home, exists: exists), "more than 20")
         XCTAssertEqual(ShelfAddPolicy.accept(Array(repeating: mine.path, count: 20), home: home, exists: exists)?.count, 1)
+
+        // Fix round 1: the string-only step decides whether to ask, touching no disk.
+        XCTAssertEqual(ShelfAddPolicy.lexical(["/Users/x/a.txt", "rel", "/Users/x/../x/a.txt", "/"], home: home),
+                       [URL(fileURLWithPath: "/Users/x/a.txt")], "relative, root and repeats out; .. standardised")
+        XCTAssertEqual(ShelfAddPolicy.lexical([home.appendingPathComponent("shelf.noindex/x").path], home: home), [])
+        XCTAssertEqual(ShelfAddPolicy.lexical([link.path], home: home)?.map(\.path), [link.standardizedFileURL.path],
+                       "a link into the home passes the string check …")
+        XCTAssertEqual(ShelfAddPolicy.accept([link.path], home: home, exists: exists), [], "… and is refused after the click")
+        XCTAssertNil(ShelfAddPolicy.lexical(Array(repeating: "/a", count: 21), home: home))
+    }
+
+    func testRenamePolicy() {
+        let user = URL(fileURLWithPath: "/Users/me"), app = URL(fileURLWithPath: "/Users/me/Library/Application Support/PlatyNotch")
+        func p(_ s: String) -> Bool { RenamePolicy.isProtected(URL(fileURLWithPath: s), userHome: user, appHome: app) }
+        for path in ["/", "/Applications", "/Users", "/Users/me", "/Users/me/Desktop", "/Users/me/Downloads",
+                     "/Users/me/Library", "/Users/me/.ssh", "/Users/me/.zshrc", app.path, app.path + "/shelf.noindex/x/a.png",
+                     "/Users/me/Desktop/../Documents"] {
+            XCTAssertTrue(p(path), path)
+        }
+        for path in ["/Users/me/Desktop/a.png", "/Users/me/Downloads/trip", "/Users/me/Projects", "/Volumes/USB/a.txt"] {
+            XCTAssertFalse(p(path), path)
+        }
     }
 
     func testPromptTexts() {

@@ -27,7 +27,7 @@ public enum RenamePattern {
         out += rest
         let safeBase = FileNames.safe(out)
         let safeExt = ext.isEmpty ? "" : FileNames.safe(ext)
-        return FileNames.join(safeBase, String(safeExt.prefix(20)))
+        return FileNames.join(safeBase, FileNames.prefix(safeExt, bytes: 20))
     }
 
     private static func expand(_ token: String, base: String, index: Int, date: Date, timeZone: TimeZone) -> String? {
@@ -108,5 +108,30 @@ public struct RenamePlan: Equatable, Sendable {
     /// What puts the done steps back, last first.
     public static func undo(_ done: [Step]) -> RenamePlan {
         RenamePlan(steps: done.reversed().map { Step(index: $0.index, from: $0.to, to: $0.from) })
+    }
+}
+
+/// What Batch rename never renames: PlatyNotch's own folder and anything in it, the
+/// disk's top-level folders, your home folder itself, its standard folders (Desktop,
+/// Documents, Downloads, Library, …) and its hidden entries (`~/.ssh`, `~/.zshrc`).
+/// Paths are compared as strings, standardised.
+public enum RenamePolicy {
+    public static let homeFolders: Set<String> = [
+        "Applications", "Desktop", "Documents", "Downloads", "Library", "Movies", "Music", "Pictures", "Public",
+    ]
+
+    public static func isProtected(_ url: URL, userHome: URL, appHome: URL) -> Bool {
+        let path = url.standardizedFileURL.path
+        let app = appHome.standardizedFileURL.path
+        if path == app || path.hasPrefix(app + "/") { return true }
+        let parts = url.standardizedFileURL.pathComponents   // ["/", "Users", …]
+        if parts.count <= 2 { return true }   // "/" and its children
+        let home = userHome.standardizedFileURL.path
+        if path == home { return true }
+        if url.standardizedFileURL.deletingLastPathComponent().path == home {
+            let name = url.lastPathComponent
+            return homeFolders.contains(name) || name.hasPrefix(".")
+        }
+        return false
     }
 }

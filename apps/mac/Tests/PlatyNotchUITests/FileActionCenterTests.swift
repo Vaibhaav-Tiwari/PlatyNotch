@@ -8,7 +8,7 @@ import XCTest
 
 /// Stands in for the real actions: writes a small file, or waits until cancelled.
 private final class FakeEngine: FileActionPerforming, @unchecked Sendable {
-    enum Mode { case write, fail, waitForCancel, text }
+    enum Mode { case write, fail, waitForCancel, text, finishDespiteCancel }
     private let lock = NSLock()
     private var _mode: Mode = .write
     private(set) var calls: [(FileAction, [URL], URL?)] = []
@@ -35,6 +35,12 @@ private final class FakeEngine: FileActionPerforming, @unchecked Sendable {
         case .waitForCancel:
             while !Task.isCancelled { try? await Task.sleep(for: .milliseconds(5)) }
             throw FileActionError.cancelled
+        case .finishDespiteCancel:
+            // Slow work that ignores the cancel and hands back a result anyway.
+            while !Task.isCancelled { try? await Task.sleep(for: .milliseconds(5)) }
+            let url = try XCTUnwrap(folder).appendingPathComponent("late.png")
+            try Data("png".utf8).write(to: url)
+            return .file(url)
         }
     }
 }
@@ -182,6 +188,33 @@ final class FileActionCenterTests: DefaultsTestCase {
         XCTAssertEqual(c.status, "Cancelled")
         XCTAssertEqual(r.discarded, r.reserved, "the partial result is deleted")
         XCTAssertNil(c.running[src.item.id])
+    }
+
+    /// Fix round 1: a run cancelled while it finished keeps nothing.
+    func testNoResultIsAddedAfterCancel() async throws {
+        let engine = FakeEngine()
+        engine.mode = .finishDespiteCancel
+        let (c, r) = center(engine)
+        let src = try file("slow.png")
+        c.run(.convert(.jpeg, nil), on: [src])
+        c.cancel(src.item.id)
+        await c.lastTask?.value
+        XCTAssertTrue(r.added.isEmpty, "the late result is not added")
+        XCTAssertEqual(r.discarded, r.reserved, "and its folder is deleted")
+        XCTAssertEqual(c.status, "Cancelled")
+    }
+
+    /// Fix round 1: Batch rename never touches PlatyNotch's folder or the home's own folders.
+    func testRenameIsHiddenAndRefusedForProtectedPaths() throws {
+        let (c, r) = center(FakeEngine())
+        let a = try file("a.txt"), b = try file("b.txt")
+        c.isProtected = { $0.lastPathComponent == "b.txt" }
+        XCTAssertTrue(c.entries(for: [(a.item, a.url)]).contains(.rename))
+        XCTAssertFalse(c.entries(for: [(a.item, a.url), (b.item, b.url)]).contains(.rename), "hidden for the whole selection")
+        let plan = FileActionCenter.renamePlan([a, b], pattern: "x {n}", date: Date())
+        XCTAssertEqual(c.rename([a, b], plan: plan).failed, 1, "refused even if asked")
+        XCTAssertTrue(fm.fileExists(atPath: b.url.path))
+        XCTAssertEqual(r.renames.map(\.0), [a.item.id])
     }
 
     func testCopyTextNeedsNoFolder() async throws {

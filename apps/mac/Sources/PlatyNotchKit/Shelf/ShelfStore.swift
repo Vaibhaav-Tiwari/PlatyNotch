@@ -164,6 +164,23 @@ public final class ShelfStore {
     /// shelf is not added twice: that item moves to the front, keeping its id and pin.
     @discardableResult
     public func add(_ kind: ShelfItem.Kind) -> ShelfItem {
+        let item = insert(kind)
+        save()
+        return item
+    }
+
+    /// Files from disk (never owned), added in one go with a single index write; the
+    /// first ends up first. Returns the items in the order given.
+    @discardableResult
+    public func addFiles(_ urls: [URL]) -> [ShelfItem] {
+        guard !urls.isEmpty else { return [] }
+        let items = urls.reversed().map { insert(.file(ShelfFileRef(path: $0.standardizedFileURL.path))) }
+        save()
+        return items.reversed()
+    }
+
+    /// `add` without the index write.
+    private func insert(_ kind: ShelfItem.Kind) -> ShelfItem {
         var kind = kind
         if case .text(let t) = kind { kind = .text(Self.clean(t)) }
         if case .file(var ref) = kind, ref.bookmark == nil {
@@ -174,13 +191,11 @@ public final class ShelfStore {
             var item = items.remove(at: i)
             item.addedAt = now()
             items.insert(item, at: 0)
-            save()
             return item
         }
         let owned: Bool = if case .text = kind { true } else { false }
         let item = ShelfItem(kind: kind, addedAt: now(), ownsFile: owned)
         items.insert(item, at: 0)
-        save()
         return item
     }
 

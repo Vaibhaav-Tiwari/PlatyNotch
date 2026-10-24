@@ -6,9 +6,10 @@ import SwiftUI
 /// What the router acts on (seams: the app passes the running widgets; tests pass fakes).
 @MainActor
 protocol ShelfAdding: AnyObject {
-    /// Adds a file from disk (never owned); false when the shelf is off.
+    /// Adds files from disk (never owned) with one index write, the first ending up
+    /// first; false when the shelf is off.
     @discardableResult
-    func addFile(_ url: URL) -> Bool
+    func addFiles(_ urls: [URL]) -> Bool
 }
 
 extension ShelfWidget: ShelfAdding {}
@@ -18,8 +19,11 @@ extension ShelfWidget: ShelfAdding {}
 ///
 /// Any web page can open these URLs, so nothing acts from a URL alone: adding files and
 /// starting a timer first show a confirm peek ("Add 2 files to the shelf?") with Cancel
-/// and a button that does it; letting the peek run out cancels. A route whose widget is
-/// off does nothing at all, not even ask. `clipboard/open` only opens the picker (it
+/// and a button that does it (enabled after `armDelay`, so a click already on its way
+/// cannot land on it); letting the peek run out cancels. While a question shows, further
+/// acting links are ignored, and the button does exactly what the card shows. A route
+/// whose widget is off does nothing at all, not even ask. Before the click a link's paths
+/// are only checked as strings (`ShelfAddPolicy.lexical`): nothing on disk is touched. `clipboard/open` only opens the picker (it
 /// shows history the user can already see with ⌥⇧V; picking still needs a click or ↩).
 /// No work happens between URLs: no timers, no observers.
 @MainActor @Observable
@@ -34,6 +38,8 @@ final class URLRouter {
     /// How long a confirm peek waits for a click.
     static let confirmTime: TimeInterval = 30
     static let noticeTime: TimeInterval = 4
+    /// The confirm button works only this long after the question appears.
+    static let armDelay: TimeInterval = 0.5
 
     private(set) var pending: Pending?
     private(set) var notice: String?
@@ -52,6 +58,7 @@ final class URLRouter {
     @ObservationIgnored var home: URL = CorePaths.home()
     @ObservationIgnored var fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     @ObservationIgnored private var pendingUntil: Date?
+    @ObservationIgnored private var askedAt: Date?
 
     init() {}
 
@@ -60,11 +67,11 @@ final class URLRouter {
     func handle(_ route: AppURL) -> Bool {
         switch route {
         case .shelfAdd(let paths):
-            guard shelf() != nil,
-                  let urls = ShelfAddPolicy.accept(paths, home: home, exists: fileExists), !urls.isEmpty else { return true }
+            guard !isAsking, shelf() != nil,
+                  let urls = ShelfAddPolicy.lexical(paths, home: home), !urls.isEmpty else { return true }
             ask(.addFiles(urls))
         case .timerStart(let seconds):
-            guard timer() != nil else { return true }
+            guard !isAsking, timer() != nil else { return true }
             ask(.startTimer(seconds))
         case .clipboardOpen:
             clipboardPicker()?()
@@ -74,27 +81,46 @@ final class URLRouter {
         return true
     }
 
+    /// A question shows and has not run out (a burst of links asks once).
+    private var isAsking: Bool {
+        guard pending != nil, let until = pendingUntil else { return false }
+        if now() <= until { return true }
+        clearPending()
+        return false
+    }
+
     private func ask(_ p: Pending) {
-        let until = now().addingTimeInterval(Self.confirmTime)
+        let t = now()
+        let until = t.addingTimeInterval(Self.confirmTime)
         pending = p
         pendingUntil = until
+        askedAt = t
         if !peek(Self.confirmID, until) { clearPending() }
     }
 
-    /// The confirm peek's button: does what was asked, if its widget still runs and the
-    /// peek has not run out.
-    func confirm() {
-        guard let p = pending, let until = pendingUntil, now() <= until else {
+    /// Whether the button works yet (`armDelay` after the question appeared).
+    var canConfirm: Bool {
+        guard pending != nil, let askedAt else { return false }
+        return now().timeIntervalSince(askedAt) >= Self.armDelay
+    }
+
+    /// The confirm peek's button, with the question it showed: does exactly that, if it
+    /// is still the question, the button is armed, its widget still runs and the peek has
+    /// not run out. A click before `armDelay` is ignored (the question stays).
+    func confirm(_ shown: Pending) {
+        guard let p = pending, p == shown, let until = pendingUntil, now() <= until else {
             cancel()
             return
         }
+        guard canConfirm else { return }
         clearPending()
         endPeek(Self.confirmID)
         switch p {
         case .addFiles(let urls):
             guard let shelf = shelf() else { return }
-            // Still there? (the peek waited for a click)
-            for url in urls.reversed() where fileExists(url.path) { shelf.addFile(url) }   // the first ends up first
+            // Only now is the disk touched: symlinks resolved, existence checked.
+            let ok = ShelfAddPolicy.accept(urls.map(\.path), home: home, exists: fileExists) ?? []
+            if !ok.isEmpty { shelf.addFiles(ok) }
         case .startTimer(let seconds):
             timer()?.startTimer(duration: seconds, label: nil)
         }
@@ -109,6 +135,7 @@ final class URLRouter {
     private func clearPending() {
         pending = nil
         pendingUntil = nil
+        askedAt = nil
     }
 
     /// A short notice under the notch (`noticeTime`).
@@ -145,6 +172,8 @@ final class URLRouter {
 
 struct RouteConfirmCard: View {
     let router: URLRouter
+    /// Set `armDelay` after the card appears (the router checks the time itself too).
+    @State private var ready = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -159,13 +188,21 @@ struct RouteConfirmCard: View {
             }
             Spacer(minLength: 4)
             Button("Cancel") { router.cancel() }
-            Button(confirmTitle) { router.confirm() }
+            Button(confirmTitle) { if let shown { router.confirm(shown) } }
                 .buttonStyle(.borderedProminent)
+                .disabled(!ready || shown == nil)
+        }
+        .task {
+            try? await Task.sleep(for: .seconds(URLRouter.armDelay))
+            ready = true
         }
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .contain)
     }
+
+    /// The question this card shows (what its button does).
+    private var shown: URLRouter.Pending? { router.pending }
 
     private var confirmTitle: String {
         if case .startTimer = router.pending { return "Start" }

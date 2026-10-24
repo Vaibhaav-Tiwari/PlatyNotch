@@ -5,6 +5,7 @@ import Foundation
 import ImageIO
 import PlatyNotchKit
 import UniformTypeIdentifiers
+import Vision
 import XCTest
 @testable import PlatyNotchUI
 
@@ -92,7 +93,14 @@ final class FileActionsEngineTests: DefaultsTestCase {
 
     // MARK: - OCR (Vision, on this Mac)
 
+    /// Vision's text recognizer is missing on some CI machines: skip, saying so.
+    private func requireTextRecognition() throws {
+        let languages = (try? VNRecognizeTextRequest().supportedRecognitionLanguages()) ?? []
+        guard !languages.isEmpty else { throw XCTSkip("Vision text recognition is not available on this machine") }
+    }
+
     func testCopyTextReadsRenderedText() async throws {
+        try requireTextRecognition()
         let png = try Fixtures.textImage(at: root.appendingPathComponent("shot.png"), text: "PLATYNOTCH SHELF 2026")
         let out = try await engine.perform(.copyText, sources: [png], into: nil)
         guard case .text(let text) = out else { return XCTFail("no text") }
@@ -100,6 +108,7 @@ final class FileActionsEngineTests: DefaultsTestCase {
     }
 
     func testCopyTextReadsAPDF() async throws {
+        try requireTextRecognition()
         let pdf = try Fixtures.textPDF(at: root.appendingPathComponent("page.pdf"), text: "HELLO PLATYPUS")
         let out = try await engine.perform(.copyText, sources: [pdf], into: nil)
         guard case .text(let text) = out else { return XCTFail("no text") }
@@ -107,6 +116,7 @@ final class FileActionsEngineTests: DefaultsTestCase {
     }
 
     func testCopyTextOnABlankImage() async throws {
+        try requireTextRecognition()
         let png = try Fixtures.png(at: root.appendingPathComponent("blank.png"), width: 64, height: 64)
         do {
             _ = try await engine.perform(.copyText, sources: [png], into: nil)
@@ -128,8 +138,50 @@ final class FileActionsEngineTests: DefaultsTestCase {
             XCTAssertEqual(url.lastPathComponent, "subject (no background).png")
             XCTAssertEqual(type(of: url), UTType.png.identifier)
         } catch let e as FileActionError {
-            XCTAssertNotEqual(e, .cancelled)
+            XCTAssertTrue(e == .noSubject || e == .unavailable, "said why: \(e)")
         }
+    }
+
+    /// Fix round 1: cancelling reaches work on a background thread (it stops between pages).
+    func testCancelReachesBackgroundWork() async throws {
+        let png = try Fixtures.png(at: root.appendingPathComponent("big.png"), width: 3000, height: 3000)
+        let sources = Array(repeating: png, count: SystemFileActions.maxPDFImages)
+        let out = try folder()
+        let task = Task { [engine] in try await engine.perform(.combinePDF, sources: sources, into: out) }
+        try await Task.sleep(for: .milliseconds(50))
+        let started = Date()
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("finished despite the cancel")
+        } catch {
+            XCTAssertEqual(error as? FileActionError, .cancelled)
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2, "stopped soon, not after all 100 pages")
+    }
+
+    func testCombineCap() async throws {
+        let png = try Fixtures.png(at: root.appendingPathComponent("p.png"), width: 4, height: 4)
+        do {
+            _ = try await engine.perform(.combinePDF, sources: Array(repeating: png, count: 101), into: try folder())
+            XCTFail("combined 101")
+        } catch {
+            XCTAssertEqual(error as? FileActionError, .tooMany(100))
+        }
+    }
+
+    /// Images handed to Vision are at most 4096 px on their longest side.
+    func testVisionInputIsCapped() throws {
+        let png = try Fixtures.png(at: root.appendingPathComponent("wide.png"), width: 6000, height: 1500)
+        let image = try SystemFileActions.uprightImage(png, maxPixels: SystemFileActions.maxVisionPixels)
+        XCTAssertEqual(max(image.width, image.height), 4096)
+        XCTAssertEqual(try SystemFileActions.uprightImage(png).width, 6000, "full size elsewhere")
+    }
+
+    func testUnzipWatchLimit() {
+        XCTAssertEqual(SystemFileActions.watchLimit(declared: 1_000, entries: 2), 1_000 + 16_384 + (1 << 20))
+        XCTAssertEqual(SystemFileActions.watchLimit(declared: .max - 5, entries: 10), .max, "saturates")
+        XCTAssertEqual(SystemFileActions.watchLimit(declared: 0, entries: .max), .max)
     }
 
     // MARK: - Audio and video (AVFoundation)

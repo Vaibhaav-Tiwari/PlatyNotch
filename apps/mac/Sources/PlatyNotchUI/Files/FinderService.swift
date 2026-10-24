@@ -12,6 +12,8 @@ final class FinderService: NSObject {
     /// A short notice under the notch.
     var notice: @MainActor (String) -> Void = { _ in }
     private static let log = Logger(subsystem: "dev.platynotch.app", category: "services")
+    /// At most this many files per use.
+    static let maxFiles = 200
 
     /// The `NSMessage` in Info.plist ("addToShelf"). Called on the main thread.
     @objc nonisolated func addToShelf(_ pboard: NSPasteboard, userData: String?,
@@ -24,7 +26,8 @@ final class FinderService: NSObject {
         pboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
     }
 
-    /// Adds the files the service was given; returns how many (0 while the shelf is off).
+    /// Adds the files the service was given, at most `maxFiles` (one index write);
+    /// returns how many (0 while the shelf is off).
     @discardableResult
     func receive(_ urls: [URL]) -> Int {
         guard !urls.isEmpty else { return 0 }
@@ -32,9 +35,14 @@ final class FinderService: NSObject {
             notice("Turn on the Shelf")
             return 0
         }
-        for url in urls.reversed() { shelf.addFile(url) }   // the first selected ends up first
-        notice(urls.count == 1 ? "Added 1 file to the shelf" : "Added \(urls.count) files to the shelf")
-        Self.log.notice("service added \(urls.count) files to the shelf")
-        return urls.count
+        let taken = Array(urls.prefix(Self.maxFiles))
+        shelf.addFiles(taken)
+        if urls.count > Self.maxFiles {
+            notice("Added the first \(Self.maxFiles) files; the shelf takes at most \(Self.maxFiles) at a time")
+        } else {
+            notice(taken.count == 1 ? "Added 1 file to the shelf" : "Added \(taken.count) files to the shelf")
+        }
+        Self.log.notice("service added \(taken.count) files to the shelf")
+        return taken.count
     }
 }

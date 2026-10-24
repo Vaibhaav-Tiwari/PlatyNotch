@@ -61,8 +61,14 @@ enum FileActionError: Error, Equatable, LocalizedError {
     case unsupported
     case tooLarge(UInt64)
     case unsafeArchive
+    /// It wrote more than it declared (stopped, and what it wrote deleted).
+    case overDeclared
     case noSubject
     case noText
+    /// Vision cannot do this on this Mac (no subject lifting, no text recognizer).
+    case unavailable
+    case notEnoughSpace
+    case tooMany(Int)
     case cancelled
     case failed(String)
 
@@ -71,9 +77,13 @@ enum FileActionError: Error, Equatable, LocalizedError {
         case .unreadable: "the file can't be read"
         case .unsupported: "this Mac can't make that kind of file"
         case .tooLarge(let cap): "it would unpack to more than \(ByteCountFormatter.string(fromByteCount: Int64(cap), countStyle: .binary))"
-        case .unsafeArchive: "the archive has files that would land outside its folder"
+        case .unsafeArchive: "the archive is damaged or unsafe (its entries would land outside its folder, or its headers disagree)"
+        case .overDeclared: "it unpacked to more than it said it holds"
         case .noSubject: "no subject was found"
         case .noText: "no text was found"
+        case .unavailable: "this Mac can't do that"
+        case .notEnoughSpace: "there is not enough free disk space"
+        case .tooMany(let max): "at most \(max) images can go in one PDF"
         case .cancelled: "cancelled"
         case .failed(let why): why
         }
@@ -96,6 +106,15 @@ struct SystemFileActions: FileActionPerforming {
     static let defaultUnzipCap: UInt64 = 2 << 30
     /// At most this many PDF pages are read for Copy Text.
     static let maxOCRPages = 50
+    /// Images for OCR, background removal and rendered PDF pages are at most this many
+    /// pixels on their longest side (memory stays bounded whatever the source).
+    static let maxVisionPixels = 4096
+    /// Combine into PDF takes at most this many images.
+    static let maxPDFImages = 100
+    /// Unzip keeps this much free space beyond what the archive declares.
+    static let freeSpaceMargin: UInt64 = 64 << 20
+    /// How often an unzip checks what it has written.
+    static let unzipWatchInterval: Duration = .milliseconds(250)
 
     var unzipCap: UInt64 = defaultUnzipCap
     var ditto = ProcessRunner(executableURL: URL(fileURLWithPath: "/usr/bin/ditto"), stopsOnCancel: true)
@@ -126,10 +145,15 @@ struct SystemFileActions: FileActionPerforming {
         }
     }
 
-    /// Synchronous work on a background thread; a cancel before it starts throws.
+    /// Synchronous work on a background thread. Cancelling the caller cancels it (the
+    /// work checks `Task.isCancelled` between steps), and a cancelled run always throws
+    /// `cancelled`, even when the work had already finished.
     private static func detached<T: Sendable>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
         try Task.checkCancellation()
-        return try await Task.detached(priority: .userInitiated) { try work() }.value
+        let task = Task.detached(priority: .userInitiated) { try work() }
+        let value = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+        if Task.isCancelled { throw FileActionError.cancelled }
+        return value
     }
 
     static func type(of url: URL) -> UTType {
@@ -150,8 +174,9 @@ struct SystemFileActions: FileActionPerforming {
         Set((CGImageDestinationCopyTypeIdentifiers() as? [String]) ?? [])
     }
 
-    /// The first image of `url`, turned upright (EXIF orientation applied).
-    static func uprightImage(_ url: URL) throws -> CGImage {
+    /// The first image of `url`, turned upright (EXIF orientation applied), at most
+    /// `maxPixels` on its longest side (nil: full size).
+    static func uprightImage(_ url: URL, maxPixels: Int? = nil) throws -> CGImage {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil), CGImageSourceGetCount(source) > 0,
               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else {
             throw FileActionError.unreadable
@@ -160,7 +185,7 @@ struct SystemFileActions: FileActionPerforming {
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: max(w, h, 1),
+            kCGImageSourceThumbnailMaxPixelSize: min(max(w, h, 1), maxPixels ?? Int.max),
         ]
         guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
             throw FileActionError.unreadable
@@ -210,23 +235,27 @@ struct SystemFileActions: FileActionPerforming {
 
     /// Several images: one PDF, a page per image (in order), each page the image's size.
     static func combinePDF(_ sources: [URL], into folder: URL) throws -> URL {
+        guard sources.count <= maxPDFImages else { throw FileActionError.tooMany(maxPDFImages) }
         let first = FileNames.split(FileNames.safe(sources.first?.lastPathComponent ?? "Images")).base
         let out = folder.appendingPathComponent(FileNames.join("\(first) and \(sources.count - 1) more", "pdf"))
         try writePDF(sources, to: out)
         return out
     }
 
+    /// One image decoded, drawn and released per page, so memory holds one image at a time.
     private static func writePDF(_ sources: [URL], to out: URL) throws {
-        let images = try sources.map(uprightImage)
         guard let ctx = CGContext(out as CFURL, mediaBox: nil, nil) else { throw FileActionError.failed("the PDF could not be written") }
-        for image in images {
-            try Task.checkCancellation()
-            var box = CGRect(x: 0, y: 0, width: image.width, height: image.height)
-            ctx.beginPage(mediaBox: &box)
-            ctx.draw(image, in: box)
-            ctx.endPage()
+        defer { ctx.closePDF() }
+        for url in sources {
+            if Task.isCancelled { throw FileActionError.cancelled }
+            try autoreleasepool {
+                let image = try uprightImage(url)
+                var box = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+                ctx.beginPage(mediaBox: &box)
+                ctx.draw(image, in: box)
+                ctx.endPage()
+            }
         }
-        ctx.closePDF()
     }
 
     // MARK: - Video and audio (AVFoundation)
@@ -304,13 +333,20 @@ struct SystemFileActions: FileActionPerforming {
     }
 
     /// Into `<folder>/<archive name>/`. Refused when the archive declares more than
-    /// `unzipCap` bytes or has unsafe names; stopped (and deleted) if what is written
-    /// grows past the cap anyway (checked every second while it runs).
+    /// `unzipCap` bytes, fails `ZipInspector`'s checks (zip slip, local headers that
+    /// disagree with the directory, unreadable data descriptors, unsafe links), or would
+    /// not fit on the disk. While ditto runs, what it has written is checked every 250 ms
+    /// against the declared total plus a small slack: past that, it is stopped and deleted.
     func unzip(_ src: URL, into folder: URL) async throws -> URL {
         guard let summary = ZipInspector.summary(of: src) else { throw FileActionError.unreadable }
-        guard !summary.hasUnsafeNames else { throw FileActionError.unsafeArchive }
+        guard summary.problem == nil else { throw FileActionError.unsafeArchive }
         let cap = unzipCap
         guard summary.uncompressedBytes <= cap else { throw FileActionError.tooLarge(cap) }
+        let needed = summary.uncompressedBytes.addingReportingOverflow(Self.freeSpaceMargin)
+        if let free = Self.freeSpace(at: folder), needed.overflow || free < needed.partialValue {
+            throw FileActionError.notEnoughSpace
+        }
+        let limit = Self.watchLimit(declared: summary.uncompressedBytes, entries: summary.entries)
         let dest = folder.appendingPathComponent(FileNames.split(FileNames.safe(src.lastPathComponent)).base)
         try? FileManager.default.createDirectory(at: dest, withIntermediateDirectories: false,
                                                  attributes: [.posixPermissions: 0o700])
@@ -318,8 +354,8 @@ struct SystemFileActions: FileActionPerforming {
         let run = Task { await ditto.run(["-x", "-k", src.path, dest.path], timeout: Self.archiveTimeout) }
         let watch = Task {
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                if Self.size(of: dest) > cap {
+                try? await Task.sleep(for: Self.unzipWatchInterval)
+                if Self.size(of: dest) > limit {
                     run.cancel()
                     return true
                 }
@@ -328,14 +364,30 @@ struct SystemFileActions: FileActionPerforming {
         }
         let r = await withTaskCancellationHandler { await run.value } onCancel: { run.cancel() }
         watch.cancel()
-        let overCap = await watch.value || Self.size(of: dest) > cap
-        guard r.status == 0, !r.cancelled, !r.timedOut, !overCap else {
+        let overLimit = await watch.value || Self.size(of: dest) > limit
+        guard r.status == 0, !r.cancelled, !r.timedOut, !overLimit, !Task.isCancelled else {
             try? FileManager.default.removeItem(at: dest)
-            if overCap { throw FileActionError.tooLarge(cap) }
-            if r.cancelled { throw FileActionError.cancelled }
+            if overLimit { throw FileActionError.overDeclared }
+            if r.cancelled || Task.isCancelled { throw FileActionError.cancelled }
             throw FileActionError.failed(r.timedOut ? "it took longer than 30 minutes" : Self.firstLine(r.combined, or: "ditto failed"))
         }
         return dest
+    }
+
+    /// What an unzip may put on disk: the declared bytes, plus a block per entry (files
+    /// are stored in whole blocks, and ditto may add folders and attributes) and 1 MiB.
+    static func watchLimit(declared: UInt64, entries: Int) -> UInt64 {
+        let perEntry = UInt64(max(entries, 0)).multipliedReportingOverflow(by: 8_192)
+        guard !perEntry.overflow else { return .max }
+        let a = declared.addingReportingOverflow(perEntry.partialValue)
+        guard !a.overflow else { return .max }
+        let b = a.partialValue.addingReportingOverflow(1 << 20)
+        return b.overflow ? .max : b.partialValue
+    }
+
+    static func freeSpace(at url: URL) -> UInt64? {
+        let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        return values?.volumeAvailableCapacityForImportantUsage.map { UInt64(max($0, 0)) }
     }
 
     /// Bytes on disk under `url` (never follows links).
@@ -356,25 +408,25 @@ struct SystemFileActions: FileActionPerforming {
     // MARK: - Vision (on this Mac)
 
     /// Accurate text recognition of an image, or of a PDF's pages (at most `maxOCRPages`),
-    /// lines in reading order.
+    /// lines in reading order. One page is rendered and read at a time, each at most
+    /// `maxVisionPixels` on its longest side.
     static func recognizeText(_ url: URL) async throws -> String {
         let pdf = type(of: url).conforms(to: .pdf)
         let text = try await detached { () throws -> String in
-            let images = pdf ? try pdfPages(url) : [try uprightImage(url)]
             var pages: [String] = []
-            for image in images {
-                if Task.isCancelled { throw FileActionError.cancelled }
-                let request = VNRecognizeTextRequest()
-                request.recognitionLevel = .accurate
-                request.usesLanguageCorrection = true
-                request.automaticallyDetectsLanguage = true
-                do {
-                    try VNImageRequestHandler(cgImage: image).perform([request])
-                } catch {
-                    throw FileActionError.failed(error.localizedDescription)
+            if pdf {
+                guard let doc = CGPDFDocument(url as CFURL), doc.numberOfPages > 0 else { throw FileActionError.unreadable }
+                for n in 1...min(doc.numberOfPages, maxOCRPages) {
+                    if Task.isCancelled { throw FileActionError.cancelled }
+                    let page: String? = try autoreleasepool {
+                        guard let page = doc.page(at: n), let image = render(page) else { return nil }
+                        return try recognize(image)
+                    }
+                    if let page, !page.isEmpty { pages.append(page) }
                 }
-                let lines = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
-                if !lines.isEmpty { pages.append(lines.joined(separator: "\n")) }
+            } else {
+                let page = try recognize(try uprightImage(url, maxPixels: maxVisionPixels))
+                if !page.isEmpty { pages.append(page) }
             }
             return pages.joined(separator: "\n\n")
         }
@@ -382,26 +434,35 @@ struct SystemFileActions: FileActionPerforming {
         return text
     }
 
-    /// A PDF's pages as images at twice their size.
-    private static func pdfPages(_ url: URL) throws -> [CGImage] {
-        guard let doc = CGPDFDocument(url as CFURL), doc.numberOfPages > 0 else { throw FileActionError.unreadable }
-        var out: [CGImage] = []
-        for n in 1...min(doc.numberOfPages, maxOCRPages) {
-            guard let page = doc.page(at: n) else { continue }
-            let box = page.getBoxRect(.mediaBox)
-            let scale: CGFloat = 2
-            let w = Int(box.width * scale), h = Int(box.height * scale)
-            guard w > 0, h > 0, let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
-                                                     space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                                     bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { continue }
-            ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
-            ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
-            ctx.scaleBy(x: scale, y: scale)
-            ctx.translateBy(x: -box.minX, y: -box.minY)
-            ctx.drawPDFPage(page)
-            if let image = ctx.makeImage() { out.append(image) }
+    private static func recognize(_ image: CGImage) throws -> String {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+        request.automaticallyDetectsLanguage = true
+        do {
+            try VNImageRequestHandler(cgImage: image).perform([request])
+        } catch {
+            throw FileActionError.failed(error.localizedDescription)
         }
-        return out
+        return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
+    }
+
+    /// A PDF page as an image at twice its size, at most `maxVisionPixels` on its longest side.
+    private static func render(_ page: CGPDFPage) -> CGImage? {
+        let box = page.getBoxRect(.mediaBox)
+        let longest = max(box.width, box.height)
+        guard longest > 0 else { return nil }
+        let scale: CGFloat = min(2, CGFloat(maxVisionPixels) / longest)
+        let w = Int(box.width * scale), h = Int(box.height * scale)
+        guard w > 0, h > 0, let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                                                 space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                                 bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        ctx.scaleBy(x: scale, y: scale)
+        ctx.translateBy(x: -box.minX, y: -box.minY)
+        ctx.drawPDFPage(page)
+        return ctx.makeImage()
     }
 
     /// Vision's subject lifting (macOS 14 and later): true when this Mac has it.
@@ -411,13 +472,15 @@ struct SystemFileActions: FileActionPerforming {
 
     /// The image's subjects on a transparent background, as `<name> (no background).png`.
     static func removeBackground(_ src: URL, into folder: URL) throws -> URL {
-        let image = try uprightImage(src)
+        guard canRemoveBackground else { throw FileActionError.unavailable }
+        let image = try uprightImage(src, maxPixels: maxVisionPixels)
         let request = VNGenerateForegroundInstanceMaskRequest()
         let handler = VNImageRequestHandler(cgImage: image)
         do {
             try handler.perform([request])
         } catch {
-            throw FileActionError.failed(error.localizedDescription)
+            // Vision could not run the request here (no Neural Engine model, a VM).
+            throw FileActionError.unavailable
         }
         guard let result = request.results?.first, !result.allInstances.isEmpty else { throw FileActionError.noSubject }
         let buffer: CVPixelBuffer

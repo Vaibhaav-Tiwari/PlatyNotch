@@ -66,6 +66,10 @@ final class FileActionCenter {
     @ObservationIgnored var writableImageTypes: Set<String>
     /// How Batch rename renames (0 or an errno; never replaces). A seam for tests.
     @ObservationIgnored var renameFile: ShelfStore.FolderRename = FileActionCenter.renameNoReplace
+    /// Paths Batch rename never touches (`RenamePolicy`). A seam for tests.
+    @ObservationIgnored var isProtected: (URL) -> Bool = { url in
+        RenamePolicy.isProtected(url, userHome: FileManager.default.homeDirectoryForCurrentUser, appHome: CorePaths.home())
+    }
 
     init(engine: FileActionPerforming = SystemFileActions(),
          removeBackgroundAvailable: Bool = SystemFileActions.canRemoveBackground,
@@ -111,7 +115,9 @@ final class FileActionCenter {
             case .unzip: out.append(.action("Unzip", .unzip))
             case .copyText: out.append(.action("Copy Text", .copyText))
             case .removeBackground: out.append(.action("Remove Background", .removeBackground))
-            case .rename: out.append(.rename)
+            case .rename:
+                // Hidden when any target is one Batch rename never renames.
+                if !targets.contains(where: { $0.url.map(isProtected) ?? true }) { out.append(.rename) }
             }
         }
         if canUndoRename { out.append(.undoRename) }
@@ -169,7 +175,9 @@ final class FileActionCenter {
         let task = Task { [weak self] in
             let outcome: Result<FileActionOutput, Error>
             do {
-                outcome = .success(try await engine.perform(action, sources: urls, into: reserved?.folder))
+                let output = try await engine.perform(action, sources: urls, into: reserved?.folder)
+                // Cancelled while it finished: the result is not kept (its folder is deleted).
+                outcome = Task.isCancelled ? .failure(FileActionError.cancelled) : .success(output)
             } catch {
                 outcome = .failure(error)
             }
@@ -244,7 +252,8 @@ final class FileActionCenter {
     /// how many failed.
     @discardableResult
     func rename(_ targets: [(item: ShelfItem, url: URL)], plan: RenamePlan) -> (renamed: Int, failed: Int) {
-        let done = execute(plan.steps.map { (targets[$0.index].item.id, $0) })
+        let allowed = plan.steps.filter { !isProtected($0.from) }
+        let done = execute(allowed.map { (targets[$0.index].item.id, $0) })
         lastRename = done
         canUndoRename = !done.isEmpty
         let failed = plan.steps.count - done.count

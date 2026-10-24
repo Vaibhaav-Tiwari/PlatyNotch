@@ -187,25 +187,41 @@ public enum AppURL: Equatable, Sendable {
 
 /// Which paths `platynotch://shelf/add` may add (R7): absolute, existing, never inside
 /// PlatyNotch's own folder, at most `maxPaths` per URL (more and nothing is added).
+///
+/// Two steps, so a link touches nothing on disk before the user clicks: `lexical` (string
+/// checks only) decides whether to ask at all; `accept` (symlinks resolved, existence
+/// checked) runs after the click on what `lexical` returned.
 public enum ShelfAddPolicy {
     public static let maxPaths = 20
 
-    /// The files to offer, in order without repeats; nil when too many were given.
-    /// `home`: PlatyNotch's folder (`CorePaths.home()`); `exists`: a file or folder is there.
-    public static func accept(_ paths: [String], home: URL, exists: (String) -> Bool) -> [URL]? {
+    /// String checks only: absolute, no `..` left after standardising, not under `home`
+    /// by its path, in order without repeats. Nil when more than `maxPaths` were given.
+    public static func lexical(_ paths: [String], home: URL) -> [URL]? {
         guard paths.count <= maxPaths else { return nil }
-        let root = home.standardizedFileURL.resolvingSymlinksInPath().path
+        let root = home.standardizedFileURL.path
         var seen = Set<String>()
         var out: [URL] = []
         for raw in paths {
             guard raw.hasPrefix("/"), !raw.contains("\0") else { continue }
             let url = URL(fileURLWithPath: raw).standardizedFileURL
-            let real = url.resolvingSymlinksInPath().path
-            guard real != "/", real != root, !real.hasPrefix(root + "/"), exists(url.path),
-                  seen.insert(real).inserted else { continue }
+            let path = url.path
+            guard path != "/", !url.pathComponents.contains(".."), path != root, !path.hasPrefix(root + "/"),
+                  seen.insert(path).inserted else { continue }
             out.append(url)
         }
         return out
+    }
+
+    /// After the click: `lexical`, then with symlinks resolved (a link into the home is
+    /// refused) and only what `exists`. Nil when more than `maxPaths` were given.
+    public static func accept(_ paths: [String], home: URL, exists: (String) -> Bool) -> [URL]? {
+        guard let candidates = lexical(paths, home: home) else { return nil }
+        let root = home.standardizedFileURL.resolvingSymlinksInPath().path
+        var seen = Set<String>()
+        return candidates.filter { url in
+            let real = url.resolvingSymlinksInPath().path
+            return real != "/" && real != root && !real.hasPrefix(root + "/") && exists(url.path) && seen.insert(real).inserted
+        }
     }
 }
 

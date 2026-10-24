@@ -367,6 +367,16 @@ final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost, FileAct
         return true
     }
 
+    /// Several files from disk at once (the Finder service, a link), one index write; the
+    /// first ends up first. False while the shelf is off.
+    @discardableResult
+    func addFiles(_ urls: [URL]) -> Bool {
+        guard isRunning, let store else { return false }
+        store.addFiles(urls)
+        afterChange()
+        return true
+    }
+
     func remove(_ ids: [UUID]) {
         guard let store else { return }
         for id in ids { store.remove(id) }
