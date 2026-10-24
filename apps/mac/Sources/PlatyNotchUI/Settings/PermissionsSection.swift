@@ -27,6 +27,13 @@ struct PermissionRows: View {
                 state: permissions.accessibility ? .granted : .notAsked,
                 allow: { permissions.requestAccessibility() },
                 openSettings: { Permissions.open(.accessibility) })
+            if permissions.accessibilityStuck {
+                Text(verbatim: PermissionAdvice.accessibilityRebuilt)
+                    .font(.caption)
+                    .foregroundStyle(Theme.color(.attention))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 28)
+            }
             PermissionRow(
                 title: "Calendar", systemImage: "calendar",
                 why: "Shows your meetings, their join links and 10, 5 and 1-minute reminders; quick add can create events.",
@@ -64,6 +71,14 @@ struct PermissionRows: View {
                     }
                     .padding(.leading, 28)
                 }
+                if permissions.anyAutomationDenied {
+                    Text(verbatim: "Turned on but still refused, or macOS no longer asks? PlatyNotch was rebuilt or updated and macOS keeps the old answer. In Terminal run: \(PermissionAdvice.resetAppleEvents)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, 28)
+                }
             }
             PermissionRow(
                 title: "Notifications", systemImage: "bell.badge",
@@ -74,6 +89,10 @@ struct PermissionRows: View {
                 openSettings: { Permissions.open(.notifications) })
         }
         .onAppear { permissions.refresh() }
+        // Back from System Settings: show what was just allowed.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            permissions.refresh()
+        }
     }
 
     private func state(_ access: CalendarService.Access) -> Permissions.State {

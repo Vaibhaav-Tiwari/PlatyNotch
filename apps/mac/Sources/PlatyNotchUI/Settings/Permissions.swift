@@ -27,6 +27,10 @@ final class Permissions {
     }
 
     private(set) var accessibility = false
+    /// Allowed (or once allowed for another build) but this build is still not trusted:
+    /// show `PermissionAdvice.accessibilityRebuilt` (feedback 7).
+    private(set) var accessibilityStuck = false
+    @ObservationIgnored private var accessibilityAskedAt: Date?
     private(set) var notifications: State = .notAsked
     private(set) var automation: [String: State] = [:]
     let calendar: CalendarService
@@ -39,7 +43,7 @@ final class Permissions {
 
     /// Re-reads every status without prompting.
     func refresh() {
-        accessibility = AXIsProcessTrusted()
+        readAccessibility()
         calendar.refreshAccess()
         reminders.refreshAccess()
         refreshNotifications()
@@ -60,6 +64,7 @@ final class Permissions {
 
     /// Shows the system Accessibility prompt. Only from the "Allow" button for capture.
     func requestAccessibility() {
+        accessibilityAskedAt = Date()
         let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
         accessibility = AXIsProcessTrustedWithOptions(options)
         // The grant happens in System Settings; poll briefly so the row updates.
@@ -67,11 +72,27 @@ final class Permissions {
             for _ in 0..<60 {
                 try? await Task.sleep(for: .seconds(1))
                 guard let self else { return }
-                self.accessibility = AXIsProcessTrusted()
+                self.readAccessibility()
                 if self.accessibility { return }
             }
         }
     }
+
+    /// Reads trust (never prompts), stamps a working grant with this build, and decides
+    /// whether the "remove and allow again" advice applies.
+    private func readAccessibility() {
+        let trusted = AXIsProcessTrusted()
+        let defaults = UserDefaults.standard
+        if trusted { AccessibilityGrant.note(defaults, identity: CodeIdentity.current) }
+        let history = AccessibilityGrant.history(defaults, identity: CodeIdentity.current)
+        let isStuck = PermissionAdvice.accessibilityStuck(trusted: trusted, allowClickedAt: accessibilityAskedAt,
+                                                          now: Date(), history: history)
+        if accessibility != trusted { accessibility = trusted }
+        if accessibilityStuck != isStuck { accessibilityStuck = isStuck }
+    }
+
+    /// Some Automation target refused PlatyNotch: the rebuilt-app note applies.
+    var anyAutomationDenied: Bool { automation.values.contains(.denied) }
 
     // MARK: - Calendar
 

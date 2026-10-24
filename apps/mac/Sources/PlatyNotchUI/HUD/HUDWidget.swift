@@ -73,6 +73,9 @@ final class HUDWidget: NotchWidget {
     /// The keys PlatyNotch handles on this Mac (the rest go to the system).
     private(set) var available: Set<MediaKeyKind> = []
     private(set) var outputName: String?
+    /// Allowed (or once allowed for another build) but still not trusted: the tile says to
+    /// remove PlatyNotch from the Accessibility list and allow it again (feedback 7).
+    private(set) var stuck = false
     /// The display whose brightness we set (the built-in one), if any.
     @ObservationIgnored private var brightnessDisplay: CGDirectDisplayID?
     /// Controls whose set failed (cleared on a device / screen change and on stop).
@@ -88,13 +91,25 @@ final class HUDWidget: NotchWidget {
     @ObservationIgnored private var observers: [(NotificationCenter, NSObjectProtocol)] = []
     @ObservationIgnored private var recheckTask: Task<Void, Never>?
     @ObservationIgnored private var generation = 0
+    @ObservationIgnored private let identity: () -> String
+    @ObservationIgnored private let now: () -> Date
+    /// How often trust is re-read while the Allow UI is on screen.
+    @ObservationIgnored private let pollInterval: Duration
+    /// When "Allow Accessibility…" was clicked (this run).
+    @ObservationIgnored private var allowClickedAt: Date?
 
     init(makeTap: @escaping () -> MediaKeyTapping = { SystemMediaKeyTap() },
          makeControls: @escaping () -> HUDControls = { HUDControls.system() },
-         trust: AccessibilityTrust = .system) {
+         trust: AccessibilityTrust = .system,
+         identity: @escaping () -> String = { CodeIdentity.current },
+         now: @escaping () -> Date = Date.init,
+         pollInterval: Duration = .seconds(2)) {
         self.makeTap = makeTap
         self.makeControls = makeControls
         self.trust = trust
+        self.identity = identity
+        self.now = now
+        self.pollInterval = pollInterval
     }
 
     /// Smoke runs: no tap, no prompt, controls that change nothing.
@@ -133,18 +148,26 @@ final class HUDWidget: NotchWidget {
         context = nil
         failedSets = []
         status = .stopped
+        stuck = false
+        allowClickedAt = nil
         available = []
         outputName = nil
     }
 
     /// Creates the tap when Accessibility is allowed and drops it when not.
     private func connect() {
-        guard context != nil else { return }
+        guard let context else { return }
         guard trust.isTrusted() else {
             disconnectTap()
             status = .needsAccessibility
+            let history = AccessibilityGrant.history(context.defaults, identity: identity())
+            let isStuck = PermissionAdvice.accessibilityStuck(trusted: false, allowClickedAt: allowClickedAt,
+                                                              now: now(), history: history)
+            if stuck != isStuck { stuck = isStuck }
             return
         }
+        AccessibilityGrant.note(context.defaults, identity: identity())
+        if stuck { stuck = false }
         if tap == nil {
             let t = makeTap()
             // The router hands taken keys to the main queue (never waited on).
@@ -172,17 +195,29 @@ final class HUDWidget: NotchWidget {
     /// The "Allow" button: shows the system Accessibility prompt, then picks the grant up
     /// (the distributed notification below, and a bounded recheck for a minute).
     func requestAccess() {
+        allowClickedAt = now()
         trust.request()
         recheckTask?.cancel()
         recheckTask = Task { [weak self] in
             for _ in 0..<60 {
                 try? await Task.sleep(for: .seconds(1))
                 guard !Task.isCancelled, let self, self.isRunning else { return }
-                if self.trust.isTrusted() {
-                    self.connect()
-                    return
-                }
+                self.connect()   // also turns on the "remove and allow again" advice
+                if self.status != .needsAccessibility { return }
             }
+        }
+    }
+
+    /// Re-reads trust now (and the advice that goes with it).
+    func recheckTrust() { connect() }
+
+    /// While the Allow UI is on screen (the tile's or Settings' `.task`): re-reads trust
+    /// every `pollInterval` until it is granted or the view goes away.
+    func watchTrustWhileVisible() async {
+        while !Task.isCancelled, isRunning, status == .needsAccessibility {
+            try? await Task.sleep(for: pollInterval)
+            guard !Task.isCancelled else { return }
+            connect()
         }
     }
 
@@ -196,8 +231,14 @@ final class HUDWidget: NotchWidget {
                                               object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.trustMayHaveChanged() }
         }))
-        // Displays come and go (clamshell): brightness availability changes.
         let nc = NotificationCenter.default
+        // Back from System Settings, or the Settings window closing: read trust again.
+        for name in [NSApplication.didBecomeActiveNotification, NSWindow.willCloseNotification] {
+            observers.append((nc, nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.trustMayHaveChanged() }
+            }))
+        }
+        // Displays come and go (clamshell): brightness availability changes.
         observers.append((nc, nc.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                              object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.controlsChanged(.brightness) }
@@ -339,6 +380,9 @@ final class HUDWidget: NotchWidget {
     var explanation: String? {
         switch status {
         case .on, .stopped: nil
+        case .needsAccessibility where stuck:
+            "Off: Accessibility is still not allowed for this PlatyNotch. " + PermissionAdvice.accessibilityRebuilt
+                + " The system HUD shows meanwhile."
         case .needsAccessibility:
             """
             Off: needs Accessibility. macOS lets an app take the volume and brightness keys \
@@ -362,5 +406,20 @@ final class HUDWidget: NotchWidget {
         if !available.contains(.backlightUp) { missing.append("keyboard backlight (none on this keyboard)") }
         guard !missing.isEmpty else { return nil }
         return "The system HUD still shows for " + missing.joined(separator: ", ") + "."
+    }
+}
+
+/// The `CodeIdentity` of the last build seen trusted for Accessibility (HUD, clipboard
+/// paste, memory capture), so a rebuilt app's lost grant can be recognised (feedback 7).
+@MainActor
+enum AccessibilityGrant {
+    static let key = "accessibilityGrant"
+
+    static func history(_ defaults: UserDefaults, identity: String) -> GrantHistory {
+        GrantHistory(savedStamp: defaults.string(forKey: key), current: identity)
+    }
+
+    static func note(_ defaults: UserDefaults, identity: String) {
+        if defaults.string(forKey: key) != identity { defaults.set(identity, forKey: key) }
     }
 }

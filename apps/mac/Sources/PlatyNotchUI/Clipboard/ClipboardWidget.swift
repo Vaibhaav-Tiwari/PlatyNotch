@@ -499,6 +499,9 @@ struct ClipThumbnail: View {
 struct ClipboardSettings: View {
     let widget: ClipboardWidget
     @State private var trusted = false
+    /// "Allow Accessibility…" clicked (this window): if trust stays off, say why (feedback 7).
+    @State private var allowClickedAt: Date?
+    @State private var stuck = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -557,16 +560,47 @@ struct ClipboardSettings: View {
             } else {
                 Text("To paste with ↩, PlatyNotch needs Accessibility (to press ⌘V for you). Without it, ↩ copies and you press ⌘V.")
                     .fixedSize(horizontal: false, vertical: true)
+                if stuck {
+                    Text(verbatim: PermissionAdvice.accessibilityRebuilt)
+                        .foregroundStyle(Theme.color(.attention))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 HStack {
                     Button("Allow Accessibility…") {
+                        allowClickedAt = Date()
                         widget.trust.request()
-                        trusted = widget.trust.isTrusted()
+                        recheck()
                     }
-                    Button("Check Again") { trusted = widget.trust.isTrusted() }
+                    Button("Check Again") { recheck() }
+                    Button("Open System Settings") { Permissions.open(.accessibility) }
                 }
             }
         }
         .font(.system(size: 12))
-        .onAppear { trusted = widget.trust.isTrusted() }
+        .onAppear { recheck() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in recheck() }
+        .task(id: trusted) { await pollWhileUntrusted() }
+    }
+
+    /// Reads trust (never prompts), stamps a working grant with this build, and works out
+    /// whether the "remove and allow again" advice applies.
+    private func recheck() {
+        let now = widget.trust.isTrusted()
+        let defaults = UserDefaults.standard
+        let identity = CodeIdentity.current
+        if now { AccessibilityGrant.note(defaults, identity: identity) }
+        let history = AccessibilityGrant.history(defaults, identity: identity)
+        stuck = PermissionAdvice.accessibilityStuck(trusted: now, allowClickedAt: allowClickedAt, now: Date(),
+                                                    history: history)
+        if trusted != now { trusted = now }
+    }
+
+    /// Every 2 s while the Allow row is on screen.
+    private func pollWhileUntrusted() async {
+        while !Task.isCancelled, !trusted {
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            recheck()
+        }
     }
 }

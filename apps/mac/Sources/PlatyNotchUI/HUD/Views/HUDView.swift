@@ -68,6 +68,7 @@ struct HUDTile: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .task(id: widget.status) { await HUDAccessButtons.watch(widget) }
     }
 }
 
@@ -98,6 +99,7 @@ struct HUDSettingsView: View {
             .fixedSize(horizontal: false, vertical: true)
         }
         .font(.system(size: 11))
+        .task(id: widget.status) { await HUDAccessButtons.watch(widget) }
     }
 }
 
@@ -120,5 +122,12 @@ struct HUDAccessButtons: View {
             }
         }
         .controlSize(.small)
+    }
+
+    /// Re-reads trust every couple of seconds while "Allow" is on screen (a grant made in
+    /// System Settings shows up without reopening anything).
+    static func watch(_ widget: HUDWidget) async {
+        guard widget.status == .needsAccessibility else { return }
+        await widget.watchTrustWhileVisible()
     }
 }
