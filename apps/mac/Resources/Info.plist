@@ -59,17 +59,17 @@
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>PlatyNotch shows your meetings and their reminders in the notch, and adds events you type in quick add. Calendar data stays on your Mac.</string>
 	<key>NSDesktopFolderUsageDescription</key>
-	<string>PlatyNotch reads your notes vault for open tasks and adds your quick notes to today's daily note, only after you choose the vault in Settings. Ticking a task changes only its checkbox.</string>
+	<string>PlatyNotch opens files on your Desktop only when you ask: files you put on the shelf or in a basket, file actions you run on them, and your notes vault after you choose it in Settings. In the vault, ticking a task changes only its checkbox, and a quick note you add goes at the end of today's daily note.</string>
 	<key>NSDocumentsFolderUsageDescription</key>
-	<string>PlatyNotch reads your notes vault for open tasks and adds your quick notes to today's daily note, only after you choose the vault in Settings. Ticking a task changes only its checkbox.</string>
+	<string>PlatyNotch opens files in Documents only when you ask: files you put on the shelf or in a basket, file actions you run on them, and your notes vault after you choose it in Settings. In the vault, ticking a task changes only its checkbox, and a quick note you add goes at the end of today's daily note.</string>
 	<key>NSFileProviderDomainUsageDescription</key>
-	<string>PlatyNotch reads your notes vault for open tasks and adds your quick notes to today's daily note, only after you choose the vault in Settings. Ticking a task changes only its checkbox.</string>
+	<string>PlatyNotch opens files in iCloud Drive and other cloud folders only when you ask: files you put on the shelf or in a basket, file actions you run on them, and your notes vault after you choose it in Settings. In the vault, ticking a task changes only its checkbox, and a quick note you add goes at the end of today's daily note.</string>
 	<key>NSNetworkVolumesUsageDescription</key>
-	<string>PlatyNotch reads your notes vault for open tasks and adds your quick notes to today's daily note, only after you choose the vault in Settings. Ticking a task changes only its checkbox.</string>
+	<string>PlatyNotch opens files on network volumes only when you ask: files you put on the shelf or in a basket, file actions you run on them, and your notes vault after you choose it in Settings. In the vault, ticking a task changes only its checkbox, and a quick note you add goes at the end of today's daily note.</string>
 	<key>NSRemovableVolumesUsageDescription</key>
-	<string>PlatyNotch reads your notes vault for open tasks and adds your quick notes to today's daily note, only after you choose the vault in Settings. Ticking a task changes only its checkbox.</string>
+	<string>PlatyNotch opens files on external drives only when you ask: files you put on the shelf or in a basket, file actions you run on them, and your notes vault after you choose it in Settings. In the vault, ticking a task changes only its checkbox, and a quick note you add goes at the end of today's daily note.</string>
 	<key>NSDownloadsFolderUsageDescription</key>
-	<string>PlatyNotch shows downloads in progress and a notice when one finishes, after you turn this on in Settings. It reads file names only, never their contents, and does nothing to a file unless you click.</string>
+	<string>PlatyNotch shows downloads in progress and a notice when one finishes, after you turn this on in Settings; for that it reads file names only, never their contents. It opens a file in Downloads only when you ask: files you put on the shelf or in a basket, file actions you run on them, and your notes vault if you choose one there.</string>
 	<key>NSServices</key>
 	<array>
 		<dict>
