@@ -26,7 +26,7 @@ public final class MemoryGraphModel {
     @ObservationIgnored private var task: Task<Void, Never>?
     /// Layouts of `cachedGraph` by rounded aspect (at most `cacheLimit`).
     @ObservationIgnored private var cachedGraph: MemoryGraph?
-    @ObservationIgnored private var cached: [Double: GraphLayout] = [:]
+    @ObservationIgnored private(set) var cached: [Double: GraphLayout] = [:]
     static let cacheLimit = 4
 
     init(request: @escaping @Sendable (Envelope) async throws -> Envelope) {

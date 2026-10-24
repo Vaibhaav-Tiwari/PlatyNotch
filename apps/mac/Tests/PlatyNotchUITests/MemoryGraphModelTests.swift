@@ -83,6 +83,24 @@ final class MemoryGraphModelTests: XCTestCase {
         XCTAssertEqual(Set(a.positions.keys), ["app:mail", "t1"])
     }
 
+    /// Up to four shapes are kept; a fifth drops them all and keeps only itself; a
+    /// new graph starts over.
+    func testLayoutCacheHoldsFourAndThenDropsAll() {
+        let m = MemoryGraphModel(preset: graph)
+        guard case .loaded(let g) = m.phase else { return XCTFail("\(m.phase)") }
+        for aspect in [1.0, 2.0, 3.0, 4.0] { _ = m.layout(g, aspect: aspect) }
+        XCTAssertEqual(Set(m.cached.keys), [1, 2, 3, 4])
+        _ = m.layout(g, aspect: 2)   // a hit adds nothing
+        XCTAssertEqual(m.cached.count, MemoryGraphModel.cacheLimit)
+        _ = m.layout(g, aspect: 5)
+        XCTAssertEqual(Set(m.cached.keys), [5])
+        var other = g
+        other.nodes.removeLast()
+        _ = m.layout(other, aspect: 1)
+        XCTAssertEqual(Set(m.cached.keys), [1])
+        XCTAssertEqual(m.cached[1], GraphLayout.compute(other, aspect: 1))
+    }
+
     func testServicesShareOneGraphModelAndDoNotFetchOnInit() {
         let client = CoreClient(socketPath: "/nonexistent/notch.sock")
         let services = MemoryServices(client: client)
