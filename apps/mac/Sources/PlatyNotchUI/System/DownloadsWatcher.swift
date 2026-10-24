@@ -36,18 +36,31 @@ final class FSEventsWatcher: FolderWatching {
     static let latency: CFTimeInterval = 1.0
     private static let log = Logger(subsystem: "dev.platynotch.app", category: "downloads")
 
-    /// The stream and its context (the stream's `info` points here, unretained; this
-    /// object outlives the stream). Its deinit is the safety net if `stop` did not run:
-    /// the stream delivers on the main queue, so it is torn down there, whichever thread
-    /// the last release happens on.
-    private final class Handle: @unchecked Sendable {
+    /// The callback's context. The stream owns it: the context's retain / release
+    /// callbacks keep it alive until `FSEventStreamRelease`, so a callback never sees a
+    /// freed object.
+    private final class Box: @unchecked Sendable {
         var onPaths: (@MainActor ([String]) -> Void)?
-        var stream: FSEventStreamRef?
+        init(_ onPaths: @escaping @MainActor ([String]) -> Void) { self.onPaths = onPaths }
+    }
+
+    /// The stream. Its deinit is the safety net if `stop` did not run: the stream delivers
+    /// on the main queue, so it is torn down there, whichever thread the last release
+    /// happens on (the box lives until then, owned by the stream).
+    private final class Handle: @unchecked Sendable {
+        let stream: FSEventStreamRef
+        let box: Box
+        private var done = false
+
+        init(stream: FSEventStreamRef, box: Box) {
+            self.stream = stream
+            self.box = box
+        }
 
         func invalidate() {
-            guard let s = stream else { return }
-            stream = nil
-            Self.teardown(s)
+            guard !done else { return }
+            done = true
+            Self.teardown(stream)
         }
 
         static func teardown(_ s: FSEventStreamRef) {
@@ -57,8 +70,8 @@ final class FSEventsWatcher: FolderWatching {
         }
 
         deinit {
-            guard let s = stream else { return }
-            nonisolated(unsafe) let ref = s
+            guard !done else { return }
+            nonisolated(unsafe) let ref = stream
             if Thread.isMainThread {
                 Self.teardown(ref)
             } else {
@@ -77,17 +90,25 @@ final class FSEventsWatcher: FolderWatching {
     }
 
     private func start(_ folders: [String], _ onPaths: @escaping @MainActor ([String]) -> Void) -> Bool {
-        let h = Handle()
-        h.onPaths = onPaths
-        var context = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(h).toOpaque(),
-                                           retain: nil, release: nil, copyDescription: nil)
+        let box = Box(onPaths)
+        let retain: CFAllocatorRetainCallBack = { info in
+            guard let info else { return nil }
+            _ = Unmanaged<Box>.fromOpaque(info).retain()
+            return info
+        }
+        let release: CFAllocatorReleaseCallBack = { info in
+            guard let info else { return }
+            Unmanaged<Box>.fromOpaque(info).release()
+        }
+        var context = FSEventStreamContext(version: 0, info: Unmanaged.passUnretained(box).toOpaque(),
+                                           retain: retain, release: release, copyDescription: nil)
         let callback: FSEventStreamCallback = { _, info, _, paths, _, _ in
             guard let info else { return }
-            let h = Unmanaged<Handle>.fromOpaque(info).takeUnretainedValue()
+            let box = Unmanaged<Box>.fromOpaque(info).takeUnretainedValue()
             let list = (unsafeBitCast(paths, to: NSArray.self) as? [String]) ?? []
             guard !list.isEmpty else { return }
             // Delivered on the main queue (set below).
-            MainActor.assumeIsolated { h.onPaths?(list) }
+            MainActor.assumeIsolated { box.onPaths?(list) }
         }
         let flags = UInt32(kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagFileEvents
                            | kFSEventStreamCreateFlagIgnoreSelf)
@@ -103,13 +124,12 @@ final class FSEventsWatcher: FolderWatching {
             FSEventStreamRelease(s)
             return false
         }
-        h.stream = s
-        handle = h
+        handle = Handle(stream: s, box: box)
         return true
     }
 
     func stop() {
-        handle?.onPaths = nil
+        handle?.box.onPaths = nil
         handle?.invalidate()
         handle = nil
     }
@@ -160,8 +180,7 @@ final class DownloadsMonitor {
 
     private func batch(_ paths: [String]) {
         guard watch != nil else { return }
-        let toStat = tracker.pathsToStat(paths)
-        if pending == nil, toStat.count <= Self.mainThreadStats {
+        if pending == nil, paths.count <= Self.mainThreadStats {
             finish(paths, stat: stat)
             return
         }
@@ -171,6 +190,8 @@ final class DownloadsMonitor {
         let stat = self.stat
         pending = Task { @MainActor [weak self] in
             await previous?.value
+            // After the batch before it: the tracker (and so what to stat) may have changed.
+            guard let toStat = self?.tracker.pathsToStat(paths) else { return }
             let stats = await Task.detached(priority: .utility) { Self.statAll(toStat, stat) }.value
             guard let self, !Task.isCancelled, self.watch != nil else { return }
             self.finish(paths, stat: { stats[$0] })
@@ -216,11 +237,12 @@ final class DownloadsMonitor {
         return FileStat(isDirectory: isDir, size: (a[.size] as? NSNumber)?.int64Value ?? 0)
     }
 
-    /// `~/Downloads` (the real folder, symlinks resolved, as FSEvents reports paths).
-    nonisolated static func defaultFolder() -> String {
+    /// `~/Downloads` as a path (a lookup, no file-system access). Resolved with
+    /// `canonical` only when downloads start (FSEvents reports real paths).
+    nonisolated static func defaultFolderPath() -> String {
         let url = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
-        return canonical(url.path)
+        return url.path
     }
 
     /// `realpath` of the folder itself (never its contents).

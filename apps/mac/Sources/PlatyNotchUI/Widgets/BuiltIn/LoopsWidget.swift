@@ -68,7 +68,7 @@ enum BuiltInWidgets {
                                   : WellbeingWidget.inert())
         // On by default with battery and keep-awake only (no permission); headphones and
         // downloads stay off until turned on in its settings. Smoke: no IOKit at all.
-        // "Move to Shelf" only while the shelf runs.
+        // "Add to Shelf" only while the shelf runs.
         let toShelf: @MainActor () -> (@MainActor (URL) -> Bool)? = { [weak registry, weak shelf] in
             guard let registry, let shelf, registry.running.contains(ShelfWidget.widgetID) else { return nil }
             return { shelf.addFile($0) }

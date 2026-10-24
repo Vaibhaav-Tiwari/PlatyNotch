@@ -38,8 +38,11 @@ final class SystemWidget: NotchWidget {
 
     /// What the downloads sub-feature uses; tests pass fakes for all of it.
     struct DownloadsServices {
-        /// `~/Downloads`, canonical.
+        /// `~/Downloads` as a path, not resolved (no file-system access).
         var folder: String
+        /// Resolves symlinks (`realpath`); only called when downloads start with a
+        /// matching stamp (or from the Turn On button), never at construction.
+        var resolve: @MainActor (String) -> String
         var watch: FolderWatcherFactory
         /// A stat of a path from a batch (type and size), never a read. May run off main.
         var stat: @Sendable (String) -> FileStat?
@@ -54,7 +57,7 @@ final class SystemWidget: NotchWidget {
         var shelf: @MainActor () -> (@MainActor (URL) -> Bool)?
 
         static func system(shelf: @escaping @MainActor () -> (@MainActor (URL) -> Bool)? = { nil }) -> DownloadsServices {
-            DownloadsServices(folder: DownloadsMonitor.defaultFolder(),
+            DownloadsServices(folder: DownloadsMonitor.defaultFolderPath(), resolve: { DownloadsMonitor.canonical($0) },
                               watch: { FSEventsWatcher.make(folders: $0, onPaths: $1) },
                               stat: { DownloadsMonitor.statFile($0) },
                               probe: { await DownloadsMonitor.probeAccess($0) },
@@ -64,7 +67,7 @@ final class SystemWidget: NotchWidget {
 
         /// Watches nothing, touches nothing (smoke runs).
         static var none: DownloadsServices {
-            DownloadsServices(folder: "/nonexistent", watch: { _, _ in nil }, stat: { _ in nil },
+            DownloadsServices(folder: "/nonexistent", resolve: { $0 }, watch: { _, _ in nil }, stat: { _ in nil },
                               probe: { _ in false }, identity: { CodeIdentity.unsigned }, home: "/nonexistent",
                               files: WorkspaceFileActions(), shelf: { nil })
         }
@@ -167,7 +170,10 @@ final class SystemWidget: NotchWidget {
     @ObservationIgnored let persist: Bool
     @ObservationIgnored let clock: () -> Date
     @ObservationIgnored private(set) var context: WidgetContext?
-    @ObservationIgnored private var lastPowerPeekAt: Date?
+    /// When the current burst's peek was shown (the debounce window starts there).
+    @ObservationIgnored private var powerPeekShownAt: Date?
+    @ObservationIgnored private(set) var powerPeekUntil: Date?
+    @ObservationIgnored private var powerPeekExpiry: Task<Void, Never>?
     @ObservationIgnored private var batteryRetryTask: Task<Void, Never>?
 
     init(power: PowerSourceReading = SystemPowerSource(), asserter: PowerAsserting = SystemPowerAsserter(),
@@ -229,12 +235,11 @@ final class SystemWidget: NotchWidget {
         power.stop()
         batteryRetryTask?.cancel()
         batteryRetryTask = nil
-        lastPowerPeekAt = nil
+        if powerPeek != nil { context.endPeek(id: Self.powerPeekID) }
+        clearPowerPeek()
         keepAwake.stop()
         stopHeadphones()
         stopDownloads()
-        if powerPeek != nil { context.endPeek(id: Self.powerPeekID) }
-        powerPeek = nil
         battery = nil
         self.context = nil
     }
@@ -256,22 +261,47 @@ final class SystemWidget: NotchWidget {
             return
         }
         let now = clock()
-        // A burst (a loose connector): the peek on show follows the last state, no new peek.
-        if powerPeek != nil, let last = lastPowerPeekAt, now.timeIntervalSince(last) < Self.powerPeekDebounce {
+        // A burst (a loose connector): within the window that started at the burst's first
+        // peek, the peek follows the last state; shown again if something replaced it.
+        if powerPeek != nil, let shown = powerPeekShownAt, let until = powerPeekUntil,
+           now.timeIntervalSince(shown) < Self.powerPeekDebounce, until > now {
             powerPeek = PowerPeek(change: change, state: new)
-            lastPowerPeekAt = now
+            if !context.peek(id: Self.powerPeekID, until: until) { clearPowerPeek() }
             return
         }
+        clearPowerPeek()
+        let until = now.addingTimeInterval(Self.powerPeekDuration)
         powerPeek = PowerPeek(change: change, state: new)
-        lastPowerPeekAt = now
-        if !context.peek(id: Self.powerPeekID, until: now.addingTimeInterval(Self.powerPeekDuration)) {
+        guard context.peek(id: Self.powerPeekID, until: until) else {
             powerPeek = nil
+            return
         }
+        powerPeekShownAt = now
+        powerPeekUntil = until
+        powerPeekExpiry = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Self.powerPeekDuration))
+            guard !Task.isCancelled else { return }
+            self?.powerPeekExpired(until)
+        }
+    }
+
+    /// The peek's time is up (the expiry sleep; tests call it).
+    func powerPeekExpired(_ until: Date) {
+        guard powerPeekUntil == until else { return }
+        clearPowerPeek()
+    }
+
+    private func clearPowerPeek() {
+        powerPeekExpiry?.cancel()
+        powerPeekExpiry = nil
+        powerPeek = nil
+        powerPeekShownAt = nil
+        powerPeekUntil = nil
     }
 
     func dismissPowerPeek() {
         guard powerPeek != nil else { return }
-        powerPeek = nil
+        clearPowerPeek()
         context?.endPeek(id: Self.powerPeekID)
     }
 
@@ -426,10 +456,6 @@ final class SystemWidget: NotchWidget {
             }
             return
         }
-        if let extra = options.extraFolder, case .rejected(let why) = WatchFolderPolicy.check(extra, home: downloads.home) {
-            updateOptions { $0.extraFolder = nil }
-            extraFolderRejection = why
-        }
         startDownloads()
     }
 
@@ -451,13 +477,31 @@ final class SystemWidget: NotchWidget {
         return true
     }
 
-    var downloadFolders: [String] {
-        [downloads.folder] + [options.extraFolder].compactMap { $0 }.filter { $0 != downloads.folder }
+    /// The folders for a start: `~/Downloads` resolved, and the saved second folder only
+    /// when it passes `WatchFolderPolicy` as written and again after resolving its
+    /// symlinks (resolved only when the written path passed). A failing one is dropped
+    /// with the reason. Runs on every start, so nothing saved by an older build slips in.
+    private func foldersForStart() -> [String] {
+        let main = downloads.resolve(downloads.folder)
+        guard let extra = options.extraFolder else { return [main] }
+        let home = downloads.home
+        var verdict = WatchFolderPolicy.check(extra, home: home)
+        var resolved = extra
+        if verdict == .allowed {
+            resolved = downloads.resolve(extra)
+            verdict = WatchFolderPolicy.check(resolved, home: home)
+        }
+        if case .rejected(let why) = verdict {
+            updateOptions { $0.extraFolder = nil }
+            extraFolderRejection = why
+            return [main]
+        }
+        return resolved == main ? [main] : [main, resolved]
     }
 
     private func startDownloads() {
         guard monitor == nil, isRunning else { return }
-        monitor = DownloadsMonitor(folders: downloadFolders, factory: downloads.watch, stat: downloads.stat,
+        monitor = DownloadsMonitor(folders: foldersForStart(), factory: downloads.watch, stat: downloads.stat,
                                    clock: clock) { [weak self] events, tracker in
             self?.downloadEvents(events, tracker)
         }

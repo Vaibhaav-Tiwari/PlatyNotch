@@ -148,6 +148,9 @@ private final class Disk {
     /// The prompt stays up (the probe waits) until cancelled.
     var hold = false
     var identity = "dr:identifier test-build"
+    /// Every `realpath`, and where a symlink points.
+    var resolves: [String] = []
+    var links: [String: String] = [:]
     var shelf: [URL]? = nil   // nil: the shelf is off
 }
 
@@ -225,7 +228,12 @@ final class SystemWidgetTests: XCTestCase {
             return true
         }
         let shelf: @MainActor () -> (@MainActor (URL) -> Bool)? = { disk.shelf == nil ? nil : addToShelf }
-        let services = SystemWidget.DownloadsServices(folder: "/Users/me/Downloads", watch: watches.factory,
+        let resolve: @MainActor (String) -> String = { path in
+            disk.resolves.append(path)
+            return disk.links[path] ?? path
+        }
+        let services = SystemWidget.DownloadsServices(folder: "/Users/me/Downloads", resolve: resolve,
+                                                      watch: watches.factory,
                                                       stat: stat, probe: probe, identity: { disk.identity },
                                                       home: "/Users/me", files: files, shelf: shelf)
         let w = SystemWidget(power: power, asserter: asserter, headphones: headphones, downloads: services,
@@ -732,5 +740,81 @@ final class SystemWidgetTests: XCTestCase {
         XCTAssertTrue(id.hasPrefix("dr:") || id.hasPrefix("cdhash:") || id == CodeIdentity.unsigned, id)
         XCTAssertEqual(id, CodeIdentity.current)
         print("CodeIdentity under swift test: \(id.prefix(20))…")
+    }
+
+    // MARK: - Fix round 3
+
+    func testProtectedFolderFromAPreStampBuildNeverReachesTheStream() async {
+        let old = SystemWidget.Options(downloads: true, extraFolder: "/Users/me/Documents/DL")   // no stamp
+        let r = rig(defaults: savedOptions(old))
+        XCTAssertTrue(r.widget.options.downloadsNeedReenable)
+        XCTAssertTrue(r.watches.made.isEmpty)
+        XCTAssertTrue(r.disk.resolves.isEmpty, "no realpath while off")
+        await turnOnDownloads(r)   // Turn On Again
+        XCTAssertEqual(r.watches.live?.folders, [folder], "the protected folder is dropped on every start")
+        XCTAssertNil(r.widget.options.extraFolder)
+        XCTAssertNotNil(r.widget.extraFolderRejection)
+        XCTAssertFalse(r.watches.made.contains { $0.folders.contains("/Users/me/Documents/DL") })
+        XCTAssertFalse(r.disk.resolves.contains("/Users/me/Documents/DL"), "a textually protected path is never resolved")
+    }
+
+    func testSymlinkedSecondFolderIsCheckedAfterResolving() {
+        let d = savedOptions(.init(downloads: true, extraFolder: "/Users/me/Incoming",
+                                   downloadsStamp: "dr:identifier test-build"))
+        let r0 = rig(defaults: d)
+        XCTAssertEqual(r0.watches.live?.folders, [folder, "/Users/me/Incoming"])
+        r0.registry.stopAll()
+
+        let r = rig(defaults: d)
+        r.registry.stopAll()
+        r.disk.links["/Users/me/Incoming"] = "/Users/me/Desktop/Incoming"
+        r.registry.setEnabled(SystemWidget.widgetID, false)
+        r.registry.setEnabled(SystemWidget.widgetID, true)
+        XCTAssertEqual(r.watches.live?.folders, [folder], "a link into Desktop is refused once resolved")
+        XCTAssertNotNil(r.widget.extraFolderRejection)
+    }
+
+    func testRealpathOnlyWhenDownloadsStart() {
+        let off = rig()
+        XCTAssertTrue(off.disk.resolves.isEmpty, "never at construction or with downloads off")
+        let mismatch = rig(defaults: savedOptions(.init(downloads: true, downloadsStamp: "dr:other")))
+        XCTAssertTrue(mismatch.disk.resolves.isEmpty, "never on a stamp mismatch")
+        let on = rig(defaults: savedOptions(.init(downloads: true, downloadsStamp: "dr:identifier test-build")))
+        XCTAssertEqual(on.disk.resolves, [folder])
+    }
+
+    func testSecondFolderInsideDownloadsDetects() async {
+        let r = rig()
+        await turnOnDownloads(r)
+        XCTAssertTrue(r.widget.setExtraFolder("\(folder)/Browser"))
+        XCTAssertEqual(r.watches.live?.folders, [folder, "\(folder)/Browser"])
+        let temp = "\(folder)/Browser/a.pdf.crdownload", final = "\(folder)/Browser/a.pdf"
+        r.disk.files = [temp]
+        r.watches.live?.onPaths([temp])
+        XCTAssertEqual(r.widget.downloadsActive.map(\.name), ["a.pdf"])
+        r.disk.files = [final]
+        r.watches.live?.onPaths([temp, final])
+        XCTAssertEqual(r.widget.finishedDownload, URL(fileURLWithPath: final))
+    }
+
+    func testPowerDebounceIsAnchoredToTheFirstPeekAndExpires() {
+        let r = rig()
+        r.power.set(charging)
+        let firstUntil = r.widget.powerPeekUntil
+        XCTAssertNotNil(firstUntil)
+        r.clock.advance(1.5)
+        r.power.set(onBattery)
+        XCTAssertEqual(r.widget.powerPeekUntil, firstUntil, "an update in the window keeps the first peek's end")
+        XCTAssertEqual(r.widget.powerPeek?.change, .unplugged)
+        r.clock.advance(1.0)   // 2.5 s after the first peek: outside the window
+        r.power.set(charging)
+        XCTAssertNotEqual(r.widget.powerPeekUntil, firstUntil, "a new peek after the window")
+        let until = r.widget.powerPeekUntil!
+        r.widget.powerPeekExpired(until)
+        XCTAssertNil(r.widget.powerPeek, "cleared when it expires")
+        r.clock.advance(0.5)
+        r.power.set(onBattery)
+        XCTAssertEqual(r.widget.powerPeek?.change, .unplugged, "a change after expiry peeks again")
+        XCTAssertEqual(r.controller.mode, peek(SystemWidget.powerPeekID))
     }
 }

@@ -698,3 +698,21 @@ Probe on the build Mac (macOS 26.4, nothing granted): IOBluetoothDevice answers
   says "on".
 - [ ] **144. Loose charger.** Plug and unplug the charger three times within a second or
   two: one peek, showing the last state, not three.
+
+### Task 9 fix round 3
+
+Known limit: with downloads on and a matching stamp, a TCC reset done outside PlatyNotch
+(`tccutil reset SystemPolicyDownloadsFolder`, or removing it in System Settings) cannot be
+seen at launch: macOS has no Files & Folders preflight API. The first download event's
+`stat` may then show the prompt. Everything else that could lose the grant (an update, a
+reinstall, an ad-hoc rebuild) changes the stamp and turns downloads off instead.
+
+- [ ] **145. Second folder inside Downloads.** Add a Folder… → ~/Downloads/Browser (point a
+  browser at it): downloads there show in the pill and as a notice, like ~/Downloads itself.
+- [ ] **146. Old protected folder.** With a second folder in ~/Documents saved by an older
+  build (or set `system.options` by hand), relaunch and Turn On Again: only ~/Downloads is
+  watched; Settings shows why the folder was dropped; no Documents prompt.
+- [ ] **147. Add to Shelf.** "Add to Shelf" from a download notice puts the file on the shelf
+  as if dragged there. Settings › Widgets › Shelf says items from Downloads, Desktop or
+  Documents may ask macOS for access when shown; that prompt (if any) comes from showing the
+  shelf item the user added, which is accepted.

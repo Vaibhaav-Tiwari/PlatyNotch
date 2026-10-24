@@ -17,29 +17,46 @@ public protocol PowerSourceReading: AnyObject {
 /// the main run loop for changes (plug-in, unplug, each percent step). Needs no
 /// permission. No timer: macOS calls back only when something changes.
 final class SystemPowerSource: PowerSourceReading {
-    /// The source's context (retained until the source is gone, so a callback never sees
-    /// a freed object) and the source itself. Its deinit is the safety net if `stop` did
-    /// not run: it tears down on the main thread, where the source fires, whichever thread
-    /// the last release happens on.
-    private final class Handle: @unchecked Sendable {
+    /// The callback's context: retained for the source (`passRetained`) and released only
+    /// after the source is invalidated, so a callback never sees a freed object.
+    private final class Box: @unchecked Sendable {
         var onChange: (@MainActor () -> Void)?
-        var source: CFRunLoopSource?
+    }
+
+    /// The source and its retained box. Its deinit is the safety net if `stop` did not
+    /// run: the teardown (remove, invalidate, then release the box) runs on the main
+    /// thread, where the source fires, whichever thread the last release happens on.
+    private final class Handle: @unchecked Sendable {
+        let source: CFRunLoopSource
+        let box: Unmanaged<Box>
+        private var done = false
+
+        init(source: CFRunLoopSource, box: Unmanaged<Box>) {
+            self.source = source
+            self.box = box
+        }
 
         func invalidate() {
-            guard let s = source else { return }
-            source = nil
+            guard !done else { return }
+            done = true
+            Self.teardown(source, box)
+        }
+
+        static func teardown(_ s: CFRunLoopSource, _ b: Unmanaged<Box>) {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), s, .commonModes)
             CFRunLoopSourceInvalidate(s)
+            b.release()
         }
 
         deinit {
-            guard let s = source else { return }
-            nonisolated(unsafe) let src = s
-            let teardown: @Sendable () -> Void = {
-                CFRunLoopRemoveSource(CFRunLoopGetMain(), src, .commonModes)
-                CFRunLoopSourceInvalidate(src)
+            guard !done else { return }
+            nonisolated(unsafe) let s = source
+            let b = box
+            if Thread.isMainThread {
+                Self.teardown(s, b)
+            } else {
+                DispatchQueue.main.async { Self.teardown(s, b) }
             }
-            if Thread.isMainThread { teardown() } else { DispatchQueue.main.async(execute: teardown) }
         }
     }
 
@@ -58,25 +75,25 @@ final class SystemPowerSource: PowerSourceReading {
 
     func start(onChange: @escaping @MainActor () -> Void) {
         guard handle == nil else { return }
-        let h = Handle()
-        h.onChange = onChange
-        // The context holds no reference; `handle` keeps `h` alive while the source exists
-        // (and `h` removes the source before it goes).
+        let box = Box()
+        box.onChange = onChange
+        let retained = Unmanaged.passRetained(box)
         let callback: IOPowerSourceCallbackType = { context in
             guard let context else { return }
-            let h = Unmanaged<Handle>.fromOpaque(context).takeUnretainedValue()
+            let box = Unmanaged<Box>.fromOpaque(context).takeUnretainedValue()
             // Added to the main run loop below, so this runs on the main thread.
-            MainActor.assumeIsolated { h.onChange?() }
+            MainActor.assumeIsolated { box.onChange?() }
         }
-        guard let s = IOPSNotificationCreateRunLoopSource(callback, Unmanaged.passUnretained(h).toOpaque())?
-            .takeRetainedValue() else { return }
+        guard let s = IOPSNotificationCreateRunLoopSource(callback, retained.toOpaque())?.takeRetainedValue() else {
+            retained.release()
+            return
+        }
         CFRunLoopAddSource(CFRunLoopGetMain(), s, .commonModes)
-        h.source = s
-        handle = h
+        handle = Handle(source: s, box: retained)
     }
 
     func stop() {
-        handle?.onChange = nil
+        handle?.box.takeUnretainedValue().onChange = nil
         handle?.invalidate()
         handle = nil
     }

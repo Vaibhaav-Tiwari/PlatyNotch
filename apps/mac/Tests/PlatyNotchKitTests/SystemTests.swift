@@ -357,4 +357,41 @@ final class SystemTests: XCTestCase {
             XCTAssertFalse(why.isEmpty, p)
         }
     }
+
+    func testWatchFolderPolicyNormalizesAndRefusesRootsAndAncestors() {
+        let home = "/Users/me"
+        func rejected(_ p: String) -> Bool {
+            if case .rejected = WatchFolderPolicy.check(p, home: home) { return true }
+            return false
+        }
+        // `.`, `..` and `//` cannot hide a protected place.
+        XCTAssertTrue(rejected("/Users/me/Incoming/../Desktop"))
+        XCTAssertTrue(rejected("/Users/me/./Documents//DL"))
+        XCTAssertTrue(rejected("//Volumes/USB"))
+        XCTAssertTrue(rejected("/Users/me/Incoming/../../other/x"), "another user's home")
+        XCTAssertFalse(rejected("/Users/me/Desktop/../Incoming"), "resolves to an allowed folder")
+        // Ancestors of home.
+        for p in ["/Users", "/System/Volumes/Data", "/System/Volumes/Data/Users", "/System/Volumes"] {
+            XCTAssertTrue(rejected(p), p)
+        }
+        // The roots of Pictures, Movies, Music, but not their subfolders.
+        for p in ["/Users/me/Pictures", "/Users/me/Movies/", "/Users/me/music"] { XCTAssertTrue(rejected(p), p) }
+        for p in ["/Users/me/Pictures/Saved", "/Users/me/Movies/In", "/Users/me/Music/DL"] {
+            XCTAssertFalse(rejected(p), p)
+        }
+    }
+
+    func testNestedDownloadFoldersMatchTheDeepest() {
+        let folders = [dl, "\(dl)/Browser"]
+        XCTAssertEqual(DownloadDetector.entry(path: "\(dl)/Browser/a.pdf", folders: folders), "\(dl)/Browser/a.pdf")
+        XCTAssertEqual(DownloadDetector.entry(path: "\(dl)/b.pdf", folders: folders), "\(dl)/b.pdf")
+        var tracker = DownloadTracker(folders: folders)
+        var disk = Disk()
+        let temp = "\(dl)/Browser/a.pdf.crdownload", final = "\(dl)/Browser/a.pdf"
+        disk.files = [temp]
+        XCTAssertEqual(tracker.apply(paths: [temp], stat: disk.stat, now: t0).map(\.kind), [.started])
+        disk.files = [final]
+        XCTAssertEqual(tracker.apply(paths: [temp, final], stat: disk.stat, now: t0 + 3).map(\.kind), [.ended, .finished],
+                       "a second folder inside ~/Downloads works")
+    }
 }

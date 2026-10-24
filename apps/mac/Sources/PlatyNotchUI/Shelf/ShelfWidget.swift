@@ -336,7 +336,7 @@ final class ShelfWidget: NotchWidget {
         }
     }
 
-    /// Adds a file the user picked elsewhere (the System widget's "Move to Shelf"). The
+    /// Adds a file the user picked elsewhere (the System widget's "Add to Shelf", the same as dragging it here). The
     /// file stays where it is; false while the shelf is off.
     @discardableResult
     func addFile(_ url: URL) -> Bool {

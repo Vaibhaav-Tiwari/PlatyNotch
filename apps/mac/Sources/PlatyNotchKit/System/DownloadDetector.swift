@@ -51,8 +51,9 @@ public enum DownloadDetector {
     /// The watched-folder entry an FSEvents path belongs to: a direct child of one of
     /// `folders`, or the in-progress bundle (Safari's `.download`) a deeper path is inside.
     /// nil for anything else (subfolders, other places, the folder itself).
+    /// Nested folders (`~/Downloads/Browser` beside `~/Downloads`): the deepest match wins.
     public static func entry(path: String, folders: [String]) -> String? {
-        for folder in folders {
+        for folder in folders.sorted(by: { $0.count > $1.count }) {
             let base = folder.hasSuffix("/") ? String(folder.dropLast()) : folder
             guard path.hasPrefix(base + "/") else { continue }
             let rest = path.dropFirst(base.count + 1).split(separator: "/", omittingEmptySubsequences: true)
