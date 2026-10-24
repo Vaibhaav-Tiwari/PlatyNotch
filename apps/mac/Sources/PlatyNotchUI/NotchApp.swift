@@ -12,6 +12,7 @@ public enum NotchApp {
         let options = LaunchOptions(arguments: CommandLine.arguments, env: ProcessInfo.processInfo.environment)
         if let dir = options.renderIconDir { finishRender("RENDER ICON", PlatyRenders.writeIconset(to: url(dir))) }
         if let dir = options.platyGalleryDir { finishRender("PLATY GALLERY", PlatyRenders.writeGallery(to: url(dir))) }
+        if options.smokePower { finishPowerSmoke() }
         let delegate = AppDelegate(coreBinary: coreBinary, plugins: plugins, options: options)
         app.delegate = delegate
         withExtendedLifetime(delegate) { app.run() }
@@ -19,6 +20,38 @@ public enum NotchApp {
     }
 
     private static func url(_ path: String) -> URL { URL(fileURLWithPath: path, isDirectory: true) }
+
+    /// `--smoke-power`: every power feature, inert, its views laid out off screen; report and exit.
+    @MainActor
+    private static func finishPowerSmoke() -> Never {
+        switch powerSmoke(BuiltInWidgets.powerWidgets(persist: false)) {
+        case .success(let n):
+            print("SMOKE-POWER OK widgets=\(n)")
+            fflush(stdout)
+            exit(0)
+        case .failure(let f):
+            print("SMOKE-POWER FAIL \(f.message)")
+            fflush(stdout)
+            exit(1)
+        }
+    }
+
+    struct PowerSmokeFailure: Error, Equatable {
+        let message: String
+    }
+
+    /// Checks inert power widgets: each is `.power`, ids are unique, and its views build.
+    /// Returns how many were checked.
+    @MainActor
+    static func powerSmoke(_ list: [any NotchWidget]) -> Result<Int, PowerSmokeFailure> {
+        var seen = Set<String>()
+        for w in list {
+            guard w.category == .power else { return .failure(PowerSmokeFailure(message: "\(w.id) is not a power feature")) }
+            guard seen.insert(w.id).inserted else { return .failure(PowerSmokeFailure(message: "\(w.id) listed twice")) }
+            guard AppDelegate.buildViews(of: w) else { return .failure(PowerSmokeFailure(message: "widget \(w.id) did not build")) }
+        }
+        return .success(list.count)
+    }
 
     /// `--render-icon` / `--platy-gallery`: report and exit before anything starts.
     @MainActor

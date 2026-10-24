@@ -3,8 +3,10 @@
 Checks for the widget system (Plan 3b). Automated checks cover the logic (`swift test`:
 `LiveArbiterTests`, `WidgetLayoutTests`, `WidgetRegistryTests`) and the launch
 (`swift run PlatyNotch --smoke` prints `widgets=<n>`, the number of enabled widgets whose
-tile was built; `--smoke-settings` visits Settings › Widgets). This list covers what only
-a person looking at the screen can confirm.
+tile was built; `--smoke-settings` visits Settings › Widgets; `--smoke-power` builds an
+inert instance of every v0.2 power feature and prints `SMOKE-POWER OK widgets=<n>`, 0
+until the first one lands, with no core, window or permission). This list covers what
+only a person looking at the screen can confirm.
 
 ## Setup
 

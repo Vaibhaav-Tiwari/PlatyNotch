@@ -100,3 +100,25 @@ final class WidgetCategoryRegistryTests: DefaultsTestCase {
         XCTAssertGreaterThan(view.fittingSize.width, 0)
     }
 }
+
+/// `--smoke-power` (Task 0): every power feature built inert.
+@MainActor
+final class PowerSmokeTests: DefaultsTestCase {
+    func testNoPowerFeaturesYet() {
+        XCTAssertTrue(BuiltInWidgets.powerWidgets(persist: false).isEmpty)
+        XCTAssertEqual(NotchApp.powerSmoke(BuiltInWidgets.powerWidgets(persist: false)), .success(0))
+    }
+
+    func testEveryListedWidgetMustBeAPowerFeature() {
+        let everyday = CategoryWidget("music")
+        XCTAssertEqual(NotchApp.powerSmoke([everyday]),
+                       .failure(NotchApp.PowerSmokeFailure(message: "music is not a power feature")))
+        let snap = CategoryWidget("snap", category: .power, hasTile: false)
+        let mirror = CategoryWidget("mirror", category: .power)
+        XCTAssertEqual(NotchApp.powerSmoke([snap, mirror]), .success(2))
+        XCTAssertEqual(snap.tileBuilds, 0)
+        XCTAssertEqual(mirror.tileBuilds, 1)
+        XCTAssertEqual(NotchApp.powerSmoke([snap, snap]),
+                       .failure(NotchApp.PowerSmokeFailure(message: "snap listed twice")))
+    }
+}

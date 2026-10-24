@@ -5,6 +5,10 @@ public struct LaunchOptions: Equatable, Sendable {
     /// `--smoke-settings`: build the Settings and Onboarding windows, visit every
     /// section and page, report and exit (no config is written, nothing is prompted).
     public var smokeSettings: Bool
+    /// `--smoke-power`: build an inert instance of every power feature (`WidgetCategory.power`),
+    /// lay out its views off screen, print `SMOKE-POWER OK widgets=<n>` and exit. No core,
+    /// no window, no permission, nothing read or written.
+    public var smokePower: Bool
     /// `PLATYNOTCH_SMOKE_DELAY` seconds (default 3).
     public var smokeDelay: Double
     /// `PLATYNOTCH_EXTERNAL_CORE=1`: connect to an already running `notch serve`
@@ -29,6 +33,7 @@ public struct LaunchOptions: Equatable, Sendable {
     public init(arguments: [String], env: [String: String]) {
         smoke = arguments.dropFirst().contains("--smoke")
         smokeSettings = arguments.dropFirst().contains("--smoke-settings")
+        smokePower = arguments.dropFirst().contains("--smoke-power")
         smokeDelay = env["PLATYNOTCH_SMOKE_DELAY"].flatMap(Double.init).flatMap { $0 > 0 ? $0 : nil } ?? 3
         externalCore = env["PLATYNOTCH_EXTERNAL_CORE"] == "1"
         renderDir = env["PLATYNOTCH_RENDER_DIR"].flatMap { $0.isEmpty ? nil : $0 }
