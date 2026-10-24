@@ -46,6 +46,24 @@ private final class FakePasteboard: ClipboardPasteboard {
 @MainActor
 private final class FakeFrontmost: FrontmostApp {
     var bundleID: String? = "com.apple.TextEdit"
+    var processID: pid_t? = 100
+    var weAreActive = false
+    var handlers: [Int: @MainActor (String?) -> Void] = [:]
+    private var next = 0
+
+    func observeActivations(_ handler: @escaping @MainActor (String?) -> Void) -> () -> Void {
+        let id = next
+        next += 1
+        handlers[id] = handler
+        return { [weak self] in MainActor.assumeIsolated { _ = self?.handlers.removeValue(forKey: id) } }
+    }
+
+    /// An app comes to the front (the workspace notification).
+    func activate(_ bundleID: String, pid: pid_t = 200) {
+        self.bundleID = bundleID
+        processID = pid
+        for h in Array(handlers.values) { h(bundleID) }
+    }
 }
 
 @MainActor
@@ -94,9 +112,15 @@ private final class FakePoster: PasteEventPosting {
 @MainActor
 private final class FakeTarget: PasteTarget {
     let isOurs: Bool
+    let processID: pid_t = 4242
     var activations = 0
-    init(isOurs: Bool = false) { self.isOurs = isOurs }
-    func activate() { activations += 1 }
+    /// Activating brings it to the front (nil: it never comes back, e.g. it quit).
+    let front: FakeFrontmost?
+    init(isOurs: Bool = false, front: FakeFrontmost?) { self.isOurs = isOurs; self.front = front }
+    func activate() {
+        activations += 1
+        front?.activate("com.apple.TextEdit", pid: processID)
+    }
 }
 
 @MainActor
@@ -132,7 +156,8 @@ final class ClipboardWidgetTests: XCTestCase {
         var requests = 0
     }
 
-    private func rig(enabled: Bool = true, excludeApps: [String]? = nil, trusted: Bool = false) throws -> Rig {
+    private func rig(enabled: Bool = true, excludeApps: [String]? = nil, trusted: Bool = false,
+                     focusTimeout: Duration = .milliseconds(100)) throws -> Rig {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("ClipboardWidgetTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         dirs.append(root)
@@ -151,7 +176,7 @@ final class ClipboardWidgetTests: XCTestCase {
         let trust = AccessibilityTrust(isTrusted: { box.trusted }, request: { box.requests += 1 })
         let widget = ClipboardWidget(directory: root.appendingPathComponent("home/clipboard"), pasteboard: pb,
                                      frontmost: front, schedule: timer.schedule, makeHotKey: keys.make,
-                                     poster: poster, trust: trust, pasteDelay: .zero)
+                                     poster: poster, trust: trust, focusTimeout: focusTimeout)
         let registry = WidgetRegistry(defaults: defaults, persist: false)
         let surfaces = PanelSurfaces(registry: registry)
         registry.register(widget)
@@ -268,6 +293,66 @@ final class ClipboardWidgetTests: XCTestCase {
         XCTAssertEqual(r.widget.items.map(\.title), ["fine"])
     }
 
+    // MARK: - Fix round 1: the app that copied may not be in front at the poll
+
+    func testCopyInExcludedAppThenFocusHandedBackIsNotRecorded() throws {
+        let r = try rig()
+        XCTAssertEqual(r.front.handlers.count, 1, "activations observed while running")
+        // 1Password comes forward, copies, and hands focus back to Safari before the poll.
+        r.front.activate("com.1password.1password")
+        r.pb.copyText("hunter2-quick-access")
+        r.front.activate("com.apple.Safari")
+        r.timer.tick()
+        XCTAssertTrue(r.widget.items.isEmpty)
+        XCTAssertEqual(r.pb.typeReads + r.pb.contentReads, 0, "not even read")
+        XCTAssertFalse(diskContains(r, "hunter2"))
+        // The window is cleared after that change: the next copy in Safari records.
+        r.pb.copyText("public text")
+        r.timer.tick()
+        XCTAssertEqual(r.widget.items.map(\.title), ["public text"])
+    }
+
+    /// The app in front at the last processed change stays in the window (the ruling), so
+    /// the first copy after leaving Keychain Access is skipped too; the next one records.
+    func testAppInFrontAtTheLastChangeStaysInTheWindow() throws {
+        let r = try rig()
+        r.front.activate("com.apple.keychainaccess")
+        r.pb.copyText("secret"); r.timer.tick()          // skipped; window = {Keychain Access}
+        r.front.activate("com.apple.Notes")
+        r.pb.copyText("note 1"); r.timer.tick()          // window had Keychain Access: skipped
+        r.pb.copyText("note 2"); r.timer.tick()          // window = {Notes}
+        XCTAssertEqual(r.widget.items.map(\.title), ["note 2"])
+        XCTAssertFalse(diskContains(r, "secret"))
+    }
+
+    func testUnrelatedAppSwitchesStillRecord() throws {
+        let r = try rig()
+        r.front.activate("com.apple.Notes")
+        r.front.activate("com.apple.Safari")
+        r.pb.copyText("hello")
+        r.front.activate("com.apple.TextEdit")
+        r.timer.tick()
+        XCTAssertEqual(r.widget.items.map(\.title), ["hello"])
+    }
+
+    func testMemoryExcludedAppInTheWindowBlocks() throws {
+        let r = try rig(excludeApps: ["com.example.vault"])
+        r.front.activate("com.example.vault")
+        r.pb.copyText("vault item")
+        r.front.activate("com.apple.Safari")
+        r.timer.tick()
+        XCTAssertTrue(r.widget.items.isEmpty)
+    }
+
+    func testStopEndsActivationObserving() throws {
+        let r = try rig()
+        r.registry.setEnabled(ClipboardWidget.widgetID, false)
+        XCTAssertTrue(r.front.handlers.isEmpty, "no observers while off")
+        r.registry.setEnabled(ClipboardWidget.widgetID, true)
+        r.widget.setPaused(true)
+        XCTAssertTrue(r.front.handlers.isEmpty, "no observers while paused")
+    }
+
     // MARK: - Pause and disable
 
     func testPauseStopsReadsAtOnceAndSkipsWhatWasCopiedMeanwhile() throws {
@@ -359,7 +444,7 @@ final class ClipboardWidgetTests: XCTestCase {
     func testPasteWithAccessibilityPostsCommandV() async throws {
         let r = try rig(trusted: true)
         r.pb.copyText("paste me"); r.timer.tick()
-        let target = FakeTarget()
+        let target = FakeTarget(front: r.front)
         r.widget.paste(r.widget.items[0], to: target)
         await r.widget.pasteTask?.value
         XCTAssertEqual(target.activations, 1, "keyboard back to the previous app")
@@ -371,7 +456,7 @@ final class ClipboardWidgetTests: XCTestCase {
     func testPasteWithoutAccessibilityOnlyCopiesAndSaysSo() async throws {
         let r = try rig(trusted: false)
         r.pb.copyText("copy me"); r.timer.tick()
-        let target = FakeTarget()
+        let target = FakeTarget(front: r.front)
         r.widget.paste(r.widget.items[0], to: target)
         await r.widget.pasteTask?.value
         XCTAssertEqual(r.poster.posts, 0, "no ⌘V without Accessibility")
@@ -386,12 +471,51 @@ final class ClipboardWidgetTests: XCTestCase {
         // The notch panel had the keyboard (an approval peek): ⌘V must not land there.
         let r = try rig(trusted: true)
         r.pb.copyText("x"); r.timer.tick()
-        let target = FakeTarget(isOurs: true)
+        let target = FakeTarget(isOurs: true, front: r.front)
         r.widget.paste(r.widget.items[0], to: target)
         await r.widget.pasteTask?.value
         XCTAssertEqual(r.poster.posts, 0)
         XCTAssertEqual(target.activations, 0)
         XCTAssertTrue(r.widget.copiedOnly)
+    }
+
+    func testPasteFallsBackToCopyWhenTheTargetNeverComesToTheFront() async throws {
+        let r = try rig(trusted: true)
+        r.pb.copyText("x"); r.timer.tick()
+        let target = FakeTarget(front: nil)   // activation does nothing
+        r.widget.paste(r.widget.items[0], to: target)
+        await r.widget.pasteTask?.value
+        XCTAssertEqual(target.activations, 1)
+        XCTAssertEqual(r.poster.posts, 0, "⌘V would go to another app")
+        XCTAssertTrue(r.widget.copiedOnly)
+    }
+
+    func testPasteFallsBackToCopyWhilePlatyNotchIsActive() async throws {
+        let r = try rig(trusted: true)
+        r.pb.copyText("x"); r.timer.tick()
+        r.front.weAreActive = true
+        r.widget.paste(r.widget.items[0], to: FakeTarget(front: r.front))
+        await r.widget.pasteTask?.value
+        XCTAssertEqual(r.poster.posts, 0)
+        XCTAssertTrue(r.widget.copiedOnly)
+    }
+
+    func testStopCancelsAPendingPaste() async throws {
+        let r = try rig(trusted: true, focusTimeout: .seconds(30))
+        r.pb.copyText("x"); r.timer.tick()
+        r.widget.paste(r.widget.items[0], to: FakeTarget(front: nil))
+        r.registry.setEnabled(ClipboardWidget.widgetID, false)
+        let started = Date()
+        await r.widget.pasteTask?.value
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5, "cancelled, not left waiting")
+        XCTAssertEqual(r.poster.posts, 0)
+        XCTAssertFalse(r.widget.copiedOnly, "no notice after stop")
+    }
+
+    func testFoldersExcludedFromBackupAndSpotlight() throws {
+        let r = try rig()
+        r.pb.copyText("x"); r.timer.tick()
+        XCTAssertTrue(PrivateFolder.isMarked(r.dir))
     }
 
     // MARK: - Picker

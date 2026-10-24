@@ -160,6 +160,12 @@ public final class ClipboardStore {
 
     // MARK: - Files the index does not list
 
+    /// Re-applies the backup and Spotlight exclusion to an existing folder (each start).
+    public func markPrivate() {
+        guard persist else { return }
+        PrivateFolder.mark(directory, fileManager: fileManager)
+    }
+
     /// A damaged index was moved aside and is still in the directory.
     public var hasKeptFiles: Bool {
         guard persist, let names = try? fileManager.contentsOfDirectory(atPath: directory.path) else { return false }
@@ -228,6 +234,7 @@ public final class ClipboardStore {
                                                 attributes: [.posixPermissions: 0o700])
                 try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dir.path)
             }
+            if !PrivateFolder.isMarked(directory, fileManager: fileManager) { PrivateFolder.mark(directory, fileManager: fileManager) }
             return true
         } catch {
             return false

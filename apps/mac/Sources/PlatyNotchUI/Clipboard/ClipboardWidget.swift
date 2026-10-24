@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import Observation
 import os
 import PlatyNotchKit
@@ -91,7 +92,7 @@ final class ClipboardWidget: NotchWidget, ClipboardMenuControl {
          schedule: @escaping ClipboardWatcher.Schedule = ClipboardWatcher.timer,
          makeHotKey: @escaping HotKeyMaker = HotKey.make,
          poster: PasteEventPosting = SystemPasteEvents(), trust: AccessibilityTrust = .system,
-         pasteDelay: Duration = Paster.defaultDelay, clock: @escaping () -> Date = Date.init) {
+         focusTimeout: Duration = Paster.focusTimeout, clock: @escaping () -> Date = Date.init) {
         self.directory = directory
         self.persist = persist
         self.pasteboard = pasteboard
@@ -99,7 +100,7 @@ final class ClipboardWidget: NotchWidget, ClipboardMenuControl {
         self.schedule = schedule
         self.makeHotKey = makeHotKey
         self.trust = trust
-        self.paster = Paster(poster: poster, trust: trust, delay: pasteDelay)
+        self.paster = Paster(poster: poster, trust: trust, frontmost: frontmost, focusTimeout: focusTimeout)
         self.clock = clock
     }
 
@@ -123,6 +124,7 @@ final class ClipboardWidget: NotchWidget, ClipboardMenuControl {
         let store = self.store ?? ClipboardStore(directory: directory, persist: persist, limit: limit,
                                                  maxAge: maxAge, now: clock)
         self.store = store
+        store.markPrivate()
         store.setRetention(limit: limit, maxAge: maxAge)
         store.sweepOrphanImages()
         sync()
@@ -139,6 +141,7 @@ final class ClipboardWidget: NotchWidget, ClipboardMenuControl {
         expiryTask?.cancel()
         expiryTask = nil
         imageTask?.cancel()
+        pasteTask?.cancel()
         context = nil
     }
 
@@ -266,7 +269,7 @@ final class ClipboardWidget: NotchWidget, ClipboardMenuControl {
         let paster = self.paster
         pasteTask = Task { [weak self] in
             let outcome = await paster.finish(target: target)
-            guard let self else { return }
+            guard let self, !Task.isCancelled, self.isRunning else { return }
             self.copiedOnly = outcome == .copied
             if outcome == .copied, let context = self.context {
                 context.peek(id: Self.copiedPeekID, until: self.clock().addingTimeInterval(Self.copiedPeekDuration))
@@ -451,15 +454,42 @@ struct ClipRow: View {
     @ViewBuilder private var icon: some View {
         switch item.kind {
         case .image:
-            if let imageURL, let image = NSImage(contentsOf: imageURL) {
-                Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
-            } else {
-                Image(systemName: "photo")
-            }
+            ClipThumbnail(url: imageURL, side: compact ? 18 : 28)
         case .text: Image(systemName: "text.alignleft").foregroundStyle(.secondary)
         case .url: Image(systemName: "link").foregroundStyle(.secondary)
         case .files: Image(systemName: "doc").foregroundStyle(.secondary)
         }
+    }
+}
+
+/// An image row's thumbnail, decoded and scaled off the main thread (ImageIO), so a long
+/// history of large screenshots never stalls the picker.
+struct ClipThumbnail: View {
+    let url: URL?
+    let side: CGFloat
+    @State private var image: CGImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(decorative: image, scale: 2).resizable().aspectRatio(contentMode: .fit)
+            } else {
+                Image(systemName: "photo").foregroundStyle(.secondary)
+            }
+        }
+        .task(id: url) {
+            guard let url else { image = nil; return }
+            let pixels = Int(side * 2)
+            image = await Task.detached(priority: .utility) { ClipThumbnail.load(url, maxPixels: pixels) }.value
+        }
+    }
+
+    nonisolated static func load(_ url: URL, maxPixels: Int) -> CGImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                        kCGImageSourceThumbnailMaxPixelSize: maxPixels,
+                                        kCGImageSourceCreateThumbnailWithTransform: true]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 }
 

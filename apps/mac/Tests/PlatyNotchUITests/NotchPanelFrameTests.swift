@@ -18,4 +18,11 @@ final class NotchPanelFrameTests: XCTestCase {
         XCTAssertEqual(panel.frame.maxY, screen.frame.maxY, "panel was pushed below the menu bar")
         XCTAssertEqual(panel.frame, frame)
     }
+
+    /// Regression (Task 6 fix round 1): `isFloatingPanel` reset `.statusBar` to `.floating`.
+    func testPanelSitsAtStatusBarLevel() {
+        let panel = NotchPanel(frame: .zero)
+        XCTAssertEqual(panel.level, .statusBar)
+        XCTAssertTrue(panel.isFloatingPanel)
+    }
 }

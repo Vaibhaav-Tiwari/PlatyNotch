@@ -63,12 +63,11 @@ final class ClipPickerModel {
 
 /// The picker's window: a floating, non-activating panel. Non-activating, so the app the
 /// user was typing in stays the active app and gets the keyboard back when it closes.
-/// Its level is one below `.floating`, under the notch panel (whose `isFloatingPanel`
-/// leaves it at `.floating`), so it can never cover an approval card even where they
-/// overlap; it never changes the notch panel's mode. Still above every normal window.
+/// Its level is `.floating`, below the notch panel's `.statusBar`, so it can never cover
+/// an approval card even where they overlap; it never changes the notch panel's mode.
 final class ClipPickerWindow: NSPanel {
     static let size = CGSize(width: 420, height: 380)
-    static let pickerLevel = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue - 1)
+    static let pickerLevel = NSWindow.Level.floating
 
     init() {
         super.init(contentRect: CGRect(origin: .zero, size: Self.size),

@@ -98,6 +98,7 @@ final class ShelfWidget: NotchWidget {
         // The store is opened on first start, so a shelf that was never on reads nothing.
         let store = self.store ?? ShelfStore(directory: directory, persist: persist, now: clock)
         self.store = store
+        store.markPrivate()
         store.expireOwned(olderThan: ShelfStore.ownedLifetime, now: clock())
         store.sweepOrphans(keeping: receiving)
         sync()

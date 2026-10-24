@@ -41,6 +41,7 @@ protocol PasteTarget {
     /// PlatyNotch itself (Settings was frontmost, or the notch panel had the keyboard):
     /// never posted to, so a paste can never land on an approval card.
     var isOurs: Bool { get }
+    var processID: pid_t { get }
     func activate()
 }
 
@@ -51,14 +52,15 @@ struct RunningAppTarget: PasteTarget {
     var ourWindowWasKey = false
 
     var isOurs: Bool { ourWindowWasKey || app.processIdentifier == ProcessInfo.processInfo.processIdentifier }
+    var processID: pid_t { app.processIdentifier }
 
     func activate() { app.activate() }
 }
 
 /// After the item is on the pasteboard: give the keyboard back to the previous app and,
-/// when Accessibility is allowed, post ⌘V there. Otherwise it only copies, and the
-/// caller shows "Copied — press ⌘V". Never prompts for Accessibility (only the button
-/// in Settings does).
+/// when Accessibility is allowed and that app is frontmost again (PlatyNotch not active),
+/// post ⌘V there. Otherwise it only copies, and the caller shows "Copied — press ⌘V".
+/// Never prompts for Accessibility (only the button in Settings does).
 @MainActor
 struct Paster {
     enum Outcome: Equatable {
@@ -67,20 +69,35 @@ struct Paster {
         case copied
     }
 
-    /// Time for the previous app to take the keyboard back before ⌘V.
-    static let defaultDelay: Duration = .milliseconds(150)
+    /// How often, and at most how long, to wait for the target to be frontmost.
+    static let focusPoll: Duration = .milliseconds(25)
+    static let focusTimeout: Duration = .milliseconds(500)
 
     let poster: PasteEventPosting
     let trust: AccessibilityTrust
-    var delay: Duration = Paster.defaultDelay
+    let frontmost: FrontmostApp
+    var focusPoll: Duration = Paster.focusPoll
+    var focusTimeout: Duration = Paster.focusTimeout
 
     func finish(target: PasteTarget?) async -> Outcome {
         guard let target, !target.isOurs else { return .copied }
         target.activate()
         guard trust.isTrusted() else { return .copied }
-        try? await Task.sleep(for: delay)
+        guard await waitForFocus(target.processID) else { return .copied }
         // Asked again: the grant can be removed while we waited.
         guard trust.isTrusted(), poster.postCommandV() else { return .copied }
         return .pasted
+    }
+
+    /// True once `pid` is frontmost and PlatyNotch is not active; false after the timeout
+    /// (⌘V would go somewhere else).
+    private func waitForFocus(_ pid: pid_t) async -> Bool {
+        let clock = ContinuousClock()
+        let deadline = clock.now + focusTimeout
+        while true {
+            if frontmost.processID == pid, !frontmost.weAreActive { return true }
+            if clock.now >= deadline || Task.isCancelled { return false }
+            try? await Task.sleep(for: focusPoll)
+        }
     }
 }

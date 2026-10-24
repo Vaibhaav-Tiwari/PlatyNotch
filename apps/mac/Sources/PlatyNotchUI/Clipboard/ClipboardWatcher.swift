@@ -76,15 +76,34 @@ final class NoPasteboard: ClipboardPasteboard {
     func write(_ content: ClipContent) -> Int { 0 }
 }
 
-/// The frontmost app (the best guess at who changed the pasteboard, C21).
+/// The frontmost app (the best guess at who changed the pasteboard, C21) and app
+/// activations (event-driven, no polling).
 @MainActor
-protocol FrontmostApp {
+protocol FrontmostApp: AnyObject {
     var bundleID: String? { get }
+    var processID: pid_t? { get }
+    /// PlatyNotch itself is the active app.
+    var weAreActive: Bool { get }
+    /// Calls `handler` with each newly activated app's bundle id; the returned closure stops it.
+    func observeActivations(_ handler: @escaping @MainActor (String?) -> Void) -> () -> Void
 }
 
 @MainActor
-struct SystemFrontmostApp: FrontmostApp {
+final class SystemFrontmostApp: FrontmostApp {
     var bundleID: String? { NSWorkspace.shared.frontmostApplication?.bundleIdentifier }
+    var processID: pid_t? { NSWorkspace.shared.frontmostApplication?.processIdentifier }
+    var weAreActive: Bool { NSApp?.isActive ?? false }
+
+    func observeActivations(_ handler: @escaping @MainActor (String?) -> Void) -> () -> Void {
+        let center = NSWorkspace.shared.notificationCenter
+        let token = center.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil,
+                                       queue: .main) { note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            let id = app?.bundleIdentifier
+            MainActor.assumeIsolated { handler(id) }
+        }
+        return { center.removeObserver(token) }
+    }
 }
 
 /// Watches the pasteboard's change count every 0.5 s while running: the one poll the
@@ -92,7 +111,8 @@ struct SystemFrontmostApp: FrontmostApp {
 /// (`stop` removes the timer, so a paused or disabled widget reads nothing at all).
 ///
 /// On a change it reads, in order and only while each step passes (`ClipFilter`): the
-/// frontmost app, the item's types, its `org.nspasteboard.source`, then the content.
+/// apps (the frontmost one now and every app that was frontmost since the last change,
+/// `ClipSourceWindow`, from activation notifications while running), the item's types, its `org.nspasteboard.source`, then the content.
 /// What was on the pasteboard before `start` is never recorded, so copies made while
 /// paused or off stay out of history.
 @MainActor
@@ -119,6 +139,8 @@ final class ClipboardWatcher {
     private let schedule: Schedule
     private var cancel: (() -> Void)?
     private var lastChange = 0
+    private var window = ClipSourceWindow(current: nil)
+    private var stopObserving: (() -> Void)?
     /// Pasteboard changes looked at (tests).
     private(set) var changesSeen = 0
 
@@ -133,17 +155,22 @@ final class ClipboardWatcher {
     func start() {
         guard cancel == nil else { return }
         lastChange = pasteboard.changeCount
+        window.reset(current: frontmost.bundleID)
+        stopObserving = frontmost.observeActivations { [weak self] id in self?.window.activated(id) }
         cancel = schedule(Self.interval) { [weak self] in self?.poll() }
     }
 
     func stop() {
         cancel?()
         cancel = nil
+        stopObserving?()
+        stopObserving = nil
     }
 
     /// Our own write: not a copy to record.
     func ignore(changeCount: Int) {
         lastChange = changeCount
+        window.reset(current: frontmost.bundleID)
     }
 
     func poll() {
@@ -154,7 +181,9 @@ final class ClipboardWatcher {
         changesSeen += 1
         let excluded = excluded()
         let source = frontmost.bundleID
-        guard ClipFilter.allowsApp(source, excluded: excluded) else { return }
+        let apps = window
+        window.reset(current: source)
+        guard apps.allows(current: source, excluded: excluded) else { return }
         let types = pasteboard.types
         guard !types.isEmpty, ClipFilter.allowsTypes(types) else { return }
         let marked = types.contains(ClipFilter.sourceType) ? pasteboard.string(forType: ClipFilter.sourceType) : nil

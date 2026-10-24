@@ -51,3 +51,33 @@ public enum ClipFilter {
             && allowsMarkedSource(markedSource, excluded: excluded)
     }
 }
+
+/// Every app that was frontmost since the last pasteboard change the watcher processed,
+/// including the one in front then (fix round 1). The change count is only polled every
+/// 0.5 s, so the app in front at the poll may not be the one that copied: a password
+/// manager that hands focus back right after copying would otherwise have its copy
+/// attributed to the next app. Fed by app-activation notifications (no polling); a change
+/// is skipped when the current app or any app in the window is excluded.
+public struct ClipSourceWindow: Equatable, Sendable {
+    public private(set) var apps: Set<String>
+
+    public init(current: String?) {
+        apps = current.map { [$0] } ?? []
+    }
+
+    /// An app became frontmost.
+    public mutating func activated(_ bundleID: String?) {
+        if let bundleID, !bundleID.isEmpty { apps.insert(bundleID) }
+    }
+
+    /// After each processed change: only the app in front now.
+    public mutating func reset(current: String?) {
+        self = ClipSourceWindow(current: current)
+    }
+
+    /// Step 1 of `ClipFilter` over the whole window.
+    public func allows(current: String?, excluded: Set<String>) -> Bool {
+        ClipFilter.allowsApp(current, excluded: excluded)
+            && apps.allSatisfy { ClipFilter.allowsApp($0, excluded: excluded) }
+    }
+}

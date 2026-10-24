@@ -78,6 +78,29 @@ final class ClipboardTests: XCTestCase {
         XCTAssertTrue(ClipFilter.allowsTypes([]))
     }
 
+    func testSourceWindowSkipsAnExcludedAppActiveSinceTheLastChange() {
+        // 1Password copies, then hands focus back to Safari before the poll sees the change.
+        var w = ClipSourceWindow(current: "com.1password.1password")
+        w.activated("com.apple.Safari")
+        XCTAssertFalse(w.allows(current: "com.apple.Safari", excluded: []))
+        // After a processed change only the app in front then is remembered.
+        w.reset(current: "com.apple.Safari")
+        XCTAssertEqual(w.apps, ["com.apple.Safari"])
+        XCTAssertTrue(w.allows(current: "com.apple.Safari", excluded: []))
+        // Unrelated apps switching still record.
+        w.activated("com.apple.Notes")
+        w.activated("com.apple.TextEdit")
+        XCTAssertTrue(w.allows(current: "com.apple.TextEdit", excluded: []))
+        // The user's exclude_apps counts too, and the current app always does.
+        XCTAssertFalse(w.allows(current: "com.apple.TextEdit", excluded: ["com.apple.Notes"]))
+        XCTAssertFalse(w.allows(current: "com.apple.keychainaccess", excluded: []))
+        XCTAssertFalse(w.allows(current: nil, excluded: []), "unknown current app")
+        // An activation without a bundle id is not an excluded app.
+        w.activated(nil)
+        XCTAssertTrue(w.allows(current: "com.apple.TextEdit", excluded: []))
+        XCTAssertEqual(ClipSourceWindow(current: nil).apps, [])
+    }
+
     // MARK: - History
 
     func testHashIsStableSHA256Prefix() {
@@ -351,6 +374,28 @@ final class ClipboardTests: XCTestCase {
         let store = ClipboardStore(directory: tempDir(), now: { self.t0 })
         let foreign = ClipItem(kind: .image(fileURL: URL(fileURLWithPath: "/etc/hosts"), width: 1, height: 1), copiedAt: t0)
         XCTAssertNil(store.imageURL(for: foreign))
+    }
+
+    func testFoldersMarkedPrivateAtCreationAndStart() throws {
+        let dir = tempDir()
+        let store = ClipboardStore(directory: dir, now: { self.t0 })
+        store.record(.text("x"), source: "x")
+        XCTAssertTrue(PrivateFolder.isMarked(dir), "at creation")
+        // An existing folder from before: marked at the next start.
+        let old = tempDir()
+        try FileManager.default.createDirectory(at: old, withIntermediateDirectories: true)
+        XCTAssertFalse(PrivateFolder.isMarked(old))
+        ClipboardStore(directory: old, now: { self.t0 }).markPrivate()
+        XCTAssertTrue(PrivateFolder.isMarked(old))
+        // The shelf's folder too.
+        let shelfDir = tempDir().deletingLastPathComponent().appendingPathComponent("shelf")
+        let shelf = ShelfStore(directory: shelfDir)
+        shelf.addText("hello")
+        XCTAssertTrue(PrivateFolder.isMarked(shelfDir))
+        // Never creates a folder that does not exist.
+        let none = tempDir()
+        PrivateFolder.mark(none)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: none.path))
     }
 
     // MARK: - Picker

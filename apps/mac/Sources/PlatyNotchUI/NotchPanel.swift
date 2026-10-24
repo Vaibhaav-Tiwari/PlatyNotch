@@ -12,12 +12,14 @@ final class NotchPanel: NSPanel {
     init(frame: CGRect) {
         super.init(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel],
                    backing: .buffered, defer: false)
+        // `isFloatingPanel` sets the level to `.floating`, so it must come first: set
+        // after it, `.statusBar` was silently lost (the panel sat at `.floating`).
+        isFloatingPanel = true
         level = .statusBar
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         isOpaque = false
         backgroundColor = .clear
         hasShadow = false
-        isFloatingPanel = true
         hidesOnDeactivate = false
         isMovable = false
         isReleasedWhenClosed = false

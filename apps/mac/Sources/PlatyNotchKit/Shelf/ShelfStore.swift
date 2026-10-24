@@ -424,6 +424,12 @@ public final class ShelfStore {
         }
     }
 
+    /// Re-applies the backup and Spotlight exclusion to an existing folder (each start).
+    public func markPrivate() {
+        guard persist else { return }
+        PrivateFolder.mark(directory, fileManager: fileManager)
+    }
+
     // MARK: - Private
 
     private func ownedFolder(_ id: UUID) -> URL {
@@ -465,6 +471,7 @@ public final class ShelfStore {
             try fileManager.createDirectory(at: directory, withIntermediateDirectories: true,
                                             attributes: [.posixPermissions: 0o700])
             try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+            if !PrivateFolder.isMarked(directory, fileManager: fileManager) { PrivateFolder.mark(directory, fileManager: fileManager) }
             return true
         } catch {
             return false

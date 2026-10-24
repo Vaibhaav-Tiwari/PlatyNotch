@@ -398,7 +398,14 @@ History, Clear All, and the Accessibility button.
   (Show password › Copy), in Passwords, and in Bitwarden if installed. Press ⌥⇧V: none of
   them is listed. `grep -r "<the password>" "$PLATYNOTCH_HOME/clipboard"` finds nothing.
   Note which managers set `org.nspasteboard.ConcealedType` (an app like Pasteboard Viewer
-  shows the types) and which were caught only by the frontmost-app rule.
+  shows the types) and which were caught only by the app rule.
+  **Explicitly (fix round 1):** copy a password from the **Apple Passwords menu bar extra**
+  (menu bar key icon › pick an entry › copy password) and from **1Password Quick Access**
+  (⇧⌘Space › an item › copy password) while TextEdit is the frontmost app, then switch
+  straight back to TextEdit. These may never become frontmost, so only ConcealedType or
+  `org.nspasteboard.source` can keep them out: note for each whether it is recorded. Also
+  copy in the 1Password app and immediately ⌘-Tab to Safari: not recorded (the activation
+  window covers an app that hands focus back before the 0.5 s poll).
 - [ ] **73. Excluded apps.** Add an app (e.g. Notes, `com.apple.Notes`) to Settings ›
   Memory › excluded apps; copy text in Notes: not recorded. Remove it again: the next copy
   is recorded. Copy something in TextEdit while Notes is frontmost through a script
@@ -448,3 +455,20 @@ History, Clear All, and the Accessibility button.
   work at once without relaunch.
 - [ ] **84. Full screen and Spaces.** In a full-screen app, ⌥⇧V opens the picker on that
   Space over the app; paste works there.
+
+## Task 6 fix round 1
+
+- [ ] **85. Notch panel at status-bar level.** The panel is now really at `.statusBar`
+  (it used to fall back to `.floating`). Check: the pill and an approval peek stay visible
+  over the Dock (also with magnification on and a Dock stack open), over other apps' floating panels (Preview's Inspector, a
+  Notes floating window, Xcode's quick help), and in full screen. Menu bar items right
+  next to the notch (left and right of it) still open on click, and the menu bar's extras
+  still work while the pill is compact. Open a menu that drops down under the notch: note
+  whether the menu draws over or under the panel.
+- [ ] **86. Paste focus check.** With Accessibility on, ⌥⇧V in TextEdit › ↩ pastes. Then
+  ⌥⇧V in TextEdit, quit TextEdit from the Dock (right-click › Quit) while the picker is
+  open, then ↩: nothing is typed anywhere and the notch says "Copied — press ⌘V".
+- [ ] **87. Backup and Spotlight.** `xattr -l "$PLATYNOTCH_HOME/clipboard"` and
+  `…/shelf` show `com.apple.metadata:com_apple_backup_excludeItem`; both folders contain
+  `.metadata_never_index`; `mdfind -onlyin "$PLATYNOTCH_HOME/clipboard" <copied word>`
+  finds nothing. `tmutil isexcluded "$PLATYNOTCH_HOME/clipboard"` says excluded.
