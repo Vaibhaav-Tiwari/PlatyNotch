@@ -1256,7 +1256,9 @@ Settings › Widgets › Power features › Mail, on an installed build.
   open".
   Click Allow in the tile: macOS asks once; OK shows the unread count and up to 5 messages.
 - [ ] **243. What it shows.** The count matches Mail's Inbox badge; the 5 rows are the newest
-  unread, newest first, each with the sender's name and the subject on one line.
+  unread, newest first, each with the sender's name and the subject on one line. With two or
+  more accounts (the unified Inbox), unread mail from each shows, and clicking a row from
+  each account opens that very message (same sender and subject), not another one.
 - [ ] **244. Open a message.** Click a row: Mail comes forward with that message open.
 - [ ] **245. Refresh.** Mark a message read in Mail: it leaves the tile within 5 minutes, or
   at once when you reopen the panel after 30 seconds.

@@ -100,12 +100,18 @@ enum MailText {
 /// never the app by name: a Mail that quit meanwhile is gone (-600) and is never launched
 /// again. It also asks `running()` first and returns at once when Mail is not.
 ///
-/// It reads, in one bulk request each, the received date, Message-ID, sender and subject
-/// of the unread messages (so a row never mixes two messages; if the lists differ in
-/// length the inbox changed under it and the answer says so), keeps the newest
-/// `MailInbox.shownCount`, and cuts sender and subject to `fieldLimit` and the id to
-/// `idLimit` characters so one huge message cannot overflow the answer. It never
-/// activates, opens, changes or marks anything.
+/// It reads two bulk lists of the unread messages, received date and Mail's numeric id
+/// (equal lengths, else the inbox changed under it and the answer says so), picks the
+/// newest `MailInbox.shownCount` from those, and then reads Message-ID, sender, subject
+/// and date of each of those few by its id (`byId`), so a row never mixes two messages and
+/// a large unread inbox costs two bulk requests, not one per field. A message gone
+/// meanwhile (-1728) is skipped (at most `MailInbox.shownCount` more are tried); any other
+/// error ends the script so `MailScriptOutcome.classify` maps it. When unread messages
+/// exist but none was found by `byId` (it may not reach the unified inbox), each is looked
+/// up once more with `whose({id:})`; if that finds none either, the answer is "changed"
+/// (an error in the tile, never an empty list). Sender and
+/// subject are cut to `fieldLimit` and the id to `idLimit` characters so one huge message
+/// cannot overflow the answer. It never activates, opens, changes or marks anything.
 public enum MailScript {
     public static let executable = "/usr/bin/osascript"
     /// The caller stops waiting (and the runner kills osascript) after this.
@@ -124,22 +130,37 @@ public enum MailScript {
       var unread = inbox.unreadCount();
       var msgs = inbox.messages.whose({readStatus: false});
       var dates = msgs.dateReceived();
-      var ids = msgs.messageId();
-      var senders = msgs.sender();
-      var subjects = msgs.subject();
+      var keys = msgs.id();
       var n = dates.length;
-      if (ids.length !== n || senders.length !== n || subjects.length !== n) {
-        return JSON.stringify({running: true, changed: true});
-      }
+      if (keys.length !== n) { return JSON.stringify({running: true, changed: true}); }
       function cut(v, limit) { return (v === null || v === undefined) ? '' : String(v).slice(0, limit); }
       var order = [];
       for (var i = 0; i < n; i++) { order.push([dates[i] ? dates[i].getTime() : 0, i]); }
       order.sort(function (a, b) { return b[0] - a[0]; });
-      var latest = [];
-      for (var k = 0; k < order.length && k < \(MailInbox.shownCount); k++) {
-        var j = order[k][1];
-        latest.push({id: cut(ids[j], \(idLimit)), sender: cut(senders[j], \(fieldLimit)),
-                     subject: cut(subjects[j], \(fieldLimit)), received: order[k][0] / 1000});
+      function row(m) {
+        var d = m.dateReceived();
+        return {id: cut(m.messageId(), \(idLimit)), sender: cut(m.sender(), \(fieldLimit)),
+                subject: cut(m.subject(), \(fieldLimit)), received: d ? d.getTime() / 1000 : 0};
+      }
+      // Only "no such message" (-1728) is skipped; any other error (Mail quit, timeout,
+      // not allowed) ends the script with its number for the caller.
+      function each(find) {
+        var rows = [];
+        for (var k = 0; k < top.length && rows.length < \(MailInbox.shownCount); k++) {
+          try {
+            var m = find(top[k]);
+            if (m) { rows.push(row(m)); }
+          } catch (e) { if (e.errorNumber !== -1728) { throw e; } }
+        }
+        return rows;
+      }
+      var top = [];
+      for (var t = 0; t < order.length && t < \(MailInbox.shownCount * 2); t++) { top.push(keys[order[t][1]]); }
+      var latest = each(function (key) { return inbox.messages.byId(key); });
+      if (n > 0 && latest.length === 0) {
+        // byId may not reach messages through the unified inbox: look each up by query.
+        latest = each(function (key) { return inbox.messages.whose({id: key})()[0]; });
+        if (latest.length === 0) { return JSON.stringify({running: true, changed: true}); }
       }
       return JSON.stringify({running: true, unread: unread, latest: latest});
     }
