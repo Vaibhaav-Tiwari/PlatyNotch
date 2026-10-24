@@ -1044,7 +1044,9 @@ OCRs small files made by the tests (`FileActionsEngineTests`); these checks use 
   Rename renames them in Finder, and the cards follow. A name already taken gets " 2".
   Actions › Undo Rename puts every name back; it then disappears (one level). Rename is not
   offered for Desktop, Documents, Downloads or other folders directly in your home, for
-  hidden files there, or for anything in PlatyNotch's own folder (shelf copies: use Save As…).
+  hidden files there, or for anything in PlatyNotch's own folder except the shelf's own
+  copies: rename a converted result to `trip {n}` and it stays on the shelf (and in its
+  folder), still expiring after 7 days unless pinned.
 - [ ] **206. Finder service.** After installing, run `/System/Library/CoreServices/pbs -flush`
   and relaunch PlatyNotch. In Finder, select two files › right-click › Services (or Quick
   Actions) › Add to PlatyNotch Shelf: a peek says "Added 2 files to the shelf" and both are

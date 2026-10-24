@@ -73,6 +73,8 @@ private final class FakeResults: FileActionResults {
 
     func discardResult(_ id: UUID) { discarded.append(id) }
     func renamed(_ id: UUID, to url: URL) { renames.append((id, url)) }
+    var owned: [UUID: URL] = [:]
+    func ownedFolder(of id: UUID) -> URL? { owned[id] }
 }
 
 @MainActor
@@ -215,6 +217,66 @@ final class FileActionCenterTests: DefaultsTestCase {
         XCTAssertEqual(c.rename([a, b], plan: plan).failed, 1, "refused even if asked")
         XCTAssertTrue(fm.fileExists(atPath: b.url.path))
         XCTAssertEqual(r.renames.map(\.0), [a.item.id])
+    }
+
+    /// Fix round 1 follow-up: inside a protected home (as PlatyNotch's folder is), an
+    /// owned copy renames within its own folder; nothing else there does.
+    func testOwnedResultsRenameInsideTheirFolderOnly() throws {
+        let (c, r) = center(FakeEngine())
+        let home = root.appendingPathComponent("apphome")
+        c.isProtected = { $0.standardizedFileURL.path.hasPrefix(home.standardizedFileURL.path + "/") }
+        let id = UUID()
+        let folder = home.appendingPathComponent("shelf.noindex/\(id.uuidString)")
+        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        let resultURL = folder.appendingPathComponent("photo.jpg")
+        try Data("jpg".utf8).write(to: resultURL)
+        let result = ShelfItem(id: id, kind: .file(ShelfFileRef(path: resultURL.path)), addedAt: Date(), ownsFile: true)
+        r.owned[id] = folder
+
+        // An owned result renames.
+        XCTAssertTrue(c.entries(for: [(result, resultURL)]).contains(.rename))
+        let plan = FileActionCenter.renamePlan([(result, resultURL)], pattern: "trip", date: Date())
+        XCTAssertEqual(c.rename([(result, resultURL)], plan: plan).renamed, 1)
+        let renamed = folder.appendingPathComponent("trip.jpg")
+        XCTAssertTrue(fm.fileExists(atPath: renamed.path))
+        XCTAssertEqual(r.renames.last?.1.lastPathComponent, "trip.jpg")
+
+        // A non-owned path under the home is refused.
+        let loose = home.appendingPathComponent("shelf.noindex/items.json")
+        try Data("[]".utf8).write(to: loose)
+        let looseItem = ShelfItem(kind: .file(ShelfFileRef(path: loose.path)), addedAt: Date())
+        XCTAssertFalse(c.entries(for: [(looseItem, loose)]).contains(.rename))
+        let loosePlan = FileActionCenter.renamePlan([(looseItem, loose)], pattern: "x", date: Date())
+        XCTAssertEqual(c.rename([(looseItem, loose)], plan: loosePlan).failed, 1)
+        XCTAssertTrue(fm.fileExists(atPath: loose.path))
+
+        // An owned item cannot be renamed out of its folder.
+        let escape = RenamePlan(steps: [RenamePlan.Step(index: 0, from: renamed, to: home.appendingPathComponent("out.jpg"))])
+        XCTAssertEqual(c.rename([(result, renamed)], plan: escape).failed, 1)
+        XCTAssertTrue(fm.fileExists(atPath: renamed.path))
+        XCTAssertFalse(fm.fileExists(atPath: home.appendingPathComponent("out.jpg").path))
+        // Nor is the owned folder itself an owned file.
+        XCTAssertFalse(c.canRename(id, from: folder, to: nil))
+    }
+
+    /// End to end on the shelf: a converted result is renamed and stays owned (it still expires).
+    func testShelfResultRenamesAndStaysOwned() async throws {
+        let (s, _, _) = shelf()
+        let src = try file("photo.png")
+        s.addFile(src.url)
+        let center = try XCTUnwrap(s.fileActions)
+        center.isProtected = { _ in true }   // as if everything were PlatyNotch's folder
+        center.run(.convert(.jpeg, nil), on: [(try XCTUnwrap(s.items.first), src.url)])
+        await center.lastTask?.value
+        let result = try XCTUnwrap(s.items.first { $0.ownsFile })
+        let url = try XCTUnwrap(result.fileRef?.url)
+        let plan = FileActionCenter.renamePlan([(result, url)], pattern: "renamed", date: Date())
+        XCTAssertEqual(center.rename([(result, url)], plan: plan).renamed, 1)
+        let after = try XCTUnwrap(s.items.first { $0.id == result.id })
+        XCTAssertEqual(after.fileRef?.name, "renamed.png")
+        XCTAssertTrue(after.ownsFile, "still the shelf's copy")
+        XCTAssertFalse(center.canRename(try XCTUnwrap(s.items.first { !$0.ownsFile }).id, from: src.url, to: nil),
+                       "the user's file under a protected path: refused")
     }
 
     func testCopyTextNeedsNoFolder() async throws {

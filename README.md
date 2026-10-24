@@ -133,8 +133,8 @@ removal run on this Mac (ImageIO, AVFoundation, Vision), and results are new she
 items in the shelf's folder (kept 7 days unless pinned; Save As… for a copy elsewhere),
 never written next to your files. Rename changes your files' names only when you
 click Rename, never replacing another file, with one Undo; it never renames your home
-folder's own folders (Desktop, Documents, Downloads, Library, …) or anything in
-PlatyNotch's folder. Unzip refuses archives that are damaged or would write outside
+folder's own folders (Desktop, Documents, Downloads, Library, …) or anything else in
+PlatyNotch's folder (the shelf's own copies and results can be renamed, and stay there). Unzip refuses archives that are damaged or would write outside
 their folder, and stops one that unpacks to more than it declares. Files in Downloads, Desktop
 or Documents may make macOS ask for access when an action reads them.
 

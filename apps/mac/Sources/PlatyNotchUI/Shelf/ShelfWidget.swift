@@ -436,6 +436,11 @@ final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost, FileAct
         store?.discardReserved(id)
     }
 
+    func ownedFolder(of id: UUID) -> URL? {
+        guard let store, store.items.contains(where: { $0.id == id && $0.ownsFile && $0.fileRef != nil }) else { return nil }
+        return store.directory.appendingPathComponent(id.uuidString, isDirectory: true)
+    }
+
     func renamed(_ id: UUID, to url: URL) {
         store?.relocate(id, to: url)
         afterChange()

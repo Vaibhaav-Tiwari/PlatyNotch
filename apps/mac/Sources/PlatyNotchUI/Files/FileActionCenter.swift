@@ -18,6 +18,9 @@ protocol FileActionResults: AnyObject {
     func discardResult(_ id: UUID)
     /// Batch rename moved item `id`'s file to `url` (R10: `ShelfStore.relocate`).
     func renamed(_ id: UUID, to url: URL)
+    /// The item's own owned folder (`<store>/<id>/`) when the list owns its file; nil for
+    /// the user's files, text and links.
+    func ownedFolder(of id: UUID) -> URL?
 }
 
 /// The "Actions ›" menu of a shelf item, what runs, and the last outcome. One per item
@@ -117,7 +120,9 @@ final class FileActionCenter {
             case .removeBackground: out.append(.action("Remove Background", .removeBackground))
             case .rename:
                 // Hidden when any target is one Batch rename never renames.
-                if !targets.contains(where: { $0.url.map(isProtected) ?? true }) { out.append(.rename) }
+                if targets.allSatisfy({ t in t.url.map { canRename(t.item.id, from: $0, to: nil) } ?? false }) {
+                    out.append(.rename)
+                }
             }
         }
         if canUndoRename { out.append(.undoRename) }
@@ -252,7 +257,7 @@ final class FileActionCenter {
     /// how many failed.
     @discardableResult
     func rename(_ targets: [(item: ShelfItem, url: URL)], plan: RenamePlan) -> (renamed: Int, failed: Int) {
-        let allowed = plan.steps.filter { !isProtected($0.from) }
+        let allowed = plan.steps.filter { canRename(targets[$0.index].item.id, from: $0.from, to: $0.to) }
         let done = execute(allowed.map { (targets[$0.index].item.id, $0) })
         lastRename = done
         canUndoRename = !done.isEmpty
@@ -264,6 +269,19 @@ final class FileActionCenter {
             setStatus(done.count == 1 ? "Renamed 1 item" : "Renamed \(done.count) items")
         }
         return (done.count, failed)
+    }
+
+    /// Whether Batch rename may rename item `id`'s file `from` (to `to`, when known). An
+    /// owned copy (an action result, a dropped image) may be renamed within its own owned
+    /// folder, even though that is inside PlatyNotch's folder; anything else must not be
+    /// protected (`RenamePolicy`).
+    func canRename(_ id: UUID, from: URL, to: URL?) -> Bool {
+        if let folder = results?.ownedFolder(of: id) {
+            let root = folder.standardizedFileURL.path + "/"
+            let inside = { (u: URL) in u.standardizedFileURL.path.hasPrefix(root) }
+            return inside(from) && (to.map(inside) ?? true)
+        }
+        return !isProtected(from)
     }
 
     /// Puts the last Batch rename back (last first). One level only.
