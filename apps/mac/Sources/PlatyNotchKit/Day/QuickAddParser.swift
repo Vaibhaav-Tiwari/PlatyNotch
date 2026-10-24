@@ -6,24 +6,32 @@ public struct QuickAdd: Equatable, Sendable {
     /// How long an event lasts when the text gives no duration.
     public static let defaultEventLength: TimeInterval = 30 * 60
 
-    /// The text without its date, time and duration words, first letter capitalised.
+    /// The text without the date, time and duration words that were understood, first
+    /// letter capitalised. Anything not understood stays.
     public let title: String
     /// When: a time, or (`hasTime == false`) the start of a day.
     public let due: Date?
-    /// Has a date, and a duration phrase or one of the words "meeting", "call with", "lunch".
+    /// Has a date, and a duration ("for 30 min", a range "3-4pm") or one of the words
+    /// "meeting", "call with", "lunch".
     public let isEvent: Bool
-    /// From "for 30 min", "for an hour", "for 1h 30m"; nil without one (or without a date).
+    /// From "for 30 min", "for an hour", "for 1h 30m" or a range ("3-4pm"); nil without
+    /// one (or without a date).
     public let duration: TimeInterval?
     /// Whether `due` has a time of day. A reminder without one is due that day (no alarm).
     /// Events always get a time (9:00, or 12:00 for lunch, when the text has none).
     public let hasTime: Bool
+    /// `due` is already over: only when the text named the day explicitly ("today 8",
+    /// "this friday 9am", "2026-10-01"). Saved as typed; the preview says "(past)".
+    public let isPast: Bool
 
-    public init(title: String, due: Date?, isEvent: Bool, duration: TimeInterval? = nil, hasTime: Bool = false) {
+    public init(title: String, due: Date?, isEvent: Bool, duration: TimeInterval? = nil, hasTime: Bool = false,
+                isPast: Bool = false) {
         self.title = title
         self.due = due
         self.isEvent = isEvent
         self.duration = duration
         self.hasTime = hasTime
+        self.isPast = isPast
     }
 
     /// The event's end: `due` plus `duration` (default 30 min). Nil for reminders.
@@ -33,65 +41,79 @@ public struct QuickAdd: Equatable, Sendable {
     }
 }
 
-
-/// Parses quick-add text ("call Priya at 5pm", "meeting with Sam tomorrow 3pm for 30 min").
+/// Parses quick-add text ("call Priya at 5pm", "meeting with Sam tomorrow 3pm for 30 min")
+/// against the injected `calendar` (its time zone decides what "5pm" and "tomorrow" mean)
+/// and `now`. The real clock is never read and no system date detection is used.
 ///
-/// English phrase rules run against the injected `calendar` (its time zone decides what
-/// "5pm" and "tomorrow" mean) and `now`; the real clock is never read:
-/// - Times: 5pm, 5:30 pm, 17:30, "at 5" (1–7 mean the afternoon: 17:00), noon, midnight.
-///   A time with no day is today, or tomorrow once it has passed. "midnight" is always the
-///   coming one: "tomorrow midnight" is 00:00 the day after tomorrow (the end of tomorrow).
-/// - Days: today, tonight, tomorrow, "day after tomorrow", "in 2 days", "nov 3", "2nd of
-///   January", and weekdays (full names or mon, tue, tues, wed, thu, thur, thurs, fri, sat,
-///   sun, with or without on/next/this). A plain weekday is its next occurrence: today
-///   when it is today and the time (if any) is still ahead, else next week; "next <day>"
-///   is always after today. Words that are also English words only count as dates when
-///   the context says so: "may 3" needs "on", an ordinal ("may 3rd"), a year, or a time or
-///   the end of the text after it ("call may 3 times" has no date); unprefixed "sat" and
-///   "sun" need the same ("sat down" has no date).
-/// - A bare hour right after a day word is a time: "tomorrow 9" is 09:00 (same 1–7 rule).
-/// - "tonight" without a time is 20:00; after 20:00 it is now + 1 hour, rounded up to the
-///   next quarter hour.
-/// - Relative: "in 20 min", "in an hour"; parts of the day: "tomorrow morning" (9:00),
-///   afternoon (15:00), evening (18:00), night (20:00); durations: "for 30 min".
-/// - Times that do not exist (the spring-forward gap) move forward by the gap: 2:30 on
-///   that night is 3:30, whether or not a day was named.
-/// Only when no rule matched, `NSDataDetector` looks for a date, and its answer is kept
-/// only when the matched text has a year or a numeric date ("2027-12-01", "12/01",
-/// "1 Dec 2027"): it resolves relative words against the real clock, so anything else it
-/// finds is discarded. Its year, month, day and time are read in the Mac's time zone and
-/// placed in `calendar`.
+/// Two independent passes, then a combine step. Each pass removes from the title exactly
+/// the text it understood, and nothing else.
+///
+/// **Date pass** (at most one, first kind found wins: an absolute date beats a day word,
+/// which beats a weekday; a second, conflicting date phrase stays in the title):
+/// - Absolute: ISO `YYYY-MM-DD`; "D Mon [YYYY]" ("2nd of January", "1 Dec 2027") and
+///   "Mon D[st|nd|rd|th] [YYYY]" ("nov 3", "may 3rd"). Month names are whole words; "may"
+///   counts only with "on", an ordinal, a year, or a time / the end of the text after the
+///   day. Without a year: the next occurrence on or after today. The day is checked
+///   against the month ("jan 32", "feb 30" are no date).
+/// - Numeric dates with slashes or dots ("12/01", "12.01.2027") are locale-ambiguous:
+///   text containing one gets no date at all.
+/// - Relative: today, tonight, tomorrow, "day after tomorrow", "in 2 days", "this
+///   morning", "tomorrow evening".
+/// - Weekdays, full or short (mon, tue, tues, wed, thu, thur, thurs, fri, sat, sun), with or
+///   without on / next / this. Unprefixed "sat" / "sun" need a time or the end of the text
+///   after them ("sat down" is no date).
+///
+/// **Time pass** (at most one): ranges ("3-4pm", "3pm-4pm", "3 to 4pm", "15:00-16:00": start
+/// and duration; a missing start meridiem is the end's, or am when that would make the
+/// start later than the end); "H[:MM] am/pm", "H.MM am/pm"; 24 h "HH:MM"; noon; midnight
+/// (the end of the day: "tomorrow midnight" is 00:00 the day after tomorrow); "at H"; "in N
+/// minutes/hours"; and a bare hour, only right after a day word or weekday and only at
+/// the end of the text or before punctuation ("tomorrow 9", "wed 9"; "tomorrow 5 apples"
+/// keeps the 5). An hour with no am/pm means 13:00–19:00 for 1–7; after "tonight" it means
+/// pm for 1–11.
+///
+/// **Combine:**
+/// - Date and time: that day at that time. A plain weekday that is today, with the time
+///   already gone, means next week. Explicit today / "this <weekday>" / an absolute date
+///   are kept as typed even when past (`isPast`).
+/// - Date only: due that day, no time ("tonight": 20:00, or after 20:00 now + 1 h rounded
+///   up to the quarter hour).
+/// - Time only: today if still ahead, else tomorrow.
+/// - "in N minutes/hours" is now + N, and any date phrase stays in the title.
+/// - Times in the spring-forward gap move forward by it (2:30 → 3:30), the same with or
+///   without a day; a repeated fall-back hour takes its first occurrence.
+///
+/// "every …" never makes a recurrence: the date it names is used once and the phrase
+/// stays in the title ("every monday at 9" → "Every monday", next Monday 09:00).
 public enum QuickAddParser {
     public static func parse(_ s: String, now: Date, calendar: Calendar) -> QuickAdd {
         let text = s.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return QuickAdd(title: "", due: nil, isEvent: false) }
-        var scan = Scanner(text)
-
-        let durationMatch = scan.find(Pattern.duration)   // masked only if the text has a date
-        let duration = durationMatch.flatMap { m in
-            amount(m.group(1), unit: m.group(2)).map { $0 + (m.group(3).flatMap(Double.init) ?? 0) * 60 }
+        if text.range(of: Pattern.numericDate, options: .regularExpression) != nil {
+            return QuickAdd(title: tidy(text), due: nil, isEvent: false)
         }
+        var scan = Scanner(text)
+        let forDuration = scan.find(Pattern.duration)   // masked only when used
 
         var due: Date?
         var hasTime = false
-        if let m = scan.take(Pattern.relative), let n = amount(m.group(1), unit: m.group(2)) {
-            let unit = m.group(2)?.lowercased() ?? ""
-            if unit.hasPrefix("d") || unit.hasPrefix("w") {
-                let days = Int((n / 86_400).rounded())
-                due = calendar.date(byAdding: .day, value: days, to: calendar.startOfDay(for: now))
-            } else {
-                due = now.addingTimeInterval(n)
-                hasTime = true
-            }
+        var isPast = false
+        var rangeDuration: TimeInterval?
+        if let m = scan.take(Pattern.relativeTime), let n = amount(m.group(1), unit: m.group(2)) {
+            due = now.addingTimeInterval(n)
+            hasTime = true
         } else {
-            let day = takeDay(&scan)
-            let explicit = day.hour ?? takeTime(&scan)
-            (due, hasTime) = resolve(day: day, time: explicit ?? day.partOfDay,
-                                     tonightDefault: day.tonight && explicit == nil, now: now, calendar: calendar)
-            if due == nil, let (date, timed) = detect(&scan, calendar: calendar) {
-                due = date
-                hasTime = timed
-            }
+            let date = datePass(&scan, now: now, calendar: calendar)
+            let time = timePass(&scan, after: date, calendar: calendar)
+            rangeDuration = time?.duration
+            (due, hasTime, isPast) = combine(date: date, time: time, now: now, calendar: calendar)
+        }
+
+        var duration = rangeDuration
+        if duration == nil, due != nil, let m = forDuration,
+           let d = amount(m.group(1), unit: m.group(2)).map({ $0 + (m.group(3).flatMap(Double.init) ?? 0) * 60 }) {
+            duration = d
+            scan.mask(m.range)
         }
 
         let isEvent = due != nil && (duration != nil || text.range(of: Pattern.eventWords, options: [.regularExpression, .caseInsensitive]) != nil)
@@ -99,61 +121,107 @@ public enum QuickAddParser {
             let lunch = text.range(of: #"\blunch\b"#, options: [.regularExpression, .caseInsensitive]) != nil
             due = at(d, (lunch ? 12 : 9, 0), calendar: calendar)
             hasTime = true
+            isPast = due.map { $0 < now } ?? false
         }
-        if due != nil, let m = durationMatch { scan.mask(m.range) }
 
         var title = tidy(scan.remaining)
         if title.isEmpty { title = isEvent ? "Event" : (due == nil ? "" : "Reminder") }
-        return QuickAdd(title: title, due: due, isEvent: isEvent, duration: due == nil ? nil : duration, hasTime: hasTime)
+        return QuickAdd(title: title, due: due, isEvent: isEvent, duration: due == nil ? nil : duration,
+                        hasTime: hasTime, isPast: isPast)
     }
 
-    // MARK: - Days
+    // MARK: - Date pass
 
-    private typealias Time = (hour: Int, minute: Int)
+    typealias Time = (hour: Int, minute: Int)
 
-    private struct Day {
-        enum Kind { case none, offset(Int), date(year: Int?, month: Int, day: Int), weekday(Int, strictlyAfterToday: Bool) }
-        var kind: Kind = .none
+    private struct DateHit {
+        enum Kind {
+            /// Start of that day; always kept as typed.
+            case absolute(Date)
+            /// Days from today. 0 is an explicit today.
+            case offset(Int)
+            case weekday(Int, mode: WeekdayMode)
+        }
+        enum WeekdayMode { case plain, this, next }
+        var kind: Kind
+        /// Where the matched text ends (for "tomorrow 9").
+        var end: Int
         var partOfDay: Time?
-        /// "tomorrow 9": the bare hour after a day word.
-        var hour: Time?
         var tonight = false
     }
 
-    private static func takeDay(_ scan: inout Scanner) -> Day {
-        var day = Day()
-        if let m = scan.take(Pattern.monthFirst, where: { m, rest in
-               plausibleMonth(m.group(2), on: m.group(1), ordinal: m.group(4), year: m.group(5), rest: rest)
-           }),
-           let month = monthNumber(m.group(2)), let d = m.group(3).flatMap(Int.init) {
-            day.kind = .date(year: m.group(5).flatMap(Int.init), month: month, day: d)
-        } else if let m = scan.take(Pattern.dayFirst, where: { m, rest in
-                      plausibleMonth(m.group(4), on: m.group(1), ordinal: m.group(3), year: m.group(5), rest: rest)
-                  }),
-                  let month = monthNumber(m.group(4)), let d = m.group(2).flatMap(Int.init) {
-            day.kind = .date(year: m.group(5).flatMap(Int.init), month: month, day: d)
-        } else if let m = scan.take(Pattern.dayWord) {
+    private static func datePass(_ scan: inout Scanner, now: Date, calendar: Calendar) -> DateHit? {
+        let today = calendar.startOfDay(for: now)
+        var hit: DateHit?
+        func record(_ m: Scanner.Match, _ kind: DateHit.Kind) {
+            hit = DateHit(kind: kind, end: m.range.location + m.range.length)
+            // "every monday": the phrase stays in the title (no recurrence is made).
+            if !scan.before(m.range).lowercased().hasSuffix("every ") { scan.mask(m.range) }
+        }
+
+        if let m = scan.find(Pattern.iso, where: { m, _ in
+               validDate(Int(m.group(1)!)!, Int(m.group(2)!)!, Int(m.group(3)!)!, calendar) != nil
+           }) {
+            record(m, .absolute(validDate(Int(m.group(1)!)!, Int(m.group(2)!)!, Int(m.group(3)!)!, calendar)!))
+        } else if let (m, d) = monthDate(&scan, Pattern.monthFirst, on: 1, month: 2, day: 3, ordinal: 4, year: 5,
+                                         today: today, calendar: calendar)
+                    ?? monthDate(&scan, Pattern.dayFirst, on: 1, month: 4, day: 2, ordinal: 3, year: 5,
+                                 today: today, calendar: calendar) {
+            record(m, .absolute(d))
+        } else if let m = scan.find(Pattern.relativeDays), let n = amount(m.group(1), unit: m.group(2)) {
+            record(m, .offset(Int((n / 86_400).rounded())))
+        } else if let m = scan.find(Pattern.dayWord) {
             let word = (m.group(1) ?? "").lowercased()
-            if word.hasPrefix("day") { day.kind = .offset(2) }
-            else if word == "today" || word == "tonight" { day.kind = .offset(0) }
-            else { day.kind = .offset(1) }
-            if word == "tonight" { day.partOfDay = (20, 0); day.tonight = true }
-            if let part = m.group(2) { day.partOfDay = partOfDay(part); day.tonight = false }
-            if let h = m.group(3).flatMap(Int.init), (0...23).contains(h) { day.hour = bareHour(h) }
-        } else if let m = scan.take(Pattern.weekday, where: { m, rest in
+            let offset = word.hasPrefix("day") ? 2 : (word == "today" || word == "tonight") ? 0 : 1
+            record(m, .offset(offset))
+            if word == "tonight" { hit?.partOfDay = (20, 0); hit?.tonight = true }
+            if let part = m.group(2) { hit?.partOfDay = partOfDay(part); hit?.tonight = false }
+        } else if let m = scan.find(Pattern.weekday, where: { m, rest in
                       let w = (m.group(2) ?? "").lowercased()
-                      // "sat" and "sun" alone are English words: a date only with a prefix or
-                      // a time (or the end of the text) after them.
                       return m.group(1) != nil || !(w == "sat" || w == "sun") || dateContextFollows(rest)
-                  }),
-                  let w = weekdayNumber(m.group(2)) {
-            day.kind = .weekday(w, strictlyAfterToday: m.group(1)?.lowercased() == "next")
+                  }), let w = weekdayNumber(m.group(2)) {
+            let mode: DateHit.WeekdayMode = switch m.group(1)?.lowercased() {
+            case "next": .next
+            case "this": .this
+            default: .plain
+            }
+            record(m, .weekday(w, mode: mode))
         }
-        if day.partOfDay == nil, let m = scan.take(Pattern.partOfDay), let part = m.group(1) {
-            day.partOfDay = partOfDay(part)
-            if case .none = day.kind { day.kind = .offset(0) }
+
+        if let m = scan.find(Pattern.partOfDay), let part = m.group(1) {
+            scan.mask(m.range)
+            if hit == nil { hit = DateHit(kind: .offset(0), end: m.range.location + m.range.length) }
+            hit?.partOfDay = partOfDay(part)
+            hit?.tonight = false
         }
-        return day
+        return hit
+    }
+
+    /// A month-name date that exists; with no year, its next occurrence on or after today.
+    private static func monthDate(_ scan: inout Scanner, _ re: NSRegularExpression, on: Int, month: Int, day: Int,
+                                  ordinal: Int, year: Int, today: Date, calendar: Calendar) -> (Scanner.Match, Date)? {
+        func resolve(_ m: Scanner.Match) -> Date? {
+            guard let mo = monthNumber(m.group(month)), let d = m.group(day).flatMap(Int.init) else { return nil }
+            if let y = m.group(year).flatMap(Int.init) { return validDate(y, mo, d, calendar) }
+            let thisYear = calendar.component(.year, from: today)
+            for y in thisYear...(thisYear + 8) {
+                if let date = validDate(y, mo, d, calendar), date >= today { return date }
+            }
+            return nil
+        }
+        guard let m = scan.find(re, where: { m, rest in
+            plausibleMonth(m.group(month), on: m.group(on), ordinal: m.group(ordinal), year: m.group(year), rest: rest)
+                && resolve(m) != nil
+        }) else { return nil }
+        return resolve(m).map { (m, $0) }
+    }
+
+    /// The start of that day, or nil when the day does not exist in that month.
+    static func validDate(_ y: Int, _ m: Int, _ d: Int, _ calendar: Calendar) -> Date? {
+        guard (1...12).contains(m), d >= 1,
+              let first = calendar.date(from: DateComponents(year: y, month: m, day: 1)),
+              let days = calendar.range(of: .day, in: .month, for: first), days.contains(d) else { return nil }
+        return calendar.date(from: DateComponents(year: y, month: m, day: d))
     }
 
     /// "may" is also a verb: as a month it needs "on", an ordinal, a year, or date-like text after it.
@@ -162,92 +230,73 @@ public enum QuickAddParser {
         return on != nil || ordinal != nil || year != nil || dateContextFollows(rest)
     }
 
-    /// The text after a match is empty, punctuation, or a time / connector ("at 5", "3pm", "for 30 min").
+    /// The text after a match is empty, punctuation, a time or a connector ("at 5", "3pm", "for 30 min").
     private static func dateContextFollows(_ rest: String) -> Bool {
-        rest.range(of: #"^\s*($|[,.;:!?)\-–—]|(at|by|for|from|until|to|@)\b|@|\d{1,2}(:\d\d)?\s*(am|pm|a\.m\.|p\.m\.)|\d{1,2}:\d\d|(noon|midday|midnight|morning|afternoon|evening|night)\b)"#,
+        rest.range(of: #"^\s*($|[,.;:!?)\-–—]|(at|by|for|from|until|to)\b|@|\d{1,2}([:.]\d\d)?\s*(am|pm|a\.m\.|p\.m\.)|\d{1,2}:\d\d|\d{1,2}\s*($|[,.;!?])|(noon|midday|midnight|morning|afternoon|evening|night)\b)"#,
                    options: [.regularExpression, .caseInsensitive]) != nil
     }
 
-    /// `d`'s day at `time` (hour 24 = 00:00 the next day). A time inside the spring-forward
-    /// gap moves forward by the gap (2:30 → 3:30), the same way whatever day was named.
-    private static func at(_ d: Date, _ time: Time, calendar: Calendar) -> Date? {
-        var base = d
-        var hour = time.hour
-        if hour >= 24, let next = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: d)) {
-            base = next
-            hour -= 24
-        }
-        var c = calendar.dateComponents([.year, .month, .day], from: base)
-        c.hour = hour
-        c.minute = time.minute
-        c.second = 0
-        return calendar.date(from: c)
+    // MARK: - Time pass
+
+    private struct TimeHit {
+        var time: Time
+        /// No am/pm and no minutes ("at 5", "tomorrow 9"): "tonight" makes it pm.
+        var bare: Bool
+        var duration: TimeInterval?
     }
 
-    private static func resolve(day: Day, time: Time?, tonightDefault: Bool, now: Date,
-                                calendar: Calendar) -> (Date?, Bool) {
-        let today = calendar.startOfDay(for: now)
-        func on(_ d: Date?) -> Date? {
-            guard let d else { return nil }
-            guard let time else { return d }
-            return at(d, time, calendar: calendar)
-        }
-        func plus(_ days: Int) -> Date? { calendar.date(byAdding: .day, value: days, to: today) }
-
-        switch day.kind {
-        case .none:
-            guard time != nil, let candidate = on(today) else { return (nil, false) }
-            return (candidate > now ? candidate : on(plus(1)), true)
-        case .offset(let n):
-            guard let candidate = on(plus(n)) else { return (nil, false) }
-            if tonightDefault, n == 0, candidate <= now {
-                // "tonight" after 20:00: an hour from now, rounded up to the next quarter hour.
-                let quarter: TimeInterval = 15 * 60
-                let later = now.addingTimeInterval(3600)
-                return (Date(timeIntervalSinceReferenceDate: (later.timeIntervalSinceReferenceDate / quarter).rounded(.up) * quarter), true)
+    private static func timePass(_ scan: inout Scanner, after date: DateHit?, calendar: Calendar) -> TimeHit? {
+        if let m = scan.take(Pattern.range12),
+           let sh = m.group(1).flatMap(Int.init), let eh = m.group(5).flatMap(Int.init),
+           (1...12).contains(sh), (1...12).contains(eh) {
+            let sm = (m.group(2) ?? m.group(3)).flatMap(Int.init) ?? 0
+            let em = (m.group(6) ?? m.group(7)).flatMap(Int.init) ?? 0
+            let endPM = m.group(8)!.lowercased().hasPrefix("p")
+            let end = hour24(eh, pm: endPM) * 60 + em
+            var start: Int
+            if let own = m.group(4) {
+                start = hour24(sh, pm: own.lowercased().hasPrefix("p")) * 60 + sm
+            } else {
+                start = hour24(sh, pm: endPM) * 60 + sm
+                if start > end { start = hour24(sh, pm: !endPM) * 60 + sm }
             }
-            return (candidate, time != nil)
-        case .date(let year, let month, let d):
-            let thisYear = calendar.component(.year, from: now)
-            func make(_ y: Int) -> Date? { calendar.date(from: DateComponents(year: y, month: month, day: d)) }
-            guard var date = make(year ?? thisYear) else { return (nil, false) }
-            if year == nil, date < today, let next = make(thisYear + 1) { date = next }
-            return (on(date), time != nil)
-        case .weekday(let w, let strict):
-            let todayW = calendar.component(.weekday, from: now)
-            var ahead = (w - todayW + 7) % 7
-            if strict && ahead == 0 { ahead = 7 }
-            guard var date = on(plus(ahead)) else { return (nil, false) }
-            if !strict, ahead == 0, time != nil, date <= now, let later = on(plus(7)) { date = later }
-            return (date, time != nil)
+            var length = end - start
+            if length <= 0 { length += 24 * 60 }
+            return TimeHit(time: (start / 60, start % 60), bare: false, duration: TimeInterval(length * 60))
         }
-    }
-
-    // MARK: - Times
-
-    private static func takeTime(_ scan: inout Scanner) -> Time? {
-        if let m = scan.take(Pattern.meridiem), var h = m.group(1).flatMap(Int.init), (1...12).contains(h) {
-            let minute = m.group(2).flatMap(Int.init) ?? 0
-            let pm = m.group(3)?.lowercased().hasPrefix("p") ?? false
-            if h == 12 { h = 0 }
-            return (pm ? h + 12 : h, minute)
+        if let m = scan.take(Pattern.range24),
+           let sh = m.group(1).flatMap(Int.init), let sm = m.group(2).flatMap(Int.init),
+           let eh = m.group(3).flatMap(Int.init), let em = m.group(4).flatMap(Int.init) {
+            var length = (eh * 60 + em) - (sh * 60 + sm)
+            if length <= 0 { length += 24 * 60 }
+            return TimeHit(time: (sh, sm), bare: false, duration: TimeInterval(length * 60))
+        }
+        if let m = scan.take(Pattern.meridiem), let h = m.group(1).flatMap(Int.init), (1...12).contains(h) {
+            let minute = (m.group(2) ?? m.group(3)).flatMap(Int.init) ?? 0
+            return TimeHit(time: (hour24(h, pm: m.group(4)!.lowercased().hasPrefix("p")), minute), bare: false)
         }
         if let m = scan.take(Pattern.clock), let h = m.group(1).flatMap(Int.init), let mi = m.group(2).flatMap(Int.init) {
-            return (h, mi)
+            return TimeHit(time: (h, mi), bare: false)
         }
         if let m = scan.take(Pattern.namedTimeAfterAt) ?? scan.take(Pattern.namedTime) {
-            // Midnight is the end of the day named (or of today): 00:00 the day after.
-            return m.group(1)?.lowercased() == "midnight" ? (24, 0) : (12, 0)
+            // Midnight is the end of the day named (or of today): hour 24.
+            return TimeHit(time: m.group(1)?.lowercased() == "midnight" ? (24, 0) : (12, 0), bare: false)
         }
-        if let m = scan.take(Pattern.bareHour), let h = m.group(1).flatMap(Int.init), (0...23).contains(h) {
-            return bareHour(h)
+        if let m = scan.take(Pattern.atHour), let h = m.group(1).flatMap(Int.init), (0...23).contains(h) {
+            return TimeHit(time: (h, 0), bare: true)
+        }
+        // A bare hour only right after a day word or weekday, at the end or before punctuation.
+        if let date, case .absolute = date.kind {} else if let date,
+           let m = scan.take(Pattern.bareHourAfterDate, from: date.end),
+           let h = m.group(1).flatMap(Int.init), (0...23).contains(h) {
+            return TimeHit(time: (h, 0), bare: true)
         }
         return nil
     }
 
-    /// "at 5" is 17:00: people rarely mean 5 in the morning without saying so.
-    private static func bareHour(_ h: Int) -> Time {
-        ((1...7).contains(h) ? h + 12 : h, 0)
+    private static func hour24(_ h: Int, pm: Bool) -> Int {
+        let base = h == 12 ? 0 : h
+        return pm ? base + 12 : base
     }
 
     private static func partOfDay(_ word: String) -> Time? {
@@ -260,27 +309,70 @@ public enum QuickAddParser {
         }
     }
 
-    // MARK: - NSDataDetector fallback
+    // MARK: - Combine
 
-    private static func detect(_ scan: inout Scanner, calendar: Calendar) -> (Date, Bool)? {
-        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.date.rawValue) else { return nil }
-        let text = scan.remaining
-        let ns = text as NSString
-        guard let match = detector.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)),
-              let date = match.date else { return nil }
-        let found = ns.substring(with: match.range)
-        // Only absolute dates: relative ones ("fri", "next week") were resolved against the
-        // real clock, not `now`.
-        guard found.range(of: #"\b\d{4}\b|\d{1,4}[-/.]\d{1,2}"#, options: .regularExpression) != nil else { return nil }
-        var mac = Calendar(identifier: .gregorian)
-        mac.timeZone = match.timeZone ?? .current
-        let c = mac.dateComponents([.year, .month, .day, .hour, .minute], from: date)
-        let timed = found.range(of: #"\d:\d\d|\d\s*[ap]\.?m\b|noon|midnight"#, options: [.regularExpression, .caseInsensitive]) != nil
-        var parts = DateComponents(year: c.year, month: c.month, day: c.day)
-        if timed { parts.hour = c.hour; parts.minute = c.minute }
-        guard let placed = calendar.date(from: parts) else { return nil }
-        scan.mask(match.range)
-        return (placed, timed)
+    private static func combine(date: DateHit?, time: TimeHit?, now: Date, calendar: Calendar) -> (Date?, Bool, Bool) {
+        let today = calendar.startOfDay(for: now)
+        func plus(_ days: Int) -> Date? { calendar.date(byAdding: .day, value: days, to: today) }
+
+        var t = time?.time
+        if let time, time.bare {
+            let h = time.time.hour
+            let pmRange = date?.tonight == true ? 1...11 : 1...7
+            if pmRange.contains(h) { t = (h + 12, time.time.minute) }
+        }
+
+        guard let date else {
+            guard let t, let candidate = at(today, t, calendar: calendar) else { return (nil, false, false) }
+            return (candidate > now ? candidate : at(plus(1) ?? today, t, calendar: calendar), true, false)
+        }
+
+        // The day the date pass named.
+        let base: Date?
+        var plainToday = false
+        switch date.kind {
+        case .absolute(let d): base = d
+        case .offset(let n): base = plus(n)
+        case .weekday(let w, let mode):
+            var ahead = (w - calendar.component(.weekday, from: now) + 7) % 7
+            if mode == .next, ahead == 0 { ahead = 7 }
+            plainToday = mode == .plain && ahead == 0
+            base = plus(ahead)
+        }
+        guard let base else { return (nil, false, false) }
+
+        if let t {
+            guard var due = at(base, t, calendar: calendar) else { return (nil, false, false) }
+            if plainToday, due <= now, let later = plus(7).flatMap({ at($0, t, calendar: calendar) }) { due = later }
+            return (due, true, due < now)
+        }
+        if let part = date.partOfDay {
+            guard let due = at(base, part, calendar: calendar) else { return (nil, false, false) }
+            if date.tonight, due <= now {
+                // "tonight" after 20:00: an hour from now, rounded up to the next quarter hour.
+                let quarter: TimeInterval = 15 * 60
+                let later = now.addingTimeInterval(3600).timeIntervalSinceReferenceDate
+                return (Date(timeIntervalSinceReferenceDate: (later / quarter).rounded(.up) * quarter), true, false)
+            }
+            return (due, true, due < now)
+        }
+        return (base, false, base < today)
+    }
+
+    /// `d`'s day at `time` (hour 24 = 00:00 the next day), built from components so a time
+    /// in the spring-forward gap moves forward by the gap (2:30 → 3:30) whatever day it is.
+    static func at(_ d: Date, _ time: Time, calendar: Calendar) -> Date? {
+        var base = calendar.startOfDay(for: d)
+        var hour = time.hour
+        if hour >= 24, let next = calendar.date(byAdding: .day, value: 1, to: base) {
+            base = next
+            hour -= 24
+        }
+        var c = calendar.dateComponents([.year, .month, .day], from: base)
+        c.hour = hour
+        c.minute = time.minute
+        c.second = 0
+        return calendar.date(from: c)
     }
 
     // MARK: - Helpers
@@ -332,23 +424,35 @@ public enum QuickAddParser {
         static let number = #"(an?|half\s+an?|\d+(?:\.\d+)?)"#
         /// Whole words only: "decaf", "mayo", "junk" and "marshmallows" are not months.
         static let monthNames = #"(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?![a-z])\.?"#
+        /// Slash or dotted numeric dates, read differently per locale: never parsed.
+        static let numericDate = #"\b\d{1,4}/\d{1,2}(?:/\d{2,4})?\b|\b\d{1,2}\.\d{1,2}\.\d{2,4}\b"#
         static let duration = re(#"\bfor\s+"# + number + #"\s*(hours?|hrs?|h|minutes?|mins?|m)\b(?:\s*(\d{1,2})\s*(?:minutes?|mins?|m)\b)?"#)
-        static let relative = re(#"\bin\s+"# + number + #"\s*(hours?|hrs?|h|minutes?|mins?|m|days?|d|weeks?|wks?)\b"#)
+        static let relativeTime = re(#"\bin\s+"# + number + #"\s*(hours?|hrs?|h|minutes?|mins?|m)\b"#)
+        static let relativeDays = re(#"\bin\s+"# + number + #"\s*(days?|d|weeks?|wks?)\b"#)
+        /// 1 year, 2 month, 3 day.
+        static let iso = re(#"(?:\bon\s+)?\b(\d{4})-(\d{2})-(\d{2})\b"#)
         /// 1 "on", 2 month, 3 day, 4 ordinal, 5 year.
         static let monthFirst = re(#"(?:\b(on)\s+)?\b"# + monthNames + #"\s+(\d{1,2})(st|nd|rd|th)?\b(?:,?\s+(\d{4})\b)?"#)
         /// 1 "on", 2 day, 3 ordinal, 4 month, 5 year.
         static let dayFirst = re(#"(?:\b(on)\s+)?\b(\d{1,2})(st|nd|rd|th)?\s+(?:of\s+)?"# + monthNames + #"(?:,?\s+(\d{4})\b)?"#)
-        /// 1 day word, 2 part of day, 3 bare hour ("tomorrow 9", not "tomorrow 9pm" or "9:30").
-        static let dayWord = re(#"\b(day\s+after\s+tomorrow|today|tonight|tomorrow|tmrw|tmr)\b(?:\s+(morning|afternoon|evening|night)\b)?(?:\s+(?:at\s+)?(\d{1,2})\b(?![:.]\d|\s*(?:am|pm|a\.m\.|p\.m\.|%|/|h\b|hrs?\b|hours?\b|m\b|mins?\b|minutes?\b)))?"#)
+        /// 1 day word, 2 part of day.
+        static let dayWord = re(#"\b(day\s+after\s+tomorrow|today|tonight|tomorrow|tmrw|tmr)\b(?:\s+(morning|afternoon|evening|night)\b)?"#)
         /// 1 on/next/this, 2 weekday (full or short).
         static let weekday = re(#"\b(?:(on|next|this)\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tues?|wed|thu(?:rs?)?|fri|sat|sun)(?![a-z])\.?"#)
         static let partOfDay = re(#"\b(?:this|in\s+the)\s+(morning|afternoon|evening)\b"#)
-        static let atPrefix = #"(?:(?:\b(?:at|by)|@)\s*)?"#
-        static let meridiem = re(atPrefix + #"\b(\d{1,2})(?::([0-5]\d))?\s*(am|pm|a\.m\.|p\.m\.)(?![a-z])"#)
+        static let atPrefix = #"(?:(?:\b(?:at|by|from)|@)\s*)?"#
+        static let meridiemWord = #"(am|pm|a\.m\.|p\.m\.)(?![a-z])"#
+        /// 1 h, 2 :mm, 3 .mm, 4 start meridiem, 5 h, 6 :mm, 7 .mm, 8 end meridiem.
+        static let range12 = re(atPrefix + #"\b(\d{1,2})(?::([0-5]\d)|\.([0-5]\d))?\s*(?:(am|pm)\s*)?(?:-|–|—|to|until)\s*(\d{1,2})(?::([0-5]\d)|\.([0-5]\d))?\s*"# + meridiemWord)
+        static let range24 = re(atPrefix + #"\b([01]?\d|2[0-3]):([0-5]\d)\s*(?:-|–|—|to|until)\s*([01]?\d|2[0-3]):([0-5]\d)\b"#)
+        /// 1 h, 2 :mm, 3 .mm, 4 meridiem.
+        static let meridiem = re(atPrefix + #"\b(\d{1,2})(?::([0-5]\d)|\.([0-5]\d))?\s*"# + meridiemWord)
         static let clock = re(atPrefix + #"\b([01]?\d|2[0-3]):([0-5]\d)\b"#)
         static let namedTimeAfterAt = re(#"(?:\b(?:at|by)\s+)\b(noon|midday|midnight)\b"#)
         static let namedTime = re(#"\b(noon|midday|midnight)\b"#)
-        static let bareHour = re(#"(?:\bat|@)\s*(\d{1,2})\b(?!\s*(?:%|:|/|\.\d))"#)
+        static let atHour = re(#"(?:\bat|@)\s*(\d{1,2})\b(?!\s*(?:%|:|/|\.\d))"#)
+        /// Anchored at the end of the date phrase.
+        static let bareHourAfterDate = re(#"^\s*(\d{1,2})\s*(?=$|[,.;!?])"#)
         static let eventWords = #"\b(meeting|meetings|lunch)\b|\bcall\s+with\b"#
 
         private static func re(_ p: String) -> NSRegularExpression {
@@ -373,16 +477,25 @@ private struct Scanner {
 
     var remaining: String { text as String }
 
-    private func all(_ re: NSRegularExpression) -> [Match] {
-        re.matches(in: text as String, range: NSRange(location: 0, length: text.length)).map { m in
+    private func all(_ re: NSRegularExpression, in range: NSRange? = nil) -> [Match] {
+        let r = range ?? NSRange(location: 0, length: text.length)
+        return re.matches(in: text as String, range: r).map { m in
             Match(range: m.range, groups: (0..<m.numberOfRanges).map { i -> String? in
-                let r = m.range(at: i)
-                return r.location == NSNotFound ? nil : text.substring(with: r)
+                let g = m.range(at: i)
+                return g.location == NSNotFound ? nil : text.substring(with: g)
             })
         }
     }
 
     func find(_ re: NSRegularExpression) -> Match? { all(re).first }
+
+    /// The first match that `accept` (given the text after it) agrees with. Not masked.
+    func find(_ re: NSRegularExpression, where accept: (Match, String) -> Bool) -> Match? {
+        all(re).first { accept($0, text.substring(from: $0.range.location + $0.range.length)) }
+    }
+
+    /// The text before `range`.
+    func before(_ range: NSRange) -> String { text.substring(to: range.location) }
 
     /// Finds and blanks out the first match.
     mutating func take(_ re: NSRegularExpression) -> Match? {
@@ -391,17 +504,12 @@ private struct Scanner {
         return m
     }
 
-    /// Blanks out the first match that `accept` (given the text after it) agrees with.
-    mutating func take(_ re: NSRegularExpression, where accept: (Match, String) -> Bool) -> Match? {
-        for m in all(re) {
-            let end = m.range.location + m.range.length
-            let rest = text.substring(from: end)
-            if accept(m, rest) {
-                mask(m.range)
-                return m
-            }
-        }
-        return nil
+    /// Finds and blanks out a match of `re` (anchored with `^`) starting at `location`.
+    mutating func take(_ re: NSRegularExpression, from location: Int) -> Match? {
+        guard location <= text.length,
+              let m = all(re, in: NSRange(location: location, length: text.length - location)).first else { return nil }
+        mask(m.range)
+        return m
     }
 
     mutating func mask(_ r: NSRange) {

@@ -112,6 +112,120 @@ final class DayTests: XCTestCase {
         }
     }
 
+    /// Fix round 2: the reviewer's probe table. New York, now = Fri 2026-10-23 14:00 unless
+    /// a row says otherwise. `due` nil means no date; `time` false means a day only.
+    func testQuickAddProbeTable() {
+        struct Row {
+            let text: String
+            var now: Date? = nil
+            let title: String
+            let due: Date?
+            var time = true
+            var event = false
+            var duration: TimeInterval? = nil
+            var past = false
+        }
+        let fri = date(2026, 10, 23, 14)
+        let rows: [Row] = [
+            // Month names inside words and "may".
+            Row(text: "order 6 decaf beans", title: "Order 6 decaf beans", due: nil, time: false),
+            Row(text: "buy 2 marshmallows", title: "Buy 2 marshmallows", due: nil, time: false),
+            Row(text: "bring 3 mayo jars", title: "Bring 3 mayo jars", due: nil, time: false),
+            Row(text: "read 4 junk mail", title: "Read 4 junk mail", due: nil, time: false),
+            Row(text: "call may 3 times", title: "Call may 3 times", due: nil, time: false),
+            Row(text: "dinner may 3", title: "Dinner", due: date(2027, 5, 3), time: false),
+            Row(text: "on may 3 dentist", title: "Dentist", due: date(2027, 5, 3), time: false),
+            Row(text: "may 3rd 2pm call with Sam", title: "Call with Sam", due: date(2027, 5, 3, 14), event: true),
+            // Weekdays.
+            Row(text: "call wed 3pm", title: "Call", due: date(2026, 10, 28, 15)),
+            Row(text: "fri review", title: "Review", due: date(2026, 10, 23), time: false),
+            Row(text: "review Thurs", title: "Review", due: date(2026, 10, 29), time: false),
+            Row(text: "sat down with Tom", title: "Sat down with Tom", due: nil, time: false),
+            Row(text: "sun 10am brunch", title: "Brunch", due: date(2026, 10, 25, 10)),
+            // A bare hour counts only right after the day, at the end: "9" stays here.
+            Row(text: "next mon standup 9", title: "Standup 9", due: date(2026, 10, 26), time: false),
+            Row(text: "wed 9", title: "Reminder", due: date(2026, 10, 28, 9)),
+            Row(text: "this friday lunch with Priya", title: "Lunch with Priya", due: date(2026, 10, 23, 12), event: true, past: true),
+            // Day words.
+            Row(text: "tomorrow 9", title: "Reminder", due: date(2026, 10, 24, 9)),
+            Row(text: "pay bill day after tomorrow", title: "Pay bill", due: date(2026, 10, 25), time: false),
+            Row(text: "tonight", now: date(2026, 10, 23, 19), title: "Reminder", due: date(2026, 10, 23, 20)),
+            Row(text: "tonight", now: date(2026, 10, 23, 23, 50), title: "Reminder", due: date(2026, 10, 24, 1)),
+            Row(text: "tonight 9", title: "Reminder", due: date(2026, 10, 23, 21)),
+            Row(text: "call tonight at 9", now: date(2026, 10, 23, 22), title: "Call", due: date(2026, 10, 23, 21), past: true),
+            Row(text: "tonight 11", title: "Reminder", due: date(2026, 10, 23, 23)),
+            Row(text: "tomorrow midnight", title: "Reminder", due: date(2026, 10, 25, 0)),
+            Row(text: "today 8", title: "Reminder", due: date(2026, 10, 23, 8), past: true),
+            // Times alone: today if ahead, else tomorrow.
+            Row(text: "at 12", title: "Reminder", due: date(2026, 10, 24, 12)),
+            Row(text: "noon", title: "Reminder", due: date(2026, 10, 24, 12)),
+            Row(text: "in 2 hours", title: "Reminder", due: date(2026, 10, 23, 16)),
+            Row(text: "in 90 minutes", title: "Reminder", due: date(2026, 10, 23, 15, 30)),
+            Row(text: "every day at 9", title: "Every day", due: date(2026, 10, 24, 9)),
+            Row(text: "every monday at 9", title: "Every monday", due: date(2026, 10, 26, 9)),
+            Row(text: "call mom at 5", title: "Call mom", due: date(2026, 10, 23, 17)),
+            Row(text: "call Priya at 5pm", title: "Call Priya", due: date(2026, 10, 23, 17)),
+            // A range is a start and a duration, so it is an event (C26).
+            Row(text: "meeting 3-4pm", title: "Meeting", due: date(2026, 10, 23, 15), event: true, duration: 3600),
+            Row(text: "sync 3pm-4:30pm", title: "Sync", due: date(2026, 10, 23, 15), event: true, duration: 5400),
+            Row(text: "review 3 to 4pm", title: "Review", due: date(2026, 10, 23, 15), event: true, duration: 3600),
+            Row(text: "standup 11-1pm tomorrow", title: "Standup", due: date(2026, 10, 24, 11), event: true, duration: 7200),
+            Row(text: "block 15:00-16:00", title: "Block", due: date(2026, 10, 23, 15), event: true, duration: 3600),
+            Row(text: "meet 10.30pm", title: "Meet", due: date(2026, 10, 23, 22, 30)),
+            // Absolute dates.
+            Row(text: "2027-12-01 renew passport", title: "Renew passport", due: date(2027, 12, 1), time: false),
+            Row(text: "call 2027-12-01 9pm", title: "Call", due: date(2027, 12, 1, 21)),
+            Row(text: "sync 2027-12-01 15:00", title: "Sync", due: date(2027, 12, 1, 15)),
+            // The absolute date wins; the conflicting word stays in the title.
+            Row(text: "pay 2027-12-01 tomorrow", title: "Pay tomorrow", due: date(2027, 12, 1), time: false),
+            // Numeric slash dates are locale-ambiguous: no date at all.
+            Row(text: "12/01 renew passport", title: "12/01 renew passport", due: nil, time: false),
+            Row(text: "renew 12/01/2027 9am", title: "Renew 12/01/2027 9am", due: nil, time: false),
+            // Days that do not exist.
+            Row(text: "jan 32", title: "Jan 32", due: nil, time: false),
+            Row(text: "feb 30 pay", title: "Feb 30 pay", due: nil, time: false),
+            Row(text: "2027-02-30 pay", title: "2027-02-30 pay", due: nil, time: false),
+            // A number that is not right before the end stays.
+            Row(text: "tomorrow 5 apples", title: "5 apples", due: date(2026, 10, 24), time: false),
+            Row(text: "buy tomorrow 3 apples", title: "Buy 3 apples", due: date(2026, 10, 24), time: false),
+            // No real clock: now in 2020.
+            Row(text: "pay rent tomorrow", now: date(2020, 3, 4, 10), title: "Pay rent", due: date(2020, 3, 5), time: false),
+            Row(text: "fri review", now: date(2020, 3, 4, 10), title: "Review", due: date(2020, 3, 6), time: false),
+            Row(text: "dinner may 3", now: date(2020, 3, 4, 10), title: "Dinner", due: date(2020, 5, 3), time: false),
+            Row(text: "jan 3 dentist", now: date(2020, 3, 4, 10), title: "Dentist", due: date(2021, 1, 3), time: false),
+            Row(text: "feb 29 leap", now: date(2020, 3, 4, 10), title: "Leap", due: date(2024, 2, 29), time: false),
+            Row(text: "call Priya at 5pm", now: date(2020, 3, 4, 10), title: "Call Priya", due: date(2020, 3, 4, 17)),
+            Row(text: "file 2020-03-01", now: date(2020, 3, 4, 10), title: "File", due: date(2020, 3, 1), time: false, past: true),
+            Row(text: "12/01 renew passport", now: date(2020, 3, 4, 10), title: "12/01 renew passport", due: nil, time: false),
+        ]
+        for r in rows {
+            let q = parse(r.text, at: r.now ?? fri)
+            let label = "\(r.text) @ \(r.now ?? fri)"
+            XCTAssertEqual(q.title, r.title, label)
+            XCTAssertEqual(q.due, r.due, label)
+            XCTAssertEqual(q.hasTime, r.due == nil ? false : r.time, label)
+            XCTAssertEqual(q.isEvent, r.event, label)
+            XCTAssertEqual(q.duration, r.duration, label)
+            XCTAssertEqual(q.isPast, r.past, label)
+        }
+    }
+
+    /// The three DST cases (New York).
+    func testQuickAddDaylightSavingCases() {
+        // Spring forward, 14 March 2027: 2:00–3:00 does not exist; both give 3:30.
+        let spring = date(2027, 3, 13, 22)
+        let a = parse("at 2:30am", at: spring).due
+        let b = parse("tomorrow at 2:30am", at: spring).due
+        XCTAssertEqual(a, b)
+        XCTAssertEqual(a.map { cal.dateComponents([.day, .hour, .minute], from: $0) },
+                       DateComponents(day: 14, hour: 3, minute: 30))
+        // Fall back, 7 November 2027: 1:30 happens twice; the first (still EDT) is taken.
+        let fall = parse("at 1:30am", at: date(2027, 11, 6, 22)).due
+        XCTAssertEqual(fall.map { cal.dateComponents([.day, .hour, .minute], from: $0) },
+                       DateComponents(day: 7, hour: 1, minute: 30))
+        XCTAssertEqual(fall.map { cal.timeZone.isDaylightSavingTime(for: $0) }, true)
+    }
+
     /// Review fix 1: month names never match inside words, and "may" needs date context.
     func testQuickAddMonthNamesAreWholeWords() {
         let now = date(2026, 10, 23, 14)
@@ -191,15 +305,15 @@ final class DayTests: XCTestCase {
         XCTAssertEqual(a.map { cal.component(.minute, from: $0) }, 30)
     }
 
-    /// Detector answers are kept only with a year or a numeric date.
-    func testQuickAddDetectorNeedsAbsoluteDate() {
+    /// Absolute dates are parsed by the phrase rules alone (no NSDataDetector).
+    func testQuickAddAbsoluteDatesWithoutDetector() {
         let now = date(2020, 3, 4, 10)
         XCTAssertEqual(parse("file taxes 1 Dec 2027", at: now).due, date(2027, 12, 1), "phrase rule with a year")
         XCTAssertEqual(parse("renew passport 2027-12-01", at: now).due, date(2027, 12, 1))
     }
 
-    /// Absolute dates the phrase rules do not cover go through NSDataDetector.
-    func testQuickAddDetectorFallback() {
+    /// ISO dates.
+    func testQuickAddISODate() {
         let q = parse("renew passport 2027-12-01", at: date(2026, 10, 23, 14))
         XCTAssertEqual(q.title, "Renew passport")
         XCTAssertEqual(q.due, date(2027, 12, 1))
@@ -257,7 +371,8 @@ final class DayTests: XCTestCase {
         func preview(_ s: String) -> String { QuickAddFormat.preview(parse(s, at: now), now: now, calendar: cal, locale: us) }
         XCTAssertEqual(preview("call Priya at 5pm"), "Reminder · Today 5:00\u{202F}PM")
         XCTAssertEqual(preview("meeting with Sam tomorrow 3pm for 30 min"), "Event · Tomorrow 3:00\u{202F}PM – 3:30\u{202F}PM")
-        XCTAssertEqual(preview("buy milk"), "Reminder")
+        XCTAssertEqual(preview("buy milk"), "Reminder · No date")
+        XCTAssertEqual(preview("today 8"), "Reminder · Today 8:00\u{202F}AM (past)")
         XCTAssertEqual(preview("pay rent monday"), "Reminder · Mon")
         XCTAssertEqual(preview("dentist on dec 3"), "Reminder · Dec 3")
     }

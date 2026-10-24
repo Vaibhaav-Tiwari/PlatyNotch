@@ -65,13 +65,15 @@ public enum RemindersDay {
 
 /// The line under the quick-add field: what will be created.
 public enum QuickAddFormat {
-    /// "Reminder · Today 5:00 PM", "Event · Sat 3:00 PM – 3:30 PM", "Reminder" (no date).
+    /// Exactly what will be saved: "Reminder · Today 5:00 PM", "Event · Sat 3:00 PM – 3:30 PM",
+    /// "Reminder · No date", and " (past)" for an explicit day whose time is over.
     public static func preview(_ q: QuickAdd, now: Date, calendar: Calendar, locale: Locale = .current) -> String {
         let kind = q.isEvent ? "Event" : "Reminder"
-        guard let due = q.due else { return kind }
+        guard let due = q.due else { return "\(kind) · No date" }
         var when = dayWord(due, now: now, calendar: calendar, locale: locale)
         if q.hasTime { when += " " + time(due, calendar: calendar, locale: locale) }
         if let end = q.eventEnd { when += " – " + time(end, calendar: calendar, locale: locale) }
+        if q.isPast { when += " (past)" }
         return "\(kind) · \(when)"
     }
 

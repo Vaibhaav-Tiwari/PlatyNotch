@@ -36,8 +36,9 @@ public final class CalendarService {
     @ObservationIgnored private var storage: EKEventStore?
     @ObservationIgnored private var changeObserver: NSObjectProtocol?
     @ObservationIgnored private var requesting = false
-    /// Join links found per event (eventIdentifier), redone only when the event changes.
-    @ObservationIgnored private var joinCache: [String: (modified: Date?, url: URL?)] = [:]
+    /// Join links per occurrence (eventIdentifier + start, the meeting id), redone when the
+    /// event's `lastModifiedDate` changes. Events without one are never cached.
+    @ObservationIgnored private var joinCache: [String: (modified: Date, url: URL?)] = [:]
     /// True while the meeting widget runs: only then are events read and changes observed.
     @ObservationIgnored public private(set) var watching = false
 
@@ -127,18 +128,18 @@ public final class CalendarService {
                                                  calendars: nil)
         var found: [CalendarMeeting] = []
         var colors: [String: CGColor] = [:]
-        var cache: [String: (modified: Date?, url: URL?)] = [:]
+        var cache: [String: (modified: Date, url: URL?)] = [:]
         for e in store.events(matching: predicate) {
             let key = e.eventIdentifier ?? e.calendarItemIdentifier
             let id = "\(key)@\(Int(e.startDate.timeIntervalSince1970))"
             let title = e.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let joinURL: URL?
-            if let hit = joinCache[key] ?? cache[key], hit.modified == e.lastModifiedDate {
+            if let modified = e.lastModifiedDate, let hit = joinCache[id], hit.modified == modified {
                 joinURL = hit.url
             } else {
                 joinURL = MeetingLinks.firstJoinURL(url: e.url, location: e.location, notes: e.notes)
             }
-            cache[key] = (e.lastModifiedDate, joinURL)
+            if let modified = e.lastModifiedDate { cache[id] = (modified, joinURL) }
             found.append(CalendarMeeting(id: id, title: title.isEmpty ? "Untitled event" : title,
                                          start: e.startDate, end: e.endDate, isAllDay: e.isAllDay,
                                          declined: Self.isDeclined(e), joinURL: joinURL))
