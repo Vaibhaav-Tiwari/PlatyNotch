@@ -446,6 +446,15 @@ final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost, FileAct
         afterChange()
     }
 
+    // MARK: - Baskets (R4)
+
+    /// The shelf's store as the target of `ShelfStore.transfer` (a basket's Move All to
+    /// Shelf); nil while the shelf is off.
+    var transferTarget: ShelfStore? { isRunning ? store : nil }
+
+    /// Items arrived in the store by `transfer`: the tile shows them.
+    func itemsArrived() { afterChange() }
+
     /// Settings › "Delete Kept Copies": the set-aside index and every copy no item lists.
     func deleteKeptFiles() {
         store?.deleteKeptFiles(keeping: receiving)
