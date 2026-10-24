@@ -14,7 +14,6 @@ struct GamesTab: View {
     let host: GameHost
     @Environment(\.gamePanel) private var panel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var scheme
     @State private var surfaceID = UUID()
     @State private var focused = false
 
@@ -111,14 +110,18 @@ struct GamesTab: View {
 
     @ViewBuilder private var overlay: some View {
         if let text = overlayText {
-            VStack(spacing: 3) {
-                Text(verbatim: text.title).font(.system(size: 13, weight: .semibold))
-                Text(verbatim: text.detail).font(.system(size: 11)).foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(Theme.surface(scheme).opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
+            GameOverlayCard(title: text.title, detail: text.detail)
+                .transition(overlayTransition)
         }
+    }
+
+    /// Snake's game-over card waits for the death animation; everything else (and every
+    /// card with Reduce Motion) appears at once.
+    private var overlayTransition: AnyTransition {
+        let s = host.session
+        guard !reduceMotion, s.kind == .snake, s.phase == .over else { return .identity }
+        let delayed = Animation.easeIn(duration: 0.18).delay(SnakeCanvas.deathDuration)
+        return .asymmetric(insertion: .opacity.animation(delayed), removal: .identity)
     }
 
     private var overlayText: (title: String, detail: String)? {
@@ -145,7 +148,8 @@ struct GamesTab: View {
 struct GameBoard: View {
     let session: GameSession
     let date: Date
-    /// Decorative motion (food pulse, bird tilt); false with Reduce Motion.
+    /// Decorative motion (food pulse, wing beat and tilt, 2048 slides, Snake's death);
+    /// false with Reduce Motion.
     let decorate: Bool
 
     var body: some View {
@@ -155,9 +159,9 @@ struct GameBoard: View {
 
     @ViewBuilder private var content: some View {
         switch session.kind {
-        case .snake: SnakeView(snake: session.snake, pulse: pulse)
+        case .snake: SnakeView(snake: session.snake, pulse: pulse, animate: decorate)
         case .tetris: TetrisView(tetris: session.tetris)
-        case .twenty48: Game2048View(game: session.game2048)
+        case .twenty48: Game2048View(game: session.game2048, animate: decorate)
         case .flappy: FlappyView(flappy: session.flappy, decorate: decorate)
         }
     }
@@ -166,5 +170,22 @@ struct GameBoard: View {
         guard decorate, session.isRunning else { return 0 }
         let t: Double = date.timeIntervalSinceReferenceDate * 5
         return (sin(t) + 1) / 2
+    }
+}
+
+/// The card over a board: "Press Space", "Paused", "Game over".
+struct GameOverlayCard: View {
+    let title: String
+    let detail: String
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        VStack(spacing: 3) {
+            Text(verbatim: title).font(.system(size: 13, weight: .semibold))
+            Text(verbatim: detail).font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Theme.surface(scheme).opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
     }
 }

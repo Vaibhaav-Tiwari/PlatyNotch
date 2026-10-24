@@ -128,6 +128,21 @@ public struct Tetris: Equatable, Sendable {
         }
     }
 
+    /// Where the falling piece would land with a hard drop (the ghost piece): the same
+    /// piece moved down as far as it fits. Equal to `current` when it already rests.
+    public var ghost: TetrisPiece {
+        var p = current
+        while true {
+            var below = p
+            below.y += 1
+            guard fits(below) else { return p }
+            p = below
+        }
+    }
+
+    /// The level shown beside the well: one more every 10 lines.
+    public var level: Int { linesCleared / 10 + 1 }
+
     /// Gravity: down one row, or lock where it is.
     public mutating func tick() {
         guard !isOver else { return }

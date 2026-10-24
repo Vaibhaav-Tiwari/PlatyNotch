@@ -36,7 +36,7 @@ enum PlatyRenders {
 
     /// Writes the art review set: the contact sheet (every mood at 22 and 96 pt on dark
     /// and light, at 1x and 2x), the icon at 1024 / 128 / 32 / 16 px, the menu bar
-    /// template on light and dark bars, and the pill. Returns how many files.
+    /// template on light and dark bars, the pill, and every game (`games/`, `GameRenders`). Returns how many files.
     static func writeGallery(to dir: URL) -> Result<Int, Failure> {
         var count = 0
         do {
@@ -65,6 +65,8 @@ enum PlatyRenders {
             // Pill size on a Retina display (22 pt at 2x), blown up 4x without smoothing.
             try write(zoomed(png(PlatyPillStrip(), scale: 2), by: 4), to: dir.appendingPathComponent("pill-moods-22pt@2x-zoom4.png"))
             count += 1
+            // Every game in several states, mid-animation frames included.
+            count += try GameRenders.write(to: dir.appendingPathComponent("games", isDirectory: true))
         } catch let f as Failure {
             return .failure(f)
         } catch {
@@ -104,7 +106,7 @@ enum PlatyRenders {
         return NSBitmapImageRep(cgImage: out).representation(using: .png, properties: [:])
     }
 
-    private static func write(_ data: Data?, to url: URL) throws {
+    static func write(_ data: Data?, to url: URL) throws {
         guard let data else { throw Failure(message: "\(url.lastPathComponent) did not render") }
         do { try data.write(to: url) } catch { throw Failure(message: "cannot write \(url.path)") }
     }

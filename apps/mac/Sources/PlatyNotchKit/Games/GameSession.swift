@@ -150,8 +150,8 @@ public struct GameResult: Equatable, Sendable {
 /// `apply`, 2048 `move`, Flappy `step(dt:)`. A blocked game takes no frame; keys reach it
 /// only while it plays and nothing blocks it, and never while an approval is pending.
 public struct GameSession: Equatable, Sendable {
-    /// Seconds per Snake step.
-    public static let snakeStep: Double = 0.11
+    /// Seconds per Snake step at the start (`Snake.stepInterval` shortens it as it grows).
+    public static let snakeStep: Double = Snake.slowestStep
     /// Flappy's fixed physics step.
     public static let flappyStep: Double = 1.0 / 120.0
     /// The most time one frame may add (a hitch never teleports the game).
@@ -256,9 +256,11 @@ public struct GameSession: Equatable, Sendable {
         accumulator += min(max(time - last, 0), Self.maxFrameGap)
         switch kind {
         case .snake:
-            while accumulator >= Self.snakeStep, !snake.isOver {
+            // The interval is read before every step: eating shortens the next one.
+            while accumulator >= snake.stepInterval, !snake.isOver {
+                let interval = snake.stepInterval
                 snake.step()
-                accumulator -= Self.snakeStep
+                accumulator -= interval
             }
         case .tetris:
             let interval = tetris.tickInterval
@@ -347,22 +349,25 @@ public enum GameLayout {
     /// Game picker, score and best.
     public static let headerHeight: CGFloat = 22
     public static let spacing: CGFloat = 6
-    /// Where a board (and its overlay) sits.
-    public static let boardArea = CGSize(width: 520, height: 252)
+    /// Where a board (and its overlay) sits: all the room the expanded panel's tab has
+    /// below its header (`PanelLayout.expandedSize` less the notch inset, padding and the
+    /// tab bar; checked in tests).
+    public static let boardArea = CGSize(width: 528, height: 270)
     public static var tabSize: CGSize {
         let h: CGFloat = headerHeight + spacing + boardArea.height
         return CGSize(width: boardArea.width, height: h)
     }
 
-    public static let snakeCell: CGFloat = 20
-    public static let tetrisCell: CGFloat = 12
-    /// Next piece, score and lines beside the Tetris well.
+    public static let snakeCell: CGFloat = 21
+    /// 13 pt cells: a 130 × 260 portrait well, nearly the board area's full height.
+    public static let tetrisCell: CGFloat = 13
+    /// The stats column (left) and the next-pieces column (right) of the Tetris well.
     public static let tetrisSide: CGFloat = 96
-    public static let tetrisGap: CGFloat = 12
-    public static let tile: CGFloat = 54
-    public static let tileGap: CGFloat = 6
-    /// Flappy world units to points.
-    public static let flappyScale: CGFloat = 1.6
+    public static let tetrisGap: CGFloat = 14
+    public static let tile: CGFloat = 58
+    public static let tileGap: CGFloat = 7
+    /// Flappy world units (the original's pixels) to points.
+    public static let flappyScale: CGFloat = 0.6
 
     public static func boardSize(_ kind: GameKind) -> CGSize {
         switch kind {
@@ -370,13 +375,14 @@ public enum GameLayout {
             return CGSize(width: snakeCell * 24, height: snakeCell * 8)
         case .tetris:
             let well: CGFloat = tetrisCell * 10
-            return CGSize(width: well + tetrisGap + tetrisSide, height: tetrisCell * 20)
+            let sides: CGFloat = (tetrisSide + tetrisGap) * 2
+            return CGSize(width: well + sides, height: tetrisCell * 20)
         case .twenty48:
             let side: CGFloat = tile * 4 + tileGap * 5
             return CGSize(width: side, height: side)
         case .flappy:
             let w: CGFloat = CGFloat(Flappy.width) * flappyScale
-            let h: CGFloat = CGFloat(Flappy.height) * flappyScale
+            let h: CGFloat = CGFloat(Flappy.height + Flappy.groundDepth) * flappyScale
             return CGSize(width: w, height: h)
         }
     }

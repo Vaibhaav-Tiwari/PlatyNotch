@@ -953,3 +953,33 @@ cd apps/mac && swift build && PLATYNOTCH_RENDER_DIR=/tmp/pn-renders PLATYNOTCH_H
 - [ ] **191. Ringing card pulse.** Let a 5 s timer ring with the panel closed: the ring
   around the bell grows and fades smoothly; Activity Monitor shows PlatyNotch near 0% CPU
   while it rings. With Reduce Motion the ring is still.
+
+## Games polish (feedback round 1)
+
+Automated: `GamesPolishTests` (Flappy's original-like physics: fall-speed cap, one flap
+hops a tenth of the sky, a simple pilot clears 25 pipes on 8 seeds, gaps in the middle
+60%, wing beat and tilt curve; 2048 move reports agree with the grid over 400 random
+moves and are deterministic; the Tetris ghost is where a hard drop locks; Snake's speed
+curve and crash point). Art and mid-animation frames:
+`.build/debug/PlatyNotch --platy-gallery <dir>` (with `PLATYNOTCH_HOME` set to a temp dir)
+writes `<dir>/games/*.png`.
+
+- [ ] **192. Flappy feels like the original.** Play Flappy: a flap is a short hop, the bird
+  falls at a capped speed (never a plunge), the gap is about four birds tall, pipes come
+  about every 1.4 s. Flying into the top of the sky stops the bird without ending the game.
+  The wing beats while it flies; the bird tilts nose-up after a flap and dives as it falls;
+  the ground's stripes scroll with the pipes. With Reduce Motion the wing is still and
+  the bird stays level.
+- [ ] **193. 2048 slides.** Each move slides the tiles from their old cell to their new
+  one (about a tenth of a second), a merged tile pops, the new tile grows in. Press
+  arrows quickly: every press is one move (none lost, none doubled) and the slide restarts
+  from the latest grid. With Reduce Motion the grid changes at once.
+- [ ] **194. Tetris well.** The well is about 130 × 260 pt with the stats on the left and
+  the next three pieces on the right. Grid lines are faint; the ghost outline shows where
+  the piece will land and a soft lane joins the piece to it, so the column and row are
+  plain near the bottom.
+- [ ] **195. Snake pace and death.** Snake starts slower than before (0.16 s a step) and
+  speeds up a little with every food, topping out at 0.07 s after 33. Run into yourself:
+  the hit cell flashes red three times with a ring, the eyes turn to crosses, the body
+  fades from head to tail, and only then (about 1.1 s) "Game over" appears. Into a wall:
+  the same at the head. With Reduce Motion the faded snake and the card show at once.
