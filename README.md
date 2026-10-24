@@ -146,7 +146,10 @@ the pointer and a small basket appears there to drop it into (up to 6 baskets of
 items; ⌃⌥B brings the next one forward). Shaking while selecting text or drawing never
 makes one, and a basket never covers the notch or an approval request. Baskets are
 cleared when PlatyNotch quits or Baskets is turned off, deleting only the copies they
-made, unless the basket or one of its items is pinned.
+made, unless the basket or one of its items is pinned. To keep a copy a basket made
+(a dropped image, a file from Photos, an action's result), drag it out to a folder or
+use Save As…: anything that points at the copy inside `baskets.noindex` stops working
+once the basket is cleared.
 
 **Finder service and links** (no new permission): Finder › Services › Add to
 PlatyNotch Shelf is always listed but only shows "Turn on the Shelf" while the shelf is

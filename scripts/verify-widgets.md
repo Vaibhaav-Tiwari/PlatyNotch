@@ -1293,8 +1293,10 @@ screen). Turn on Settings › Widgets › Power features › Baskets.
 - [ ] **253. Basket menu.** Right-click a basket's title: Pin, Color, Rename…, Actions,
   Move All to Shelf (moves them; turn the Shelf off and it is greyed), Clear, Close.
 - [ ] **254. Merge and close.** Drag one basket's title onto another: its items move there
-  and it closes. Close a basket with items: it asks Move to Shelf / Discard / Cancel;
-  Discard deletes only copies in `baskets.noindex`, never your own file.
+  and it closes. Close a basket with items: it asks inside the basket (Move to Shelf / Discard /
+  Cancel), no alert, and a pending approval card stays clickable meanwhile; Discard
+  deletes only copies in `baskets.noindex`, never your own file. Rename… opens a small
+  field beside the basket; the frontmost app stays frontmost.
 - [ ] **255. Switcher.** Press ⌃⌥B a few times: each basket comes forward in turn with a
   strip naming them; with no baskets it makes one at the pointer. Choose another
   shortcut or Off in Settings: the old one stops working.
@@ -1302,6 +1304,8 @@ screen). Turn on Settings › Widgets › Power features › Baskets.
   the pinned one comes back, where it was. `ls ~/Library/Application\ Support/PlatyNotch/baskets.noindex`
   lists only its folder.
 - [ ] **257. Full screen.** With Appearance › Hide in full screen on, make a basket, then
-  enter a full-screen app: the basket hides; shake a file drag or press ⌃⌥B: it shows.
+  enter a full-screen app on that display: the basket hides (one on another display
+  stays); shake a file drag or press ⌃⌥B: it shows. At the default sensitivity a
+  brisk shake (about 3 per second) is enough; a slow wiggle never is.
 - [ ] **258. Off means off.** Turn Baskets off: every basket closes (unpinned ones cleared),
   ⌃⌥B does nothing and shaking a drag makes nothing.
