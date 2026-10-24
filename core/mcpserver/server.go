@@ -18,7 +18,7 @@ import (
 )
 
 // Instructions is sent to clients in the initialize result.
-const Instructions = "Personal memory from the user's screen, stored on their Mac. Use search_memory for anything the user saw, read or wrote; use list_open_loops for commitments." + untrusted
+const Instructions = "Personal memory from the user's screen, stored on their Mac. Use search_memory for anything the user saw, read or wrote; use list_open_loops for commitments; use memory_graph for how apps, threads, sites and loops connect." + untrusted
 
 // untrusted ends the instructions and the descriptions of tools that return
 // captured screen text, which may contain prompt injection.
@@ -49,7 +49,7 @@ type Deps struct {
 	Resolve func(ctx context.Context, s protocol.LoopSetStatus) error
 }
 
-// NewServer builds the MCP server with the five memory tools registered.
+// NewServer builds the MCP server with the six memory tools registered.
 func NewServer(deps Deps) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{Name: serverName, Version: serverVersion}, &mcp.ServerOptions{Instructions: Instructions})
 	registerTools(s, deps)

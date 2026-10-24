@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory/graph"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory/loops"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory/search"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
@@ -84,6 +85,13 @@ type activityOut struct {
 	Apps  []activityApp `json:"apps"`
 }
 
+type graphIn struct {
+	Since    string `json:"since,omitempty" jsonschema:"only activity at or after this RFC 3339 time; overrides hours"`
+	Hours    int    `json:"hours,omitempty" jsonschema:"look-back window in hours, default 168"`
+	App      string `json:"app,omitempty" jsonschema:"restrict to one app, by name or bundle id"`
+	MaxNodes int    `json:"max_nodes,omitempty" jsonschema:"keep only the heaviest nodes, default 100, at most 500"`
+}
+
 type resolveIn struct {
 	ID       string `json:"id" jsonschema:"loop id from list_open_loops"`
 	Evidence string `json:"evidence" jsonschema:"why the loop is done, e.g. what the user did"`
@@ -115,6 +123,12 @@ func registerTools(s *mcp.Server, d Deps) {
 			out, err := doActivity(d, in)
 			return nil, out, err
 		})
+	mcp.AddTool(s, &mcp.Tool{Name: "memory_graph", Description: "The user's memory as a graph for a time window: nodes are apps, threads (windows, documents, conversations), sites and open loops, weighted by activity; " +
+		"edges are app→thread (in), thread→site (on), loop→thread (detected_in), loop→app (from_app) and thread↔thread (together: switched between). Thread node ids work with get_thread." + untrusted},
+		func(ctx context.Context, _ *mcp.CallToolRequest, in graphIn) (*mcp.CallToolResult, any, error) {
+			out, err := doGraph(d, in)
+			return nil, out, err
+		})
 	mcp.AddTool(s, &mcp.Tool{Name: "resolve_loop", Description: "Mark an open loop as resolved, with evidence. Needs PlatyNotch to be running."},
 		func(ctx context.Context, _ *mcp.CallToolRequest, in resolveIn) (*mcp.CallToolResult, any, error) {
 			out, err := doResolve(ctx, d, in)
@@ -139,6 +153,8 @@ func CallTool(ctx context.Context, deps Deps, name string, args json.RawMessage)
 		return callTyped(args, func(in threadIn) (any, error) { return doThread(deps, in) })
 	case "recent_activity":
 		return callTyped(args, func(in activityIn) (any, error) { return doActivity(deps, in) })
+	case "memory_graph":
+		return callTyped(args, func(in graphIn) (any, error) { return doGraph(deps, in) })
 	case "resolve_loop":
 		return callTyped(args, func(in resolveIn) (any, error) { return doResolve(ctx, deps, in) })
 	}
@@ -296,6 +312,22 @@ func doActivity(d Deps, in activityIn) (any, error) {
 		out.Apps = append(out.Apps, *byApp[k])
 	}
 	return out, nil
+}
+
+func doGraph(d Deps, in graphIn) (any, error) {
+	d, err := d.ready()
+	if err != nil {
+		return nil, err
+	}
+	since, err := parseTime("since", in.Since)
+	if err != nil {
+		return nil, err
+	}
+	g, err := graph.Build(d.Store, protocol.MemoryGraphQuery{Since: since, Hours: in.Hours, App: in.App, MaxNodes: in.MaxNodes}, time.Now())
+	if err != nil {
+		return nil, fmt.Errorf("memory graph failed: %w", err)
+	}
+	return g, nil
 }
 
 func doResolve(ctx context.Context, d Deps, in resolveIn) (any, error) {
