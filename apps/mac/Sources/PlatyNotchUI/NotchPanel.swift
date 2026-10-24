@@ -6,7 +6,11 @@ import SwiftUI
 /// click-through except where the controller says the cursor is on the panel.
 final class NotchPanel: NSPanel {
     /// Set by the controller: true only when expanded or peeking an approval.
-    var allowsKey = false
+    /// The mode may take the keyboard (expanded, approval peek). Leaving such a mode
+    /// forgets the click: a later approval peek needs a click of its own.
+    var allowsKey = false {
+        didSet { if !allowsKey { clickedIn = false } }
+    }
     var onEscape: (() -> Void)?
 
     init(frame: CGRect) {
@@ -41,18 +45,21 @@ final class NotchPanel: NSPanel {
     override var canBecomeKey: Bool { allowsKey && clickedIn }
     override var canBecomeMain: Bool { false }
 
-    static func isPress(_ type: NSEvent.EventType) -> Bool {
-        type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown
-    }
+    /// A left click; right and other buttons never hand the panel the keyboard.
+    static func isPress(_ type: NSEvent.EventType) -> Bool { type == .leftMouseDown }
 
     /// Every event reaches the window here before AppKit decides on key status, so a
-    /// click anywhere in the content (SwiftUI or a layer-backed subview) counts.
+    /// click anywhere in the content (SwiftUI or a layer-backed subview) counts. A click
+    /// counts only while the mode may take the keyboard: a click on the compact pill or a
+    /// notice leaves nothing behind for a later approval peek (final re-review A4).
     override func sendEvent(_ event: NSEvent) {
         if Self.isPress(event.type) { noteMouseDown() }
         super.sendEvent(event)
     }
 
-    func noteMouseDown() { clickedIn = true }
+    func noteMouseDown() {
+        if allowsKey { clickedIn = true }
+    }
 
     override func resignKey() {
         super.resignKey()

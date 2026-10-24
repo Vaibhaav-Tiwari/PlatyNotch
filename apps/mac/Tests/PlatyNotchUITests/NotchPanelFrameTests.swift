@@ -28,6 +28,27 @@ final class NotchPanelFrameTests: XCTestCase {
 
     /// Final review A4: the panel becomes key only after a click in it, never because
     /// another of PlatyNotch's windows closed; losing key needs a new click.
+    /// Final re-review A4: a click while the mode cannot take the keyboard (the compact
+    /// pill, a notice) must not linger until an approval peek shows.
+    func testClickOutsideAKeyModeIsForgotten() {
+        let panel = NotchPanel(frame: .zero)
+        panel.allowsKey = false
+        panel.noteMouseDown()                       // a click on the pill
+        panel.allowsKey = true                      // later: the approval peek
+        XCTAssertFalse(panel.canBecomeKey, "the pill click does not count for the approval")
+    }
+
+    /// Leaving the key mode forgets a click.
+    func testLeavingTheKeyModeForgetsTheClick() {
+        let panel = NotchPanel(frame: .zero)
+        panel.allowsKey = true
+        panel.noteMouseDown()
+        XCTAssertTrue(panel.canBecomeKey)
+        panel.allowsKey = false
+        panel.allowsKey = true
+        XCTAssertFalse(panel.canBecomeKey, "leaving the key mode forgets the click")
+    }
+
     func testKeyOnlyAfterAClickInThePanel() {
         let panel = NotchPanel(frame: .zero)
         panel.allowsKey = true
@@ -40,7 +61,7 @@ final class NotchPanelFrameTests: XCTestCase {
         panel.resignKey()
         XCTAssertFalse(panel.canBecomeKey, "after losing key a new click is needed")
         XCTAssertTrue(NotchPanel.isPress(.leftMouseDown))
-        XCTAssertTrue(NotchPanel.isPress(.rightMouseDown))
+        XCTAssertFalse(NotchPanel.isPress(.rightMouseDown), "right clicks never hand it the keyboard")
         XCTAssertFalse(NotchPanel.isPress(.mouseMoved))
         XCTAssertFalse(NotchPanel.isPress(.keyDown))
     }
