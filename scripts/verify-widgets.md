@@ -1145,15 +1145,29 @@ block containing `- [ ] in code`.
 - [ ] **425. Read-only and locked notes.** `chmod 444` a note (or Finder › Get Info ›
   Locked) and tick one of its tasks: the tile says it is read-only and the file is
   unchanged.
-- [ ] **426. Quick note into the vault.** With the vault on, a quick note is appended to
-  `Daily/YYYY-MM-DD.md` (made if missing; an existing note keeps everything and gains one
-  line at the end). Set the daily folder to a folder that does not exist: the tile says
-  so and no folder is made. `../x` is refused in Settings.
+- [ ] **426. Quick note into the vault.** With the vault on and today's note missing, a
+  quick note is not added: the tile says "Today's note doesn't exist yet — open it in
+  Obsidian first." and no file appears. Open today's note in Obsidian (its template
+  runs), then add again: `Daily/YYYY-MM-DD.md` keeps everything and gains one line at the
+  end. With "Create today's note if missing" on, a missing note is made with just that
+  line. Set the daily folder to a folder that does not exist: the tile says so and no
+  folder is made. Make `Daily` a symlink to a folder outside the vault: nothing is
+  written there. `../x` is refused in Settings. A UTF-16 or Latin-1 note is never
+  appended to.
 - [ ] **427. Watching and idle.** Edit a note in Obsidian: the list follows within a few
-  seconds. Leave Obsidian open and idle for a minute (it rewrites
-  `.obsidian/workspace.json`): PlatyNotch stays under 1% CPU and does not rescan.
+  seconds, and only that note is read again (type steadily in a 20 000-note vault: CPU
+  stays low, no full walk). Create or rename a folder: one full walk. Leave Obsidian open
+  and idle for a minute (it rewrites `.obsidian/workspace.json`): PlatyNotch stays under
+  1% CPU and does not rescan. With the panel closed there is no periodic walk; while the
+  tile shows, one every 5 minutes. iCloud notes that are not downloaded are skipped.
 - [ ] **428. After a rebuild.** Rebuild (ad-hoc) and relaunch with the widget on: no
   prompt appears; the tile and settings ask to Turn On Again; until then nothing in the
   vault is read. Turn On Again… resumes (macOS may ask once more).
 - [ ] **429. Off and Forget.** Turning the widget off stops the folder watch (no CPU,
   nothing read). Forget clears the vault from Settings; its files are untouched.
+- [ ] **430. Recurring tasks and comments.** A task with `🔁 every week` shows a repeat
+  icon and "Tick it in Obsidian" instead of a tick box, and is never changed. Tasks inside
+  `%% … %%` comments are not listed.
+- [ ] **431. Ticks in quick succession.** Tick three tasks in today's note quickly and add
+  a quick note at once: all three are `[x]` and the note line is there (every write runs
+  one after another).

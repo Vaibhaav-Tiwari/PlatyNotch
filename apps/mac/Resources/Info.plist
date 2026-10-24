@@ -62,6 +62,12 @@
 	<string>PlatyNotch reads your notes vault for open tasks and adds your quick notes to today's daily note, only after you choose the vault in Settings. Ticking a task changes only its checkbox.</string>
 	<key>NSDocumentsFolderUsageDescription</key>
 	<string>PlatyNotch reads your notes vault for open tasks and adds your quick notes to today's daily note, only after you choose the vault in Settings. Ticking a task changes only its checkbox.</string>
+	<key>NSFileProviderDomainUsageDescription</key>
+	<string>PlatyNotch reads your notes vault for open tasks and adds your quick notes to today's daily note, only after you choose the vault in Settings. Ticking a task changes only its checkbox.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>PlatyNotch reads your notes vault for open tasks and adds your quick notes to today's daily note, only after you choose the vault in Settings. Ticking a task changes only its checkbox.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>PlatyNotch reads your notes vault for open tasks and adds your quick notes to today's daily note, only after you choose the vault in Settings. Ticking a task changes only its checkbox.</string>
 	<key>NSDownloadsFolderUsageDescription</key>
 	<string>PlatyNotch shows downloads in progress and a notice when one finishes, after you turn this on in Settings. It reads file names only, never their contents, and does nothing to a file unless you click.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
