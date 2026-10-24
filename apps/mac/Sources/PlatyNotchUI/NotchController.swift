@@ -501,6 +501,8 @@ extension NotchController: PanelSurfaceSink {
 
     public var hudWouldShow: Bool { machine.hudWouldShow }
 
+    public var coveredByFullScreen: Bool { fullScreen }
+
     /// What tests and `--smoke` feed the controller directly.
     enum DebugInput {
         case event(PanelEvent)

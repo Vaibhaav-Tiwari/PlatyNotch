@@ -181,9 +181,11 @@ final class WidgetRegistryTests: XCTestCase {
         let today = TodayServices(client: CoreClient(socketPath: "/nonexistent"))
         BuiltInWidgets.register(in: registry, store: AppStore(), today: today, persist: false)
         XCTAssertEqual(registry.orderedWidgets.map(\.id), ["music", "meeting", "focus", "loops", "time", "hud", "shelf", "clipboard",
-                                                           "reminders", "weather"])
+                                                           "reminders", "weather", "wellbeing"])
         XCTAssertEqual(registry.visibleWidgets.count, 6,
-                       "the HUD (needs Accessibility), clipboard history (C22), Reminders (private data) and weather (network) are off by default")
+                       "the HUD (needs Accessibility), clipboard history (C22), Reminders (private data), weather (network) "
+                       + "and wellbeing (nudges interrupt) are off by default")
+        XCTAssertFalse(registry.isEnabled(WellbeingWidget.widgetID))
         XCTAssertFalse(registry.isEnabled(RemindersWidget.widgetID))
         XCTAssertFalse(registry.isEnabled(WeatherWidget.widgetID))
         XCTAssertFalse(registry.isEnabled(ClipboardWidget.widgetID))

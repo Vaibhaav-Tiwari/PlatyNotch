@@ -36,6 +36,20 @@ public protocol PanelSurfaceSink: AnyObject {
     var hudWouldShow: Bool { get }
     /// The display the panel is on; nil before it is placed (it then matches any display).
     var displayID: CGDirectDisplayID? { get }
+    /// Whether a full-screen app covers this panel's display (`PanelContextProvider`).
+    var coveredByFullScreen: Bool { get }
+}
+
+extension PanelSurfaceSink {
+    public var coveredByFullScreen: Bool { false }
+}
+
+/// What a widget may read about the panels, read-only (C28): the wellbeing nudges hold
+/// back over full screen. Through `WidgetContext.panel`.
+@MainActor
+public protocol PanelContextProvider: AnyObject {
+    /// True while a full-screen app covers the display of any panel.
+    var fullScreen: Bool { get }
 }
 
 /// The transient surfaces widgets ask for (peeks, ringing, HUDs, the drag session),
@@ -211,6 +225,10 @@ public final class PanelSurfaces {
     private struct WeakSink {
         weak var sink: PanelSurfaceSink?
     }
+}
+
+extension PanelSurfaces: PanelContextProvider {
+    public var fullScreen: Bool { sinks.contains { $0.sink?.coveredByFullScreen == true } }
 }
 
 /// Which displays' panels would show a HUD sent now (`PanelSurfaces.hudReadiness`).

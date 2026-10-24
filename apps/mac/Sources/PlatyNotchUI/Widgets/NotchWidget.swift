@@ -109,6 +109,9 @@ public struct WidgetContext {
         self.openPanelHandler = openPanel
     }
 
+    /// Read-only panel state (whether a full-screen app covers a panel's display).
+    public var panel: PanelContextProvider { surfaces }
+
     /// Expands the panel on the main display, at a tab id when given (e.g. "today").
     public func openPanel(tab: String? = nil) { openPanelHandler(tab) }
 

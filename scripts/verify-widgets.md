@@ -533,3 +533,52 @@ Watch network with Little Snitch / LuLu or `nettop -p PlatyNotch` for the weathe
   it never shows as the side bubble.
 - [ ] **101. Signed build entitlements.** On a Developer ID build (`--sign`), Calendar and
   Reminders prompts still appear and work (the calendars entitlement covers both).
+
+## Task 8: water, stand and eye-break nudges
+
+Automated: `WellbeingTests` (Kit: due, priority, quiet hours across midnight and DST,
+idle as a break, water per day / 14 days) and `WellbeingWidgetTests` (through the real
+registry, `PanelSurfaces` and a `NotchController`: off by default, no work while off,
+approval precedence, full-screen hold, sleep/lock pause, spacing). Shorten intervals for
+these checks in Settings › Widgets › Wellbeing (step 5 min); reset its state with
+`defaults delete PlatyNotch wellbeing.progress` (`wellbeing.water`, `wellbeing.settings`).
+
+- [ ] **102. Off by default, silent while off.** Fresh defaults: Wellbeing is off in
+  Settings › Widgets; no card ever appears. `sample PlatyNotch 5` over a few minutes shows
+  no wellbeing timer and no `CGEventSourceSecondsSinceLastEventType` calls.
+- [ ] **103. No permission.** Turn it on: no prompt of any kind (no Accessibility, Input
+  Monitoring or Calendar); Settings › Permissions is unchanged.
+- [ ] **104. Eyes card.** Eyes 5 min, others off: about 5 min after turning it on (never
+  within 2 min of enabling) a card below the notch says "Look 20 feet away for 20 seconds"
+  with a 20 s ring counting down; it stays the 20 s. Keep typing in another app while it
+  shows: your keystrokes stay in that app (the card never takes focus). Click Done once:
+  it closes on that first click.
+- [ ] **105. Looked away vs ignored.** Let an eyes card run out without touching anything:
+  the next one comes a full interval later (counted as done). Let one run out while you
+  keep typing: it comes back about 10 minutes later (counted as a snooze).
+- [ ] **106. Water card.** Water 5 min: "Time for some water", "N / 8 glasses today".
+  "+1 glass" closes it and the tile's count goes up; the count survives a relaunch and
+  resets at midnight. Snooze 10 min: it returns about 10 minutes later, not sooner.
+- [ ] **107. Stand card and no burst.** All three at 5 min, wait 6 min: one card (eyes),
+  then the others at least 5 minutes apart, never two at once.
+- [ ] **108. Approval beats a nudge.** With a card due, trigger an approval
+  (`scripts/fake-events.sh`): the approval shows; Escape does not hide it; the nudge card
+  appears only after answering, if its 10 s have not passed.
+- [ ] **109. Full screen.** Play a video full screen (or any app in full screen) across a
+  due time: no card while full screen; one card shortly after leaving full screen.
+- [ ] **110. Focus and meetings.** Start a focus session: no cards until it ends. With
+  the Meetings widget on and Calendar allowed, during an event in progress: no cards.
+  With Meetings off (or Calendar not allowed) Wellbeing never asks for Calendar access.
+- [ ] **111. Idle is a break.** Leave the Mac untouched (screen on) from 6 minutes before
+  a due time until a few minutes after it: no card meanwhile; on return, eyes and stand
+  count from within a minute of your return (no card at once), water does not. (Idle is
+  read only at a due time and then every minute while away, so a pause that starts and
+  ends between two due times is not seen; sleep and lock always are.)
+- [ ] **112. Sleep and lock.** Lock the screen (⌃⌘Q) for 10 minutes across a due time:
+  nothing shows while locked; after unlocking no card for 2 minutes and then at most one.
+  The same after closing the lid for 10 minutes and waking.
+- [ ] **113. Quiet hours.** Set quiet hours to cover now (e.g. start = this hour, end = next
+  hour): no cards; the tile says "Quiet hours until …". At the end, intervals start
+  again from then (no burst at the hour). Same start and end turns quiet hours off.
+- [ ] **114. Turning it off.** Turn Wellbeing off while a card shows: the card closes at
+  once; nothing further appears; turning it on again keeps today's glass count.

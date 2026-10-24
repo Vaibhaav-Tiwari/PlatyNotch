@@ -42,7 +42,8 @@ enum BuiltInWidgets {
     static func register(in registry: WidgetRegistry, store: AppStore, today: TodayServices, persist: Bool = true,
                          clipboard: ClipboardWidget? = nil) {
         registry.register(MusicWidget(nowPlaying: today.nowPlaying, visualiser: today.visualiser))
-        registry.register(MeetingWidget(calendar: today.calendar))
+        let meeting = MeetingWidget(calendar: today.calendar)
+        registry.register(meeting)
         registry.register(FocusWidget(focus: today.focus))
         registry.register(LoopsWidget(store: store, actions: today.loops))
         registry.register(TimeWidget(persist: persist))
@@ -51,5 +52,9 @@ enum BuiltInWidgets {
         registry.register(clipboard ?? (persist ? ClipboardWidget() : ClipboardWidget.inert()))
         registry.register(persist ? RemindersWidget(reminders: today.reminders, calendar: today.calendar) : RemindersWidget.inert())
         registry.register(persist ? WeatherWidget() : WeatherWidget.inert())
+        // Off by default. "In a meeting" only from the meeting widget while it runs with
+        // calendar access; wellbeing never asks for calendar access itself.
+        registry.register(persist ? WellbeingWidget(inMeeting: WellbeingWidget.meetingSignal(registry: registry, meeting: meeting))
+                                  : WellbeingWidget.inert())
     }
 }

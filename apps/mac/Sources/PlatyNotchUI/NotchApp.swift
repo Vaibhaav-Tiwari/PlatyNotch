@@ -395,7 +395,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                AnyView(ClipPickerView(model: ClipPickerModel(widget: clipboard), onChoose: { _ in },
                                       trusted: { false }, imageURL: { _ in nil })),
                AnyView(RingingOverlay(title: "Alarm", subtitle: "Alarm · 7:00", isAlarm: true, onSnooze: {}, onStop: {}))]
-            + Self.dayViews()
+            + Self.dayViews() + Self.wellbeingViews()
         for v in views {
             NSHostingView(rootView: v.frame(width: 380).environment(\.colorScheme, .dark)).layoutSubtreeIfNeeded()
         }
@@ -416,6 +416,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 AnyView(CountdownRing(start: start, now: Date())),
                 reminders.tileView(), reminders.settingsView(), weather.tileView(), weather.settingsView()]
             .compactMap { $0 }
+    }
+
+    /// Task 8's views with an inert widget (no idle reads, nothing saved): the tile, the
+    /// settings and the card for each nudge.
+    private static func wellbeingViews() -> [AnyView] {
+        let w = WellbeingWidget.inert()
+        let now = Date()
+        let cards = NudgeKind.allCases.map { AnyView(NudgeCard(widget: w, nudge: .init(kind: $0, shownAt: now, until: now))) }
+        return [w.tileView(), w.settingsView()].compactMap { $0 } + cards
     }
 
     /// `--smoke-settings`: builds the Settings window (every section) and the onboarding
