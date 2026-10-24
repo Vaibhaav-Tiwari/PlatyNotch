@@ -45,6 +45,7 @@ struct HUDView: View {
 /// The Today tab tile: whether our HUD is on, and why not when it is not.
 struct HUDTile: View {
     let widget: HUDWidget
+    @State private var probe = WindowProbe()
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -68,13 +69,15 @@ struct HUDTile: View {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .task(id: widget.status) { await HUDAccessButtons.watch(widget) }
+        .background(WindowReader(probe: probe))
+        .task(id: widget.status) { await HUDAccessButtons.watch(widget, probe: probe) }
     }
 }
 
 /// Settings › Widgets › Volume & brightness HUD.
 struct HUDSettingsView: View {
     let widget: HUDWidget
+    @State private var probe = WindowProbe()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -99,7 +102,8 @@ struct HUDSettingsView: View {
             .fixedSize(horizontal: false, vertical: true)
         }
         .font(.system(size: 11))
-        .task(id: widget.status) { await HUDAccessButtons.watch(widget) }
+        .background(WindowReader(probe: probe))
+        .task(id: widget.status) { await HUDAccessButtons.watch(widget, probe: probe) }
     }
 }
 
@@ -126,8 +130,8 @@ struct HUDAccessButtons: View {
 
     /// Re-reads trust every couple of seconds while "Allow" is on screen (a grant made in
     /// System Settings shows up without reopening anything).
-    static func watch(_ widget: HUDWidget) async {
+    static func watch(_ widget: HUDWidget, probe: WindowProbe) async {
         guard widget.status == .needsAccessibility else { return }
-        await widget.watchTrustWhileVisible()
+        await widget.watchTrustWhileVisible(isOnScreen: { probe.isOnScreen })
     }
 }

@@ -478,7 +478,7 @@ final class LaunchWidgetTests: DefaultsTestCase {
         let notice = try XCTUnwrap(rebuilt.notice)
         XCTAssertTrue(notice.text.contains("rebuilt"), notice.text)
         XCTAssertTrue(notice.text.contains("Safari"), notice.text)
-        XCTAssertTrue(notice.text.contains("tccutil reset AppleEvents dev.platynotch.app"), notice.text)
+        XCTAssertTrue(notice.text.contains(PermissionAdvice.resetAppleEvents), notice.text)
         XCTAssertEqual(notice.help, .automation(reset: true))
         rebuilt.stop()
 

@@ -499,9 +499,12 @@ struct ClipThumbnail: View {
 struct ClipboardSettings: View {
     let widget: ClipboardWidget
     @State private var trusted = false
-    /// "Allow Accessibility…" clicked (this window): if trust stays off, say why (feedback 7).
-    @State private var allowClickedAt: Date?
-    @State private var stuck = false
+    /// "Allow Accessibility…" clicked (this window), and the user came back since: if trust
+    /// is still off, say what to try (feedback 7).
+    @State private var allowClicked = false
+    @State private var returnedAfterAllow = false
+    @State private var advice: PermissionAdvice.AccessibilityAdvice = .none
+    @State private var probe = WindowProbe()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -560,14 +563,15 @@ struct ClipboardSettings: View {
             } else {
                 Text("To paste with ↩, PlatyNotch needs Accessibility (to press ⌘V for you). Without it, ↩ copies and you press ⌘V.")
                     .fixedSize(horizontal: false, vertical: true)
-                if stuck {
-                    Text(verbatim: PermissionAdvice.accessibilityRebuilt)
+                if let text = advice.text {
+                    Text(verbatim: text)
                         .foregroundStyle(Theme.color(.attention))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 HStack {
                     Button("Allow Accessibility…") {
-                        allowClickedAt = Date()
+                        allowClicked = true
+                        returnedAfterAllow = false
                         widget.trust.request()
                         recheck()
                     }
@@ -577,8 +581,12 @@ struct ClipboardSettings: View {
             }
         }
         .font(.system(size: 12))
+        .background(WindowReader(probe: probe))
         .onAppear { recheck() }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in recheck() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            if allowClicked { returnedAfterAllow = true }
+            recheck()
+        }
         .task(id: trusted) { await pollWhileUntrusted() }
     }
 
@@ -590,17 +598,16 @@ struct ClipboardSettings: View {
         let identity = CodeIdentity.current
         if now { AccessibilityGrant.note(defaults, identity: identity) }
         let history = AccessibilityGrant.history(defaults, identity: identity)
-        stuck = PermissionAdvice.accessibilityStuck(trusted: now, allowClickedAt: allowClickedAt, now: Date(),
-                                                    history: history)
+        advice = PermissionAdvice.accessibility(trusted: now, returnedAfterAllow: returnedAfterAllow, history: history)
         if trusted != now { trusted = now }
     }
 
-    /// Every 2 s while the Allow row is on screen.
+    /// Every 2 s while the Allow row is shown and its window is really on screen.
     private func pollWhileUntrusted() async {
         while !Task.isCancelled, !trusted {
             try? await Task.sleep(for: .seconds(2))
             guard !Task.isCancelled else { return }
-            recheck()
+            if probe.isOnScreen { recheck() }
         }
     }
 }

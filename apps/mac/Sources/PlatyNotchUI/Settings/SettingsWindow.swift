@@ -145,6 +145,7 @@ final class SettingsWindowController {
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 540),
                          styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         w.title = "PlatyNotch Settings"
+        w.identifier = AppWindowID.settings
         // The window, not the SwiftUI content's ideal size, decides the size (see onboarding).
         let host = NSHostingController(rootView: root.frame(minWidth: 640, minHeight: 420))
         host.sizingOptions = []

@@ -32,7 +32,7 @@ final class MusicFavouriteTests: XCTestCase {
     func testMessages() {
         XCTAssertNil(MusicFavourite.message(.state(true), history: .never))
         let denied = MusicFavourite.message(.notAllowed, history: .otherBuild) ?? ""
-        XCTAssertTrue(denied.contains("tccutil reset AppleEvents dev.platynotch.app"), denied)
+        XCTAssertTrue(denied.contains(PermissionAdvice.resetAppleEvents), denied)
         let off = MusicFavourite.message(.notAllowed, history: .thisBuild) ?? ""
         XCTAssertTrue(off.contains("Automation › PlatyNotch › Music"), off)
         for o: MusicFavourite.Outcome in [.noTrack, .unknownTerm, .readOnly, .timedOut, .failed(-50)] {

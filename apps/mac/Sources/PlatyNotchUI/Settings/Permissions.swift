@@ -27,10 +27,11 @@ final class Permissions {
     }
 
     private(set) var accessibility = false
-    /// Allowed (or once allowed for another build) but this build is still not trusted:
-    /// show `PermissionAdvice.accessibilityRebuilt` (feedback 7).
-    private(set) var accessibilityStuck = false
-    @ObservationIgnored private var accessibilityAskedAt: Date?
+    /// What to add while Accessibility is off: definite after a grant to another build,
+    /// conditional after Allow and coming back (feedback 7).
+    private(set) var accessibilityAdvice: PermissionAdvice.AccessibilityAdvice = .none
+    @ObservationIgnored private var allowClicked = false
+    @ObservationIgnored private var returnedAfterAllow = false
     private(set) var notifications: State = .notAsked
     private(set) var automation: [String: State] = [:]
     let calendar: CalendarService
@@ -63,8 +64,11 @@ final class Permissions {
     // MARK: - Accessibility (memory capture)
 
     /// Shows the system Accessibility prompt. Only from the "Allow" button for capture.
-    func requestAccessibility() {
-        accessibilityAskedAt = Date()
+    /// `isOnScreen`: the Settings / onboarding window is visible and not covered; the
+    /// follow-up reads happen only then.
+    func requestAccessibility(isOnScreen: @escaping @MainActor () -> Bool = { true }) {
+        allowClicked = true
+        returnedAfterAllow = false
         let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
         accessibility = AXIsProcessTrustedWithOptions(options)
         // The grant happens in System Settings; poll briefly so the row updates.
@@ -72,10 +76,17 @@ final class Permissions {
             for _ in 0..<60 {
                 try? await Task.sleep(for: .seconds(1))
                 guard let self else { return }
+                guard isOnScreen() else { continue }
                 self.readAccessibility()
                 if self.accessibility { return }
             }
         }
+    }
+
+    /// Back in PlatyNotch after Allow: a still-missing trust gets the conditional advice.
+    func userReturned() {
+        if allowClicked { returnedAfterAllow = true }
+        refresh()
     }
 
     /// Reads trust (never prompts), stamps a working grant with this build, and decides
@@ -85,10 +96,10 @@ final class Permissions {
         let defaults = UserDefaults.standard
         if trusted { AccessibilityGrant.note(defaults, identity: CodeIdentity.current) }
         let history = AccessibilityGrant.history(defaults, identity: CodeIdentity.current)
-        let isStuck = PermissionAdvice.accessibilityStuck(trusted: trusted, allowClickedAt: accessibilityAskedAt,
-                                                          now: Date(), history: history)
+        let advice = PermissionAdvice.accessibility(trusted: trusted, returnedAfterAllow: returnedAfterAllow,
+                                                    history: history)
         if accessibility != trusted { accessibility = trusted }
-        if accessibilityStuck != isStuck { accessibilityStuck = isStuck }
+        if accessibilityAdvice != advice { accessibilityAdvice = advice }
     }
 
     /// Some Automation target refused PlatyNotch: the rebuilt-app note applies.

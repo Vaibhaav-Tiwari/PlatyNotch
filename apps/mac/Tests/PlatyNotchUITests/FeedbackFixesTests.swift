@@ -158,7 +158,7 @@ final class FeedbackFixesTests: DefaultsTestCase {
         rebuilt.toggleLike()
         let said = await eventually { rebuilt.likeMessage != nil }
         XCTAssertTrue(said)
-        XCTAssertTrue(rebuilt.likeMessage?.contains("tccutil reset AppleEvents dev.platynotch.app") == true,
+        XCTAssertTrue(rebuilt.likeMessage?.contains(PermissionAdvice.resetAppleEvents) == true,
                       rebuilt.likeMessage ?? "")
     }
 

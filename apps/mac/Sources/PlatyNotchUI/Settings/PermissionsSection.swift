@@ -17,6 +17,7 @@ struct PermissionsSection: View {
 /// Shared by Settings and onboarding.
 struct PermissionRows: View {
     let permissions: Permissions
+    @State private var probe = WindowProbe()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -25,10 +26,10 @@ struct PermissionRows: View {
                 why: "Reads the text of the window in front, for Memory, and lets the volume and brightness HUD take those keys.",
                 withoutIt: "Memory capture stays off and the system's volume and brightness HUD shows. Everything else works.",
                 state: permissions.accessibility ? .granted : .notAsked,
-                allow: { permissions.requestAccessibility() },
+                allow: { [probe] in permissions.requestAccessibility(isOnScreen: { probe.isOnScreen }) },
                 openSettings: { Permissions.open(.accessibility) })
-            if permissions.accessibilityStuck {
-                Text(verbatim: PermissionAdvice.accessibilityRebuilt)
+            if let advice = permissions.accessibilityAdvice.text {
+                Text(verbatim: advice)
                     .font(.caption)
                     .foregroundStyle(Theme.color(.attention))
                     .fixedSize(horizontal: false, vertical: true)
@@ -88,10 +89,11 @@ struct PermissionRows: View {
                 allow: { permissions.requestNotifications() },
                 openSettings: { Permissions.open(.notifications) })
         }
+        .background(WindowReader(probe: probe))
         .onAppear { permissions.refresh() }
         // Back from System Settings: show what was just allowed.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            permissions.refresh()
+            permissions.userReturned()
         }
     }
 

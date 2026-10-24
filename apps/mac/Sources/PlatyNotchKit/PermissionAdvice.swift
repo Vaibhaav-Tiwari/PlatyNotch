@@ -21,9 +21,13 @@ public enum GrantHistory: Equatable, Sendable {
 /// What to tell the user when a permission does not work (user feedback 6, 7, 13).
 /// PlatyNotch never changes privacy settings itself: these name the steps.
 public enum PermissionAdvice {
-    public static let bundleID = "dev.platynotch.app"
+    /// This app's bundle id (`dev.platynotch.app` when unbundled, e.g. `swift run`).
+    public static var bundleID: String { Bundle.main.bundleIdentifier ?? "dev.platynotch.app" }
     /// Clears every Automation decision for PlatyNotch, so macOS asks again. Shown, never run.
-    public static let resetAppleEvents = "tccutil reset AppleEvents \(bundleID)"
+    public static var resetAppleEvents: String { "tccutil reset AppleEvents \(bundleID)" }
+    /// What the reset also takes away (the user re-allows each on next use).
+    public static let resetScope =
+        "This clears every Automation permission PlatyNotch has (terminal focus, Music, Spotify and browsers); each asks again the next time it is used."
 
     public static func automationPath(_ app: String) -> String {
         "System Settings › Privacy & Security › Automation › PlatyNotch › \(app)"
@@ -35,24 +39,42 @@ public enum PermissionAdvice {
         case .thisBuild:
             return "\(app) control is turned off for PlatyNotch. Turn it on in \(automationPath(app)), then try again."
         case .otherBuild:
-            return "PlatyNotch was rebuilt or updated since you allowed \(app), so macOS no longer applies that and does not ask again. In Terminal run: \(resetAppleEvents) — then try again and click OK."
+            return "PlatyNotch was rebuilt or updated since you allowed \(app), so macOS no longer applies that and does not ask again. In Terminal run: \(resetAppleEvents) — then try again and click OK. \(resetScope)"
         case .never:
-            return "PlatyNotch may not control \(app). Turn it on in \(automationPath(app)). If it is already on, or PlatyNotch is not listed, PlatyNotch was rebuilt and macOS does not ask again: in Terminal run \(resetAppleEvents), then try again."
+            return "PlatyNotch may not control \(app). Turn it on in \(automationPath(app)). If it is already on, or PlatyNotch is not listed, PlatyNotch was rebuilt and macOS does not ask again: in Terminal run \(resetAppleEvents), then try again. \(resetScope)"
         }
     }
 
+    /// Definite: trust was seen for another build of PlatyNotch.
     public static let accessibilityRebuilt =
         "PlatyNotch was rebuilt or updated: in System Settings › Privacy & Security › Accessibility remove PlatyNotch (−) and allow it again."
+    /// Conditional: the user clicked Allow and came back, but nothing says the app was rebuilt
+    /// (they may still be looking for the switch).
+    public static let accessibilityMaybeStale =
+        "If you already turned PlatyNotch on in Accessibility and this still shows, remove it (−) and allow it again."
 
-    /// How long after "Allow" a still-missing trust counts as stuck.
-    public static let accessibilityStuckAfter: TimeInterval = 6
+    public enum AccessibilityAdvice: Equatable, Sendable {
+        case none
+        /// `accessibilityRebuilt`.
+        case rebuilt
+        /// `accessibilityMaybeStale`.
+        case maybeStale
 
-    /// True when the user allowed (or once had allowed) Accessibility but this build is
-    /// still not trusted: show `accessibilityRebuilt`.
-    public static func accessibilityStuck(trusted: Bool, allowClickedAt: Date?, now: Date, history: GrantHistory) -> Bool {
-        if trusted { return false }
-        if history == .otherBuild { return true }
-        guard let allowClickedAt else { return false }
-        return now.timeIntervalSince(allowClickedAt) >= accessibilityStuckAfter
+        public var text: String? {
+            switch self {
+            case .none: nil
+            case .rebuilt: PermissionAdvice.accessibilityRebuilt
+            case .maybeStale: PermissionAdvice.accessibilityMaybeStale
+            }
+        }
+    }
+
+    /// What to say while Accessibility is not trusted. A grant seen for another build is
+    /// definite at once; otherwise only after the user clicked Allow and then came back
+    /// (PlatyNotch active again, or System Settings left), never on a timer.
+    public static func accessibility(trusted: Bool, returnedAfterAllow: Bool, history: GrantHistory) -> AccessibilityAdvice {
+        if trusted { return .none }
+        if history == .otherBuild { return .rebuilt }
+        return returnedAfterAllow ? .maybeStale : .none
     }
 }
