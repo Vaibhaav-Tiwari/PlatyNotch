@@ -18,6 +18,13 @@ final class ClipPickerModel {
     /// nothing until the user presses an arrow key or moves the mouse over it, so a page
     /// cannot open the picker and have a stray ↩ paste into the app behind it.
     private(set) var pasteArmed = true
+    /// A hover counts only this long after opening (AppKit reports a stationary cursor as
+    /// a hover about 100 ms after the window appears under it).
+    static let hoverArmDelay: TimeInterval = 0.3
+    @ObservationIgnored var now: () -> Date = Date.init
+    @ObservationIgnored private var openedAt = Date.distantPast
+    /// Where the pointer was when the picker opened (screen coordinates).
+    @ObservationIgnored private var openPointer: CGPoint?
     @ObservationIgnored private unowned let widget: ClipboardWidget
 
     init(widget: ClipboardWidget) {
@@ -37,15 +44,25 @@ final class ClipPickerModel {
         picker.clamp(count: results.count)
     }
 
-    func reset(armed: Bool = true) {
+    /// `pointer`: where the mouse is now (a hover only arms once it has moved from there).
+    func reset(armed: Bool = true, pointer: CGPoint? = nil) {
         picker = ClipPicker()
         pasteArmed = armed
+        openedAt = now()
+        openPointer = pointer
         refresh()
     }
 
-    /// An arrow key or the mouse moving over the picker: the user is here.
+    /// An arrow key: the user is here.
     func arm() {
         if !pasteArmed { pasteArmed = true }
+    }
+
+    /// The mouse over the picker, at `location` (screen coordinates). Arms only when it has
+    /// moved from where it was at opening, and not before `hoverArmDelay`.
+    func pointerMoved(to location: CGPoint) {
+        guard !pasteArmed, now().timeIntervalSince(openedAt) >= Self.hoverArmDelay, location != openPointer else { return }
+        pasteArmed = true
     }
 
     func select(_ index: Int) { picker.select(index, count: results.count) }
@@ -136,7 +153,7 @@ final class ClipPickerPanel {
         guard !isOpen else { return }
         previousApp = NSWorkspace.shared.frontmostApplication
         previousKeyWindow = NSApp.keyWindow
-        model.reset(armed: armed)
+        model.reset(armed: armed, pointer: NSEvent.mouseLocation)
         let window = self.window ?? makeWindow()
         self.window = window
         window.setFrame(Self.frame(near: NSEvent.mouseLocation, size: ClipPickerWindow.size), display: false)
@@ -286,7 +303,8 @@ struct ClipPickerView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
         .onAppear { searchFocused = true }
         .onContinuousHover { phase in
-            if case .active = phase { model.arm() }
+            // Screen coordinates, compared with where the pointer was at opening.
+            if case .active = phase { model.pointerMoved(to: NSEvent.mouseLocation) }
         }
     }
 

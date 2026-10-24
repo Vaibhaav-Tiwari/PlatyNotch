@@ -601,8 +601,20 @@ final class ClipboardWidgetTests: DefaultsTestCase {
         XCTAssertNil(m.perform(.down))
         XCTAssertTrue(m.pasteArmed)
         XCTAssertEqual(m.perform(.paste), .choose(m.results[1]))
-        m.reset(armed: false)
-        m.arm()   // the mouse moved over it
+        // Fix round 2: a hover arms only once the pointer moved, and not in the first 0.3 s.
+        var t = Date(timeIntervalSince1970: 1_000)
+        m.now = { t }
+        m.reset(armed: false, pointer: CGPoint(x: 100, y: 100))
+        m.pointerMoved(to: CGPoint(x: 100, y: 100))   // AppKit's hover under a still cursor
+        XCTAssertFalse(m.pasteArmed)
+        m.pointerMoved(to: CGPoint(x: 140, y: 90))   // moved, but too soon
+        XCTAssertFalse(m.pasteArmed)
+        t += ClipPickerModel.hoverArmDelay + 0.01
+        m.pointerMoved(to: CGPoint(x: 100, y: 100))   // late, but still where it opened
+        XCTAssertFalse(m.pasteArmed)
+        XCTAssertNil(m.perform(.paste))
+        m.pointerMoved(to: CGPoint(x: 101, y: 100))
+        XCTAssertTrue(m.pasteArmed)
         XCTAssertEqual(m.perform(.quickPick(1)), .choose(m.results[0]))
         m.reset()
         XCTAssertTrue(m.pasteArmed, "the hot key opens it armed")
