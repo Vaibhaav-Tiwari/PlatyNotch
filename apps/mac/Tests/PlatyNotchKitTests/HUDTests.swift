@@ -131,88 +131,159 @@ final class HUDTests: XCTestCase {
     // MARK: - Swallow only when our HUD shows (the gate the event tap asks)
 
     private func gate(active: Bool = true, available: Set<MediaKeyKind> = MediaKeyKind.handled,
-                      ready: Set<UInt32> = [1], anyDisplay: Bool = false) -> MediaKeyGate {
-        MediaKeyGate(active: active, available: available, readyDisplays: ready, readyOnAnyDisplay: anyDisplay)
+                      ready: Set<UInt32> = [1], anyDisplay: Bool = false, brightness: UInt32? = 1) -> MediaKeyGate {
+        MediaKeyGate(active: active, available: available, readyDisplays: ready, readyOnAnyDisplay: anyDisplay,
+                     brightnessDisplay: brightness)
     }
 
-    private let up = MediaKeyEvent(kind: .volumeUp, isDown: true, isRepeat: false)
-    private let upRelease = MediaKeyEvent(kind: .volumeUp, isDown: false, isRepeat: false)
+    private let none = MediaKeyModifiers()
+    private func down(_ kind: MediaKeyKind, repeat r: Bool = false) -> MediaKeyEvent {
+        MediaKeyEvent(kind: kind, isDown: true, isRepeat: r)
+    }
+    private func release(_ kind: MediaKeyKind) -> MediaKeyEvent { MediaKeyEvent(kind: kind, isDown: false, isRepeat: false) }
+
+    /// Decides at `now` and, like the main thread keeping up, marks the hand-off as run.
+    private func decideServed(_ g: inout MediaKeyGate, _ e: MediaKeyEvent?, modifiers: MediaKeyModifiers = MediaKeyModifiers(),
+                              display: UInt32 = 1, now: TimeInterval = 0) -> MediaKeyDecision {
+        let d = g.decide(e, modifiers: modifiers, display: display, now: now)
+        if case .swallow(_?) = d { g.handOffRan() }
+        return d
+    }
 
     func testSwallowsWhenOurHUDShowsOnTheTargetDisplay() {
         var g = gate()
-        XCTAssertEqual(g.decide(up, modifiers: MediaKeyModifiers(), display: 1),
+        XCTAssertEqual(g.decide(down(.volumeUp), modifiers: none, display: 1, now: 0),
                        .swallow(MediaKeyAction(kind: .volumeUp, fine: false)))
-        XCTAssertEqual(g.decide(upRelease, modifiers: MediaKeyModifiers(), display: 1), .swallow(nil))
+        XCTAssertEqual(g.pendingHandOffs, 1, "a taken key-down is a hand-off to main")
+        XCTAssertEqual(g.decide(release(.volumeUp), modifiers: none, display: 1, now: 0), .swallow(nil))
+        XCTAssertEqual(g.pendingHandOffs, 1, "a key-up hands nothing off")
+        g.handOffRan()
+        XCTAssertEqual(g.pendingHandOffs, 0)
     }
 
     func testFineActionWithOptionShift() {
         var g = gate()
-        XCTAssertEqual(g.decide(up, modifiers: MediaKeyModifiers(option: true, shift: true), display: 1),
+        XCTAssertEqual(decideServed(&g, down(.volumeUp), modifiers: MediaKeyModifiers(option: true, shift: true)),
                        .swallow(MediaKeyAction(kind: .volumeUp, fine: true)))
     }
 
     func testPassesThroughWhenTheTargetDisplayHasNoHUD() {
         var g = gate(ready: [1])
-        XCTAssertEqual(g.decide(up, modifiers: MediaKeyModifiers(), display: 2), .passThrough,
+        XCTAssertEqual(decideServed(&g, down(.volumeUp), display: 2), .passThrough,
                        "the HUD would show on another display or none: the system HUD shows")
         g = gate(ready: [])
-        XCTAssertEqual(g.decide(up, modifiers: MediaKeyModifiers(), display: 1), .passThrough,
-                       "full screen, ringing or a drag: our HUD would not show")
+        XCTAssertEqual(decideServed(&g, down(.volumeUp)), .passThrough,
+                       "full screen, approval, open panel, ringing or a drag: no full HUD")
         g = gate(ready: [], anyDisplay: true)
-        XCTAssertEqual(g.decide(up, modifiers: MediaKeyModifiers(), display: 7).swallows, true)
+        XCTAssertTrue(decideServed(&g, down(.volumeUp), display: 7).swallows)
     }
 
     func testPassesThroughWhenInactive() {
         var g = gate(active: false)
-        XCTAssertEqual(g.decide(up, modifiers: MediaKeyModifiers(), display: 1), .passThrough,
+        XCTAssertEqual(decideServed(&g, down(.volumeUp)), .passThrough,
                        "no permission, no tap or widget off: never swallow")
     }
 
     func testPassesThroughUnavailableControls() {
         var g = gate(available: [.volumeUp, .volumeDown])
-        let brighter = MediaKeyEvent(kind: .brightnessUp, isDown: true, isRepeat: false)
-        XCTAssertEqual(g.decide(brighter, modifiers: MediaKeyModifiers(), display: 1), .passThrough)
-        let mute = MediaKeyEvent(kind: .mute, isDown: true, isRepeat: false)
-        XCTAssertEqual(g.decide(mute, modifiers: MediaKeyModifiers(), display: 1), .passThrough,
+        XCTAssertEqual(decideServed(&g, down(.brightnessUp)), .passThrough)
+        XCTAssertEqual(decideServed(&g, down(.mute)), .passThrough,
                        "a device without a settable mute keeps the system's handling")
+    }
+
+    func testBrightnessOnlyForTheDisplayWeControl() {
+        var g = gate(ready: [1, 2], brightness: 1)
+        XCTAssertTrue(decideServed(&g, down(.brightnessUp), display: 1).swallows)
+        XCTAssertEqual(decideServed(&g, down(.brightnessUp), display: 2), .passThrough,
+                       "cursor on an external display: its brightness is the system's")
+        XCTAssertTrue(decideServed(&g, down(.volumeUp), display: 2).swallows, "volume is not per display")
+        g = gate(brightness: nil)
+        XCTAssertEqual(decideServed(&g, down(.brightnessDown)), .passThrough)
     }
 
     func testPassesThroughOtherKeysAndOptionAlone() {
         var g = gate()
-        XCTAssertEqual(g.decide(nil, modifiers: MediaKeyModifiers(), display: 1), .passThrough)
-        let play = MediaKeyEvent(kind: .other, isDown: true, isRepeat: false)
-        XCTAssertEqual(g.decide(play, modifiers: MediaKeyModifiers(), display: 1), .passThrough)
-        XCTAssertEqual(g.decide(up, modifiers: MediaKeyModifiers(option: true, shift: false), display: 1),
+        XCTAssertEqual(decideServed(&g, nil), .passThrough)
+        XCTAssertEqual(decideServed(&g, down(.other)), .passThrough)
+        XCTAssertEqual(decideServed(&g, down(.volumeUp), modifiers: MediaKeyModifiers(option: true, shift: false)),
                        .passThrough, "⌥ alone opens the Sound settings: the system's job")
     }
 
-    func testKeyUpFollowsItsKeyDown() {
+    func testAKeyStaysWithWhoeverGotItsFirstDown() {
         var g = gate(ready: [])
-        XCTAssertEqual(g.decide(up, modifiers: MediaKeyModifiers(), display: 1), .passThrough)
+        XCTAssertEqual(decideServed(&g, down(.volumeUp)), .passThrough)
         g.readyDisplays = [1]
-        XCTAssertEqual(g.decide(upRelease, modifiers: MediaKeyModifiers(), display: 1), .passThrough,
-                       "the system saw the key-down, so it gets the key-up")
-        XCTAssertEqual(g.decide(up, modifiers: MediaKeyModifiers(), display: 1).swallows, true)
-        g.active = false
-        XCTAssertEqual(g.decide(upRelease, modifiers: MediaKeyModifiers(), display: 1), .passThrough,
-                       "inactive passes everything, even a key-up whose down we took")
-        XCTAssertEqual(g.decide(upRelease, modifiers: MediaKeyModifiers(), display: 1), .passThrough)
+        XCTAssertEqual(decideServed(&g, down(.volumeUp, repeat: true)), .passThrough,
+                       "the system started this key: its repeats stay the system's")
+        XCTAssertEqual(decideServed(&g, release(.volumeUp)), .passThrough, "and its key-up")
+        XCTAssertTrue(decideServed(&g, down(.volumeUp)).swallows, "a new press is decided afresh")
+        XCTAssertEqual(decideServed(&g, down(.volumeUp, repeat: true)),
+                       .swallow(MediaKeyAction(kind: .volumeUp, fine: false)), "repeats of our key step")
+        g.readyDisplays = []
+        XCTAssertEqual(decideServed(&g, down(.volumeUp, repeat: true)), .passThrough,
+                       "a repeat passes as soon as our HUD could not show")
+        XCTAssertEqual(decideServed(&g, release(.volumeUp)), .passThrough)
     }
 
-    func testRepeatsAreSteps() {
+    func testInactivePassesEvenTheKeyUpOfOurKey() {
         var g = gate()
-        let held = MediaKeyEvent(kind: .volumeDown, isDown: true, isRepeat: true)
-        XCTAssertEqual(g.decide(held, modifiers: MediaKeyModifiers(), display: 1),
-                       .swallow(MediaKeyAction(kind: .volumeDown, fine: false)))
+        XCTAssertTrue(decideServed(&g, down(.volumeDown)).swallows)
+        g.active = false
+        XCTAssertEqual(decideServed(&g, release(.volumeDown)), .passThrough)
+        g.active = true
+        XCTAssertEqual(decideServed(&g, release(.volumeDown)), .passThrough, "state was cleared")
     }
 
-    // MARK: - Whether a HUD would show (the panel side of the gate)
+    func testMuteRepeatsDoNothing() {
+        var g = gate()
+        XCTAssertEqual(decideServed(&g, down(.mute)), .swallow(MediaKeyAction(kind: .mute, fine: false)))
+        XCTAssertEqual(g.decide(down(.mute, repeat: true), modifiers: none, display: 1, now: 0), .swallow(nil),
+                       "holding mute toggles once (repeat consumed, no action)")
+        XCTAssertEqual(g.pendingHandOffs, 0)
+        XCTAssertEqual(decideServed(&g, release(.mute)), .swallow(nil))
+        var passed = gate(ready: [])
+        XCTAssertEqual(decideServed(&passed, down(.mute)), .passThrough)
+        XCTAssertEqual(decideServed(&passed, down(.mute, repeat: true)), .passThrough)
+    }
+
+    // MARK: - Liveness: keys go to the system while main is behind
+
+    func testPassesThroughWhileAHandOffIsOverdue() {
+        var g = gate()
+        XCTAssertTrue(g.decide(down(.volumeUp), modifiers: none, display: 1, now: 10).swallows)
+        XCTAssertEqual(g.decide(release(.volumeUp), modifiers: none, display: 1, now: 10.1), .swallow(nil))
+        XCTAssertFalse(g.mainIsLate(now: 10.25), "at the deadline: still in time")
+        XCTAssertTrue(g.decide(down(.volumeUp), modifiers: none, display: 1, now: 10.2).swallows,
+                       "main a little behind (200 ms): still ours")
+        XCTAssertEqual(g.pendingHandOffs, 2)
+        XCTAssertTrue(g.mainIsLate(now: 10.26))
+        XCTAssertEqual(g.decide(down(.volumeDown), modifiers: none, display: 1, now: 10.3), .passThrough,
+                       "oldest hand-off 300 ms old: main is hung, the system takes the key")
+        XCTAssertEqual(g.pendingHandOffs, 2, "a passed key adds no hand-off")
+        g.handOffRan()   // main recovers: the one sent at 10.0 runs
+        XCTAssertTrue(g.decide(down(.volumeDown), modifiers: none, display: 1, now: 10.4).swallows,
+                      "the oldest left (sent at 10.2) is 200 ms old: in time")
+        XCTAssertTrue(g.mainIsLate(now: 10.46), "and overdue 60 ms later if main stalls again")
+        g.handOffRan()
+        g.handOffRan()
+        XCTAssertFalse(g.mainIsLate(now: 99))
+        XCTAssertTrue(g.decide(down(.volumeDown), modifiers: none, display: 1, now: 99).swallows, "caught up")
+    }
+
+    func testHandOffRanWithNothingPendingIsHarmless() {
+        var g = gate()
+        g.handOffRan()
+        XCTAssertEqual(g.pendingHandOffs, 0)
+        XCTAssertFalse(g.mainIsLate(now: 1_000))
+    }
+
+    // MARK: - Whether a full HUD would show (the panel side of the gate)
 
     func testHUDWouldShow() {
         var m = PanelStateMachine()
         XCTAssertTrue(m.hudWouldShow, "compact: the HUD grows out of the pill")
         m.handle(.approvalsChanged(count: 1))
-        XCTAssertTrue(m.hudWouldShow, "approval: a 2 pt indicator, still ours")
+        XCTAssertFalse(m.hudWouldShow, "approval: only the 2 pt indicator, which is not feedback enough to take the key")
         m.handle(.approvalsChanged(count: 0))
         m.handle(.ringStarted(id: "alarm"))
         XCTAssertFalse(m.hudWouldShow, "under a ringing card the HUD is dropped")
@@ -224,7 +295,9 @@ final class HUDTests: XCTestCase {
         XCTAssertFalse(m.hudWouldShow, "full screen: suppressed, the system HUD shows")
         m.setFullScreen(false)
         m.handle(.click)
-        XCTAssertTrue(m.hudWouldShow, "open panel: indicator")
+        XCTAssertFalse(m.hudWouldShow, "open panel: indicator only")
+        m.handle(.click)
+        XCTAssertTrue(m.hudWouldShow)
         XCTAssertNil(m.hud, "asking never sets a HUD")
         XCTAssertTrue(PanelStateMachine(minimal: true).hudWouldShow, "hidden in Minimal mode: the HUD still shows")
     }

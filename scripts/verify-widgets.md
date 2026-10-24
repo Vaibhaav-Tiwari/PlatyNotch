@@ -258,7 +258,9 @@ build loses the grant on every rebuild.
   ("MacBook Pro Speakers"), and the **system HUD does not appear**. 16 presses go from 0
   to full; ⌥⇧ + key moves a quarter step; ⌥ alone + key opens Sound settings as usual.
   Mute: slashed speaker, empty bar; volume up unmutes. Control Centre's Sound slider
-  agrees with our level.
+  agrees with our level (the HUD shows the level read back from the device). An output
+  whose mute is per channel only (some USB interfaces): all volume keys stay with the
+  system.
 - [ ] **44. Revoke while running.** Remove PlatyNotch from Privacy & Security ›
   Accessibility: within a second or two the status returns to "needs Accessibility" and
   the system HUD handles every key (no key is lost or stuck).
@@ -276,15 +278,25 @@ build loses the grant on every rebuild.
 - [ ] **48. Our HUD only where it shows.** Widget on and allowed:
   - full-screen video: the **system** HUD shows (key passed through);
   - an alarm ringing: the system HUD shows;
-  - approval peek up: a 2 pt line at the bottom of the approval card, no system HUD,
-    the card does not move;
+  - approval peek up, or the panel open: the **system** HUD shows (a 2 pt indicator is
+    not feedback enough to take the key); the approval card does not move;
+  - brightness keys with the cursor on an external display: the system handles them;
   - two displays, "Show on all displays" off, cursor on the display without the panel:
     the system HUD shows; move the cursor to the notch display: ours. With "Show on all
     displays" on: ours, on the display under the cursor only.
-- [ ] **49. Hang.** Find the pid (`pgrep -x PlatyNotch`), `kill -STOP <pid>`, press
-  volume up a few times: after at most about a second the **system HUD shows and the
-  volume changes** (the window server timed the tap out). `kill -CONT <pid>`: the next
-  presses show our HUD again (the tap re-enabled itself) and no key was applied twice.
+- [ ] **49. Hang.** Find the pid (`pgrep -x PlatyNotch`), `kill -STOP <pid>` (this
+  stops every thread, the tap's too), press volume up a few times: after at most about a
+  second the **system HUD shows and the volume changes** (the window server timed the
+  tap out). `kill -CONT <pid>`: the next presses show our HUD again (the tap re-enabled
+  itself) and no key was applied twice. A main-thread-only hang (tap thread alive) is
+  covered by `HUDTests.testPassesThroughWhileAHandOffIsOverdue` /
+  `HUDWidgetTests.testRouterPassesKeysWhileMainIsBehind`: keys go to the system once a
+  hand-off has waited 250 ms.
+- [ ] **49a. Click latency.** Widget on and allowed: open a heavy panel tab (Memory
+  search, Agents with many sessions) and click around other apps meanwhile, including
+  with a mouse that has extra buttons: clicks never feel delayed (the tap runs on its
+  own thread; aux-button events leave the callback before an NSEvent is built). Hold
+  volume up: steps repeat smoothly; hold mute: it toggles once.
 - [ ] **50. Crash.** `kill -9 <pid>`: volume keys immediately show the system HUD.
   Relaunch: ours again (if the widget is on and allowed).
 - [ ] **51. Off again.** Turn the widget off: "media key tap stopped" in the log and the

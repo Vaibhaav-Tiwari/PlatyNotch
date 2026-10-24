@@ -1,5 +1,6 @@
 import AudioToolbox
 import CoreAudio
+import CoreGraphics
 import Foundation
 import os
 import PlatyNotchKit
@@ -23,6 +24,8 @@ protocol VolumeControl: AnyObject {
 @MainActor
 protocol LevelControl: AnyObject {
     var isAvailable: Bool { get }
+    /// The display this level belongs to (brightness); nil when not per display.
+    var controlledDisplay: CGDirectDisplayID? { get }
     func level() -> Float?
     @discardableResult func setLevel(_ value: Float) -> Bool
 }

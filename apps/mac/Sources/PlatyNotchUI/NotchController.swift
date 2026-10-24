@@ -90,6 +90,8 @@ public final class NotchController {
     public var mode: PanelMode { machine.mode }
     /// A HUD drawn as a thin line inside the approval peek or open panel.
     public var hudIndicator: HUDState? { machine.hudIndicator }
+    /// The current HUD (its own surface, or under the indicator).
+    var hud: HUDState? { machine.hud }
     /// Something ringing shown as the header chip (under an approval or the open panel).
     public var ringingChip: RingingItem? {
         machine.ringingChip.map { id in surfaces.rings.first { $0.id == id } ?? RingingItem(id: id, title: "Alarm") }

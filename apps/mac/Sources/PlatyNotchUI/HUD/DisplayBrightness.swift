@@ -15,7 +15,7 @@ final class DisplayBrightness: LevelControl {
     private typealias GetFn = @convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32
     private typealias SetFn = @convention(c) (CGDirectDisplayID, Float) -> Int32
     private typealias CanFn = @convention(c) (CGDirectDisplayID) -> Bool
-    private typealias ChangedFn = @convention(c) (CGDirectDisplayID, Double) -> Int32
+    private typealias ChangedFn = @convention(c) (CGDirectDisplayID, Double) -> Void
 
     private let getFn: GetFn?
     private let setFn: SetFn?
@@ -35,6 +35,8 @@ final class DisplayBrightness: LevelControl {
         changedFn = symbol("DisplayServicesBrightnessChanged", as: ChangedFn.self)
         if handle == nil || getFn == nil || setFn == nil { Self.log.notice("DisplayServices unavailable") }
     }
+
+    var controlledDisplay: CGDirectDisplayID? { display }
 
     /// The built-in panel, if one is online (not in clamshell mode).
     private var display: CGDirectDisplayID? {
@@ -60,7 +62,7 @@ final class DisplayBrightness: LevelControl {
         guard let setFn, let display else { return false }
         let v = min(max(value, 0), 1)
         guard setFn(display, v) == 0 else { return false }
-        _ = changedFn?(display, Double(v))
+        changedFn?(display, Double(v))
         return true
     }
 }

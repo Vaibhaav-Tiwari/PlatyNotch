@@ -89,9 +89,10 @@ struct HUDSettingsView: View {
                 }
             }
             Text("""
-            Over a full-screen app, under a ringing alarm, or on a display without the notch \
-            panel, the system HUD shows instead. ⌥⇧ with a key moves in quarter steps; ⌥ \
-            alone opens the system setting as usual.
+            Over a full-screen app, under a ringing alarm, while an approval or the open \
+            panel is showing, on a display without the notch panel, or for an external \
+            display's brightness, the system HUD shows instead. ⌥⇧ with a key moves in \
+            quarter steps; ⌥ alone opens the system setting as usual.
             """)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)

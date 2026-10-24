@@ -126,14 +126,15 @@ public enum PanelPrecedence {
         }
     }
 
-    /// Whether a HUD sent now would be on screen, as its own surface or as the
-    /// indicator: false over full screen, under ringing and during the drop zone. The
-    /// media-key tap takes a key (hiding the system HUD) only when this holds.
+    /// Whether a HUD sent now would show as its own full surface: false over full
+    /// screen, under an approval or the open panel (only the 2 pt indicator), under
+    /// ringing and during the drop zone. The media-key tap takes a key (hiding the
+    /// system HUD) only when this holds: never without full feedback.
     public static func hudWouldShow(_ s: PanelSurfaceState) -> Bool {
         guard !s.fullScreen else { return false }
         var probe = s
         probe.hud = HUDState(kind: .volume, level: 0, until: .distantFuture)
-        return resolve(probe).isHUD || hudIndicator(probe) != nil
+        return resolve(probe).isHUD
     }
 }
 

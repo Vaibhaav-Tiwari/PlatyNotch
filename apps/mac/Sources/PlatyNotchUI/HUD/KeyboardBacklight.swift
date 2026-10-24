@@ -1,3 +1,4 @@
+import CoreGraphics
 import Darwin
 import Foundation
 import ObjectiveC
@@ -44,9 +45,8 @@ final class KeyboardBacklight: LevelControl {
         let setFn = imp(Self.setSel, as: SetFn.self)
         var keyboard: UInt64?
         if let copyIDs = imp(idsSel, as: CopyIDsFn.self) {
-            // "copy" returns +1; taken unretained on purpose: a small leak per start beats
-            // an over-release if the convention were ever different.
-            let ids = (copyIDs(client, idsSel)?.takeUnretainedValue() as? [NSNumber])?.map(\.uint64Value) ?? []
+            // A "copy" method returns +1.
+            let ids = (copyIDs(client, idsSel)?.takeRetainedValue() as? [NSNumber])?.map(\.uint64Value) ?? []
             let builtIn = imp(builtInSel, as: BuiltInFn.self)
             keyboard = ids.first { builtIn?(client, builtInSel, $0) ?? false } ?? ids.first
         }
@@ -56,6 +56,8 @@ final class KeyboardBacklight: LevelControl {
         self.setFn = setFn
         if keyboard == nil { Self.log.notice("no backlit keyboard") }
     }
+
+    var controlledDisplay: CGDirectDisplayID? { nil }
 
     var isAvailable: Bool { client != nil && keyboard != nil && getFn != nil && setFn != nil }
 

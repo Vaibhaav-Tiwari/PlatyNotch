@@ -117,45 +117,89 @@ public enum MediaKeyDecision: Equatable, Sendable {
 
 /// Decides, inside the event tap callback, whether PlatyNotch takes a media key. It
 /// does only when everything is in place: the tap is healthy and permitted (`active`),
-/// the control exists on this Mac (`available`), and our HUD would show on the display
-/// the user is looking at (`readyDisplays`, from the panels' state). Otherwise the key
-/// passes through and the system HUD shows. A key-up is taken only if its key-down was.
+/// the control exists and reads back on this Mac (`available`; brightness only for the
+/// display it controls, `brightnessDisplay`), our full HUD would show on the display the
+/// user is looking at (`readyDisplays`; the 2 pt indicator does not count), and the main
+/// thread is keeping up with earlier keys (no hand-off older than `handOffDeadline`).
+/// Otherwise the key passes through and the system HUD shows.
+///
+/// A key is decided at its first key-down: its repeats and its key-up follow that
+/// decision (a key the system started stays the system's), except that a repeat passes
+/// as soon as the conditions fail. Mute repeats do nothing. Inactive passes everything.
 /// Pure: the app keeps it current from the main actor and the tap reads it under a lock.
 public struct MediaKeyGate: Equatable, Sendable {
+    /// A hand-off to the main thread still waiting after this long means the app is
+    /// hung or badly behind: keys go to the system until it catches up.
+    public static let handOffDeadline: TimeInterval = 0.25
+
     public var active: Bool
     public var available: Set<MediaKeyKind>
-    /// Displays (`CGDirectDisplayID`) whose panel would show a HUD right now.
+    /// Displays (`CGDirectDisplayID`) whose panel would show a full HUD right now.
     public var readyDisplays: Set<UInt32>
     /// A panel not yet placed on a display would show it (tests; no display to match).
     public var readyOnAnyDisplay: Bool
-    private var swallowedDowns: Set<MediaKeyKind> = []
+    /// The display whose brightness PlatyNotch sets (the built-in one); brightness keys
+    /// pressed with the cursor on another display go to the system.
+    public var brightnessDisplay: UInt32?
+    private var swallowing: Set<MediaKeyKind> = []
+    /// Send times (seconds, monotonic) of hand-offs not yet run on main, oldest first.
+    private var pending: [TimeInterval] = []
 
     public init(active: Bool = false, available: Set<MediaKeyKind> = [], readyDisplays: Set<UInt32> = [],
-                readyOnAnyDisplay: Bool = false) {
+                readyOnAnyDisplay: Bool = false, brightnessDisplay: UInt32? = nil) {
         self.active = active
         self.available = available
         self.readyDisplays = readyDisplays
         self.readyOnAnyDisplay = readyOnAnyDisplay
+        self.brightnessDisplay = brightnessDisplay
     }
 
-    /// `display` is the display under the cursor when the key was pressed (else the main one).
-    public mutating func decide(_ event: MediaKeyEvent?, modifiers: MediaKeyModifiers, display: UInt32) -> MediaKeyDecision {
+    /// Hand-offs sent and not yet run.
+    public var pendingHandOffs: Int { pending.count }
+
+    /// The oldest hand-off has waited longer than `handOffDeadline`.
+    public func mainIsLate(now: TimeInterval) -> Bool {
+        guard let oldest = pending.first else { return false }
+        return now - oldest > Self.handOffDeadline
+    }
+
+    /// The main thread ran the oldest hand-off.
+    public mutating func handOffRan() {
+        if !pending.isEmpty { pending.removeFirst() }
+    }
+
+    /// `display` is the display under the cursor when the key was pressed (else the main
+    /// one); `now` is monotonic seconds. A `.swallow` with an action is a hand-off: the
+    /// caller must run it on main and then call `handOffRan()`.
+    public mutating func decide(_ event: MediaKeyEvent?, modifiers: MediaKeyModifiers, display: UInt32,
+                                now: TimeInterval) -> MediaKeyDecision {
         guard let event, event.kind != .other else { return .passThrough }
         guard active else {
-            swallowedDowns.removeAll()
+            swallowing.removeAll()
             return .passThrough
         }
+        let kind = event.kind
         guard event.isDown else {
-            return swallowedDowns.remove(event.kind) != nil ? .swallow(nil) : .passThrough
+            return swallowing.remove(kind) != nil ? .swallow(nil) : .passThrough
         }
-        let ours = available.contains(event.kind) && !modifiers.opensSystemSettings
-            && (readyOnAnyDisplay || readyDisplays.contains(display))
-        guard ours else {
-            swallowedDowns.remove(event.kind)
+        if event.isRepeat {
+            guard swallowing.contains(kind) else { return .passThrough }   // the system's key
+            if kind == .mute { return .swallow(nil) }                      // holding mute toggles once
+        }
+        guard ours(kind, modifiers: modifiers, display: display, now: now) else {
+            swallowing.remove(kind)
             return .passThrough
         }
-        swallowedDowns.insert(event.kind)
-        return .swallow(MediaKeyAction(kind: event.kind, fine: modifiers.fine))
+        swallowing.insert(kind)
+        pending.append(now)
+        return .swallow(MediaKeyAction(kind: kind, fine: modifiers.fine))
+    }
+
+    private func ours(_ kind: MediaKeyKind, modifiers: MediaKeyModifiers, display: UInt32, now: TimeInterval) -> Bool {
+        guard available.contains(kind), !modifiers.opensSystemSettings,
+              readyOnAnyDisplay || readyDisplays.contains(display), !mainIsLate(now: now) else { return false }
+        if kind.hud == .brightness { return brightnessDisplay == display }
+        return true
     }
 }
 

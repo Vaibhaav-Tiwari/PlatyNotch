@@ -36,13 +36,22 @@ private final class FakeOutputVolume: VolumeControl {
     var settable = true
     var mutable = true
     var current = VolumeChange.State(volume: 0.5, muted: false)
+    var failSet = false
+    /// The device stores volume in coarser steps than asked (read back differs).
+    var quantum: Float?
     var observing = false
     var onChange: (@MainActor () -> Void)?
     var outputName: String? = "Test Speakers"
     var canSetVolume: Bool { settable }
     var canMute: Bool { mutable }
     func state() -> VolumeChange.State? { current }
-    func set(_ state: VolumeChange.State) -> Bool { current = state; return true }
+    func set(_ state: VolumeChange.State) -> Bool {
+        guard !failSet else { return false }
+        var s = state
+        if let q = quantum { s.volume = (s.volume / q).rounded(.down) * q }
+        current = s
+        return true
+    }
     func startObserving(_ onChange: @escaping @MainActor () -> Void) { observing = true; self.onChange = onChange }
     func stopObserving() { observing = false; onChange = nil }
 }
@@ -51,9 +60,18 @@ private final class FakeOutputVolume: VolumeControl {
 private final class FakeLevelControl: LevelControl {
     var isAvailable: Bool
     var value: Float = 0.25
-    init(available: Bool) { isAvailable = available }
+    var controlledDisplay: CGDirectDisplayID?
+    var failSet = false
+    init(available: Bool, display: CGDirectDisplayID? = nil) {
+        isAvailable = available
+        controlledDisplay = display
+    }
     func level() -> Float? { isAvailable ? value : nil }
-    func setLevel(_ v: Float) -> Bool { value = v; return true }
+    func setLevel(_ v: Float) -> Bool {
+        guard !failSet else { return false }
+        value = v
+        return true
+    }
 }
 
 @MainActor
@@ -75,7 +93,7 @@ final class HUDWidgetTests: XCTestCase {
     @MainActor private final class Rig {
         let tap = FakeKeyTap()
         let volume = FakeOutputVolume()
-        let brightness = FakeLevelControl(available: true)
+        let brightness = FakeLevelControl(available: true, display: 1)
         let backlight = FakeLevelControl(available: false)
         var trusted = true
         var prompts = 0
@@ -193,22 +211,112 @@ final class HUDWidgetTests: XCTestCase {
         await drain()
         XCTAssertEqual(r.volume.current.volume, 0.5, "nothing taken, nothing changed by us")
         r.controllers[0].debugHandle(.event(.approvalsChanged(count: 1)))
-        XCTAssertTrue(r.tap.press(.volumeUp), "under an approval the HUD is the 2 pt indicator: still ours")
+        XCTAssertFalse(r.tap.press(.volumeUp),
+                       "under an approval only the 2 pt indicator could show: not enough feedback, the system HUD shows")
+        r.controllers[0].debugHandle(.event(.approvalsChanged(count: 0)))
+        r.controllers[0].debugHandle(.event(.click))
+        XCTAssertFalse(r.tap.press(.volumeUp), "open panel: the same")
         await drain()
-        XCTAssertEqual(r.controllers[0].mode, .peek(.approval))
-        XCTAssertEqual(r.controllers[0].hudIndicator?.kind, .volume)
+        XCTAssertEqual(r.volume.current.volume, 0.5)
+        XCTAssertNil(r.controllers[0].hudIndicator)
+    }
+
+    func testBrightnessOnlyOnTheBuiltInDisplay() async {
+        let r = rig(displays: [1, 2])
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        XCTAssertFalse(r.tap.press(.brightnessUp, display: 2), "cursor on the external display: its brightness is the system's")
+        XCTAssertTrue(r.tap.press(.volumeUp, display: 2), "volume is not per display")
+        XCTAssertTrue(r.tap.press(.brightnessUp, display: 1))
+        await drain()
+        XCTAssertEqual(r.brightness.value, 0.3125)
+        XCTAssertEqual(r.controllers[0].mode, .peek(.hud(.brightness)))
+    }
+
+    func testHUDShowsTheLevelReadBack() async {
+        let r = rig()
+        r.volume.quantum = 0.1
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        XCTAssertTrue(r.tap.press(.volumeUp))
+        await drain()
+        XCTAssertEqual(r.controllers[0].hud?.level ?? -1, Double(r.volume.current.volume), accuracy: 1e-6,
+                       "the HUD shows what the device kept, not what was asked")
+        XCTAssertNotEqual(r.volume.current.volume, 0.5625)
+    }
+
+    func testFailedSetShowsNoHUDAndRefreshes() async {
+        let r = rig()
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        r.brightness.failSet = true
+        r.brightness.isAvailable = false   // the display went away after the tap decided
+        XCTAssertTrue(r.tap.press(.brightnessUp), "the gate had not heard yet")
+        await drain()
+        XCTAssertEqual(r.controllers[0].mode, .compact, "nothing changed: no HUD claiming it did")
+        XCTAssertFalse(r.tap.press(.brightnessUp), "the failure refreshed the gate: the system gets the next press")
     }
 
     func testUnavailableControlsPassThrough() {
         let r = rig()
-        r.volume.mutable = false
         r.registry.setEnabled(HUDWidget.widgetID, true)
         XCTAssertFalse(r.tap.press(.backlightUp), "no backlit keyboard")
-        XCTAssertFalse(r.tap.press(.mute), "no settable mute on this output")
         XCTAssertNotNil(r.widget.unavailableNote)
+        r.volume.mutable = false
+        r.volume.onChange?()   // default output changed to one muted per channel only
+        XCTAssertFalse(r.tap.press(.mute), "no settable main mute")
+        XCTAssertFalse(r.tap.press(.volumeUp), "volume up could not unmute it, and our HUD could not tell")
+        r.volume.mutable = true
         r.volume.settable = false
-        r.volume.onChange?()   // default output changed (e.g. to HDMI)
+        r.volume.onChange?()   // e.g. HDMI: no volume control
         XCTAssertFalse(r.tap.press(.volumeUp))
+    }
+
+    // MARK: - The tap thread (a plain mach port; no event tap)
+
+    func testTapThreadStopsAndJoinsBeforeReturning() {
+        guard let port = CFMachPortCreate(kCFAllocatorDefault, { _, _, _, _ in }, nil, nil),
+              let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, port, 0) else {
+            return XCTFail("no mach port")
+        }
+        let loop = TapThreadLoop()
+        final class Flag: @unchecked Sendable { var onTapThread = false }
+        let flag = Flag()
+        loop.run(source: source) { flag.onTapThread = !Thread.isMainThread }
+        XCTAssertTrue(flag.onTapThread, "the source lives on its own thread, not the main run loop")
+        XCTAssertFalse(loop.hasExited)
+        loop.stop(removing: source)
+        XCTAssertTrue(loop.hasExited, "stop returns only after the thread left its run loop (then the box may be freed)")
+        CFMachPortInvalidate(port)
+    }
+
+    // MARK: - Liveness (injectable clock, held main-queue posts)
+
+    func testRouterPassesKeysWhileMainIsBehind() {
+        final class Clock: @unchecked Sendable { var t: TimeInterval = 100 }
+        final class Posts: @unchecked Sendable { var queue: [@Sendable () -> Void] = [] }
+        let clock = Clock()
+        let posts = Posts()
+        var ran: [MediaKeyKind] = []
+        let router = MediaKeyRouter(now: { clock.t }, toMain: { posts.queue.append($0) },
+                                    onMain: { action, _ in MainActor.assumeIsolated { ran.append(action.kind) } })
+        router.update {
+            $0.active = true
+            $0.available = MediaKeyKind.handled
+            $0.readyDisplays = [1]
+            $0.brightnessDisplay = 1
+        }
+        func press(_ k: MediaKeyKind) -> Bool {
+            router.route(MediaKeyEvent(kind: k, isDown: true, isRepeat: false), modifiers: MediaKeyModifiers(), display: 1)
+        }
+        XCTAssertTrue(press(.volumeUp))
+        clock.t += 0.2
+        XCTAssertTrue(press(.volumeDown), "main 200 ms behind: still ours")
+        clock.t += 0.1
+        XCTAssertFalse(press(.volumeUp), "oldest hand-off 300 ms old: the app is hung, the system takes the key")
+        XCTAssertEqual(router.gateSnapshot.pendingHandOffs, 2)
+        for p in posts.queue { p() }   // main recovers
+        posts.queue = []
+        XCTAssertEqual(ran, [.volumeUp, .volumeDown], "in order, and the passed key was never applied by us")
+        XCTAssertEqual(router.gateSnapshot.pendingHandOffs, 0)
+        XCTAssertTrue(press(.volumeUp), "caught up: ours again")
     }
 
     func testDisableTearsDownEverything() {

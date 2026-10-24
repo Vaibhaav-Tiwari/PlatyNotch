@@ -35,6 +35,7 @@ private final class NoVolume: VolumeControl {
 
 @MainActor
 private final class NoLevel: LevelControl {
+    var controlledDisplay: CGDirectDisplayID? { nil }
     var isAvailable: Bool { false }
     func level() -> Float? { nil }
     func setLevel(_ value: Float) -> Bool { false }
@@ -72,6 +73,8 @@ final class HUDWidget: NotchWidget {
     /// The keys PlatyNotch handles on this Mac (the rest go to the system).
     private(set) var available: Set<MediaKeyKind> = []
     private(set) var outputName: String?
+    /// The display whose brightness we set (the built-in one), if any.
+    @ObservationIgnored private var brightnessDisplay: CGDirectDisplayID?
 
     @ObservationIgnored private let makeTap: () -> MediaKeyTapping
     @ObservationIgnored private let makeControls: () -> HUDControls
@@ -141,12 +144,8 @@ final class HUDWidget: NotchWidget {
         }
         if tap == nil {
             let t = makeTap()
-            let r = MediaKeyRouter { [weak self] action, display in
-                // From the tap callback: hand off, never wait.
-                DispatchQueue.main.async {
-                    MainActor.assumeIsolated { self?.perform(action, display: display) }
-                }
-            }
+            // The router hands taken keys to the main queue (never waited on).
+            let r = MediaKeyRouter { [weak self] action, display in self?.perform(action, display: display) }
             guard t.start(router: r) else {
                 status = .tapRefused
                 return
@@ -216,12 +215,20 @@ final class HUDWidget: NotchWidget {
 
     private func refreshControls() {
         guard let controls else { return }
+        // A key is ours only if it can change something and we can read the result back.
+        // Volume also needs a settable main mute: without it a muted output (e.g. muted
+        // per channel) could not be unmuted by volume up, and our HUD could not tell.
         var keys: Set<MediaKeyKind> = []
-        if controls.volume.canSetVolume { keys.formUnion([.volumeUp, .volumeDown]) }
-        if controls.volume.canMute { keys.insert(.mute) }
-        if controls.brightness.isAvailable { keys.formUnion([.brightnessUp, .brightnessDown]) }
-        if controls.backlight.isAvailable { keys.formUnion([.backlightUp, .backlightDown]) }
+        let volume = controls.volume
+        if volume.canSetVolume, volume.canMute, volume.state() != nil { keys.formUnion([.volumeUp, .volumeDown, .mute]) }
+        if controls.brightness.isAvailable, controls.brightness.level() != nil {
+            keys.formUnion([.brightnessUp, .brightnessDown])
+        }
+        if controls.backlight.isAvailable, controls.backlight.level() != nil {
+            keys.formUnion([.backlightUp, .backlightDown])
+        }
         if keys != available { available = keys }
+        brightnessDisplay = controls.brightness.controlledDisplay
         let name = controls.volume.outputName
         if name != outputName { outputName = name }
         pushGate()
@@ -232,37 +239,36 @@ final class HUDWidget: NotchWidget {
         guard let router else { return }
         let active = status == .on
         let keys = available
+        let brightness = brightnessDisplay
         let readiness = context?.surfaces.hudReadiness ?? HUDReadiness()
         router.update { gate in
             gate.active = active
             gate.available = keys
             gate.readyDisplays = readiness.displays
             gate.readyOnAnyDisplay = readiness.anyDisplay
+            gate.brightnessDisplay = brightness
         }
     }
 
     // MARK: - Keys
 
-    /// A key the tap took: change the level and show our HUD on `display`.
+    /// A key the tap took: change the level, read it back and show that in our HUD on
+    /// `display`. A failed set or read is logged and the gate refreshed, so the next
+    /// press goes to the system.
     func perform(_ action: MediaKeyAction, display: CGDirectDisplayID) {
         guard let controls, let context, let hud = action.kind.hud else { return }
         let level: Float?
         switch hud {
         case .volume:
-            if let now = controls.volume.state() {
-                let next = VolumeChange.apply(action.kind, fine: action.fine, to: now)
-                controls.volume.set(next)
-                level = next.shownLevel
-            } else {
-                level = nil
-            }
+            level = stepVolume(controls.volume, action)
         case .brightness:
             level = step(controls.brightness, action)
         case .keyboardBacklight:
             level = step(controls.backlight, action)
         }
         guard let level else {
-            Self.log.error("\(hud.rawValue, privacy: .public) key taken but the level could not be read")
+            Self.log.error("\(hud.rawValue, privacy: .public) key taken but setting or reading the level failed")
+            refreshControls()
             return
         }
         if !context.showHUD(kind: hud, level: Double(level), display: display) {
@@ -271,11 +277,19 @@ final class HUDWidget: NotchWidget {
         }
     }
 
+    /// The level shown: read back after the set (nil when either fails).
+    private func stepVolume(_ volume: VolumeControl, _ action: MediaKeyAction) -> Float? {
+        guard let now = volume.state() else { return nil }
+        let next = VolumeChange.apply(action.kind, fine: action.fine, to: now)
+        guard volume.set(next), let after = volume.state() else { return nil }
+        return after.shownLevel
+    }
+
     private func step(_ control: LevelControl, _ action: MediaKeyAction) -> Float? {
         guard let now = control.level() else { return nil }
         let next = LevelStep.next(now, up: action.kind.isUp, fine: action.fine)
-        control.setLevel(next)
-        return next
+        guard control.setLevel(next) else { return nil }
+        return control.level()
     }
 
     // MARK: - Views
@@ -310,7 +324,7 @@ final class HUDWidget: NotchWidget {
     var unavailableNote: String? {
         guard status == .on else { return nil }
         var missing: [String] = []
-        if !available.contains(.volumeUp) { missing.append("volume (this output has no volume control)") }
+        if !available.contains(.volumeUp) { missing.append("volume (this output has no volume or mute control)") }
         if !available.contains(.brightnessUp) { missing.append("brightness (no built-in display)") }
         if !available.contains(.backlightUp) { missing.append("keyboard backlight (none on this keyboard)") }
         guard !missing.isEmpty else { return nil }

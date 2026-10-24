@@ -14,16 +14,25 @@ protocol MediaKeyTapping: AnyObject {
     func stop()
 }
 
-/// Decides for the tap callback, on whatever thread it runs, without touching the main
+/// Decides for the tap callback, on the tap's own thread, without touching the main
 /// actor: the gate (`MediaKeyGate`, kept current by `HUDWidget`) is read under a lock,
-/// and the work for a taken key goes to the main queue asynchronously, in order.
+/// and the work for a taken key goes to the main queue asynchronously, in order. Each
+/// hand-off is counted until it runs; while the oldest has waited longer than
+/// `MediaKeyGate.handOffDeadline` (the app is hung or far behind), keys pass through.
 final class MediaKeyRouter: Sendable {
     private let gate = OSAllocatedUnfairLock(initialState: MediaKeyGate())
-    private let onAction: @Sendable (MediaKeyAction, CGDirectDisplayID) -> Void
+    private let onMain: @MainActor @Sendable (MediaKeyAction, CGDirectDisplayID) -> Void
+    private let now: @Sendable () -> TimeInterval
+    private let toMain: @Sendable (@escaping @Sendable () -> Void) -> Void
 
-    /// `onAction` runs on the tap's thread; it must only hand off (`DispatchQueue.main.async`).
-    init(onAction: @escaping @Sendable (MediaKeyAction, CGDirectDisplayID) -> Void) {
-        self.onAction = onAction
+    /// `onMain` runs on the main actor for each taken key-down. `now` is monotonic
+    /// seconds; `toMain` posts to the main queue (tests may hold the posts back).
+    init(now: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+         toMain: @escaping @Sendable (@escaping @Sendable () -> Void) -> Void = { DispatchQueue.main.async(execute: $0) },
+         onMain: @escaping @MainActor @Sendable (MediaKeyAction, CGDirectDisplayID) -> Void) {
+        self.now = now
+        self.toMain = toMain
+        self.onMain = onMain
     }
 
     func update(_ change: @Sendable (inout MediaKeyGate) -> Void) {
@@ -34,8 +43,15 @@ final class MediaKeyRouter: Sendable {
 
     /// True: swallow the event (PlatyNotch handles it and shows its HUD).
     func route(_ event: MediaKeyEvent?, modifiers: MediaKeyModifiers, display: CGDirectDisplayID) -> Bool {
-        let decision = gate.withLock { $0.decide(event, modifiers: modifiers, display: display) }
-        if case .swallow(let action?) = decision { onAction(action, display) }
+        let t = now()
+        let decision = gate.withLock { $0.decide(event, modifiers: modifiers, display: display, now: t) }
+        if case .swallow(let action?) = decision {
+            let onMain = self.onMain
+            toMain { [self] in
+                gate.withLock { $0.handOffRan() }
+                MainActor.assumeIsolated { onMain(action, display) }
+            }
+        }
         return decision.swallows
     }
 }
@@ -45,13 +61,14 @@ final class MediaKeyRouter: Sendable {
 /// without it (checked on macOS 26.4 with `AXIsProcessTrusted` and
 /// `CGPreflightPostEventAccess` false; Input Monitoring only covers listen-only taps).
 ///
-/// Failure is safe by construction:
-/// - The tap's run-loop source is on the main run loop, so if the app hangs the callback
-///   is not serviced, the window server times the tap out and delivers keys to the
-///   system unchanged (system HUD works); on recovery `tapDisabledByTimeout` arrives and
-///   the tap is re-enabled. A crash takes the tap's mach port with it.
-/// - The callback does no work on the main actor: it decodes, asks the router (a lock),
-///   and returns. Volume and brightness changes run afterwards from the main queue.
+/// The tap runs on its own thread and run loop, so `NX_SYSDEFINED` events (media keys,
+/// and aux mouse-button events on every click) never wait for the main thread. Failure
+/// is safe by construction:
+/// - The callback only reads a locked gate; it never waits for the main thread. If the
+///   app hangs, the gate sees its hand-offs going unserved for 250 ms and passes every
+///   key through (system HUD). If even the tap thread stalled, the window server would
+///   time the tap out and deliver keys unchanged; `tapDisabledByTimeout` re-enables it.
+/// - A crash takes the tap's mach port with it.
 /// - `tapDisabledByTimeout` / `tapDisabledByUserInput` pass through and re-enable.
 @MainActor
 final class SystemMediaKeyTap: MediaKeyTapping {
@@ -59,6 +76,7 @@ final class SystemMediaKeyTap: MediaKeyTapping {
     private var port: CFMachPort?
     private var source: CFRunLoopSource?
     private var box: Unmanaged<TapBox>?
+    private var loop: TapThreadLoop?
 
     func start(router: MediaKeyRouter) -> Bool {
         stop()
@@ -72,28 +90,83 @@ final class SystemMediaKeyTap: MediaKeyTapping {
             return false
         }
         box.takeUnretainedValue().setPort(port)
-        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, port, 0)
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: port, enable: true)
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, port, 0)!
+        let loop = TapThreadLoop()
+        let tap = TapParts(source: source, port: port)
+        // Returns once the thread's run loop has the source and the tap is enabled.
+        loop.run(source: source) { CGEvent.tapEnable(tap: tap.port, enable: true) }
         self.port = port
         self.source = source
         self.box = box
+        self.loop = loop
         Self.log.notice("media key tap started")
         return true
     }
 
+    /// Disable, remove the source, stop the run loop, wait for the thread to leave it,
+    /// and only then free the callback's box: no callback can run after the free.
     func stop() {
         guard let port else { return }
         CGEvent.tapEnable(tap: port, enable: false)
-        if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
+        if let source { loop?.stop(removing: source) }
         CFMachPortInvalidate(port)
-        // Same run loop as the callback: none can be running or arrive after this point.
         box?.release()
         self.port = nil
         source = nil
         box = nil
+        loop = nil
         Self.log.notice("media key tap stopped")
     }
+}
+
+/// The tap's thread: a run loop that holds only the tap's source.
+final class TapThreadLoop: @unchecked Sendable {
+    private let ready = DispatchSemaphore(value: 0)
+    private let exited = DispatchSemaphore(value: 0)
+    private let runLoop = OSAllocatedUnfairLock<CFRunLoop?>(uncheckedState: nil)
+    private let done = OSAllocatedUnfairLock(initialState: false)
+
+    /// True once the thread has left its run loop.
+    var hasExited: Bool { done.withLock { $0 } }
+
+    /// Starts the thread, adds `source` to its run loop, runs `onThread` there, and
+    /// returns once that is done.
+    func run(source: CFRunLoopSource, onThread: @escaping @Sendable () -> Void) {
+        let src = SourceRef(source: source)
+        let thread = Thread { [self] in
+            let rl = CFRunLoopGetCurrent()!
+            CFRunLoopAddSource(rl, src.source, .commonModes)
+            onThread()
+            runLoop.withLockUnchecked { $0 = rl }
+            ready.signal()
+            // Returns when stopped, or at once if the source was already removed.
+            CFRunLoopRun()
+            done.withLock { $0 = true }
+            exited.signal()
+        }
+        thread.name = "PlatyNotch media keys"
+        thread.qualityOfService = .userInteractive
+        thread.start()
+        ready.wait()
+    }
+
+    /// Blocks until the thread has left its run loop (a callback in flight finishes first).
+    func stop(removing source: CFRunLoopSource) {
+        guard let rl = runLoop.withLockUnchecked({ $0 }) else { return }
+        CFRunLoopRemoveSource(rl, source, .commonModes)   // a loop without sources returns
+        CFRunLoopStop(rl)
+        CFRunLoopWakeUp(rl)
+        exited.wait()
+    }
+}
+
+private struct SourceRef: @unchecked Sendable {
+    let source: CFRunLoopSource
+}
+
+private struct TapParts: @unchecked Sendable {
+    let source: CFRunLoopSource
+    let port: CFMachPort
 }
 
 /// What the C callback gets as `userInfo`.
@@ -109,7 +182,12 @@ private final class TapBox: @unchecked Sendable {
     }
 }
 
-/// Keep this short: it runs for every `NX_SYSDEFINED` event system-wide.
+/// `NSEvent.subtype` as stored in the `CGEvent` (undocumented fields 99 and 83, both
+/// holding it on macOS 26.4). Only a pre-filter: a mismatch passes the event through,
+/// so if a future macOS moved the field the keys would simply go to the system.
+private let subtypeFields: [CGEventField] = [99, 83].compactMap { CGEventField(rawValue: $0) }
+
+/// Keep this short: it runs on the tap thread for every `NX_SYSDEFINED` event system-wide.
 private func mediaKeyTapCallback(proxy: CGEventTapProxy, type: CGEventType, event: CGEvent,
                                  refcon: UnsafeMutableRawPointer?) -> Unmanaged<CGEvent>? {
     let pass = Unmanaged.passUnretained(event)
@@ -122,7 +200,12 @@ private func mediaKeyTapCallback(proxy: CGEventTapProxy, type: CGEventType, even
     default:
         break
     }
-    guard type.rawValue == MediaKeyEvent.systemDefinedEventType, let ns = NSEvent(cgEvent: event),
+    guard type.rawValue == MediaKeyEvent.systemDefinedEventType else { return pass }
+    // Cheap check before allocating an NSEvent: aux mouse buttons (subtype 7) and the
+    // like leave here.
+    let subtype = MediaKeyEvent.systemDefinedSubtype
+    guard subtypeFields.contains(where: { event.getIntegerValueField($0) == Int64(subtype) }) else { return pass }
+    guard let ns = NSEvent(cgEvent: event),
           let key = MediaKeyEvent.decode(subtype: Int(ns.subtype.rawValue), data1: ns.data1),
           key.kind != .other else { return pass }
     let display = MediaKeyDisplay.at(event.location)
