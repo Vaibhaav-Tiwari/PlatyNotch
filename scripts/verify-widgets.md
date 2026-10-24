@@ -591,3 +591,40 @@ these checks in Settings › Widgets › Wellbeing (step 5 min); reset its state
 - [ ] **117. Midnight.** With the panel open on Today across midnight, the glass count
   goes back to 0 / goal at 00:00 without reopening the panel.
 
+## Task 9: battery, keep-awake, AirPods, downloads
+
+The System widget is on by default with only battery and keep-awake (no permission).
+Headphones and downloads are off until turned on from their button in Settings › Widgets ›
+System; that button is the only place their prompts can appear. Automated checks:
+`SystemTests` (Kit), `SystemWidgetTests` (fakes for power, assertions, Bluetooth and FSEvents).
+
+### Battery and keep-awake
+
+- [ ] **118. On by default, no prompt.** Fresh defaults: System is on in Settings ›
+  Widgets; the Today tab shows the battery row (percent, "On battery · … left" or
+  "Charging · … until full") and Keep awake. No permission prompt of any kind.
+- [ ] **119. Plug in / unplug.** Plug in the charger: within a second a peek below the
+  notch says "Plugged in" with the percent, for about 4 s. Unplug: "On battery" with the
+  percent and time left. While a peek shows, an approval (`scripts/fake-events.sh`) still
+  takes over at once.
+- [ ] **120. Charging is ambient.** While charging with nothing else live, the pill's
+  live ear shows ⚡ and the percent. Turn on Settings › Appearance › Minimal: the pill
+  hides while charging (charging never keeps Minimal up).
+- [ ] **121. Low battery.** Unplugged at 10% or less (or simulate with a nearly empty
+  battery): the pill shows the battery glyph and percent in red, and in Minimal mode the
+  pill stays up. Plugging in removes it.
+- [ ] **122. Desktop Mac.** On a Mac mini / iMac / Studio: no battery row, no peeks,
+  no battery in the pill; Keep awake still works; nothing in Console about power sources.
+- [ ] **123. Keep awake 30 min.** Start → 30 minutes. `pmset -g assertions` lists
+  "PlatyNotch: keep awake" (PreventUserIdleDisplaySleep). The pill shows a cup and the
+  time left counting down; the tile shows "Awake · 29:… left". Set System Settings › Lock
+  Screen › "Turn display off" to 1 minute: the display stays on. After 30 minutes the
+  assertion is gone (`pmset -g assertions`), the pill item disappears, and the display
+  sleeps normally again.
+- [ ] **124. Keep awake ends with the widget.** Start "Until turned off"; then (a) Stop,
+  (b) turn System off in Settings › Widgets, (c) quit PlatyNotch: each time the assertion
+  is gone from `pmset -g assertions` at once. Relaunch after (c): keep-awake is off (never
+  re-created on launch).
+- [ ] **125. Idle cost.** With keep-awake off and the panel collapsed, `sample PlatyNotch 5`
+  shows no timer for the System widget; with keep-awake on and the panel collapsed in
+  Minimal mode (pill hidden), nothing ticks (one sleep to the deadline only).

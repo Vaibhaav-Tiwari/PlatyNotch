@@ -65,5 +65,8 @@ enum BuiltInWidgets {
         // calendar access; wellbeing never asks for calendar access itself.
         registry.register(persist ? WellbeingWidget(inMeeting: meetingSignal(registry: registry, meeting: meeting))
                                   : WellbeingWidget.inert())
+        // On by default with battery and keep-awake only (no permission); headphones and
+        // downloads stay off until turned on in its settings. Smoke: no IOKit at all.
+        registry.register(persist ? SystemWidget() : SystemWidget.inert())
     }
 }
