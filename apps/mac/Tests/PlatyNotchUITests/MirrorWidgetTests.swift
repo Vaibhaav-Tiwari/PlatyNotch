@@ -60,7 +60,7 @@ final class MirrorWidgetTests: DefaultsTestCase {
         access.status = status
         let feed = FakeFeed()
         let signals = FakeSignals()
-        let grant = GrantStamp(key: Permissions.cameraGrantKey, defaults: defaults(), identity: { build })
+        let grant = GrantStamp(key: MirrorWidget.cameraGrantKey, defaults: defaults(), identity: { build })
         final class Counter { var n = 0 }
         let made = Counter()
         let camera = CameraAccess(status: {
@@ -312,7 +312,7 @@ final class MirrorWidgetTests: DefaultsTestCase {
 
     func testRebuildShowsTurnOnAgain() {
         let d = defaults()
-        GrantStamp(key: Permissions.cameraGrantKey, defaults: d, identity: { "dr:1" }).note()
+        GrantStamp(key: MirrorWidget.cameraGrantKey, defaults: d, identity: { "dr:1" }).note()
         let r = rig(status: .notDetermined, build: "dr:2")
         r.widget.start(context: context())
         XCTAssertEqual(r.widget.tileState, .turnOnAgain)

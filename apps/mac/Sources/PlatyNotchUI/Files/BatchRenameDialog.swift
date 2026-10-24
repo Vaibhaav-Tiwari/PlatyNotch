@@ -36,11 +36,14 @@ final class BatchRenameModel {
 
 struct BatchRenameView: View {
     @Bindable var model: BatchRenameModel
+    /// Return in the pattern field.
+    var submit: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             TextField("Pattern", text: $model.pattern)
                 .textFieldStyle(.roundedBorder)
+                .onSubmit(submit)
             Text("{name} the name · {n} or {n:3} the number · {date:yyyy-MM-dd} today. The extension is kept.")
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
@@ -68,23 +71,112 @@ struct BatchRenameView: View {
     }
 }
 
+/// Batch rename's window: the title, the pattern with its preview, and Cancel / Rename.
+/// Not modal and it never activates the app (C1): a non-activating panel at `.floating`
+/// that becomes key only to take the typing, like `BasketRenamePanel`, placed by
+/// `BasketPlacement` (never over the notch panel or the approval card, which stays
+/// clickable while this is open). Return renames; Escape or Cancel cancels. Clicking
+/// elsewhere (an approval, another app) leaves it open: a click on it takes the keyboard
+/// back, and Rename still runs exactly the plan the preview shows.
+@MainActor
+final class BatchRenamePanel: NSPanel {
+    static let size = CGSize(width: 372, height: 300)
+    let model: BatchRenameModel
+    private var done: (@MainActor (Bool) -> Void)?
+
+    init(model: BatchRenameModel, frame: CGRect, done: @escaping @MainActor (Bool) -> Void) {
+        self.model = model
+        self.done = done
+        super.init(contentRect: frame, styleMask: [.titled, .closable, .nonactivatingPanel, .fullSizeContentView],
+                   backing: .buffered, defer: false)
+        isFloatingPanel = true
+        level = .floating
+        collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle, .transient]
+        hidesOnDeactivate = false
+        isReleasedWhenClosed = false
+        titleVisibility = .hidden
+        titlebarAppearsTransparent = true
+        let count = model.targets.count
+        let title = count == 1 ? "Rename “\(model.targets[0].item.title)”" : "Rename \(count) items"
+        self.title = title
+        contentView = NSHostingView(rootView: BatchRenameSheet(
+            title: title, model: model,
+            rename: { [weak self] in self?.finish(true) },
+            cancel: { [weak self] in self?.finish(false) }))
+    }
+
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+
+    func present() {
+        makeKeyAndOrderFront(nil)   // a non-activating panel: the app stays in the background
+    }
+
+    override func cancelOperation(_ sender: Any?) { finish(false) }
+
+    /// The close button.
+    override func close() {
+        finish(false)
+        super.close()
+    }
+
+    /// `rename` true runs the plan; the panel goes either way, once.
+    func finish(_ rename: Bool) {
+        guard let done else { return }
+        self.done = nil
+        orderOut(nil)
+        done(rename)
+    }
+}
+
+/// The panel's content: what `NSAlert` showed before, without a modal session.
+struct BatchRenameSheet: View {
+    let title: String
+    let model: BatchRenameModel
+    let rename: () -> Void
+    let cancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(verbatim: title).font(.headline).lineLimit(1).truncationMode(.middle)
+            Text("Names already taken get “ 2”, “ 3”. Undo Rename puts them back.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            BatchRenameView(model: model, submit: rename)
+            HStack {
+                Spacer()
+                Button("Cancel", action: cancel).keyboardShortcut(.cancelAction)
+                Button("Rename", action: rename).keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(EdgeInsets(top: 28, leading: 16, bottom: 14, trailing: 16))
+        .frame(width: BatchRenamePanel.size.width, height: BatchRenamePanel.size.height, alignment: .topLeading)
+    }
+}
+
 @MainActor
 enum BatchRenameDialog {
-    /// Asks for a pattern with a preview, then renames (user-initiated, so the app comes
-    /// forward for the keyboard, like Locate…).
-    static func run(_ targets: [(item: ShelfItem, url: URL)], center: FileActionCenter) {
+    /// The one open Batch rename (a second request replaces it, cancelled).
+    private(set) static var current: BatchRenamePanel?
+
+    /// Asks for a pattern with a preview, then renames. Never a modal session and never
+    /// activates the app, so an approval arriving meanwhile stays clickable (C1). The panel
+    /// opens where the menu was (the pointer), moved clear of the notch panel's region.
+    static func run(_ targets: [(item: ShelfItem, url: URL)], center: FileActionCenter,
+                    near point: CGPoint = NSEvent.mouseLocation,
+                    screens: [BasketScreen] = SystemBasketSystem.screens(pillWidth: AppearanceStore.load(from: .standard).pillWidth)) {
         guard !targets.isEmpty else { return }
+        current?.finish(false)
+        guard let frame = BasketPlacement.frame(centeredAt: point, size: BatchRenamePanel.size, screens: screens) else {
+            NSSound.beep()
+            return
+        }
         let model = BatchRenameModel(targets: targets)
-        let alert = NSAlert()
-        alert.messageText = targets.count == 1 ? "Rename “\(targets[0].item.title)”" : "Rename \(targets.count) items"
-        alert.informativeText = "Names already taken get “ 2”, “ 3”. Undo Rename puts them back."
-        alert.addButton(withTitle: "Rename")
-        alert.addButton(withTitle: "Cancel")
-        let host = NSHostingView(rootView: BatchRenameView(model: model))
-        host.frame = CGRect(x: 0, y: 0, width: 340, height: 190)
-        alert.accessoryView = host
-        NSApp.activate()
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        center.rename(targets, plan: model.plan)
+        let panel = BatchRenamePanel(model: model, frame: frame) { rename in
+            current = nil
+            if rename { center.rename(targets, plan: model.plan) }
+        }
+        current = panel
+        panel.present()
     }
 }

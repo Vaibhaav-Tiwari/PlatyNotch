@@ -275,7 +275,7 @@ struct SystemFileActions: FileActionPerforming {
         let fileType: AVFileType = type == .quickTimeMovie ? .mov : .mp4
         let out = output(src, ext: type == .quickTimeMovie ? "mov" : "mp4", in: folder)
         let asset = AVURLAsset(url: src)
-        guard await AVAssetExportSession.compatibility(ofExportPreset: preset, with: asset, outputFileType: fileType),
+        guard await exportCompatible(preset: preset, asset: asset, fileType: fileType),
               let session = AVAssetExportSession(asset: asset, presetName: preset) else {
             throw FileActionError.unsupported
         }
@@ -288,6 +288,17 @@ struct SystemFileActions: FileActionPerforming {
             throw FileActionError.failed(error.localizedDescription)
         }
         return out
+    }
+
+    /// An explicit continuation, not the compiler's async form of this completion-handler
+    /// API (`compatibility(ofExportPreset:with:outputFileType:)`): the generated form of
+    /// AVAssetWriter.finishWriting crashed on resume on macOS 15.7 (CI), and this
+    /// AVFoundation call is not proven safe there. CI greps for the generated form.
+    private static func exportCompatible(preset: String, asset: AVAsset, fileType: AVFileType) async -> Bool {
+        await withCheckedContinuation { done in
+            AVAssetExportSession.determineCompatibility(ofExportPreset: preset, with: asset,
+                                                        outputFileType: fileType) { done.resume(returning: $0) }
+        }
     }
 
     /// M4A (AAC, 192 kbit/s) or WAV (16-bit PCM), at the source's rate and channels.

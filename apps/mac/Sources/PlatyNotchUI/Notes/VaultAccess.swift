@@ -217,11 +217,12 @@ final class VaultEventsWatcher: FolderWatching {
 }
 
 enum VaultAccess {
-    /// The settings button's folder picker. Activates the app first: PlatyNotch is an
-    /// accessory app and the panel would otherwise open behind other windows.
+    /// The settings button's folder picker. Not modal (C1): `begin`, like Shelf's Locate…,
+    /// so an approval arriving while it is open stays clickable. It is opened from the
+    /// Settings window, which already made PlatyNotch the active app, so it never activates
+    /// the app itself. `chosen` runs only when the user picks a folder.
     @MainActor
-    static func chooseFolder() -> URL? {
-        NSApp.activate()
+    static func chooseFolder(_ chosen: @escaping @MainActor (URL) -> Void) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -229,8 +230,10 @@ enum VaultAccess {
         panel.canCreateDirectories = false
         panel.prompt = "Use as Vault"
         panel.message = "Choose your Obsidian vault (or any folder of Markdown notes)."
-        guard panel.runModal() == .OK else { return nil }
-        return panel.url
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            MainActor.assumeIsolated { chosen(url) }
+        }
     }
 
     /// Lists the folder's names once, off the main thread (it waits while macOS asks).

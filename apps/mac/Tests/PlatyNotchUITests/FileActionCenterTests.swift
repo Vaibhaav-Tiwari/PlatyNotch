@@ -377,6 +377,67 @@ final class FileActionCenterTests: DefaultsTestCase {
         XCTAssertGreaterThan(view.fittingSize.height, 0)
     }
 
+    /// Final review C1: Batch rename is a non-activating panel, not an app-modal alert, so
+    /// the approval card stays clickable; it opens clear of the notch panel's region.
+    func testBatchRenameIsANonModalPanelClearOfTheNotch() throws {
+        let (c, _) = center(FakeEngine())
+        let a = try file("a.txt", "A"), b = try file("b.txt", "B")
+        let layout = PanelLayout(screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),
+                                 visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 944),
+                                 auxLeft: CGRect(x: 0, y: 944, width: 664, height: 38),
+                                 auxRight: CGRect(x: 848, y: 944, width: 664, height: 38), pillWidth: .standard)
+        let screens = [BasketScreen(visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 944), layout: layout)]
+        // Asked from a menu in the open notch panel: the pointer is inside its region.
+        BatchRenameDialog.run([a, b], center: c, near: CGPoint(x: 756, y: 900), screens: screens)
+        let panel = try XCTUnwrap(BatchRenameDialog.current)
+        defer { panel.finish(false) }
+        XCTAssertTrue(panel.styleMask.contains(.nonactivatingPanel), "never activates the app")
+        XCTAssertTrue(panel.canBecomeKey)
+        XCTAssertFalse(panel.canBecomeMain)
+        XCTAssertLessThan(panel.level.rawValue, NSWindow.Level.statusBar.rawValue, "below the notch panel")
+        XCTAssertNil(NSApp.modalWindow, "no modal session")
+        XCTAssertTrue(BasketPlacement.isClear(panel.frame, screens: screens), "\(panel.frame)")
+        XCTAssertEqual(panel.frame.size, BatchRenamePanel.size)
+
+        // Escape cancels: nothing renamed.
+        panel.model.pattern = "trip {n}"
+        panel.cancelOperation(nil)
+        XCTAssertNil(BatchRenameDialog.current)
+        XCTAssertTrue(fm.fileExists(atPath: a.url.path))
+        XCTAssertFalse(c.canUndoRename)
+
+        // Rename (Return) runs exactly the previewed plan, once; Undo still puts it back.
+        BatchRenameDialog.run([a, b], center: c, near: CGPoint(x: 300, y: 300), screens: screens)
+        let again = try XCTUnwrap(BatchRenameDialog.current)
+        again.model.pattern = "trip {n}"
+        XCTAssertEqual(again.model.previewLines.map(\.new), ["trip 1.txt", "trip 2.txt"])
+        again.finish(true)
+        again.finish(true)
+        let dir = a.url.deletingLastPathComponent()
+        XCTAssertTrue(fm.fileExists(atPath: dir.appendingPathComponent("trip 1.txt").path))
+        XCTAssertTrue(fm.fileExists(atPath: dir.appendingPathComponent("trip 2.txt").path))
+        XCTAssertTrue(c.canUndoRename)
+        c.undoRename()
+        XCTAssertTrue(fm.fileExists(atPath: a.url.path))
+        XCTAssertNil(BatchRenameDialog.current)
+    }
+
+    /// A second request replaces the open one, cancelled.
+    func testBatchRenameKeepsOnePanel() throws {
+        let (c, _) = center(FakeEngine())
+        let a = try file("a.txt", "A")
+        let screens = [BasketScreen(visibleFrame: CGRect(x: 0, y: 0, width: 1200, height: 800), exclusion: nil)]
+        BatchRenameDialog.run([a], center: c, near: CGPoint(x: 300, y: 300), screens: screens)
+        let first = try XCTUnwrap(BatchRenameDialog.current)
+        BatchRenameDialog.run([a], center: c, near: CGPoint(x: 300, y: 300), screens: screens)
+        let second = try XCTUnwrap(BatchRenameDialog.current)
+        XCTAssertFalse(first === second)
+        XCTAssertFalse(first.isVisible)
+        second.finish(false)
+        XCTAssertNil(BatchRenameDialog.current)
+        XCTAssertFalse(c.canUndoRename)
+    }
+
     // MARK: - On the shelf (R11)
 
     private func shelf(on: Bool = true) -> (ShelfWidget, WidgetRegistry, FakeEngine) {

@@ -96,8 +96,19 @@ final class NotesWidget: NotchWidget {
     @ObservationIgnored private var queued = VaultRescan()
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var periodicTask: Task<Void, Never>?
-    /// The tile is on screen (the periodic walk runs only then).
-    @ObservationIgnored private(set) var tileVisible = false
+    /// Tiles on screen (one per display's panel can exist), like Mirror's. The token is
+    /// held weakly: a tile whose view went away without `onDisappear` (its panel was torn
+    /// down) no longer counts, so the periodic walk never outlives every tile (M3).
+    @ObservationIgnored private var tiles: [UUID: TileEntry] = [:]
+
+    private struct TileEntry {
+        weak var token: NotesTileToken?
+        var visible: Bool
+        var shows: Bool { token != nil && visible }
+    }
+
+    /// A tile is on screen with the panel's content showing (the periodic walk runs only then).
+    var tileVisible: Bool { tiles.values.contains(where: \.shows) }
     /// Rescans done (incremental or full), for tests.
     @ObservationIgnored private(set) var rescans = 0
     /// A folder the user chose that macOS refused (Try Again asks for it; never saved).
@@ -252,7 +263,7 @@ final class NotesWidget: NotchWidget {
         }
         rescan(VaultRescan(full: true))
         // The tile was already showing (a vault turned on from Settings): its walk starts now.
-        if tileVisible { tileShown() }
+        updateWalk()
     }
 
     /// The periodic walk is set up (tests).
@@ -343,25 +354,52 @@ final class NotesWidget: NotchWidget {
     /// The scan in flight (tests await it).
     var scanTask: Task<Void, Never>? { scanning }
 
-    /// The tile appeared: a full walk every `periodicRescan` while it shows (new notes the
-    /// events missed, the 30-day window moving on). Nothing while it is hidden.
-    func tileShown() {
-        tileVisible = true
-        guard vault != nil, periodicTask == nil else { return }
+    // MARK: - Tile events (the periodic walk)
+
+    /// A tile appeared; `visible`: the panel's content shows.
+    func tileAppeared(_ tile: NotesTileToken, visible: Bool) {
+        tiles = tiles.filter { $0.value.token != nil }
+        tiles[tile.id] = TileEntry(token: tile, visible: visible)
+        updateWalk()
+    }
+
+    /// The tile left the screen (the panel collapsed, or another tab).
+    func tileDisappeared(_ tile: NotesTileToken) {
+        tiles[tile.id] = nil
+        updateWalk()
+    }
+
+    /// The panel's content around `tile` was hidden or shown again.
+    func tileVisibility(_ tile: NotesTileToken, visible: Bool) {
+        guard tiles[tile.id] != nil else { return }
+        tiles[tile.id]?.visible = visible
+        updateWalk()
+    }
+
+    /// While a tile shows and a vault is on: a full walk every `periodicRescan` (new notes
+    /// the events missed, the 30-day window moving on). Nothing while none shows; each
+    /// tick checks again, so a tile that vanished without saying so stops the walk.
+    private func updateWalk() {
+        tiles = tiles.filter { $0.value.token != nil }
+        guard vault != nil, tileVisible else {
+            periodicTask?.cancel()
+            periodicTask = nil
+            return
+        }
+        guard periodicTask == nil else { return }
         let every = services.periodicRescan
         periodicTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: every)
                 guard !Task.isCancelled, let self else { return }
+                self.tiles = self.tiles.filter { $0.value.token != nil }
+                guard self.tileVisible else {
+                    self.periodicTask = nil
+                    return
+                }
                 self.rescan(VaultRescan(full: true))
             }
         }
-    }
-
-    func tileHidden() {
-        tileVisible = false
-        periodicTask?.cancel()
-        periodicTask = nil
     }
 
     // MARK: - Ticking
@@ -515,6 +553,8 @@ final class NotesWidget: NotchWidget {
 /// The tile: quick note on top, then open tasks with a tick box.
 struct NotesTile: View {
     @Bindable var widget: NotesWidget
+    @State private var token = NotesTileToken()
+    @Environment(\.panelTicking) private var shown
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -549,8 +589,9 @@ struct NotesTile: View {
             }
             tasks
         }
-        .onAppear { widget.tileShown() }
-        .onDisappear { widget.tileHidden() }
+        .onAppear { widget.tileAppeared(token, visible: shown) }
+        .onDisappear { widget.tileDisappeared(token) }
+        .onChange(of: shown) { widget.tileVisibility(token, visible: shown) }
     }
 
     @ViewBuilder private var tasks: some View {
@@ -657,7 +698,7 @@ struct NotesSettings: View {
                 Button(widget.options.vaultDenied ? "Try Again" : "Turn On Again…") { widget.turnOnAgain() }
             }
             Button(widget.options.vaultPath == nil ? "Choose Vault…" : "Change…") {
-                if let url = VaultAccess.chooseFolder() { widget.chooseVault(url) }
+                VaultAccess.chooseFolder { [widget] url in widget.chooseVault(url) }
             }
             if widget.options.vaultPath != nil {
                 Button("Forget") { widget.forgetVault() }
@@ -681,4 +722,10 @@ struct NotesSettings: View {
             + "else in your vault is changed. A vault in "
             + "Documents or iCloud Drive makes macOS ask once, when you choose it. Nothing leaves your Mac."
     }
+}
+
+/// One Notes tile view's identity, held by the view (`@State`) and weakly by the widget.
+@MainActor
+final class NotesTileToken {
+    let id = UUID()
 }

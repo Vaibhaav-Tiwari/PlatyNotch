@@ -375,6 +375,37 @@ final class BasketTests: DefaultsTestCase {
         XCTAssertFalse(fm.fileExists(atPath: try XCTUnwrap(copy.fileRef?.path)))
     }
 
+    /// Final review I4: with Baskets off nothing restores the store, so the launch pass
+    /// expires a pinned basket's copies on disk; the user's files and pinned items stay.
+    func testExpireOnDiskWhileOff() throws {
+        let dir = root.appendingPathComponent("baskets.noindex")
+        BasketStore.expireOnDisk(directory: dir, now: t0)
+        XCTAssertFalse(fm.fileExists(atPath: dir.path), "never used: nothing read or written")
+        let d = defaults()
+        let first = baskets(defaults: d)
+        let b = try XCTUnwrap(first.create(at: .zero))
+        first.setPinned(b.id, true)
+        let store = try XCTUnwrap(first.store(for: b.id))
+        let copy = try XCTUnwrap(store.addOwnedData(Data("png".utf8), filename: "a.png"))
+        let kept = try XCTUnwrap(store.addOwnedData(Data("png".utf8), filename: "k.png"))
+        store.setPinned(kept.id, true)
+        let user = store.addFile(try userFile("mine.txt"))
+        // A stray non-basket folder is never touched.
+        let stray = dir.appendingPathComponent("not-a-basket")
+        try fm.createDirectory(at: stray, withIntermediateDirectories: true)
+        try Data("[]".utf8).write(to: stray.appendingPathComponent(ShelfStore.indexName))
+
+        BasketStore.expireOnDisk(directory: dir, now: t0.addingTimeInterval(ShelfStore.ownedLifetime - 60))
+        XCTAssertTrue(fm.fileExists(atPath: try XCTUnwrap(copy.fileRef?.path)), "not yet")
+        BasketStore.expireOnDisk(directory: dir, now: t0.addingTimeInterval(ShelfStore.ownedLifetime + 1))
+        XCTAssertFalse(fm.fileExists(atPath: try XCTUnwrap(copy.fileRef?.path)), "expired while off")
+        XCTAssertTrue(fm.fileExists(atPath: try XCTUnwrap(kept.fileRef?.path)), "a pinned item never expires")
+        XCTAssertTrue(fm.fileExists(atPath: root.appendingPathComponent("mine.txt").path))
+        XCTAssertTrue(fm.fileExists(atPath: stray.appendingPathComponent(ShelfStore.indexName).path))
+        let reread = ShelfStore(directory: dir.appendingPathComponent(b.id.uuidString), bookmarks: PathBookmarks())
+        XCTAssertEqual(Set(reread.items.map(\.id)), [kept.id, user.id])
+    }
+
     func testRenameRefusesBlank() throws {
         let store = baskets()
         let b = try XCTUnwrap(store.create(at: .zero))
