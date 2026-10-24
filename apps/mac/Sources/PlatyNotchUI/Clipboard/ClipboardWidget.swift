@@ -30,7 +30,7 @@ protocol ClipboardMenuControl: AnyObject {
 ///   and a peek says "Copied — press ⌘V". Only Settings' button asks for Accessibility.
 ///
 /// Off: no timer, no hot key, no pasteboard reads, the store is not even opened (unless it
-/// was opened before). `disabled()` keeps history; Clear deletes it. Pause stops reads at
+/// was opened before). `disabled()` keeps history; Clear History (unpinned) or Clear All, Including Pinned, deletes it. Pause stops reads at
 /// once and survives a relaunch; what is copied while paused is never recorded.
 @MainActor @Observable
 final class ClipboardWidget: NotchWidget, ClipboardMenuControl {
@@ -145,7 +145,7 @@ final class ClipboardWidget: NotchWidget, ClipboardMenuControl {
         context = nil
     }
 
-    // `disabled()`: nothing beyond `stop`. History is the user's; Clear deletes it.
+    // `disabled()`: nothing beyond `stop`. History is the user's; Clear History (unpinned) or Clear All, Including Pinned, deletes it.
 
     func tileView() -> AnyView { AnyView(ClipboardTile(widget: self)) }
     func settingsView() -> AnyView? { AnyView(ClipboardSettings(widget: self)) }
@@ -507,10 +507,10 @@ struct ClipboardSettings: View {
             Text("Never recorded: anything copied in a password manager (1Password, Bitwarden, LastPass, KeePassXC, MacPass, Strongbox, Enpass, Proton Pass, NordPass, Keychain Access, Passwords and others) or in an app on Memory's excluded list, and anything an app marks as a password or as temporary. The app is the one in front when the copy happens, a best guess, since macOS does not say which app copied.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Also never saved: text that looks like an API key, token, private key or card number. A password copied from somewhere else, such as a note, can be saved; Clear deletes it.")
+            Text("Also never saved: text that looks like an API key, token, private key or card number. A password copied from somewhere else, such as a note, can be saved; Clear History (or Clear All, Including Pinned, for a pinned one) deletes it.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("History stays on this Mac in PlatyNotch's private folder. Turning the widget off keeps it; Clear deletes it, images too.")
+            Text("History stays on this Mac in PlatyNotch's private folder. Turning the widget off keeps it. Clear History deletes every unpinned item and its image; Clear All, Including Pinned, deletes everything.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 

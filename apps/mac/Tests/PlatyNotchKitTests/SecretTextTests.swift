@@ -28,6 +28,7 @@ final class SecretTextTests: XCTestCase {
     /// (which Go redacts a window of) are kept.
     func testStricterThanGoRedaction() {
         for s in ["x 1398 8333 3494 9149 9432 0603 y",   // 24 digits in groups: longer than a card
+                  "2027 4242 4242 4242 4242",               // documented miss: an extra group before
                   "4242  4242  4242  4242"] {             // two separators between groups
             XCTAssertFalse(SecretText.containsSecret(s), s)
         }
@@ -80,6 +81,8 @@ final class SecretTextTests: XCTestCase {
             "v4242424242424242",                        // part of a word
             "10:4242424242424242",                      // time-like
             "2024.4242424242424242",                    // date-like
+            "4242 4242 4242 4242 123 456",              // more numbers after a "CVV"
+            "4242-4242-4242-4242 12/27/2024",           // a date, not an expiry
         ]
         for s in keep { XCTAssertFalse(SecretText.containsSecret(s), s) }
         let skip = [
@@ -90,6 +93,15 @@ final class SecretTextTests: XCTestCase {
             "on 2024-01-15 4242 4242 4242 4242 paid",    // after a date
             "4242 4242 4242 4242 12/27",                 // with an expiry
             "card: 4242-4242-4242-4242.",
+            // Round 3: expiry after another separator, and a trailing CVV.
+            "4242-4242-4242-4242 12/27",
+            "4242-4242-4242-4242 12/2027",
+            "4242 4242 4242 4242 123",
+            "4242-4242-4242-4242 123",
+            "3782 822463 10005 1234",
+            "4242 4242 4242 4242 12/27 123",
+            "card 4242424242424242 cvv 123",
+            "4242-4242-4242-4242, 12/27, 123",
         ]
         for s in skip { XCTAssertTrue(SecretText.containsSecret(s), s) }
     }
