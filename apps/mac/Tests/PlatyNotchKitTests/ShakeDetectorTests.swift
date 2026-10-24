@@ -46,7 +46,7 @@ final class ShakeDetectorTests: DefaultsTestCase {
 
     func testSlowShakeOutsideTheWindow() {
         var d = ShakeDetector(sensitivity: 5)
-        // Reversals 0.3 s apart: never three within 0.5 s.
+        // Reversals 0.3 s apart: never three within 0.45 s.
         XCTAssertEqual(run(&d, zigzag(10), step: 0.3), [])
     }
 

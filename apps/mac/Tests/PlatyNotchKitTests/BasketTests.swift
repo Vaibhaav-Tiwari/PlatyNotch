@@ -9,19 +9,25 @@ private struct PathBookmarks: ShelfBookmarks {
     func resolve(_ data: Data) -> (url: URL, isStale: Bool)? { (URL(fileURLWithPath: String(decoding: data, as: UTF8.self)), false) }
 }
 
+/// The drag monitor's poll (`DragMonitor.pollInterval`, PlatyNotchUI): 20 Hz.
+private enum DragMonitorPoll {
+    static let interval: TimeInterval = 0.05
+}
+
 @MainActor
 final class BasketTests: DefaultsTestCase {
-    private var root: URL!
+    nonisolated(unsafe) private var root: URL!
     private let t0 = Date(timeIntervalSinceReferenceDate: 800_000_000)
-    private let fm = FileManager.default
+    private var fm: FileManager { .default }
 
     override func setUpWithError() throws {
-        root = fm.temporaryDirectory.appendingPathComponent("BasketTests-\(UUID().uuidString)")
-        try fm.createDirectory(at: root, withIntermediateDirectories: true)
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("BasketTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        root = dir
     }
 
     override func tearDownWithError() throws {
-        try? fm.removeItem(at: root)
+        if let root { try? FileManager.default.removeItem(at: root) }
     }
 
     private func baskets(defaults: UserDefaults? = nil, now: Date? = nil) -> BasketStore {
@@ -74,6 +80,32 @@ final class BasketTests: DefaultsTestCase {
         var least = ShakeDetector(sensitivity: 1)
         XCTAssertFalse(feed(&least, [0, 40, 0, 40, 0, 40, 0]), "five reversals: not enough at 1")
         XCTAssertEqual(least.threshold, 7)
+    }
+
+    /// A hand shaking at `hz`, legs of `leg` points (a sine), sampled every 0.05 s like the
+    /// drag monitor's poll, for `seconds`. True when the detector fires.
+    private func realistic(hz: Double, leg: Double = 60, seconds: Double = 3, sensitivity: Int) -> Bool {
+        var d = ShakeDetector(sensitivity: sensitivity)
+        let step = DragMonitorPoll.interval
+        for i in 0..<Int(seconds / step) {
+            let t = Double(i) * step
+            if d.feed(x: 500 + leg / 2 * sin(2 * .pi * hz * t), time: t) { return true }
+        }
+        return false
+    }
+
+    func testRealisticShakesAtTwentyHertz() {
+        XCTAssertTrue(realistic(hz: 3, sensitivity: 3), "3 Hz, 60 pt legs: the default level")
+        XCTAssertTrue(realistic(hz: 2.5, sensitivity: 5), "2.5 Hz: the most sensitive level")
+        XCTAssertTrue(realistic(hz: 3, sensitivity: 5))
+        XCTAssertTrue(realistic(hz: 3.5, sensitivity: 1), "a brisk shake reaches the least sensitive level")
+        for level in ShakeDetector.sensitivityRange {
+            XCTAssertFalse(realistic(hz: 1, seconds: 10, sensitivity: level), "a slow drag wiggle never fires (level \(level))")
+            XCTAssertFalse(realistic(hz: 3, leg: 25, sensitivity: level), "small wiggles never fire (level \(level))")
+        }
+        XCTAssertEqual(ShakeDetector(sensitivity: 3).window, 0.75, accuracy: 1e-9)
+        XCTAssertEqual(ShakeDetector(sensitivity: 5).window, 0.45, accuracy: 1e-9)
+        XCTAssertEqual(ShakeDetector(sensitivity: 1).window, 1.05, accuracy: 1e-9)
     }
 
     func testOnlyDuringDrag() {
