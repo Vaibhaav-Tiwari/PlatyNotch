@@ -47,10 +47,19 @@ struct UsageBar: View {
 struct UsageSection: View {
     let usage: Usage
 
+    /// Named providers with at least one window (typed steps: the chained tuple closures
+    /// were the slowest expression to type-check in the app).
+    static func providers(_ usage: Usage) -> [(String, Limits)] {
+        var out: [(String, Limits)] = []
+        for (name, limits) in [("Claude", usage.claude), ("Codex", usage.codex)] {
+            guard let limits, limits.fiveHour != nil || limits.weekly != nil else { continue }
+            out.append((name, limits))
+        }
+        return out
+    }
+
     var body: some View {
-        let providers = [("Claude", usage.claude), ("Codex", usage.codex)]
-            .compactMap { name, limits in limits.map { (name, $0) } }
-            .filter { $0.1.fiveHour != nil || $0.1.weekly != nil }
+        let providers = Self.providers(usage)
         if !providers.isEmpty {
             TimelineView(.periodic(from: .now, by: 30)) { ctx in
                 VStack(alignment: .leading, spacing: 4) {

@@ -61,8 +61,12 @@ struct MusicBars: View {
             return (0..<count).map { still[$0 % still.count] * scale }
         }
         return (0..<count).map { i in
-            let phase = sin(t * (5 + Double(i) * 1.7) + Double(i))
-            return (4 + 6 * (phase + 1) / 2) * scale
+            // Explicit Double, then one CGFloat conversion: mixing the two with literals
+            // took 1.5 s to type-check on CI's compiler.
+            let speed: Double = 5 + Double(i) * 1.7
+            let phase: Double = sin(t * speed + Double(i))
+            let bar: Double = 4 + 3 * (phase + 1)
+            return CGFloat(bar) * scale
         }
     }
 
