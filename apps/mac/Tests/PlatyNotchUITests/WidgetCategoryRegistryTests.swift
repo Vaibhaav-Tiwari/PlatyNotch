@@ -132,6 +132,13 @@ final class PowerSmokeTests: DefaultsTestCase {
         XCTAssertEqual(NotchApp.powerSmoke(list), .success(list.count))
     }
 
+    /// `--smoke-power` prints widgets=6 (scripts/verify-widgets.md): one per v0.2 power
+    /// feature. A new one changes this number and that line together.
+    func testSixPowerFeatures() {
+        XCTAssertEqual(BuiltInWidgets.powerWidgets(persist: false).count, 6)
+        XCTAssertEqual(NotchApp.powerSmoke(BuiltInWidgets.powerWidgets(persist: false)), .success(6))
+    }
+
     func testEveryListedWidgetMustBeAPowerFeature() {
         let everyday = CategoryWidget("music")
         XCTAssertEqual(NotchApp.powerSmoke([everyday]),
