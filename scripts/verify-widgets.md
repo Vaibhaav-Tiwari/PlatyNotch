@@ -904,9 +904,12 @@ PLATYNOTCH_RENDER_DIR=/tmp/pn-renders PLATYNOTCH_HOME=<temp home> PLATYNOTCH_COR
   closed eyes and a "z", breathing at one frame a second. Beat your best in a game:
   paws up, sparkles and a jump for about 4 s.
 - [ ] **183. Live cost.** `scripts/build-app.sh`, then `scripts/perf-idle.sh --app`, then
-  the same with `--state working`, `--state waiting` and `--state approval`. Keep the pointer
-  away from the notch and don't play music. Each mean must PASS (under 1%). Platy and the
-  pulsing agent dot are Core Animation keyframes, so the app does no work per frame. When
+  the same with `--state working`, `--state waiting`, `--state approval` and `--state music`
+  (a fake track; the pill shows the music bars). Add `PN_PERF_VERBOSE=1` to see every
+  sample. Don't touch the Mac while it samples: hovering the notch opens a panel, and that
+  shows up as a burst of seconds at 5–20%. Each mean must PASS (under 1%). Platy, the
+  pulsing agent dot and the music bars are Core Animation layers, so the app does no work
+  per frame. When
   you hide the panel or go full screen while an agent works, Platy stops.
 - [ ] **184. Reduce Motion.** System Settings › Accessibility › Display › Reduce motion:
   Platy is a still frame in every mood, and the cue still shows (rim, headphones, check, z).

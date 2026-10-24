@@ -244,6 +244,48 @@ final class MusicVisualiserTests: XCTestCase {
         XCTAssertEqual(MusicBars.heights(at: nil, count: 6, height: 20).count, 6)
     }
 
+    /// The perf hook: a fake track plays, no player is read.
+    func testFakePlayingReportsATrack() {
+        let np = NowPlaying()
+        np.fakePlaying = true
+        np.start()
+        XCTAssertTrue(np.isPlaying)
+        XCTAssertEqual(np.source, .none, "no adapter, no AppleScript")
+        np.stop()
+        XCTAssertFalse(np.isPlaying)
+    }
+
+    /// The synthetic loop is the same sine `heights(at:)` draws, over one period per bar.
+    func testSyntheticLoopMatchesTheSine() {
+        for bar in 0..<3 {
+            let loop = MusicBars.syntheticLoop(bar: bar, height: 10, samples: 24)
+            XCTAssertEqual(loop.heights.count, 25)
+            XCTAssertEqual(loop.heights.first ?? 0, loop.heights.last ?? 1, accuracy: 1e-9, "loops seamlessly")
+            for (k, h) in loop.heights.enumerated() {
+                let t = loop.duration * Double(k) / 24
+                XCTAssertEqual(h, MusicBars.heights(at: t, count: 3, height: 10)[bar], accuracy: 1e-9)
+            }
+        }
+    }
+
+    /// Still: fixed heights, no animation. Synthetic: Core Animation bounces the bars (no
+    /// SwiftUI timeline). Live: the layers follow the levels.
+    func testBarLayersFollowTheMode() {
+        let view = MusicBarsNSView(frame: NSRect(x: 0, y: 0, width: 12, height: 10))
+        let style = MusicBarsNSView.Style(color: .systemGreen, count: 3, height: 10, barWidth: 2.5, spacing: 2)
+        view.configure(style: style, mode: .still, visualiser: nil)
+        XCTAssertFalse(view.isBouncing)
+        XCTAssertEqual(view.barHeights, MusicBars.heights(at: nil, count: 3, height: 10))
+        view.configure(style: style, mode: .synthetic, visualiser: nil)
+        XCTAssertTrue(view.isBouncing)
+        let (v, _, _) = make(enabled: true)
+        view.configure(style: style, mode: .live, visualiser: v)
+        XCTAssertFalse(view.isBouncing)
+        XCTAssertEqual(view.barHeights, MusicBars.heights(levels: [0, 0, 0], height: 10), "silent levels: stubs")
+        view.configure(style: style, mode: .still, visualiser: nil)
+        XCTAssertFalse(view.isBouncing)
+    }
+
     /// The widget wires the visualiser to playback and to its own start / stop.
     func testWidgetFeedsVisualiser() {
         let (v, taps, _) = make(enabled: true)

@@ -130,6 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         watchConfig()
         wireSettingsEntryPoints()
+        if options.fakeNowPlaying { today.nowPlaying.fakePlaying = true }
         BuiltInWidgets.register(in: widgets, store: store, today: today,
                                 persist: !options.smoke && !options.smokeSettings, clipboard: clipboard)
         startPlugins()

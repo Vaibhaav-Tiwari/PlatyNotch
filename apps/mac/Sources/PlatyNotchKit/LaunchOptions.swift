@@ -18,6 +18,10 @@ public struct LaunchOptions: Equatable, Sendable {
     public var renderIconDir: String?
     /// `--platy-gallery <dir>` (hidden, C35): write Platy's art review PNGs and exit.
     public var platyGalleryDir: String?
+    /// `PLATYNOTCH_FAKE_NOWPLAYING=1` together with `--perf-run` (scripts/perf-idle.sh
+    /// `--state music` passes both): now playing reports a fake track as playing instead of
+    /// reading any player, so the pill shows the music bars. Either one alone does nothing.
+    public var fakeNowPlaying: Bool
 
     public init(arguments: [String], env: [String: String]) {
         smoke = arguments.dropFirst().contains("--smoke")
@@ -27,6 +31,7 @@ public struct LaunchOptions: Equatable, Sendable {
         renderDir = env["PLATYNOTCH_RENDER_DIR"].flatMap { $0.isEmpty ? nil : $0 }
         renderIconDir = Self.value(after: "--render-icon", in: arguments)
         platyGalleryDir = Self.value(after: "--platy-gallery", in: arguments)
+        fakeNowPlaying = env["PLATYNOTCH_FAKE_NOWPLAYING"] == "1" && arguments.dropFirst().contains("--perf-run")
     }
 
     /// The argument after `flag`, if there is one that is not another flag.

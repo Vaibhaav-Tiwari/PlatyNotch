@@ -51,4 +51,13 @@ extension LaunchOptionsTests {
         XCTAssertNil(LaunchOptions(arguments: ["--render-icon", "/tmp/i"], env: [:]).renderIconDir,
                      "argv[0] is the program, never a flag")
     }
+
+    /// The perf hook needs both the env and the perf argument; never in normal runs.
+    func testFakeNowPlayingNeedsBoth() {
+        XCTAssertFalse(LaunchOptions(arguments: ["PlatyNotch"], env: [:]).fakeNowPlaying)
+        XCTAssertFalse(LaunchOptions(arguments: ["PlatyNotch"], env: ["PLATYNOTCH_FAKE_NOWPLAYING": "1"]).fakeNowPlaying)
+        XCTAssertFalse(LaunchOptions(arguments: ["PlatyNotch", "--perf-run"], env: [:]).fakeNowPlaying)
+        XCTAssertFalse(LaunchOptions(arguments: ["PlatyNotch", "--perf-run"], env: ["PLATYNOTCH_FAKE_NOWPLAYING": "0"]).fakeNowPlaying)
+        XCTAssertTrue(LaunchOptions(arguments: ["PlatyNotch", "--perf-run"], env: ["PLATYNOTCH_FAKE_NOWPLAYING": "1"]).fakeNowPlaying)
+    }
 }

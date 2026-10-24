@@ -52,6 +52,9 @@ public final class NowPlaying {
     @ObservationIgnored private var idleTicks = 0
     @ObservationIgnored private var artworkGeneration = 0
     static let idlePollTicks = 3
+    /// Perf runs only (`LaunchOptions.fakeNowPlaying`): `start` reports a fake track as
+    /// playing and reads no player.
+    @ObservationIgnored public var fakePlaying = false
 
     public init() {}
 
@@ -60,6 +63,11 @@ public final class NowPlaying {
     public func start() {
         guard !started else { return }
         started = true
+        if fakePlaying {
+            apply(NowPlayingInfo(bundleIdentifier: "dev.platynotch.fake", title: "Perf run", artist: "PlatyNotch",
+                                 isPlaying: true))
+            return
+        }
         if let files = AdapterFiles.locate() {
             startAdapter(files)
         } else {

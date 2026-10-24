@@ -30,12 +30,18 @@
 #                           moods; the panel stays on screen): `working` (one active
 #                           Claude Code session: the pill, Platy paddling), `waiting`
 #                           (a session waiting for input: the pill, Platy waiting), or
-#                           `approval` (a pending permission request: the approval peek).
-#                           Sent as fake hook events through the core after the warm-up.
+#                           `approval` (a pending permission request: the approval peek),
+#                           or `music` (a fake track playing: the pill's music bars; the app
+#                           gets PLATYNOTCH_FAKE_NOWPLAYING=1, honoured only with this
+#                           script's --perf-run argument, and reads no player). Agent states
+#                           are sent as fake hook events through the core after the warm-up.
+#                           Every run reports whether a real player is playing (from the
+#                           mediaremote-adapter when there is one, else "unknown"): a playing
+#                           player shows the music bars and changes what is measured.
 #   -h, --help              this help
 #
 # Environment: PN_PERF_LIMIT (default 1.0, percent of one core), PN_PERF_WARMUP (s,
-# default 10), PN_PERF_APPEARANCE (Appearance settings as a plist data literal, e.g.
+# default 10), PN_PERF_VERBOSE=1 (print every sample), PN_PERF_APPEARANCE (Appearance settings as a plist data literal, e.g.
 # "<7b2273686f77506c617479223a66616c73657d>" = {"showPlaty":false}; default: the defaults). Without --app the release executable uses the adapter in
 # build/mediaremote-adapter when build-app.sh has built it there, else the fallback.
 #
@@ -47,7 +53,7 @@ set -euo pipefail
 
 usage() {
   sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//'
-  echo "usage: scripts/perf-idle.sh [--app [PlatyNotch.app]] [--music-fallback] [--state working|waiting|approval]"
+  echo "usage: scripts/perf-idle.sh [--app [PlatyNotch.app]] [--music-fallback] [--state working|waiting|approval|music]"
 }
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -63,8 +69,8 @@ while [[ $# -gt 0 ]]; do
       else APP_BUNDLE="$BUILD_DIR/PlatyNotch.app"; shift; fi ;;
     --music-fallback) FALLBACK=1; shift ;;
     --state)
-      case "${2:-}" in working|waiting|approval) STATE="$2"; shift 2 ;;
-        *) echo "--state needs working, waiting or approval" >&2; exit 2 ;; esac ;;
+      case "${2:-}" in working|waiting|approval|music) STATE="$2"; shift 2 ;;
+        *) echo "--state needs working, waiting, approval or music" >&2; exit 2 ;; esac ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -129,6 +135,7 @@ if [[ -n "$APP_BUNDLE" ]]; then
     codesign --force --deep --sign - "$PERF_APP" >/dev/null
   fi
   APP_BIN="$PERF_APP/Contents/MacOS/PlatyNotch"
+  ADAPTER_FOR_STATUS="$PERF_APP/Contents/Resources/mediaremote-adapter"
   unset PLATYNOTCH_MEDIAREMOTE_DIR
   if [[ $FALLBACK -eq 1 ]]; then
     export PLATYNOTCH_NO_MEDIAREMOTE=1
@@ -145,6 +152,7 @@ else
   ADAPTER_DIR="$BUILD_DIR/mediaremote-adapter"
   if [[ $FALLBACK -eq 0 && -f "$ADAPTER_DIR/mediaremote-adapter.pl" ]]; then
     export PLATYNOTCH_MEDIAREMOTE_DIR="$ADAPTER_DIR"
+    ADAPTER_FOR_STATUS="$ADAPTER_DIR"
     MUSIC="mediaremote-adapter from $ADAPTER_DIR"
   else
     unset PLATYNOTCH_MEDIAREMOTE_DIR
@@ -157,6 +165,16 @@ for p in Music Spotify; do
   if pgrep -x "$p" >/dev/null 2>&1; then PLAYERS+=("$p"); fi
 done
 if [[ ${#PLAYERS[@]} -gt 0 ]]; then RUNNING="${PLAYERS[*]}"; else RUNNING="none"; fi
+
+# playing_now: whether any player is playing, from the adapter's `get` (yes / no / unknown).
+playing_now() {
+  local dir="${ADAPTER_FOR_STATUS:-}" out
+  if [[ -z "$dir" || ! -f "$dir/mediaremote-adapter.pl" ]]; then echo "unknown"; return; fi
+  out="$(/usr/bin/perl "$dir/mediaremote-adapter.pl" "$dir/MediaRemoteAdapter.framework" get 2>/dev/null || true)"
+  if [[ "$out" == *'"playing":true'* ]]; then echo "yes"
+  elif [[ -n "$out" ]]; then echo "no"
+  else echo "unknown"; fi
+}
 
 export PLATYNOTCH_HOME="$HOME_DIR" PLATYNOTCH_SOCKET="$SOCKET"
 export PLATYNOTCH_USER_HOME="$HOME_DIR/user"   # the core never touches your real ~/.claude
@@ -174,7 +192,9 @@ done
 log "app: $APP_BIN"
 log "music: $MUSIC; players running: $RUNNING"
 # Argument-domain defaults (volatile, never saved): default widgets and Appearance.
-PLATYNOTCH_EXTERNAL_CORE=1 "$APP_BIN" \
+FAKE_NP=0
+[[ "$STATE" == music ]] && FAKE_NP=1
+PLATYNOTCH_FAKE_NOWPLAYING="$FAKE_NP" PLATYNOTCH_EXTERNAL_CORE=1 "$APP_BIN" --perf-run \
   -widgets.layout "" -appearance.settings "${PN_PERF_APPEARANCE:-}" \
   -appearance.minimal NO -appearance.showOnAllDisplays NO -appearance.liveSide right \
   >"$WORK/app.log" 2>&1 &
@@ -185,7 +205,7 @@ sleep "$WARMUP"
 
 # hook <event> <json>: one fake Claude Code hook event through the core.
 hook() { printf '%s' "$2" | "$WORK/notch" hook claude-code "$1"; }
-if [[ -n "$STATE" ]]; then
+if [[ -n "$STATE" && "$STATE" != music ]]; then
   SID='"perf-1"'
   CWD="\"$WORK\""
   log "state: $STATE"
@@ -205,16 +225,21 @@ fi
 kill -0 "$APP_PID" 2>/dev/null || { echo "the app exited:"; cat "$WORK/app.log"; exit 1; }
 
 log "sampling: top -l $SAMPLES -s 1 -pid $APP_PID -stats cpu"
+PLAYING_BEFORE="$(playing_now)"
 CPU_BEFORE="$(cpu_seconds "$APP_PID")"
 START="$(date +%s)"
 VALUES="$(top -l "$SAMPLES" -s 1 -pid "$APP_PID" -stats cpu | awk '/^%CPU/ { getline; print $1 }')"
 kill -0 "$APP_PID" 2>/dev/null || { echo "the app exited while sampled:"; cat "$WORK/app.log"; exit 1; }
 CPU_AFTER="$(cpu_seconds "$APP_PID")"
+PLAYING_AFTER="$(playing_now)"
 ELAPSED=$(( $(date +%s) - START ))
 # Cross-check from the process's own CPU time over the whole sampling window.
 CROSS="$(awk -v a="$CPU_BEFORE" -v b="$CPU_AFTER" -v t="$ELAPSED" \
   'BEGIN { printf "%.2f s of CPU in %d s (%.3f%%)", b - a, t, (t > 0 ? 100 * (b - a) / t : 0) }')"
 
+if [[ "${PN_PERF_VERBOSE:-0}" == 1 ]]; then
+  echo "per-second samples: $(printf '%s\n' "$VALUES" | tail -n +2 | tr '\n' ' ')"
+fi
 COUNT="$(printf '%s\n' "$VALUES" | grep -c . || true)"
 if [[ "$COUNT" -lt 2 ]]; then
   echo "top returned $COUNT samples" >&2
@@ -231,6 +256,7 @@ echo "samples: $N (first dropped)  mean: ${MEAN}%  min: ${MIN}%  max: ${MAX}%  l
 echo "cross-check (ps): $CROSS"
 echo "music: $MUSIC; players running: $RUNNING"
 echo "state: ${STATE:-rest}"
+echo "a real player playing (adapter): before ${PLAYING_BEFORE}, after ${PLAYING_AFTER}"
 if awk -v m="$MEAN" -v l="$LIMIT" 'BEGIN { exit !(m > l) }'; then
   echo "FAIL: idle CPU mean ${MEAN}% is above ${LIMIT}%"
   exit 1
