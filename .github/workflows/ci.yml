@@ -55,6 +55,20 @@ jobs:
             echo "Use a plain deinit (see DragSubscription): isolated deinit can crash on macOS 15.4-26.3."
             exit 1
           fi
+      # The compiler's async form of some completion-handler APIs (AVAssetWriter's
+      # finishWriting) crashed on resume on macOS 15.7 here. Call these through an explicit
+      # withCheckedContinuation instead (see CameraAccess.system in Settings/Permissions.swift).
+      - name: no generated async thunks for AVFoundation / Quick Look
+        working-directory: apps/mac
+        run: |
+          # Comment lines (which name the banned form to explain it) are skipped.
+          hits=$(grep -rnE "await .*finishWriting\(\)|await AVAssetExportSession\.compatibility|await AVCaptureDevice\.requestAccess|await .*generateBestRepresentation" Sources Tests \
+            | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)
+          if [ -n "$hits" ]; then
+            echo "$hits"
+            echo "Wrap the completion-handler API in withCheckedContinuation (see CameraAccess.system in Settings/Permissions.swift): the compiler's async thunk crashed on macOS 15."
+            exit 1
+          fi
       - name: swift test
         working-directory: apps/mac
         run: swift test

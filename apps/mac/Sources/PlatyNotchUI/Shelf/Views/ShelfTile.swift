@@ -184,9 +184,9 @@ struct ShelfThumbnail: View {
         let request = QLThumbnailGenerator.Request(fileAt: ref.url, size: CGSize(width: 40, height: 40),
                                                    scale: NSScreen.main?.backingScaleFactor ?? 2,
                                                    representationTypes: .all)
-        if let rep = try? await QLThumbnailGenerator.shared.generateBestRepresentation(for: request) {
-            ShelfThumbnails.cache.setObject(rep.nsImage, forKey: ref.path as NSString)
-            image = rep.nsImage
+        if let thumbnail = await ShelfThumbnails.best(request) {
+            ShelfThumbnails.cache.setObject(thumbnail, forKey: ref.path as NSString)
+            image = thumbnail
         } else {
             image = NSWorkspace.shared.icon(forFile: ref.path)
         }
@@ -200,6 +200,18 @@ enum ShelfThumbnails {
         c.countLimit = 100
         return c
     }()
+
+    /// Quick Look's best thumbnail, or nil. An explicit continuation, not the compiler's
+    /// async form of this completion-handler API: the generated form of
+    /// AVAssetWriter.finishWriting crashed on resume on macOS 15.7 (CI), and this call is
+    /// not proven safe there. CI greps for the generated form.
+    static func best(_ request: QLThumbnailGenerator.Request) async -> NSImage? {
+        await withCheckedContinuation { (done: CheckedContinuation<NSImage?, Never>) in
+            QLThumbnailGenerator.shared.generateBestRepresentation(for: request) { rep, _ in
+                done.resume(returning: rep?.nsImage)
+            }
+        }
+    }
 
     /// The image a drag shows for `item`.
     static func dragImage(_ item: ShelfItem, url: URL?) -> NSImage {
