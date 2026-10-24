@@ -128,6 +128,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var signalSources: [DispatchSourceSignal] = []
     /// What launch did to `<home>/bin/notch` (reported by smoke runs).
     private var hookLink: HookBinaryLink.Outcome?
+    /// `platynotch://shelf/add`, `timer/start`, `clipboard/open` (R7) and app notices.
+    private lazy var router = makeRouter()
+    /// Finder › Services › "Add to PlatyNotch Shelf" (R8).
+    private lazy var finderService = makeFinderService()
 
     init(coreBinary: String, plugins: [NotchPlugin], options: LaunchOptions) {
         self.coreBinary = coreBinary
@@ -179,6 +183,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if options.smoke || options.smokeSettings { today.nowPlaying.sendsAppleEvents = false }
         BuiltInWidgets.register(in: widgets, store: store, today: today,
                                 persist: !options.smoke && !options.smokeSettings, clipboard: clipboard)
+        let router = self.router
+        widgets.appPeeks = { [weak router] in router?.peekView(id: $0) }
+        // The Finder service is inert until picked; smoke runs never offer it.
+        if !options.smoke, !options.smokeSettings { NSApp.servicesProvider = finderService }
         startPlugins()
         startWidgets()
 
@@ -217,16 +225,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         supervisor?.stop()
     }
 
-    /// `platynotch://` URLs: settings, onboarding and open; anything else goes to plugins in order.
+    /// `platynotch://` URLs: settings, onboarding and open; shelf/add, timer/start and
+    /// clipboard/open through the router (each asks first, R7); anything else goes to
+    /// plugins in order.
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
-            switch AppURL.route(url) {
+            guard let route = AppURL.route(url) else { continue }
+            switch route {
             case .settings(let section): openSettings(section: section)
             case .onboarding: onboarding.show()
             case .open: openPanel(tab: nil)
             case .plugin(let u): _ = plugins.first { $0.handle(url: u) }
-            case .shelfAdd, .timerStart, .clipboardOpen: break
-            case nil: break
+            case .shelfAdd, .timerStart, .clipboardOpen: router.handle(route)
             }
         }
     }
@@ -270,6 +280,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard !Task.isCancelled else { return }
             supervisor.restart()
         }
+    }
+
+    // MARK: - URL routes and the Finder service (Task 2)
+
+    /// Each route reaches its widget only while that widget runs (R7).
+    private func makeRouter() -> URLRouter {
+        let r = URLRouter()
+        let widgets = self.widgets, surfaces = self.surfaces
+        r.shelf = { [weak widgets] in
+            guard let widgets, widgets.running.contains(ShelfWidget.widgetID) else { return nil }
+            return widgets.widget(ShelfWidget.widgetID) as? ShelfWidget
+        }
+        r.timer = { [weak widgets] in
+            guard let widgets, widgets.running.contains(TimeWidget.widgetID) else { return nil }
+            return widgets.widget(TimeWidget.widgetID) as? TimeWidget
+        }
+        r.clipboardPicker = { [weak widgets] in
+            guard let widgets, widgets.running.contains(ClipboardWidget.widgetID),
+                  let clip = widgets.widget(ClipboardWidget.widgetID) as? ClipboardWidget else { return nil }
+            return { clip.openPicker() }
+        }
+        r.peek = { [weak surfaces] id, until in surfaces?.peek(id: id, until: until) ?? false }
+        r.endPeek = { [weak surfaces] id in surfaces?.endPeek(id: id) }
+        return r
+    }
+
+    private func makeFinderService() -> FinderService {
+        let s = FinderService()
+        let router = self.router
+        s.shelf = router.shelf
+        s.notice = { [weak router] in router?.showNotice($0) }
+        return s
     }
 
     // MARK: - Settings, onboarding, plugins

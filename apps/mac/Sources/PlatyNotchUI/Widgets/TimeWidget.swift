@@ -19,8 +19,18 @@ import SwiftUI
 /// (the tile and the pill) for `noticeTime`; a timer finishing during a focus session does
 /// not ring or play a sound (notice only). The sound loops for at most `soundLimit`.
 /// `PanelSurfaces.rings` is what rings (games pause on it, Task 10).
+/// Starts a countdown from outside the Time tile: `platynotch://timer/start` after its
+/// confirm peek (R7), and later the voice assistant's `start_timer` (T10).
+@MainActor
+protocol TimerStarter: AnyObject {
+    /// Starts a timer of `duration` seconds (more than 0, at most 24 h), labelled `label`
+    /// or its length. False when it is invalid, the timers are full or the widget is off.
+    @discardableResult
+    func startTimer(duration: TimeInterval, label: String?) -> Bool
+}
+
 @MainActor @Observable
-final class TimeWidget: NotchWidget {
+final class TimeWidget: NotchWidget, TimerStarter {
     static let widgetID = "time"
     static let timerRingTime: TimeInterval = 30
     static let soundLimit: TimeInterval = 60
@@ -438,8 +448,22 @@ final class TimeWidget: NotchWidget {
     func addTimer(_ text: String) -> Bool {
         let input = text.trimmingCharacters(in: .whitespaces)
         if input.lowercased() == "pomodoro" { return startPomodoro() }
-        guard let duration = DurationParser.parse(input), !timersFull else { return false }
-        var t = CountdownTimer(label: DurationParser.describe(duration), duration: duration)
+        guard let duration = DurationParser.parse(input) else { return false }
+        return add(duration: duration, label: nil)
+    }
+
+    /// `TimerStarter`: only while the widget runs (a disabled widget does nothing, R7).
+    @discardableResult
+    func startTimer(duration: TimeInterval, label: String?) -> Bool {
+        guard context != nil, duration > 0, duration <= DurationParser.maximum else { return false }
+        return add(duration: duration, label: label)
+    }
+
+    private func add(duration: TimeInterval, label: String?) -> Bool {
+        guard !timersFull else { return false }
+        let name = label.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) } ?? ""
+        var t = CountdownTimer(label: name.isEmpty ? DurationParser.describe(duration) : String(name.prefix(60)),
+                               duration: duration)
         t.start(at: clock())
         mutate { $0.timers.append(t) }
         askForNotificationsOnce()
