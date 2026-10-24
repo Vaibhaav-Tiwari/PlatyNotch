@@ -168,7 +168,7 @@ final class ClipboardWidget: NotchWidget, ClipboardMenuControl {
 
     private func startWatching() {
         guard isRunning, !paused, watcher == nil else { return }
-        let w = ClipboardWatcher(pasteboard: pasteboard, frontmost: frontmost, schedule: schedule)
+        let w = ClipboardWatcher(pasteboard: pasteboard, frontmost: frontmost, schedule: schedule, now: clock)
         w.excluded = { [weak self] in Set(self?.context?.config.config.memory.excludeApps ?? CaptureSettings.defaultExcludeApps) }
         w.onCapture = { [weak self] capture, source in self?.captured(capture, source: source) }
         watcher = w
@@ -266,6 +266,8 @@ final class ClipboardWidget: NotchWidget, ClipboardMenuControl {
     /// Accessibility allows; otherwise say "Copied — press ⌘V".
     func paste(_ item: ClipItem, to target: PasteTarget?) {
         guard copy(item) else { return }
+        // A newer pick wins: an older paste still waiting for focus never posts ⌘V.
+        pasteTask?.cancel()
         let paster = self.paster
         pasteTask = Task { [weak self] in
             let outcome = await paster.finish(target: target)

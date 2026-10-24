@@ -52,32 +52,57 @@ public enum ClipFilter {
     }
 }
 
-/// Every app that was frontmost since the last pasteboard change the watcher processed,
-/// including the one in front then (fix round 1). The change count is only polled every
-/// 0.5 s, so the app in front at the poll may not be the one that copied: a password
-/// manager that hands focus back right after copying would otherwise have its copy
-/// attributed to the next app. Fed by app-activation notifications (no polling); a change
-/// is skipped when the current app or any app in the window is excluded.
+/// The apps that may have made a pasteboard change (fix rounds 1 and 2). The change count
+/// is only polled every 0.5 s, so the app in front at the poll may not be the one that
+/// copied: a password manager that hands focus back right after copying would otherwise
+/// have its copy attributed to the next app. Fed by app-activation notifications (no
+/// polling).
+///
+/// Each app keeps the time it was last frontmost: when another app replaced it, or the
+/// time it was seen in front. A change is skipped when the current app, or any app that
+/// was frontmost within `horizon` before the change was seen, is excluded. Older entries
+/// are pruned, so a password manager opened hours earlier never blocks an unrelated copy;
+/// timing by when an app was *left* (not when it came forward) means a manager used for a
+/// minute before copying is still caught.
 public struct ClipSourceWindow: Equatable, Sendable {
-    public private(set) var apps: Set<String>
+    /// The app in front now (as far as the notifications said).
+    public private(set) var current: String?
+    /// Bundle id → when it was last frontmost (the current app: when it came forward).
+    public private(set) var lastFrontmost: [String: Date]
 
-    public init(current: String?) {
-        apps = current.map { [$0] } ?? []
+    public init(current: String?, at: Date) {
+        self.current = current.flatMap { $0.isEmpty ? nil : $0 }
+        lastFrontmost = self.current.map { [$0: at] } ?? [:]
     }
 
-    /// An app became frontmost.
-    public mutating func activated(_ bundleID: String?) {
-        if let bundleID, !bundleID.isEmpty { apps.insert(bundleID) }
+    /// The apps in the window.
+    public var apps: Set<String> { Set(lastFrontmost.keys) }
+
+    /// An app became frontmost at `at`: the one it replaced was frontmost until then.
+    public mutating func activated(_ bundleID: String?, at: Date) {
+        if let current { lastFrontmost[current] = at }
+        current = bundleID.flatMap { $0.isEmpty ? nil : $0 }
+        if let current { lastFrontmost[current] = at }
     }
 
     /// After each processed change: only the app in front now.
-    public mutating func reset(current: String?) {
-        self = ClipSourceWindow(current: current)
+    public mutating func reset(current: String?, at: Date) {
+        self = ClipSourceWindow(current: current, at: at)
     }
 
-    /// Step 1 of `ClipFilter` over the whole window.
-    public func allows(current: String?, excluded: Set<String>) -> Bool {
-        ClipFilter.allowsApp(current, excluded: excluded)
-            && apps.allSatisfy { ClipFilter.allowsApp($0, excluded: excluded) }
+    /// Drops apps last frontmost before `now - horizon` (never the current one).
+    public mutating func prune(now: Date, horizon: TimeInterval) {
+        let cutoff = now.addingTimeInterval(-horizon)
+        lastFrontmost = lastFrontmost.filter { $0.key == current || $0.value >= cutoff }
+    }
+
+    /// Step 1 of `ClipFilter` over the current app and every app frontmost within
+    /// `horizon` before `now` (the current one counts whatever its time).
+    public func allows(current now: String?, excluded: Set<String>, at time: Date, horizon: TimeInterval) -> Bool {
+        guard ClipFilter.allowsApp(now, excluded: excluded) else { return false }
+        let cutoff = time.addingTimeInterval(-horizon)
+        return lastFrontmost.allSatisfy { id, last in
+            (id != current && last < cutoff) || ClipFilter.allowsApp(id, excluded: excluded)
+        }
     }
 }

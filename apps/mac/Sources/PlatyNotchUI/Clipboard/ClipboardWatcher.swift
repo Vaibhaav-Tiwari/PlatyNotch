@@ -118,6 +118,10 @@ final class SystemFrontmostApp: FrontmostApp {
 @MainActor
 final class ClipboardWatcher {
     static let interval: TimeInterval = 0.5
+    /// An app counts as a possible source if it was frontmost within the poll interval plus
+    /// this margin before the change was seen (late timer fires, slow notifications).
+    static let sourceMargin: TimeInterval = 1.5
+    static var sourceHorizon: TimeInterval { interval + sourceMargin }
     /// Larger image data is not even converted.
     static let maxRawImageBytes = 64 * 1024 * 1024
 
@@ -137,17 +141,20 @@ final class ClipboardWatcher {
     private let pasteboard: ClipboardPasteboard
     private let frontmost: FrontmostApp
     private let schedule: Schedule
+    private let now: () -> Date
     private var cancel: (() -> Void)?
     private var lastChange = 0
-    private var window = ClipSourceWindow(current: nil)
+    private var window = ClipSourceWindow(current: nil, at: .distantPast)
     private var stopObserving: (() -> Void)?
     /// Pasteboard changes looked at (tests).
     private(set) var changesSeen = 0
 
-    init(pasteboard: ClipboardPasteboard, frontmost: FrontmostApp, schedule: @escaping Schedule = ClipboardWatcher.timer) {
+    init(pasteboard: ClipboardPasteboard, frontmost: FrontmostApp, schedule: @escaping Schedule = ClipboardWatcher.timer,
+         now: @escaping () -> Date = Date.init) {
         self.pasteboard = pasteboard
         self.frontmost = frontmost
         self.schedule = schedule
+        self.now = now
     }
 
     var isPolling: Bool { cancel != nil }
@@ -155,8 +162,13 @@ final class ClipboardWatcher {
     func start() {
         guard cancel == nil else { return }
         lastChange = pasteboard.changeCount
-        window.reset(current: frontmost.bundleID)
-        stopObserving = frontmost.observeActivations { [weak self] id in self?.window.activated(id) }
+        window.reset(current: frontmost.bundleID, at: now())
+        stopObserving = frontmost.observeActivations { [weak self] id in
+            guard let self else { return }
+            let t = self.now()
+            self.window.activated(id, at: t)
+            self.window.prune(now: t, horizon: Self.sourceHorizon)
+        }
         cancel = schedule(Self.interval) { [weak self] in self?.poll() }
     }
 
@@ -170,7 +182,7 @@ final class ClipboardWatcher {
     /// Our own write: not a copy to record.
     func ignore(changeCount: Int) {
         lastChange = changeCount
-        window.reset(current: frontmost.bundleID)
+        window.reset(current: frontmost.bundleID, at: now())
     }
 
     func poll() {
@@ -181,9 +193,10 @@ final class ClipboardWatcher {
         changesSeen += 1
         let excluded = excluded()
         let source = frontmost.bundleID
+        let seenAt = now()
         let apps = window
-        window.reset(current: source)
-        guard apps.allows(current: source, excluded: excluded) else { return }
+        window.reset(current: source, at: seenAt)
+        guard apps.allows(current: source, excluded: excluded, at: seenAt, horizon: Self.sourceHorizon) else { return }
         let types = pasteboard.types
         guard !types.isEmpty, ClipFilter.allowsTypes(types) else { return }
         let marked = types.contains(ClipFilter.sourceType) ? pasteboard.string(forType: ClipFilter.sourceType) : nil

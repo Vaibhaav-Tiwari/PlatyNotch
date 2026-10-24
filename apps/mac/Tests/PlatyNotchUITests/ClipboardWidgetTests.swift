@@ -148,7 +148,13 @@ final class ClipboardWidgetTests: XCTestCase {
         let surfaces: PanelSurfaces
         let root: URL
         var trusted: TrustBox
+        let clock: ClockBox
         @MainActor var dir: URL { widget.directory }
+    }
+
+    final class ClockBox: @unchecked Sendable {
+        var now = Date(timeIntervalSince1970: 1_800_000_000)
+        func advance(_ s: TimeInterval) { now = now.addingTimeInterval(s) }
     }
 
     final class TrustBox: @unchecked Sendable {
@@ -174,9 +180,11 @@ final class ClipboardWidgetTests: XCTestCase {
         let box = TrustBox()
         box.trusted = trusted
         let trust = AccessibilityTrust(isTrusted: { box.trusted }, request: { box.requests += 1 })
+        let clock = ClockBox()
         let widget = ClipboardWidget(directory: root.appendingPathComponent("home/clipboard"), pasteboard: pb,
                                      frontmost: front, schedule: timer.schedule, makeHotKey: keys.make,
-                                     poster: poster, trust: trust, focusTimeout: focusTimeout)
+                                     poster: poster, trust: trust, focusTimeout: focusTimeout,
+                                     clock: { clock.now })
         let registry = WidgetRegistry(defaults: defaults, persist: false)
         let surfaces = PanelSurfaces(registry: registry)
         registry.register(widget)
@@ -186,7 +194,7 @@ final class ClipboardWidgetTests: XCTestCase {
                                               defaults: defaults, notify: NoopNotifier(), surfaces: surfaces,
                                               openPanel: { _ in }))
         return Rig(registry: registry, widget: widget, pb: pb, front: front, timer: timer, keys: keys, poster: poster,
-                   defaults: defaults, surfaces: surfaces, root: root, trusted: box)
+                   defaults: defaults, surfaces: surfaces, root: root, trusted: box, clock: clock)
     }
 
     /// Every byte under the clipboard folder, to prove a secret never reached disk.
@@ -344,6 +352,32 @@ final class ClipboardWidgetTests: XCTestCase {
         XCTAssertTrue(r.widget.items.isEmpty)
     }
 
+    // Fix round 2: the window ages out.
+
+    func testExcludedAppLeftLongAgoNoLongerBlocks() throws {
+        let r = try rig()
+        r.front.activate("com.1password.1password")      // opened, nothing copied
+        r.clock.advance(3)
+        r.front.activate("com.apple.Safari")
+        r.clock.advance(2.5)                               // left 1Password more than 2 s ago
+        r.pb.copyText("unrelated")
+        r.timer.tick()
+        XCTAssertEqual(r.widget.items.map(\.title), ["unrelated"])
+    }
+
+    func testCopyThenSwitchWithinAFractionOfASecondIsNotRecorded() throws {
+        let r = try rig()
+        r.front.activate("com.1password.1password")
+        r.clock.advance(20)                                // in use for a while
+        r.pb.copyText("hunter2-fast-switch")
+        r.clock.advance(0.3)
+        r.front.activate("com.apple.Safari")
+        r.clock.advance(0.2)
+        r.timer.tick()
+        XCTAssertTrue(r.widget.items.isEmpty)
+        XCTAssertFalse(diskContains(r, "hunter2"))
+    }
+
     func testStopEndsActivationObserving() throws {
         let r = try rig()
         r.registry.setEnabled(ClipboardWidget.widgetID, false)
@@ -498,6 +532,23 @@ final class ClipboardWidgetTests: XCTestCase {
         await r.widget.pasteTask?.value
         XCTAssertEqual(r.poster.posts, 0)
         XCTAssertTrue(r.widget.copiedOnly)
+    }
+
+    func testNewPasteCancelsTheOlderOne() async throws {
+        let r = try rig(trusted: true, focusTimeout: .seconds(30))
+        r.pb.copyText("old"); r.timer.tick()
+        r.pb.copyText("new"); r.timer.tick()
+        let old = r.widget.items.first { $0.title == "old" }!
+        let new = r.widget.items.first { $0.title == "new" }!
+        r.widget.paste(old, to: FakeTarget(front: nil))    // waits for focus that never comes
+        let first = r.widget.pasteTask
+        r.widget.paste(new, to: FakeTarget(front: r.front))
+        let started = Date()
+        await first?.value
+        await r.widget.pasteTask?.value
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5, "the older paste was cancelled")
+        XCTAssertEqual(r.poster.posts, 1, "only the newer paste posts ⌘V")
+        XCTAssertEqual(r.pb.written.last, .text("new"))
     }
 
     func testStopCancelsAPendingPaste() async throws {

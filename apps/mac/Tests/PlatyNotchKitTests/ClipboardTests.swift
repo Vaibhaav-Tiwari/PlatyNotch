@@ -79,26 +79,45 @@ final class ClipboardTests: XCTestCase {
     }
 
     func testSourceWindowSkipsAnExcludedAppActiveSinceTheLastChange() {
+        let h: TimeInterval = 2
         // 1Password copies, then hands focus back to Safari before the poll sees the change.
-        var w = ClipSourceWindow(current: "com.1password.1password")
-        w.activated("com.apple.Safari")
-        XCTAssertFalse(w.allows(current: "com.apple.Safari", excluded: []))
+        var w = ClipSourceWindow(current: "com.1password.1password", at: t0)
+        w.activated("com.apple.Safari", at: t0.addingTimeInterval(0.2))
+        XCTAssertFalse(w.allows(current: "com.apple.Safari", excluded: [], at: t0.addingTimeInterval(0.4), horizon: h))
         // After a processed change only the app in front then is remembered.
-        w.reset(current: "com.apple.Safari")
+        w.reset(current: "com.apple.Safari", at: t0.addingTimeInterval(0.4))
         XCTAssertEqual(w.apps, ["com.apple.Safari"])
-        XCTAssertTrue(w.allows(current: "com.apple.Safari", excluded: []))
+        XCTAssertTrue(w.allows(current: "com.apple.Safari", excluded: [], at: t0.addingTimeInterval(0.5), horizon: h))
         // Unrelated apps switching still record.
-        w.activated("com.apple.Notes")
-        w.activated("com.apple.TextEdit")
-        XCTAssertTrue(w.allows(current: "com.apple.TextEdit", excluded: []))
+        w.activated("com.apple.Notes", at: t0.addingTimeInterval(1))
+        w.activated("com.apple.TextEdit", at: t0.addingTimeInterval(1.1))
+        XCTAssertTrue(w.allows(current: "com.apple.TextEdit", excluded: [], at: t0.addingTimeInterval(1.2), horizon: h))
         // The user's exclude_apps counts too, and the current app always does.
-        XCTAssertFalse(w.allows(current: "com.apple.TextEdit", excluded: ["com.apple.Notes"]))
-        XCTAssertFalse(w.allows(current: "com.apple.keychainaccess", excluded: []))
-        XCTAssertFalse(w.allows(current: nil, excluded: []), "unknown current app")
-        // An activation without a bundle id is not an excluded app.
-        w.activated(nil)
-        XCTAssertTrue(w.allows(current: "com.apple.TextEdit", excluded: []))
-        XCTAssertEqual(ClipSourceWindow(current: nil).apps, [])
+        XCTAssertFalse(w.allows(current: "com.apple.TextEdit", excluded: ["com.apple.Notes"],
+                                at: t0.addingTimeInterval(1.2), horizon: h))
+        XCTAssertFalse(w.allows(current: "com.apple.keychainaccess", excluded: [], at: t0, horizon: h))
+        XCTAssertFalse(w.allows(current: nil, excluded: [], at: t0, horizon: h), "unknown current app")
+        XCTAssertEqual(ClipSourceWindow(current: nil, at: t0).apps, [])
+    }
+
+    func testSourceWindowAgesOut() {
+        let h: TimeInterval = 2
+        // 1Password in front for an hour, left at t0+3600; Safari copies 2.5 s later: recorded.
+        var w = ClipSourceWindow(current: "com.1password.1password", at: t0)
+        w.activated("com.apple.Safari", at: t0.addingTimeInterval(3600))
+        let late = t0.addingTimeInterval(3602.5)
+        XCTAssertTrue(w.allows(current: "com.apple.Safari", excluded: [], at: late, horizon: h))
+        w.prune(now: late, horizon: h)
+        XCTAssertEqual(w.apps, ["com.apple.Safari"], "pruned")
+        // Used for a minute before copying, left 0.3 s before the poll: still caught
+        // (it was frontmost until it was left, not just when it came forward).
+        var used = ClipSourceWindow(current: "com.1password.1password", at: t0)
+        used.activated("com.apple.Safari", at: t0.addingTimeInterval(60))
+        XCTAssertFalse(used.allows(current: "com.apple.Safari", excluded: [], at: t0.addingTimeInterval(60.3), horizon: h))
+        // The current app is never pruned, however long it has been in front.
+        var front = ClipSourceWindow(current: "com.apple.Notes", at: t0)
+        front.prune(now: t0.addingTimeInterval(9999), horizon: h)
+        XCTAssertEqual(front.apps, ["com.apple.Notes"])
     }
 
     // MARK: - History

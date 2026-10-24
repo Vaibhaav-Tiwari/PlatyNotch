@@ -85,7 +85,8 @@ struct Paster {
         guard trust.isTrusted() else { return .copied }
         guard await waitForFocus(target.processID) else { return .copied }
         // Asked again: the grant can be removed while we waited.
-        guard trust.isTrusted(), poster.postCommandV() else { return .copied }
+        // A newer paste or a stop cancelled this one: never post late.
+        guard !Task.isCancelled, trust.isTrusted(), poster.postCommandV() else { return .copied }
         return .pasted
     }
 
