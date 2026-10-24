@@ -70,7 +70,11 @@ func Open(path string, readOnly bool) (*Store, error) {
 		if err := os.Chmod(path, 0o600); err != nil {
 			return nil, err
 		}
-		q += "&_pragma=journal_mode(WAL)"
+		// BEGIN IMMEDIATE: a transaction that reads then writes (PutVersion)
+		// while another connection writes (the worker) would otherwise fail at
+		// once with SQLITE_BUSY, since busy_timeout cannot retry a deferred
+		// transaction's read-to-write upgrade. The capture was then lost.
+		q += "&_pragma=journal_mode(WAL)&_txlock=immediate"
 	} else {
 		q = "mode=ro&" + q
 	}
