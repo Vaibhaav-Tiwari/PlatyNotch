@@ -13,6 +13,8 @@ private final class FakeDragSignals: DragSignals {
     var onButton: (@MainActor (DragButtonEvent) -> Void)?
     var dragChangeCount = 0
     var leftButtonDown = false
+    var mouseLocation: CGPoint = .zero
+    var dragTypes: [String] = []
     var ticks: [Int: @MainActor () -> Void] = [:]
     private var nextTick = 0
     var polling: Bool { !ticks.isEmpty }
@@ -97,16 +99,18 @@ final class ShelfWidgetTests: DefaultsTestCase {
     private func rig(enabled: Bool = true) -> Rig {
         let root = tempDir()
         let signals = FakeDragSignals()
-        let shelf = ShelfWidget(directory: root.appendingPathComponent("home/shelf"), makeSignals: { signals })
+        let shelf = ShelfWidget(directory: root.appendingPathComponent("home/shelf"))
         let registry = WidgetRegistry(defaults: defaults(), persist: false)
         let surfaces = PanelSurfaces(registry: registry)
+        // The app's shared drag monitor, on the fake signals (R2).
+        let drags = DragMonitor(signals: signals, surfaces: surfaces)
         registry.register(shelf)
         if !enabled { registry.setEnabled(ShelfWidget.widgetID, false) }
         let client = CoreClient(socketPath: "/nonexistent")
         registry.start(context: WidgetContext(store: AppStore(), client: client,
                                               config: ConfigFileStore(url: root.appendingPathComponent("config.json")),
                                               events: CoreEventHub(), defaults: defaults(), notify: NoopNotifier(),
-                                              surfaces: surfaces, openPanel: { _ in }))
+                                              surfaces: surfaces, drags: drags, openPanel: { _ in }))
         let c = NotchController(store: AppStore(), client: client, plugins: [], widgets: registry,
                                 surfaces: surfaces, appearance: AppearanceSettings())
         c.cursorLocation = { CGPoint(x: 100, y: 100) }   // never the real mouse
@@ -540,7 +544,7 @@ final class ShelfWidgetTests: DefaultsTestCase {
         XCTAssertEqual(r.shelf.refreshCount, before, "turning the shelf on checks no file")
         XCTAssertTrue(r.shelf.missing.isEmpty)
 
-        let relaunch = ShelfWidget(directory: r.shelf.directory, makeSignals: { FakeDragSignals() })
+        let relaunch = ShelfWidget(directory: r.shelf.directory)
         let registry = WidgetRegistry(defaults: defaults(), persist: false)
         registry.register(relaunch)
         registry.start(context: WidgetContext(store: AppStore(), client: CoreClient(socketPath: "/nonexistent"),
@@ -566,7 +570,7 @@ final class ShelfWidgetTests: DefaultsTestCase {
         let lost = try XCTUnwrap(seed.addOwnedData(Data("x".utf8), filename: "x.png"))
         try Data("{ damaged".utf8).write(to: dir.appendingPathComponent(ShelfStore.indexName))
 
-        let shelf = ShelfWidget(directory: dir, makeSignals: { FakeDragSignals() })
+        let shelf = ShelfWidget(directory: dir)
         let registry = WidgetRegistry(defaults: defaults(), persist: false)
         registry.register(shelf)
         registry.start(context: WidgetContext(store: AppStore(), client: CoreClient(socketPath: "/nonexistent"),

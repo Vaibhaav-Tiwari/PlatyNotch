@@ -84,5 +84,13 @@ enum BuiltInWidgets {
         // On by default; no network, process or script until something is pinned or
         // clicked. Smoke: no icons fetched, no Shortcuts, no Apple Events, nothing saved.
         registry.register(persist ? LaunchWidget() : LaunchWidget.inert())
+        // v0.2 power features (Settings › Widgets › Power features), after the everyday ones.
+        for w in powerWidgets(persist: persist) { registry.register(w) }
+    }
+
+    /// Every power feature (`WidgetCategory.power`); `persist: false` gives inert ones
+    /// (no monitors, permissions, files or network), as `--smoke-power` checks. None yet.
+    static func powerWidgets(persist: Bool) -> [any NotchWidget] {
+        []
     }
 }

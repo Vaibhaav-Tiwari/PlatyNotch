@@ -137,11 +137,15 @@ public final class ShelfStore {
     public let bookmarks: ShelfBookmarks
     private let fileManager: FileManager
     private let now: () -> Date
+    private let renameFolder: FolderRename
 
     /// `persist: false` (smoke runs) never touches the disk: nothing is read or written,
     /// and owned copies cannot be made.
+    /// `renameFolder`: how `transfer` moves an owned folder out of this store (tests inject failures).
     public init(directory: URL, persist: Bool = true, bookmarks: ShelfBookmarks = FileBookmarks(),
-                fileManager: FileManager = .default, now: @escaping () -> Date = Date.init) {
+                fileManager: FileManager = .default, now: @escaping () -> Date = Date.init,
+                renameFolder: @escaping FolderRename = ShelfStore.renameExclusive) {
+        self.renameFolder = renameFolder
         self.directory = directory
         self.persist = persist
         self.bookmarks = bookmarks
@@ -289,6 +293,92 @@ public final class ShelfStore {
     public func discardReserved(_ id: UUID) {
         guard persist, !deletionsBlocked, !items.contains(where: { $0.id == id }) else { return }
         try? fileManager.removeItem(at: ownedFolder(id))
+    }
+
+    // MARK: - Moving between stores (baskets, R4)
+
+    /// Renames a folder: 0 on success, else the errno. Never copies (`EXDEV` across
+    /// volumes) and never replaces (`EEXIST`). A seam for tests.
+    public typealias FolderRename = @Sendable (_ from: URL, _ to: URL) -> Int32
+
+    /// `renamex_np(RENAME_EXCL)`: one atomic rename on the same volume, refusing an
+    /// existing destination. Unlike `FileManager.moveItem` it never falls back to a copy
+    /// and delete.
+    public static let renameExclusive: FolderRename = { from, to in
+        let rc = from.withUnsafeFileSystemRepresentation { src in
+            to.withUnsafeFileSystemRepresentation { dst -> Int32 in
+                guard let src, let dst else { return EINVAL }
+                return renamex_np(src, dst, UInt32(RENAME_EXCL)) == 0 ? 0 : errno
+            }
+        }
+        return rc
+    }
+
+    /// Moves item `id` to `other` (another store, e.g. a basket's), keeping its id, pin
+    /// and added date (so an owned copy still expires 7 days after it was first added).
+    /// An owned file's folder moves with one atomic rename (`renameFolder`, by default
+    /// `renamex_np` with `RENAME_EXCL`), `<directory>/<id>/` to `<other.directory>/<id>/`;
+    /// text, links and the user's own files move as records.
+    ///
+    /// Nothing is ever deleted: on any failure (no such item, `other` already lists the
+    /// id, either store not persisting or read-only, `other`'s index not written, the
+    /// rename failing for any reason, `EXDEV` and `EEXIST` included) the item stays here,
+    /// unchanged, `other` is put back, and nil is returned. The order of writes keeps a
+    /// crash safe too: `other`'s index is written (and checked) before the folder moves,
+    /// and this index drops the item only after, so no index ever lacks an owned folder
+    /// the other has (a sweep could otherwise remove it, since a rename keeps the old
+    /// modification date).
+    @discardableResult
+    public func transfer(_ id: UUID, to other: ShelfStore) -> ShelfItem? {
+        guard other !== self, persist, other.persist, !readOnly, !other.readOnly,
+              let i = items.firstIndex(where: { $0.id == id }),
+              !other.items.contains(where: { $0.id == id }) else { return nil }
+        let item = items[i]
+        let before = other.items
+        let movesFolder = item.ownsFile && item.fileRef != nil
+        var moved = item
+        if movesFolder, var ref = item.fileRef {
+            let from = ownedFolder(id)
+            let fromPath = from.standardizedFileURL.path + "/"
+            guard fileManager.fileExists(atPath: from.path), ref.path.hasPrefix(fromPath) else { return nil }
+            let to = other.ownedFolder(id)
+            ref.path = to.standardizedFileURL.path + "/" + ref.path.dropFirst(fromPath.count)
+            ref.bookmark = nil   // made again after the move, when the file is there
+            moved.kind = .file(ref)
+            other.items.insert(moved, at: 0)
+            guard other.save() else {
+                other.items = before   // its index was not written: nothing moves
+                return nil
+            }
+            guard renameFolder(from, to) == 0 else {
+                other.items = before   // only the record; no file is touched
+                other.save()
+                return nil
+            }
+            if let bookmark = other.bookmarks.make(ref.url), let j = other.items.firstIndex(where: { $0.id == id }) {
+                ref.bookmark = bookmark
+                other.items[j].kind = .file(ref)
+                moved = other.items[j]
+                other.save()
+            }
+        } else {
+            if let j = other.items.firstIndex(where: { Self.sameContent($0.kind, item.kind) }) {
+                // The same text, link or file is already there: it moves to the front.
+                var existing = other.items.remove(at: j)
+                existing.pinned = existing.pinned || item.pinned
+                other.items.insert(existing, at: 0)
+                moved = existing
+            } else {
+                other.items.insert(moved, at: 0)
+            }
+            guard other.save() else {
+                other.items = before
+                return nil
+            }
+        }
+        items.removeAll { $0.id == id }   // the record only: its folder (if any) has moved
+        save()
+        return moved
     }
 
     // MARK: - Files on disk
@@ -577,13 +667,17 @@ public final class ShelfStore {
         }
     }
 
-    private func save() {
-        guard persist, !readOnly, ensureDirectory(), let data = try? JSONEncoder().encode(items) else { return }
+    /// Writes the index; false when it was not written (callers other than `transfer`
+    /// ignore it: the shelf keeps working in memory).
+    @discardableResult
+    private func save() -> Bool {
+        guard persist, !readOnly, ensureDirectory(), let data = try? JSONEncoder().encode(items) else { return false }
         do {
             try data.write(to: indexURL, options: .atomic)
             try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: indexURL.path)
+            return true
         } catch {
-            // Best effort: the shelf keeps working in memory.
+            return false
         }
     }
 }

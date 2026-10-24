@@ -68,3 +68,12 @@ extension LaunchOptionsTests {
         XCTAssertFalse(LaunchOptions(arguments: ["--perf-run"], env: [:]).perfRun, "argv[0] is the program")
     }
 }
+
+extension LaunchOptionsTests {
+    func testSmokePowerFlag() {
+        XCTAssertTrue(LaunchOptions(arguments: ["PlatyNotch", "--smoke-power"], env: [:]).smokePower)
+        XCTAssertFalse(LaunchOptions(arguments: ["PlatyNotch", "--smoke"], env: [:]).smokePower)
+        XCTAssertFalse(LaunchOptions(arguments: ["PlatyNotch", "--smoke-power"], env: [:]).smoke)
+        XCTAssertFalse(LaunchOptions(arguments: ["--smoke-power"], env: [:]).smokePower, "argv[0] is the program")
+    }
+}

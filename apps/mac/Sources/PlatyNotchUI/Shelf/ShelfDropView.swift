@@ -43,15 +43,15 @@ final class ShelfDropTarget: PanelDropTarget {
     }
 }
 
-/// The source of drags out of the shelf tile. Owned by the widget (not the tile's view),
+/// The source of drags out of a shelf tile (any `ItemListHost`). Owned by the host (not the tile's view),
 /// so a drag survives the panel collapsing under it. Copy only: a drop into Finder
 /// copies, so a shelf item never disappears from under its bookmark or owned folder.
 @MainActor
 final class ShelfDragSource: NSObject, NSDraggingSource {
-    private weak var shelf: ShelfWidget?
+    private weak var host: (any ItemListHost)?
 
-    init(shelf: ShelfWidget) {
-        self.shelf = shelf
+    init(host: any ItemListHost) {
+        self.host = host
     }
 
     func draggingSession(_ session: NSDraggingSession,
@@ -60,6 +60,6 @@ final class ShelfDragSource: NSObject, NSDraggingSource {
     }
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-        shelf?.outgoingDragChanged(false)
+        host?.outgoingDragChanged(false)
     }
 }

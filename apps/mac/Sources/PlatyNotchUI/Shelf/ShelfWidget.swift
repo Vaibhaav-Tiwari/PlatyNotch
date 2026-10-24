@@ -7,9 +7,10 @@ import SwiftUI
 /// The file shelf: drag files, images, links or text to the notch to keep them; drag them
 /// back out (several at once), AirDrop, share or Quick Look them from the Today tile.
 ///
-/// - Drag detection (`DragDetector`): left-button monitors plus the drag pasteboard's
-///   change count, polled only while the button is down. A drag near the notch opens the
-///   drop zone through `WidgetContext.dragSession`; the panel's own drag destination
+/// - Drag detection: the app's shared `DragMonitor` (`WidgetContext.drags`; left-button
+///   monitors plus the drag pasteboard's change count, polled only while the button is
+///   down). The shelf is one of its listeners and asks for the drag session, so a drag
+///   near the notch opens the drop zone; the panel's own drag destination
 ///   (registered when the panel is made) hands drops to `ShelfDropTarget`.
 /// - Storage (`ShelfStore`): `~/Library/Application Support/PlatyNotch/shelf.noindex` (0700).
 ///   Files the user drops stay where they are (a bookmark follows renames and moves).
@@ -28,7 +29,7 @@ import SwiftUI
 /// directory pass, no timers; see `NotchApp`). Bookmarks are resolved and images
 /// converted off the main thread.
 @MainActor @Observable
-final class ShelfWidget: NotchWidget {
+final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost {
     static let widgetID = "shelf"
     /// Re-check expiry at least this often (sleep, clock changes).
     static let maxExpirySleep: TimeInterval = 6 * 60 * 60
@@ -56,10 +57,10 @@ final class ShelfWidget: NotchWidget {
 
     @ObservationIgnored let directory: URL
     @ObservationIgnored private let persist: Bool
-    @ObservationIgnored private let makeSignals: () -> DragSignals
     @ObservationIgnored private let clock: () -> Date
     @ObservationIgnored private var store: ShelfStore?
-    @ObservationIgnored private(set) var detector: DragDetector?
+    /// The shelf's place among the drag monitor's listeners, while it runs.
+    @ObservationIgnored private(set) var dragSubscription: DragSubscription?
     @ObservationIgnored private var context: WidgetContext?
     @ObservationIgnored private var expiryTask: Task<Void, Never>?
     /// Owned folders a file promise is still being written into.
@@ -72,7 +73,7 @@ final class ShelfWidget: NotchWidget {
     /// The latest image conversion from a drop (tests await it).
     @ObservationIgnored private(set) var importTask: Task<Void, Never>?
     @ObservationIgnored private lazy var drop = ShelfDropTarget(shelf: self)
-    @ObservationIgnored private(set) lazy var dragSource = ShelfDragSource(shelf: self)
+    @ObservationIgnored private(set) lazy var dragSource: NSDraggingSource = ShelfDragSource(host: self)
     @ObservationIgnored private static let promiseQueue: OperationQueue = {
         let q = OperationQueue()
         q.name = "dev.platynotch.shelf.promises"
@@ -81,17 +82,16 @@ final class ShelfWidget: NotchWidget {
     }()
 
     init(directory: URL = CorePaths.shelf(), persist: Bool = true,
-         makeSignals: @escaping () -> DragSignals = { SystemDragSignals() },
          clock: @escaping () -> Date = Date.init) {
         self.directory = directory
         self.persist = persist
-        self.makeSignals = makeSignals
         self.clock = clock
     }
 
-    /// Smoke runs: no monitors, nothing read from or written to disk.
+    /// Smoke runs: nothing read from or written to disk (smoke's drag monitor installs
+    /// no monitors).
     static func inert() -> ShelfWidget {
-        ShelfWidget(persist: false, makeSignals: { NoDragSignals() })
+        ShelfWidget(persist: false)
     }
 
     var isRunning: Bool { context != nil }
@@ -113,17 +113,15 @@ final class ShelfWidget: NotchWidget {
         // Downloads, Desktop or Documents can make macOS ask for access, so it happens
         // only when the tile shows or a drag out ends (B1), never at launch or login.
         scheduleExpiry()
-        let detector = DragDetector(signals: makeSignals())
-        detector.onEvent = { [weak self] event in self?.dragEvent(event) }
-        self.detector = detector
-        detector.start()
+        dragSubscription = context.drags.subscribe(self)
     }
 
     func stop() {
-        guard let context else { return }
-        detector?.stop()   // reports a drag in progress as ended
-        detector = nil
-        context.dragSession(active: false)
+        guard context != nil else { return }
+        // Leaving the monitor ends the drag session the shelf asked for (the monitor
+        // stops, reporting a drag in progress as ended, when the shelf was its last listener).
+        dragSubscription?.cancel()
+        dragSubscription = nil
         expiryTask?.cancel()
         expiryTask = nil
         dropTargeted = false
@@ -141,23 +139,17 @@ final class ShelfWidget: NotchWidget {
                              accessibilityLabel: n == 1 ? "1 item on the shelf" : "\(n) items on the shelf")]
     }
 
-    func tileView() -> AnyView { AnyView(ShelfTile(shelf: self)) }
+    func tileView() -> AnyView { AnyView(ShelfTile(host: self)) }
     func dropZoneView() -> AnyView? { isRunning ? AnyView(ShelfDropZone(shelf: self)) : nil }
     func dropTarget() -> PanelDropTarget? { isRunning ? drop : nil }
     func settingsView() -> AnyView? { AnyView(ShelfSettings(shelf: self)) }
 
-    // MARK: - Drag detection
+    // MARK: - Drag detection (DragMonitorListener)
 
-    private func dragEvent(_ event: DragEvent) {
-        guard let context else { return }
-        switch event {
-        case .began:
-            // Dragging an item out of the open panel is not a drag *to* the shelf.
-            guard !outgoingDrag else { return }
-            context.dragSession(active: true)
-        case .ended:
-            context.dragSession(active: false)
-        }
+    /// Asks for the drop session, except for our own drag out of the open panel (not a
+    /// drag *to* the shelf). The monitor closes the session when the drag ends.
+    func dragBegan() -> Bool {
+        isRunning && !outgoingDrag
     }
 
     /// The tile starts / ends a drag of shelf items (`ShelfDragSource`).

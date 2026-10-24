@@ -10,6 +10,8 @@
   visualiser's CoreAudio process tap is audio input: audio-input lets the hardened runtime
   allow it (verify on a Developer ID build, scripts/verify-widgets.md #39). The System
   widget's headphones sub-feature uses IOBluetooth connect notifications: bluetooth.
+  The v0.2 camera mirror (asked only from its button) needs device.camera under the
+  hardened runtime, or AVCaptureDevice access is refused without a prompt.
 -->
 <plist version="1.0">
 <dict>
@@ -20,6 +22,8 @@
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
 	<key>com.apple.security.device.bluetooth</key>
+	<true/>
+	<key>com.apple.security.device.camera</key>
 	<true/>
 </dict>
 </plist>

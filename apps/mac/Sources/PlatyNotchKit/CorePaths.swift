@@ -38,6 +38,9 @@ public enum CorePaths {
     public static let shelfName = "shelf.noindex"
     public static let clipboardName = "clipboard.noindex"
     public static let faviconsName = "favicons.noindex"
+    /// v0.2 power features' folders (new names, so nothing to migrate).
+    public static let basketsName = "baskets.noindex"
+    public static let notesName = "notes.noindex"
     /// Old name → new name, for the migration.
     public static let noIndexRenames: [(old: String, new: String)] = [
         ("shelf", shelfName), ("clipboard", clipboardName), ("favicons", faviconsName),
@@ -59,6 +62,20 @@ public enum CorePaths {
     public static func favicons(env: [String: String] = ProcessInfo.processInfo.environment,
                                 userHome: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
         home(env: env, userHome: userHome).appendingPathComponent(faviconsName, isDirectory: true)
+    }
+
+    /// Drag baskets (R4, 0700): one `ShelfStore` folder per basket, `<baskets>/<basket id>/`
+    /// (each 0700, made by its store). Not created here: the first basket makes it
+    /// (`PrivateFolder.ensure`), so a feature that was never used leaves nothing behind.
+    public static func baskets(env: [String: String] = ProcessInfo.processInfo.environment,
+                               userHome: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+        home(env: env, userHome: userHome).appendingPathComponent(basketsName, isDirectory: true)
+    }
+
+    /// The notes folder (0700). Not created here (`PrivateFolder.ensure`, on first use).
+    public static func notes(env: [String: String] = ProcessInfo.processInfo.environment,
+                             userHome: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+        home(env: env, userHome: userHome).appendingPathComponent(notesName, isDirectory: true)
     }
 
     /// The stable hook binary path written into agent configs (Go `paths.HookBinary`):

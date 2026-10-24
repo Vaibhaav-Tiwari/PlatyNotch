@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import AVFoundation
 import CoreServices
 import Observation
 import PlatyNotchKit
@@ -36,13 +37,25 @@ final class Permissions {
     @ObservationIgnored private(set) var accessibilityPoll: Task<Void, Never>?
     private(set) var notifications: State = .notAsked
     private(set) var automation: [String: State] = [:]
+    /// Camera (v0.2 mirror). Read without prompting; asked only from a button
+    /// (`requestCamera`).
+    private(set) var camera: State = .notAsked
+    @ObservationIgnored private let cameraAccess: CameraAccess
+    /// This build's camera grant (`GrantStamp`): a mirror that was on resumes after a
+    /// rebuild only when the grant was made to this build ("Turn On Again" otherwise).
+    @ObservationIgnored let cameraGrant: GrantStamp
     let calendar: CalendarService
     let reminders: RemindersService
 
-    init(calendar: CalendarService, reminders: RemindersService, trust: AccessibilityTrust = .system) {
+    static let cameraGrantKey = "camera.grant"
+
+    init(calendar: CalendarService, reminders: RemindersService, trust: AccessibilityTrust = .system,
+         camera: CameraAccess = .system, cameraGrant: GrantStamp = CodeIdentity.stamp(key: Permissions.cameraGrantKey)) {
         self.calendar = calendar
         self.reminders = reminders
         self.trust = trust
+        cameraAccess = camera
+        self.cameraGrant = cameraGrant
     }
 
     /// Re-reads every status without prompting.
@@ -51,6 +64,7 @@ final class Permissions {
         calendar.refreshAccess()
         reminders.refreshAccess()
         refreshNotifications()
+        readCamera()
         for t in installedAutomationTargets {
             let id = t.id
             Task.detached {
@@ -153,6 +167,31 @@ final class Permissions {
         }
     }
 
+    // MARK: - Camera (v0.2 mirror)
+
+    /// Shows the system camera prompt. Only from a button (the mirror's, or Settings).
+    func requestCamera() async {
+        _ = await cameraAccess.request()
+        readCamera()
+    }
+
+    /// Reads the camera status (never prompts) and stamps a working grant with this build.
+    func readCamera() {
+        let s = Self.cameraState(cameraAccess.status())
+        if s == .granted { cameraGrant.note() }
+        if camera != s { camera = s }
+    }
+
+    nonisolated static func cameraState(_ status: AVAuthorizationStatus) -> State {
+        switch status {
+        case .authorized: .granted
+        case .denied: .denied
+        case .restricted: .unavailable("Restricted on this Mac.")
+        case .notDetermined: .notAsked
+        @unknown default: .notAsked
+        }
+    }
+
     // MARK: - Notifications
 
     /// Notification Center needs a bundled app (`swift run` has no bundle identity).
@@ -189,6 +228,7 @@ final class Permissions {
         case calendars = "Privacy_Calendars"
         case reminders = "Privacy_Reminders"
         case automation = "Privacy_Automation"
+        case camera = "Privacy_Camera"
         case notifications = "notifications"
         /// Opened from the System widget's settings only (no Allow row: its button there
         /// is the only place the Bluetooth prompt can appear).
@@ -203,4 +243,15 @@ final class Permissions {
             : URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane.rawValue)")!
         NSWorkspace.shared.open(url)
     }
+}
+
+/// Camera authorization (a seam: tests and smoke runs never prompt or touch the camera).
+/// Reading the status never prompts and never turns the camera on.
+struct CameraAccess: Sendable {
+    var status: @Sendable () -> AVAuthorizationStatus
+    var request: @Sendable () async -> Bool
+
+    static let system = CameraAccess(
+        status: { AVCaptureDevice.authorizationStatus(for: .video) },
+        request: { await AVCaptureDevice.requestAccess(for: .video) })
 }

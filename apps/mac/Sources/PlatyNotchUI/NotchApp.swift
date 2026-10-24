@@ -12,6 +12,7 @@ public enum NotchApp {
         let options = LaunchOptions(arguments: CommandLine.arguments, env: ProcessInfo.processInfo.environment)
         if let dir = options.renderIconDir { finishRender("RENDER ICON", PlatyRenders.writeIconset(to: url(dir))) }
         if let dir = options.platyGalleryDir { finishRender("PLATY GALLERY", PlatyRenders.writeGallery(to: url(dir))) }
+        if options.smokePower { finishPowerSmoke() }
         let delegate = AppDelegate(coreBinary: coreBinary, plugins: plugins, options: options)
         app.delegate = delegate
         withExtendedLifetime(delegate) { app.run() }
@@ -19,6 +20,38 @@ public enum NotchApp {
     }
 
     private static func url(_ path: String) -> URL { URL(fileURLWithPath: path, isDirectory: true) }
+
+    /// `--smoke-power`: every power feature, inert, its views laid out off screen; report and exit.
+    @MainActor
+    private static func finishPowerSmoke() -> Never {
+        switch powerSmoke(BuiltInWidgets.powerWidgets(persist: false)) {
+        case .success(let n):
+            print("SMOKE-POWER OK widgets=\(n)")
+            fflush(stdout)
+            exit(0)
+        case .failure(let f):
+            print("SMOKE-POWER FAIL \(f.message)")
+            fflush(stdout)
+            exit(1)
+        }
+    }
+
+    struct PowerSmokeFailure: Error, Equatable {
+        let message: String
+    }
+
+    /// Checks inert power widgets: each is `.power`, ids are unique, and its views build.
+    /// Returns how many were checked.
+    @MainActor
+    static func powerSmoke(_ list: [any NotchWidget]) -> Result<Int, PowerSmokeFailure> {
+        var seen = Set<String>()
+        for w in list {
+            guard w.category == .power else { return .failure(PowerSmokeFailure(message: "\(w.id) is not a power feature")) }
+            guard seen.insert(w.id).inserted else { return .failure(PowerSmokeFailure(message: "\(w.id) listed twice")) }
+            guard AppDelegate.buildViews(of: w) else { return .failure(PowerSmokeFailure(message: "widget \(w.id) did not build")) }
+        }
+        return .success(list.count)
+    }
 
     /// `--render-icon` / `--platy-gallery`: report and exit before anything starts.
     @MainActor
@@ -65,6 +98,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var clipboard = options.smoke || options.smokeSettings ? ClipboardWidget.inert() : ClipboardWidget()
     /// Widget peeks, ringing, HUDs and the drag session, shown on every display's panel.
     private lazy var surfaces = PanelSurfaces(registry: widgets)
+    /// The one drag monitor (R2), shared by the shelf and later drag features; it writes
+    /// the drag session. Installs monitors only while a feature listens; smoke runs get
+    /// one that installs nothing.
+    private lazy var drags = options.smoke || options.smokeSettings
+        ? DragMonitor.inert(surfaces: surfaces)
+        : DragMonitor(signals: SystemDragSignals(), surfaces: surfaces)
     /// On-screen text capture (runs only while memory is on) and the Memory tab's search.
     private lazy var capture = CaptureService(client: client)
     private lazy var memory = MemoryServices(client: client, capture: capture)
@@ -263,7 +302,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startWidgets() {
         let context = WidgetContext(store: store, client: client, config: config, events: events,
                                     defaults: .standard, notify: Notifiers.make(), surfaces: surfaces,
-                                    openPanel: { [weak self] in self?.openPanel(tab: $0) })
+                                    drags: drags, openPanel: { [weak self] in self?.openPanel(tab: $0) })
         widgets.start(context: context)
         // The shelf's privacy promise holds while it is off: expired copies (7 days) go at
         // launch in one bounded directory pass (no timers, no monitors). Never in smoke runs.
@@ -398,15 +437,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var count = 0
         var failed: [String] = []
         for w in widgets.visibleWidgets {
-            let tile = NSHostingView(rootView: w.tileView().frame(width: 360).environment(\.colorScheme, .dark))
-            tile.layoutSubtreeIfNeeded()
-            if let settings = w.settingsView() {
-                NSHostingView(rootView: settings.frame(width: 480)).layoutSubtreeIfNeeded()
-            }
-            guard widgets.running.contains(w.id), tile.fittingSize.width > 0 else { failed.append(w.id); continue }
+            let built = Self.buildViews(of: w)
+            guard widgets.running.contains(w.id), built else { failed.append(w.id); continue }
             count += 1
         }
         return (count, failed)
+    }
+
+    /// Lays out `w`'s settings view and, when it has one (`hasTile`), its tile off
+    /// screen. False when the tile lays out with no width.
+    static func buildViews(of w: any NotchWidget) -> Bool {
+        if let settings = w.settingsView() {
+            NSHostingView(rootView: settings.frame(width: 480)).layoutSubtreeIfNeeded()
+        }
+        guard w.hasTile else { return true }
+        let tile = NSHostingView(rootView: w.tileView().frame(width: 360).environment(\.colorScheme, .dark))
+        tile.layoutSubtreeIfNeeded()
+        return tile.fittingSize.width > 0
     }
 
     /// Lays out the built-in HUD, indicator, drop zone and ringing fallback off screen,

@@ -1,4 +1,5 @@
 import Foundation
+import PlatyNotchKit
 import Security
 
 /// This build's code identity, the stamp saved with a privacy grant (the System widget's
@@ -25,8 +26,12 @@ enum CodeIdentity {
     /// A grant saved with `saved` still belongs to this build (`current`): only then may a
     /// feature that needs it run without the user turning it on again.
     static func grantHolds(_ saved: String?, current: String) -> Bool {
-        guard let saved, !saved.isEmpty else { return false }
-        return saved == current
+        GrantStamp.holds(saved, current: current)
+    }
+
+    /// The stamp for a new privacy-gated feature, saved under `key` (`GrantStamp`).
+    static func stamp(key: String, defaults: UserDefaults = .standard) -> GrantStamp {
+        GrantStamp(key: key, defaults: defaults, identity: { current })
     }
 
     /// The stamp from what the signature gives; pure.
