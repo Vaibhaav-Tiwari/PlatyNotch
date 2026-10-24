@@ -121,7 +121,19 @@ public final class DragSubscription {
         monitor?.unsubscribe(id)
     }
 
-    isolated deinit { cancel() }
+    // Not `isolated deinit`: on macOS 15.4-15.x the OS Swift runtime's
+    // `swift_task_deinitOnExecutor` frees a pointer it never allocated when it runs the
+    // deinit inline on the main thread outside a task, and the process aborts. Run inline
+    // on the main thread; from anywhere else hop with the values only.
+    deinit {
+        guard isActive else { return }
+        let id = self.id
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { monitor?.unsubscribe(id) }
+        } else {
+            Task { @MainActor [weak monitor] in monitor?.unsubscribe(id) }
+        }
+    }
 }
 
 /// The app's one drag monitor (R2), shared by every feature that reacts to drags (the

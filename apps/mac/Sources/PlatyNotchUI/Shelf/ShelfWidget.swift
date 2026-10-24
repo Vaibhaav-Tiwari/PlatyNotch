@@ -29,7 +29,7 @@ import SwiftUI
 /// directory pass, no timers; see `NotchApp`). Bookmarks are resolved and images
 /// converted off the main thread.
 @MainActor @Observable
-final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost {
+final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost, FileActionResults {
     static let widgetID = "shelf"
     /// Re-check expiry at least this often (sleep, clock changes).
     static let maxExpirySleep: TimeInterval = 6 * 60 * 60
@@ -73,6 +73,15 @@ final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost {
     /// The latest image conversion from a drop (tests await it).
     @ObservationIgnored private(set) var importTask: Task<Void, Never>?
     @ObservationIgnored private lazy var drop = ShelfDropTarget(shelf: self)
+    /// File actions on shelf items (Task 2); offered only while `fileActionsOn()` (the
+    /// File actions power feature runs). Results become owned items here (R11).
+    @ObservationIgnored private(set) lazy var actionCenter: FileActionCenter = {
+        let c = makeActionCenter()
+        c.results = self
+        return c
+    }()
+    @ObservationIgnored var fileActionsOn: @MainActor () -> Bool = { false }
+    @ObservationIgnored private let makeActionCenter: @MainActor () -> FileActionCenter
     @ObservationIgnored private(set) lazy var dragSource: NSDraggingSource = ShelfDragSource(host: self)
     @ObservationIgnored private static let promiseQueue: OperationQueue = {
         let q = OperationQueue()
@@ -82,10 +91,12 @@ final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost {
     }()
 
     init(directory: URL = CorePaths.shelf(), persist: Bool = true,
-         clock: @escaping () -> Date = Date.init) {
+         clock: @escaping () -> Date = Date.init,
+         actions: @escaping @MainActor () -> FileActionCenter = { FileActionCenter() }) {
         self.directory = directory
         self.persist = persist
         self.clock = clock
+        makeActionCenter = actions
     }
 
     /// Smoke runs: nothing read from or written to disk (smoke's drag monitor installs
@@ -126,6 +137,7 @@ final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost {
         expiryTask = nil
         dropTargeted = false
         outgoingDrag = false
+        actionCenter.cancelAll()
         self.context = nil
     }
 
@@ -355,6 +367,16 @@ final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost {
         return true
     }
 
+    /// Several files from disk at once (the Finder service, a link), one index write; the
+    /// first ends up first. False while the shelf is off.
+    @discardableResult
+    func addFiles(_ urls: [URL]) -> Bool {
+        guard isRunning, let store else { return false }
+        store.addFiles(urls)
+        afterChange()
+        return true
+    }
+
     func remove(_ ids: [UUID]) {
         guard let store else { return }
         for id in ids { store.remove(id) }
@@ -391,6 +413,37 @@ final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost {
         } else {
             selection = selection == [item.id] ? [] : [item.id]
         }
+    }
+
+    // MARK: - File actions (Task 2, R11)
+
+    var fileActions: FileActionCenter? { isRunning && fileActionsOn() ? actionCenter : nil }
+
+    func reserveResultFolder() -> (id: UUID, folder: URL)? {
+        guard isRunning else { return nil }
+        return store?.reserveOwnedFolder()
+    }
+
+    func addResult(_ url: URL, id: UUID, after source: UUID) -> Bool {
+        guard isRunning, let store, store.addOwnedFile(url, id: id) != nil else { return false }
+        // Inserted first; then right after its source (which moved down by one).
+        if let i = store.items.firstIndex(where: { $0.id == source }) { store.move(id, to: i) }
+        afterChange()
+        return true
+    }
+
+    func discardResult(_ id: UUID) {
+        store?.discardReserved(id)
+    }
+
+    func ownedFolder(of id: UUID) -> URL? {
+        guard let store, store.items.contains(where: { $0.id == id && $0.ownsFile && $0.fileRef != nil }) else { return nil }
+        return store.directory.appendingPathComponent(id.uuidString, isDirectory: true)
+    }
+
+    func renamed(_ id: UUID, to url: URL) {
+        store?.relocate(id, to: url)
+        afterChange()
     }
 
     /// Settings › "Delete Kept Copies": the set-aside index and every copy no item lists.

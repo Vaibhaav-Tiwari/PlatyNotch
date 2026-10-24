@@ -81,7 +81,7 @@ launch, so the retention below holds.
 | Focus | on | Focus sessions with a countdown in the pill; during a session agent notices do not peek (approvals still do) and meeting reminders stay quiet. |
 | Open loops | on | Open loops from memory (empty while memory is off). |
 | Time | on | Timers, a pomodoro, a stopwatch with laps, alarms and world clocks; a system notification backs up each timer and alarm in case the app is quit. |
-| Shelf | on | Drag files, images, links or text to the notch to keep them; drag them back out, AirDrop, share or Quick Look them. |
+| Shelf | on | Drag files, images, links or text to the notch to keep them; drag them back out, AirDrop, share or Quick Look them. Finder › Services › Add to PlatyNotch Shelf adds the selected files. With File actions on (a power feature), right-click › Actions converts, zips, unzips, reads text from, removes backgrounds from or renames them. |
 | System | on | Battery (plug-in and unplug peeks) and keep-awake. Headphones (AirPods battery) and Downloads (progress and a finished notice) are sub-features, off until you turn them on in its settings. |
 | Games | on | Snake, Tetris, 2048, Flappy and Platy Chase (a maze chase with classic arcade rules on our own maze and art) in a Games tab; best scores on the tile. |
 | Sites & Shortcuts | on | Pinned websites (http and https only) and pinned Shortcuts, run on a click. |
@@ -125,14 +125,34 @@ for access when the shelf tile shows them; nothing is checked at launch.
 
 #### Power features (v0.2)
 
-Coming in v0.2. Each is off until you turn it on under Settings › Widgets › Power
-features, and asks for its permission only from its own button.
+Each is off until you turn it on under Settings › Widgets › Power features, and asks
+for its permission only from its own button.
+
+**File actions** needs no permission and no network: converting, OCR and background
+removal run on this Mac (ImageIO, AVFoundation, Vision), and results are new shelf
+items in the shelf's folder (kept 7 days unless pinned; Save As… for a copy elsewhere),
+never written next to your files. Rename changes your files' names only when you
+click Rename, never replacing another file, with one Undo; it never renames your home
+folder's own folders (Desktop, Documents, Downloads, Library, …) or anything else in
+PlatyNotch's folder (the shelf's own copies and results can be renamed, and stay there). Unzip uses PlatyNotch's own extractor, not ditto: it
+unpacks only the files an archive lists, each checked against its declared size and
+checksum, and refuses archives that are damaged, encrypted, would write outside their
+folder or list more than 50,000 entries. Nothing it unpacks is writable by other users.
+Files in Downloads, Desktop
+or Documents may make macOS ask for access when an action reads them.
+
+**Finder service and links** (no new permission): Finder › Services › Add to
+PlatyNotch Shelf is always listed but only shows "Turn on the Shelf" while the shelf is
+off. `platynotch://shelf/add?path=…`, `platynotch://timer/start?d=25m` and
+`platynotch://clipboard/open` (for Alfred or Raycast) never act on their own: adding
+files or starting a timer asks first under the notch, and nothing happens while that
+widget is off.
 
 | Permission | Asked when | Used by |
 | --- | --- | --- |
-| Camera | Coming in v0.2 | Mirror (shows your camera only while it is open) |
-| Accessibility | Coming in v0.2 | Window snapping |
-| Automation: Mail | Coming in v0.2 | Mail |
+| Camera | You click Show Mirror in the Mirror tile | Mirror: the camera runs only while it shows; hiding it, closing the panel, locking the screen or display sleep turns it off. Nothing is recorded |
+| Accessibility | You click Allow Accessibility in Window snapping's settings | Window snapping: reads the focused window's position and size and sets them (never its content; nothing stored or sent). Its 15 ⌃⌥ shortcuts are held only while it is on and allowed |
+| Automation: Mail | You click Allow in the Mail tile (never from Settings) | Mail: unread count and the newest senders and subjects, read every 5 minutes only while Mail is open. PlatyNotch never opens Mail and keeps nothing |
 | Files and Folders (Documents, Desktop or iCloud Drive) | You choose a vault there with Choose Vault… in Notes & Tasks' settings (once; again after an update with Turn On Again…) | Notes & Tasks: open tasks from notes edited in the last 30 days, ticking a task (only its checkbox), quick notes added to today's daily note |
 
 Network: nothing is sent anywhere unless you turn on something that is network by

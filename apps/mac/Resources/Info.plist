@@ -49,7 +49,7 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>Apache-2.0. See LICENSE and NOTICE.</string>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>PlatyNotch asks your terminal app to bring an agent's tab to the front, asks Spotify or Music what is playing, and, only when you click Add current tab, asks Safari, Chrome or Arc for the address of the front tab so you can pin it.</string>
+	<string>PlatyNotch asks your terminal app to bring an agent's tab to the front, asks Spotify or Music what is playing, and, only when you click Add current tab, asks Safari, Chrome or Arc for the address of the front tab so you can pin it. Only while the Mail widget is on and Mail is open, it asks Mail for your unread count and the sender and subject of the newest unread messages.</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>PlatyNotch listens to what your Mac is playing, only while music plays, to move the bars. Nothing is recorded or kept.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
@@ -70,6 +70,26 @@
 	<string>PlatyNotch reads your notes vault for open tasks and adds your quick notes to today's daily note, only after you choose the vault in Settings. Ticking a task changes only its checkbox.</string>
 	<key>NSDownloadsFolderUsageDescription</key>
 	<string>PlatyNotch shows downloads in progress and a notice when one finishes, after you turn this on in Settings. It reads file names only, never their contents, and does nothing to a file unless you click.</string>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Add to PlatyNotch Shelf</string>
+			</dict>
+			<key>NSMessage</key>
+			<string>addToShelf</string>
+			<key>NSPortName</key>
+			<string>PlatyNotch</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSSendFileTypes</key>
+			<array>
+				<string>public.item</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>PlatyNotch shows reminders due today in the notch, ticks them off, and adds the ones you type in quick add. Reminders stay on your Mac.</string>
 	<key>SUFeedURL</key>

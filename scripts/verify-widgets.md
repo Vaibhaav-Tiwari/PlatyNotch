@@ -4,8 +4,8 @@ Checks for the widget system (Plan 3b). Automated checks cover the logic (`swift
 `LiveArbiterTests`, `WidgetLayoutTests`, `WidgetRegistryTests`) and the launch
 (`swift run PlatyNotch --smoke` prints `widgets=<n>`, the number of enabled widgets whose
 tile was built; `--smoke-settings` visits Settings › Widgets; `--smoke-power` builds an
-inert instance of every v0.2 power feature and prints `SMOKE-POWER OK widgets=<n>`, 0
-until the first one lands, with no core, window or permission). This list covers what
+inert instance of every v0.2 power feature and prints `SMOKE-POWER OK widgets=<n>` (1 with
+File actions), with no core, window or permission). This list covers what
 only a person looking at the screen can confirm.
 
 ## Setup
@@ -1113,6 +1113,163 @@ you browsed a little). The graph is read from the core over `memory.graph`; `not
 - [ ] **214. Loops whose thread is gone.** An open loop whose source thread was purged by
   retention still shows, linked to its app (or alone when that app is not in the range).
 
+## File actions (v0.2)
+
+Use an installed build (`scripts/build-app.sh`). Turn on **Settings › Widgets › Power
+features › File actions** (off by default). `swift test` already converts, zips, unzips and
+OCRs small files made by the tests (`FileActionsEngineTests`); these checks use real files.
+
+- [ ] **215. Off means no menu.** With File actions off, right-click a shelf item: no
+  Actions entry. Turn it on: an image gets Actions › Convert to, Zip, Copy Text, Remove
+  Background and Rename…; a text or link item gets no Actions entry; Activity Monitor shows
+  PlatyNotch near 0% CPU with nothing running.
+- [ ] **216. HEIC to JPEG.** Drag a HEIC photo from Photos or Finder to the notch, then
+  Actions › Convert to › JPEG: the card shows "Converting…" with Cancel, then a new item
+  "<name>.jpg" appears right after it. Quick Look shows it upright, with the original's
+  colours. Nothing new appears next to the original file in Finder. Reveal in Finder opens
+  the shelf's own folder; Save As… writes a copy where you choose (and asks before replacing).
+- [ ] **217. Copy Text from a screenshot.** Put a screenshot of this page on the shelf,
+  Actions › Copy Text, then paste into TextEdit: the text matches, line by line. A PDF with
+  text works the same; a photo without text says "Couldn't read text in …: no text was found".
+- [ ] **218. Remove background.** On a photo of a person or a pet, Actions › Remove
+  Background: a new "<name> (no background).png" item shows the subject on transparency
+  (open it in Preview). A flat graphic with no subject says "no subject was found".
+- [ ] **219. Video.** On a screen recording (.mov), Convert to › MP4 (H.264) and Compress
+  Video › 720p: each gives a new item that plays in QuickTime. Start a compression of a
+  long video and click Cancel on the card: it stops within a second, "Cancelled" shows,
+  and no partial file is left in the shelf's folder.
+- [ ] **220. Zip and unzip.** Zip a folder: "<folder>.zip" appears after it; unzip that:
+  a folder item with the same contents. While a large zip runs, `ls` the shelf folder shows
+  `<name>.zip.partial`, renamed when done. An archive that would unpack to more than 2 GB
+  (e.g. a zip of a large sparse disk image) is refused with "it would unpack to more than 2 GB".
+  An archive that is damaged or hostile (entries outside its folder, headers that disagree,
+  entries its list does not show, whatever system made it) says "the archive is damaged
+  or unsafe"; one with a link to an absolute path or with `..` says "this archive contains
+  links that point outside their folder"; one listing more than 50,000 entries says "it
+  has more than 50,000 files and folders". A file stored as 0777 unpacks as 0755
+  (`ls -l`: never group- or world-writable). One whose contents don't
+  match what it declares (size, checksum) says "the archive is damaged" and leaves
+  nothing. Unzip is PlatyNotch's own extractor (no ditto process appears in Activity
+  Monitor while it runs; Zip still uses ditto); an encrypted archive says "it is encrypted". With less free
+  disk space than the archive holds, it says "there is not enough free disk space".
+- [ ] **221. Batch rename.** Select three files in a Downloads subfolder (⌘-click), Actions
+  › Batch Rename…, pattern `{date:yyyy-MM-dd} trip {n:2}`: the preview lists every new name;
+  Rename renames them in Finder, and the cards follow. A name already taken gets " 2".
+  Actions › Undo Rename puts every name back; it then disappears (one level). Rename is not
+  offered for Desktop, Documents, Downloads or other folders directly in your home, for
+  hidden files there, or for anything in PlatyNotch's own folder except the shelf's own
+  copies: rename a converted result to `trip {n}` and it stays on the shelf (and in its
+  folder), still expiring after 7 days unless pinned.
+- [ ] **222. Finder service.** After installing, run `/System/Library/CoreServices/pbs -flush`
+  and relaunch PlatyNotch. In Finder, select two files › right-click › Services (or Quick
+  Actions) › Add to PlatyNotch Shelf: a peek says "Added 2 files to the shelf" and both are
+  on the shelf (in place, not copied). Selecting more than 200 adds the first 200 and says so. Turn the shelf off and repeat: the peek says "Turn on
+  the Shelf" and nothing is added.
+- [ ] **223. Links ask first.** In Terminal: `open "platynotch://shelf/add?path=$HOME/Desktop/a.txt"`
+  (an existing file): a peek asks "Add 1 file to the shelf?" with the file name, "Asked by a
+  link", Cancel and Add; nothing is added until Add. `open "platynotch://timer/start?d=25m"`
+  asks "Start a 25 minute timer?"; Start starts it, Cancel or waiting 30 s does nothing.
+  The Add / Start button stays dim for half a second after the card appears. Open three
+  links in a row: only the first asks; the others are ignored until it is answered.
+  With the shelf (or Time) widget off, the same links do nothing at all. A path inside
+  `~/Library/Application Support/PlatyNotch`, a relative path or more than 20 paths: no
+  peek. `open platynotch://clipboard/open` opens the clipboard picker only while Clipboard
+  history is on, and opening it again leaves it open. In a picker a link opened, ↩ does
+  nothing until you press ↑/↓ or move the mouse (a cursor that stays still where the
+  picker appears, e.g. near the bottom of the screen, does not count).
+
+## Window snapping (v0.2)
+
+Turn on Settings › Widgets › Power features › Window snapping. It has no tile. The
+shortcuts are ⌃⌥ with ← → ↑ ↓ (halves), U I J K (quarters), D F G (thirds), E T (two
+thirds), ↩ (maximize) and C (center).
+
+- [ ] **224. Off by default, no work.** On a fresh home the feature is off; ⌃⌥← does
+  nothing in PlatyNotch (another app may use it). No Accessibility prompt appears at launch.
+- [ ] **225. Its own Allow.** With Accessibility not allowed, turning it on shows "Off:
+  needs Accessibility" with Allow Accessibility… and Open System Settings. Only Allow shows
+  the system prompt. After allowing in System Settings the row turns to "On" within a few
+  seconds without reopening Settings. After a rebuild (ad-hoc), the "PlatyNotch was
+  rebuilt" advice shows instead.
+- [ ] **226. Every target.** In TextEdit, each shortcut puts the window where its name says
+  on the display it is on (below the menu bar, above the Dock). Three thirds side by side
+  leave no overlap or hole; with Gap 8 pt the windows keep 8 pt from each other and the edges.
+- [ ] **227. Center.** ⌃⌥C moves the window to the middle without resizing it; a window
+  taller than the screen is shrunk to fit.
+- [ ] **228. Fixed-size window.** On a window that cannot be resized (System Settings,
+  Calculator), ⌃⌥← moves it into the left half, centered there, without resizing; pressing
+  again does nothing more; no flicker or repeated attempts.
+- [ ] **229. External displays.** With a display arranged above and to the left of the
+  built-in one, each shortcut on a window there snaps it on that display, never onto the
+  built-in one or off-screen. A window dragged mostly off a display snaps onto the display
+  it still overlaps most.
+- [ ] **230. Full screen and no window.** A full-screen window is left alone; with Finder in
+  front and no window open nothing happens and nothing hangs.
+- [ ] **231. Shortcut taken.** With another app holding ⌃⌥C (e.g. Rectangle running), turning
+  snapping on shows "Shortcut taken by another app: ⌃⌥C" and marks the row "shortcut taken";
+  the others work. Quit that app and click Try Again: the note goes away.
+- [ ] **232. Off releases everything.** Turn the feature off: ⌃⌥← no longer moves windows
+  and another app can take it. Revoking Accessibility while on shows the Allow row again and
+  the shortcuts stop. Activity Monitor shows PlatyNotch idle under 1% CPU either way.
+
+## Camera mirror (v0.2)
+
+Automated: `MirrorWidgetTests` (the camera starts only after a click and stops on each stop
+event, through fakes) and `MirrorStateTests`. Turn on Settings › Widgets › Power features ›
+Mirror, on an installed build.
+
+- [ ] **233. Nothing at rest.** With the mirror on and the panel open on Today, the camera
+  light stays off until you click Show Mirror. Activity Monitor shows no extra CPU.
+- [ ] **234. First click asks.** On a Mac that never allowed the camera, Show Mirror shows the
+  macOS camera prompt (and nothing else does: launch, Settings and opening the panel never
+  do). Allow: the mirror shows at once. Don't Allow: no light; the tile says the camera is
+  off with Open Settings.
+- [ ] **235. A mirror.** Raise your right hand: it shows on the right of the preview. The
+  preview fills its frame without stretching.
+- [ ] **236. Stops on collapse.** Show the mirror, then move away so the panel closes: the
+  camera light goes out within a second. Reopen the panel: the tile shows Show Mirror again
+  (it never restarts by itself). Same after choosing another tab, and after Hide.
+- [ ] **237. Stops on lock and sleep.** Show the mirror, press ⌃⌘Q (lock): unlock, the light
+  is off and the tile shows Show Mirror. Same after the display sleeps (hot corner or
+  `pmset displaysleepnow`), after the Mac sleeps, and after switching to another user.
+- [ ] **238. Stops when turned off.** Show the mirror, then turn Mirror off in Settings: the
+  light goes out at once.
+- [ ] **239. Rebuilt app.** After `scripts/build-app.sh` makes a new ad-hoc build, the tile
+  says Turn On Again (when macOS forgot the grant); clicking it asks once more.
+- [ ] **240. No camera.** With the lid closed on an external display and no camera, Show
+  Mirror says no camera was found; nothing keeps trying.
+
+## Apple Mail (v0.2)
+
+Automated: `MailWidgetTests` (through a fake system: no script, status check or link while
+Mail is closed, the prompt only from Allow, nothing saved, a stop kills the script) and
+`IntegrationsTests` (the script's answer, links, and that the script only reads). Turn on
+Settings › Widgets › Power features › Mail, on an installed build.
+
+- [ ] **241. Mail closed.** Quit Mail, open the panel: the tile says "Mail is not open". Wait
+  10 minutes with the panel open and closed: Mail never opens, and `ps ax | grep osascript`
+  shows nothing.
+- [ ] **242. Allow only from the tile.** On a Mac where PlatyNotch never asked for Mail, open
+  Mail, then the panel: the tile shows Allow and no prompt appears. Settings › Permissions ›
+  Automation lists Mail (only while the Mail widget is on) with "Asked from the Mail
+  widget's Allow button" and no Allow button; with Mail closed it says "Shown when Mail is
+  open".
+  Click Allow in the tile: macOS asks once; OK shows the unread count and up to 5 messages.
+- [ ] **243. What it shows.** The count matches Mail's Inbox badge; the 5 rows are the newest
+  unread, newest first, each with the sender's name and the subject on one line.
+- [ ] **244. Open a message.** Click a row: Mail comes forward with that message open.
+- [ ] **245. Refresh.** Mark a message read in Mail: it leaves the tile within 5 minutes, or
+  at once when you reopen the panel after 30 seconds.
+- [ ] **246. Mail quits.** With messages shown, quit Mail: the tile says "Mail is not open"
+  and the messages are gone. Open Mail again: they come back without a click. Quit Mail
+  just as the panel opens, a few times: Mail never comes back by itself (the script
+  addresses the old process, which is gone).
+- [ ] **247. Refused.** Turn Mail off for PlatyNotch in System Settings › Privacy & Security ›
+  Automation: the tile explains how to turn it back on, with Open Settings; it never asks
+  by itself.
+- [ ] **248. Nothing kept.** Turn Mail off and on: the tile reads again (nothing was saved).
+  `defaults read dev.platynotch.app | grep -i mail` shows only `automationGrant.com.apple.mail`.
+
 ## Notes and tasks (v0.2)
 
 Settings › Widgets › Power features › Notes & Tasks. Use a throwaway vault (a copy of an
@@ -1120,32 +1277,32 @@ Obsidian vault, ideally one in Documents) with a `Daily` folder, a few notes wit
 edited today, one edited 40 days ago (`touch -t`), a `.obsidian` folder and a fenced code
 block containing `- [ ] in code`.
 
-- [ ] **420. Off by default.** On a fresh home the widget is off and listed under Power
+- [ ] **270. Off by default.** On a fresh home the widget is off and listed under Power
   features. Turned on with no vault, the tile shows the quick-note field and "Choose a
   vault in Settings…"; Activity Monitor shows no extra CPU and `lsof -p <pid>` lists no
   file in any vault.
-- [ ] **421. Quick note without a vault.** Type "hello" in the tile and press Return:
+- [ ] **271. Quick note without a vault.** Type "hello" in the tile and press Return:
   `~/Library/Application Support/PlatyNotch/notes.noindex/notes.md` gains `- HH:mm hello`
   (the folder is 0700, the file 0600). The tile says "Added to PlatyNotch notes".
-- [ ] **422. Choosing the vault.** Settings › Choose Vault… opens a folder picker in
+- [ ] **272. Choosing the vault.** Settings › Choose Vault… opens a folder picker in
   front. Choosing a vault in Documents makes macOS ask once for Documents; Allow. The
   tile lists the open tasks of notes edited in the last 30 days, soonest due (`📅
   2026-10-30`) first, with the note's name. Not listed: done tasks, tasks in the old
   note, in `.obsidian`, in the code block or in frontmatter. Don't Allow instead: the
   settings say macOS did not allow it, with Open System Settings and Try Again.
-- [ ] **423. Tick.** Tick a task: only that line's `[ ]` becomes `[x]` (check with
+- [ ] **273. Tick.** Tick a task: only that line's `[ ]` becomes `[x]` (check with
   `git diff` in the vault or `cmp -l` against a copy: exactly one byte differs). A CRLF
   note keeps CRLF, permissions (`ls -l`) and extended attributes (`xattr -l`) are
   unchanged, and no other file in the vault appears or changes.
-- [ ] **424. Changed since it was read.** With the panel open, add a line above a task in
+- [ ] **274. Changed since it was read.** With the panel open, add a line above a task in
   Obsidian, then (before the list refreshes) tick that task: nothing is written; the tile
   asks "… changed since it was read. Tick “…” on line N?". Tick It writes that line;
   Cancel writes nothing. Edit the task's text instead: nothing is written and the list
   refreshes.
-- [ ] **425. Read-only and locked notes.** `chmod 444` a note (or Finder › Get Info ›
+- [ ] **275. Read-only and locked notes.** `chmod 444` a note (or Finder › Get Info ›
   Locked) and tick one of its tasks: the tile says it is read-only and the file is
   unchanged.
-- [ ] **426. Quick note into the vault.** With the vault on and today's note missing, a
+- [ ] **276. Quick note into the vault.** With the vault on and today's note missing, a
   quick note is not added: the tile says "Today's note doesn't exist yet — open it in
   Obsidian first." and no file appears. Open today's note in Obsidian (its template
   runs), then add again: `Daily/YYYY-MM-DD.md` keeps everything and gains one line at the
@@ -1154,20 +1311,20 @@ block containing `- [ ] in code`.
   folder is made. Make `Daily` a symlink to a folder outside the vault: nothing is
   written there. `../x` is refused in Settings. A UTF-16 or Latin-1 note is never
   appended to.
-- [ ] **427. Watching and idle.** Edit a note in Obsidian: the list follows within a few
+- [ ] **277. Watching and idle.** Edit a note in Obsidian: the list follows within a few
   seconds, and only that note is read again (type steadily in a 20 000-note vault: CPU
   stays low, no full walk). Create or rename a folder: one full walk. Leave Obsidian open
   and idle for a minute (it rewrites `.obsidian/workspace.json`): PlatyNotch stays under
   1% CPU and does not rescan. With the panel closed there is no periodic walk; while the
   tile shows, one every 5 minutes. iCloud notes that are not downloaded are skipped.
-- [ ] **428. After a rebuild.** Rebuild (ad-hoc) and relaunch with the widget on: no
+- [ ] **278. After a rebuild.** Rebuild (ad-hoc) and relaunch with the widget on: no
   prompt appears; the tile and settings ask to Turn On Again; until then nothing in the
   vault is read. Turn On Again… resumes (macOS may ask once more).
-- [ ] **429. Off and Forget.** Turning the widget off stops the folder watch (no CPU,
+- [ ] **279. Off and Forget.** Turning the widget off stops the folder watch (no CPU,
   nothing read). Forget clears the vault from Settings; its files are untouched.
-- [ ] **430. Recurring tasks and comments.** A task with `🔁 every week` shows a repeat
+- [ ] **280. Recurring tasks and comments.** A task with `🔁 every week` shows a repeat
   icon and "Tick it in Obsidian" instead of a tick box, and is never changed. Tasks inside
   `%% … %%` comments are not listed.
-- [ ] **431. Ticks in quick succession.** Tick three tasks in today's note quickly and add
+- [ ] **281. Ticks in quick succession.** Tick three tasks in today's note quickly and add
   a quick note at once: all three are `[x]` and the note line is there (every write runs
   one after another).

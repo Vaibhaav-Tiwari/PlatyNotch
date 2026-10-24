@@ -6,7 +6,8 @@ struct PermissionsSection: View {
 
     var body: some View {
         SettingsPage("Permissions", subtitle: "Each one is optional. PlatyNotch asks only when you click Allow.") {
-            PermissionRows(permissions: services.permissions)
+            PermissionRows(permissions: services.permissions,
+                           mailWidgetOn: services.widgets.isEnabled(MailWidget.widgetID))
             Divider()
             Button("Show the welcome guide again") { services.showOnboarding() }
         }
@@ -17,6 +18,8 @@ struct PermissionsSection: View {
 /// Shared by Settings and onboarding.
 struct PermissionRows: View {
     let permissions: Permissions
+    /// Mail's Automation row shows only while the Mail widget is on (onboarding: never).
+    var mailWidgetOn = false
     @State private var probe = WindowProbe()
 
     var body: some View {
@@ -51,23 +54,27 @@ struct PermissionRows: View {
                 openSettings: { Permissions.open(.reminders) })
             VStack(alignment: .leading, spacing: 6) {
                 PermissionHeader(title: "Automation", systemImage: "applescript",
-                                 why: "Brings a session's terminal tab forward, controls Music and Spotify, and reads a browser's front tab when you click Add current tab.",
-                                 withoutIt: "Jumping to a session only activates the app; no play/pause for those players; no Add current tab.")
-                let targets = permissions.installedAutomationTargets
+                                 why: "Brings a session's terminal tab forward, controls Music and Spotify, reads a browser's front tab when you click Add current tab, and reads unread mail for the Mail widget.",
+                                 withoutIt: "Jumping to a session only activates the app; no play/pause for those players; no Add current tab; the Mail widget shows nothing.")
+                let targets = permissions.installedAutomationTargets.filter {
+                    Permissions.listsAutomation($0.id, mailWidgetOn: mailWidgetOn)
+                }
                 if targets.isEmpty {
                     Text("None of Terminal, iTerm, Music, Spotify, Safari, Chrome or Arc is installed.").font(.caption).foregroundStyle(.secondary)
                 }
                 ForEach(targets, id: \.id) { t in
                     HStack {
                         Text(verbatim: t.name).frame(width: 90, alignment: .leading)
-                        StateText(state: permissions.automation[t.id] ?? .notAsked)
+                        StateText(state: Permissions.shownState(permissions.automation[t.id] ?? .notAsked,
+                                                                bundleID: t.id, name: t.name))
                         Spacer()
                         if Permissions.asksFromSettings(t.id) {
                             AllowButtons(state: permissions.automation[t.id] ?? .notAsked,
                                          allow: { permissions.requestAutomation(bundleID: t.id) },
                                          openSettings: { Permissions.open(.automation) })
                         } else {
-                            BrowserAutomationNote(state: permissions.automation[t.id] ?? .notAsked)
+                            BrowserAutomationNote(state: permissions.automation[t.id] ?? .notAsked,
+                                                  askedFrom: Permissions.askedFrom(t.id))
                         }
                     }
                     .padding(.leading, 28)
@@ -165,12 +172,13 @@ private struct StateText: View {
 /// A browser's row: asked from "Add current tab" only, never from here.
 private struct BrowserAutomationNote: View {
     let state: Permissions.State
+    let askedFrom: String
 
     var body: some View {
         switch state {
         case .denied: Button("Open System Settings") { Permissions.open(.automation) }
         case .granted: EmptyView()
-        default: Text("Asked when you click Add current tab").font(.caption).foregroundStyle(.secondary)
+        default: Text(verbatim: askedFrom).font(.caption).foregroundStyle(.secondary)
         }
     }
 }

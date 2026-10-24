@@ -168,11 +168,11 @@ final class WidgetRegistryTests: DefaultsTestCase {
         let registry = WidgetRegistry(defaults: defaults())
         let today = TodayServices(client: CoreClient(socketPath: "/nonexistent"))
         BuiltInWidgets.register(in: registry, store: AppStore(), today: today, persist: false)
-        // Everyday widgets in the plan's order, first; v0.2 power features follow them.
         let everyday = ["music", "meeting", "focus", "loops", "time", "hud", "shelf", "clipboard",
                         "reminders", "weather", "wellbeing", "system", "games", "launch"]
-        XCTAssertEqual(registry.orderedWidgets.filter { $0.category == .everyday }.map(\.id), everyday)
-        XCTAssertEqual(Array(registry.orderedWidgets.prefix(everyday.count).map(\.id)), everyday)
+        XCTAssertEqual(registry.orderedWidgets(in: .everyday).map(\.id), everyday)
+        XCTAssertEqual(Array(registry.orderedWidgets.prefix(everyday.count)).map(\.id), everyday,
+                       "power features follow the everyday widgets")
         XCTAssertEqual(registry.visibleWidgets.count, 9,
                        "the HUD (needs Accessibility), clipboard history (C22), Reminders (private data), weather (network) "
                        + "and wellbeing (nudges interrupt) are off by default")
@@ -185,6 +185,10 @@ final class WidgetRegistryTests: DefaultsTestCase {
         XCTAssertTrue(registry.isEnabled(ShelfWidget.widgetID), "the shelf needs no permission and is on")
         XCTAssertFalse(registry.isEnabled(HUDWidget.widgetID))
         XCTAssertTrue(registry.isEnabled(SystemWidget.widgetID), "battery and keep-awake need no permission")
+        for id in [FileActionsWidget.widgetID, WindowSnapWidget.widgetID, NotesWidget.widgetID] {
+            XCTAssertTrue(registry.orderedWidgets(in: .power).contains { $0.id == id })
+            XCTAssertFalse(registry.isEnabled(id), "power features are off by default")
+        }
     }
 
     /// Turning a widget off calls `disabled()` after `stop`; quitting (`stopAll`) does not.

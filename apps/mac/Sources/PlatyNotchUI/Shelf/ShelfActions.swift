@@ -50,6 +50,37 @@ enum ShelfActions {
         ShelfQuickLook.shared.show(urls, from: window)
     }
 
+    /// "Save As…" for a file the shelf owns (an owned copy or an action result, R11): a
+    /// copy where the user chooses. The save panel asks before replacing a file.
+    static func saveAs(_ url: URL) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = url.lastPathComponent
+        panel.canCreateDirectories = true
+        NSApp.activate()   // user-initiated: the panel needs the keyboard
+        panel.begin { response in
+            guard response == .OK, let dest = panel.url else { return }
+            let fm = FileManager.default
+            do {
+                if fm.fileExists(atPath: dest.path) {
+                    _ = try fm.replaceItemAt(dest, withItemAt: try copyToTemporary(url, near: dest))
+                } else {
+                    try fm.copyItem(at: url, to: dest)
+                }
+            } catch {
+                NSSound.beep()
+            }
+        }
+    }
+
+    /// A copy of `url` in a temporary folder on `dest`'s volume (for `replaceItemAt`).
+    private static func copyToTemporary(_ url: URL, near dest: URL) throws -> URL {
+        let fm = FileManager.default
+        let dir = try fm.url(for: .itemReplacementDirectory, in: .userDomainMask, appropriateFor: dest, create: true)
+        let tmp = dir.appendingPathComponent(url.lastPathComponent)
+        try fm.copyItem(at: url, to: tmp)
+        return tmp
+    }
+
     /// "Locate…" for a missing file: an open panel; the chosen file replaces the old one.
     static func locate(_ item: ShelfItem, in host: any ItemListHost) {
         let panel = NSOpenPanel()

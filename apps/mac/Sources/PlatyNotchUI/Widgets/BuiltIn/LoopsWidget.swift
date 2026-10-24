@@ -59,6 +59,8 @@ enum BuiltInWidgets {
         registry.register(time)
         registry.register(persist ? HUDWidget() : HUDWidget.inert())
         let shelf = persist ? ShelfWidget() : ShelfWidget.inert()
+        // Shelf items get "Actions ›" only while the File actions power feature runs.
+        shelf.fileActionsOn = { [weak registry] in registry?.running.contains(FileActionsWidget.widgetID) ?? false }
         registry.register(shelf)
         registry.register(clipboard ?? (persist ? ClipboardWidget() : ClipboardWidget.inert()))
         registry.register(persist ? RemindersWidget(reminders: today.reminders, calendar: today.calendar) : RemindersWidget.inert())
@@ -91,9 +93,17 @@ enum BuiltInWidgets {
     /// Every power feature (`WidgetCategory.power`); `persist: false` gives inert ones
     /// (no monitors, permissions, files or network), as `--smoke-power` checks.
     static func powerWidgets(persist: Bool) -> [any NotchWidget] {
-        var out: [any NotchWidget] = []
+        var list: [any NotchWidget] = []
+        // File actions has no state of its own: the same instance is inert.
+        list.append(FileActionsWidget())
+        // Window snapping: shortcuts only while on and Accessibility is allowed.
+        list.append(persist ? WindowSnapWidget() : WindowSnapWidget.inert())
+        // Camera only after a click in its tile; never in smoke runs.
+        list.append(persist ? MirrorWidget() : MirrorWidget.inert())
+        // Mail only while it is running; never in smoke runs (no process, no Apple Event).
+        list.append(persist ? MailWidget() : MailWidget.inert())
         // Quick notes and Obsidian tasks: no vault, watch or file until set up in its settings.
-        out.append(persist ? NotesWidget() : NotesWidget.inert())
-        return out
+        list.append(persist ? NotesWidget() : NotesWidget.inert())
+        return list
     }
 }
