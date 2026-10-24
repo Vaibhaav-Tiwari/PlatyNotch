@@ -68,6 +68,7 @@ public struct PlatyPoseValues: Equatable, Sendable {
         switch mood {
         case .idle: break
         case .working: p.paddle = 0.6; p.water = true
+        case .workingToMusic: p.paddle = 0.6; p.water = true; p.headphones = true
         case .thinking: p.lean = -6; p.billAngle = -4; p.eyesOpen = 0.85
         case .waiting: p.tint = .amber; p.tailWag = 0.6
         case .done: p.check = true; p.sparkle = 0.5
@@ -88,7 +89,7 @@ public struct PlatyPoseValues: Equatable, Sendable {
     private static func animated(_ mood: PlatyMood, phase: Double) -> PlatyPoseValues {
         var p = rest(mood)
         switch mood {
-        case .working:
+        case .working, .workingToMusic:
             // Paws paddle once a loop; the body bobs on every stroke.
             p.paddle = wave(phase)
             p.bounce = 0.03 * abs(wave(phase))
