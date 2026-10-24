@@ -29,11 +29,18 @@ struct PermissionRows: View {
                 openSettings: { Permissions.open(.accessibility) })
             PermissionRow(
                 title: "Calendar", systemImage: "calendar",
-                why: "Shows your next meeting and its join link in the Today tab.",
-                withoutIt: "No next meeting in the notch.",
-                state: calendarState,
+                why: "Shows your meetings, their join links and 10, 5 and 1-minute reminders; quick add can create events.",
+                withoutIt: "No meetings in the notch; quick add saves events as reminders.",
+                state: state(permissions.calendar.access),
                 allow: { Task { await permissions.requestCalendar() } },
                 openSettings: { Permissions.open(.calendars) })
+            PermissionRow(
+                title: "Reminders", systemImage: "checkmark.circle",
+                why: "Shows reminders due today and overdue, ticks them off, and adds new ones from quick add.",
+                withoutIt: "The Reminders widget stays empty.",
+                state: state(permissions.reminders.access),
+                allow: { Task { await permissions.requestReminders() } },
+                openSettings: { Permissions.open(.reminders) })
             VStack(alignment: .leading, spacing: 6) {
                 PermissionHeader(title: "Automation", systemImage: "applescript",
                                  why: "Brings a session's terminal tab forward and controls Music and Spotify.",
@@ -65,8 +72,8 @@ struct PermissionRows: View {
         .onAppear { permissions.refresh() }
     }
 
-    private var calendarState: Permissions.State {
-        switch permissions.calendar.access {
+    private func state(_ access: CalendarService.Access) -> Permissions.State {
+        switch access {
         case .granted: .granted
         case .denied: .denied
         case .notAsked: .notAsked

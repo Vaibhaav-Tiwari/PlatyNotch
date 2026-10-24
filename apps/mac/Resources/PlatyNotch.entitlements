@@ -4,7 +4,9 @@
   Used only with a Developer ID signature (hardened runtime). Not sandboxed: the app runs
   the bundled core and mediaremote-adapter, reads other apps through Accessibility, and
   serves a socket under ~/Library/Application Support/PlatyNotch. Under the hardened
-  runtime, EventKit (Today view meetings) needs the calendars entitlement. The music
+  runtime, EventKit needs the calendars entitlement; it covers both Calendar (meetings,
+  quick-add events) and Reminders: the hardened runtime has no separate reminders entitlement.
+  Weather (Open-Meteo over https) needs nothing: the app is not sandboxed. The music
   visualiser's CoreAudio process tap is audio input: audio-input lets the hardened runtime
   allow it (verify on a Developer ID build, scripts/verify-widgets.md #39).
 -->

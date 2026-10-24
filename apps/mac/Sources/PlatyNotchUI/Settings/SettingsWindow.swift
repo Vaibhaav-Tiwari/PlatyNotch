@@ -20,14 +20,14 @@ final class SettingsServices {
     var restartCore: () -> Void = {}
 
     init(config: ConfigFileStore, runner: CoreRunner, store: AppStore, capture: CaptureService?, calendar: CalendarService,
-         widgets: WidgetRegistry, updater: AppUpdater) {
+         reminders: RemindersService, widgets: WidgetRegistry, updater: AppUpdater) {
         self.config = config
         self.widgets = widgets
         self.updater = updater
         self.runner = runner
         self.store = store
         self.capture = capture
-        permissions = Permissions(calendar: calendar)
+        permissions = Permissions(calendar: calendar, reminders: reminders)
         agents = AgentsModel(runner: runner)
     }
 }

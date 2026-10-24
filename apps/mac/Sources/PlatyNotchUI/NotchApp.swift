@@ -60,7 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var updater = AppUpdater(start: !options.smoke && !options.smokeSettings)
     private lazy var settingsServices = SettingsServices(config: config, runner: runner, store: store,
                                                          capture: capture, calendar: today.calendar,
-                                                         widgets: widgets, updater: updater)
+                                                         reminders: today.reminders, widgets: widgets, updater: updater)
     private lazy var settings = SettingsWindowController(services: settingsServices,
                                                          pluginSections: plugins.flatMap { $0.settingsSections() })
     private lazy var onboarding = OnboardingWindowController(services: settingsServices)
@@ -395,9 +395,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                AnyView(ClipPickerView(model: ClipPickerModel(widget: clipboard), onChoose: { _ in },
                                       trusted: { false }, imageURL: { _ in nil })),
                AnyView(RingingOverlay(title: "Alarm", subtitle: "Alarm · 7:00", isAlarm: true, onSnooze: {}, onStop: {}))]
+            + Self.dayViews()
         for v in views {
             NSHostingView(rootView: v.frame(width: 380).environment(\.colorScheme, .dark)).layoutSubtreeIfNeeded()
         }
+    }
+
+    /// Task 7's views with inert models (no EventKit, no network): the meeting tile, peek
+    /// and settings, the Reminders tile and settings, the weather tile and settings.
+    private static func dayViews() -> [AnyView] {
+        let calendar = CalendarService(eventKit: false)
+        let meeting = MeetingWidget(calendar: calendar)
+        let start = Date().addingTimeInterval(5 * 60)
+        let sample = CalendarMeeting(id: "smoke", title: "Standup", start: start, end: start.addingTimeInterval(1800),
+                                     joinURL: URL(string: "https://meet.google.com/abc-defg-hij"))
+        let reminders = RemindersWidget.inert()
+        let weather = WeatherWidget.inert()
+        return [meeting.tileView(), meeting.settingsView(),
+                AnyView(MeetingReminderPeek(reminder: .init(meeting: sample, minutes: 5), join: {})),
+                AnyView(CountdownRing(start: start, now: Date())),
+                reminders.tileView(), reminders.settingsView(), weather.tileView(), weather.settingsView()]
+            .compactMap { $0 }
     }
 
     /// `--smoke-settings`: builds the Settings window (every section) and the onboarding

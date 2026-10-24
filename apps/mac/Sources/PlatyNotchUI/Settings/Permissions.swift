@@ -24,15 +24,18 @@ final class Permissions {
     private(set) var notifications: State = .notAsked
     private(set) var automation: [String: State] = [:]
     let calendar: CalendarService
+    let reminders: RemindersService
 
-    init(calendar: CalendarService) {
+    init(calendar: CalendarService, reminders: RemindersService) {
         self.calendar = calendar
+        self.reminders = reminders
     }
 
     /// Re-reads every status without prompting.
     func refresh() {
         accessibility = AXIsProcessTrusted()
         calendar.refreshAccess()
+        reminders.refreshAccess()
         refreshNotifications()
         for t in installedAutomationTargets {
             let id = t.id
@@ -68,6 +71,12 @@ final class Permissions {
 
     func requestCalendar() async {
         await calendar.requestAccess()
+    }
+
+    // MARK: - Reminders
+
+    func requestReminders() async {
+        await reminders.requestAccess()
     }
 
     // MARK: - Automation
@@ -133,6 +142,7 @@ final class Permissions {
     enum Pane: String {
         case accessibility = "Privacy_Accessibility"
         case calendars = "Privacy_Calendars"
+        case reminders = "Privacy_Reminders"
         case automation = "Privacy_Automation"
         case notifications = "notifications"
     }

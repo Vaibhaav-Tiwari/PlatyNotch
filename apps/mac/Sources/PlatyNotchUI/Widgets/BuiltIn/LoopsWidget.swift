@@ -34,7 +34,8 @@ private struct LoopsTile: View {
 
 /// The Plan 3 Today features as widgets, in their old order, then Plan 3b's.
 /// `persist: false` (smoke runs) reads saved widget state but never writes it, and the
-/// HUD never creates an event tap, prompts, or touches volume or brightness.
+/// HUD never creates an event tap, prompts, or touches volume or brightness; Reminders never
+/// touches EventKit and Weather never touches the network.
 @MainActor
 enum BuiltInWidgets {
     /// `clipboard`: the app keeps its instance for the menu bar's pause item (C23).
@@ -48,5 +49,7 @@ enum BuiltInWidgets {
         registry.register(persist ? HUDWidget() : HUDWidget.inert())
         registry.register(persist ? ShelfWidget() : ShelfWidget.inert())
         registry.register(clipboard ?? (persist ? ClipboardWidget() : ClipboardWidget.inert()))
+        registry.register(persist ? RemindersWidget(reminders: today.reminders, calendar: today.calendar) : RemindersWidget.inert())
+        registry.register(persist ? WeatherWidget() : WeatherWidget.inert())
     }
 }

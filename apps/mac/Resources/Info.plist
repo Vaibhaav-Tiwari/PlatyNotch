@@ -53,7 +53,9 @@
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>PlatyNotch listens to what your Mac is playing, only while music plays, to move the bars. Nothing is recorded or kept.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>PlatyNotch shows your next meetings in the notch. Calendar data stays on your Mac.</string>
+	<string>PlatyNotch shows your meetings and their reminders in the notch, and adds events you type in quick add. Calendar data stays on your Mac.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>PlatyNotch shows reminders due today in the notch, ticks them off, and adds the ones you type in quick add. Reminders stay on your Mac.</string>
 	<key>SUFeedURL</key>
 	<string>https://vaibhaav-tiwari.github.io/PlatyNotch/appcast.xml</string>
 	<key>SUPublicEDKey</key>

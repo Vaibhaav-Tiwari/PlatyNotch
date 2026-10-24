@@ -3,17 +3,20 @@ import EventKit
 import Observation
 import PlatyNotchKit
 
-/// The next meeting from the user's calendars. Access is requested only when the Today
-/// tab is first shown, never at launch. Info.plist `NSCalendarsFullAccessUsageDescription`
-/// is added with packaging (Task 11); without it we do not ask (macOS would kill the app).
+/// The user's meetings in the next 12 hours (EventKit events), for the meeting widget and
+/// quick-add events. Access is asked for only from a button (the meeting tile's "Allow
+/// Calendar Access", its settings, or Settings › Permissions), never at launch or when a
+/// tile appears. Reads happen only while the meeting widget runs (`startWatching`).
+/// Without `NSCalendarsFullAccessUsageDescription` in the bundle we never ask (macOS would
+/// kill the app): access is `.unavailable` then (e.g. `swift run`).
 @MainActor @Observable
 public final class CalendarService {
-    public enum Access: Equatable {
+    public enum Access: Equatable, Sendable {
         case notAsked
         case granted
-        /// Denied, restricted or write-only: the Today tab offers System Settings.
+        /// Denied, restricted or write-only: the tile offers System Settings.
         case denied
-        /// This build has no calendar usage description (e.g. `swift run`).
+        /// This build has no usage description (e.g. `swift run`), or EventKit is off (smoke, tests).
         case unavailable
     }
 
@@ -21,17 +24,32 @@ public final class CalendarService {
     static let usageKey = "NSCalendarsFullAccessUsageDescription"
 
     public private(set) var access: Access
-    public private(set) var next: EKEvent?
-    public private(set) var joinURL: URL?
+    /// Timed and all-day events overlapping the next 12 hours (from 10 min ago), by start.
+    public private(set) var meetings: [CalendarMeeting] = []
+    /// Each meeting's calendar color, by meeting id.
+    public private(set) var colors: [String: CGColor] = [:]
 
     /// Set by the app: "Calendar access is off › Open Settings" goes to Settings › Permissions.
     @ObservationIgnored public var onOpenSettings: (() -> Void)?
-    @ObservationIgnored private let store = EKEventStore()
+    @ObservationIgnored private let eventKit: Bool
+    /// Created on first use (reading the authorization status needs no store).
+    @ObservationIgnored private var storage: EKEventStore?
     @ObservationIgnored private var changeObserver: NSObjectProtocol?
     @ObservationIgnored private var requesting = false
+    /// True while the meeting widget runs: only then are events read and changes observed.
+    @ObservationIgnored public private(set) var watching = false
 
-    public init() {
-        access = Self.currentAccess()
+    /// `eventKit: false` never touches EventKit (smoke runs and tests): access is `.unavailable`.
+    public init(eventKit: Bool = true) {
+        self.eventKit = eventKit
+        access = eventKit ? Self.currentAccess() : .unavailable
+    }
+
+    private var store: EKEventStore {
+        if let storage { return storage }
+        let s = EKEventStore()
+        storage = s
+        return s
     }
 
     private static func currentAccess() -> Access {
@@ -43,40 +61,100 @@ public final class CalendarService {
         }
     }
 
-    /// Asks once (if never asked), then loads the next meeting. Safe to call on every appearance.
+    /// Shows the system prompt if never asked. Only from an Allow button.
     public func requestAccess() async {
-        access = Self.currentAccess()
-        if access == .notAsked, !requesting {
-            requesting = true
-            let granted = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
-                store.requestFullAccessToEvents { granted, _ in cont.resume(returning: granted) }
-            }
-            requesting = false
-            access = granted ? .granted : Self.currentAccess()
+        refreshAccess()
+        guard eventKit, access == .notAsked, !requesting else { return }
+        requesting = true
+        let granted = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            store.requestFullAccessToEvents { @Sendable granted, _ in cont.resume(returning: granted) }
         }
+        requesting = false
+        if granted { storage?.reset() }
+        refreshAccess()
+    }
+
+    /// Re-reads the authorization status (never prompts). A grant made in System Settings
+    /// starts the reads when watching; a revoke clears what was read.
+    public func refreshAccess() {
+        guard eventKit else { return }
+        let was = access
+        access = Self.currentAccess()
+        guard access != was else { return }
+        if access == .granted, watching {
+            observeChanges()
+            refresh()
+        } else if access != .granted {
+            stopObservingChanges()
+            meetings = []
+            colors = [:]
+        }
+    }
+
+    /// The meeting widget started: read now and on every calendar change.
+    public func startWatching() {
+        watching = true
+        refreshAccess()
         guard access == .granted else { return }
         observeChanges()
         refresh()
     }
 
-    /// Re-reads the next 12 hours. Called on appearance, every minute while shown, and on calendar changes.
+    /// The meeting widget stopped: no observer, nothing kept.
+    public func stopWatching() {
+        watching = false
+        stopObservingChanges()
+        meetings = []
+        colors = [:]
+    }
+
+    /// Re-reads the next 12 hours (only while watching and allowed).
     public func refresh() {
-        guard access == .granted else { next = nil; joinURL = nil; return }
+        guard eventKit, watching, access == .granted else { return }
         let now = Date()
         let predicate = store.predicateForEvents(withStart: now.addingTimeInterval(-UpcomingMeeting.grace),
                                                  end: now.addingTimeInterval(UpcomingMeeting.horizon),
                                                  calendars: nil)
-        let events = store.events(matching: predicate)
-        let entries = events.enumerated().map { i, e in
-            CalendarEntry(id: String(i), start: e.startDate, end: e.endDate, isAllDay: e.isAllDay,
-                          declined: Self.isDeclined(e))
+        var found: [CalendarMeeting] = []
+        var colors: [String: CGColor] = [:]
+        for e in store.events(matching: predicate) {
+            let id = "\(e.eventIdentifier ?? e.calendarItemIdentifier)@\(Int(e.startDate.timeIntervalSince1970))"
+            let title = e.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            found.append(CalendarMeeting(id: id, title: title.isEmpty ? "Untitled event" : title,
+                                         start: e.startDate, end: e.endDate, isAllDay: e.isAllDay,
+                                         declined: Self.isDeclined(e),
+                                         joinURL: MeetingLinks.firstJoinURL(url: e.url, location: e.location, notes: e.notes)))
+            if let c = e.calendar?.cgColor { colors[id] = c }
         }
-        guard let picked = UpcomingMeeting.pick(entries, now: now), let i = Int(picked.id) else {
-            next = nil; joinURL = nil; return
-        }
-        let event = events[i]
-        next = event
-        joinURL = MeetingLinks.firstJoinURL(in: [event.url?.absoluteString ?? "", event.location ?? "", event.notes ?? ""])
+        found.sort { $0.start != $1.start ? $0.start < $1.start : $0.id < $1.id }
+        if found != meetings { meetings = found }
+        self.colors = colors
+    }
+
+    /// The tile's next meeting: the earliest one starting within 12 h or started in the last 10 min.
+    public func next(at now: Date) -> CalendarMeeting? {
+        let entries = meetings.map { CalendarEntry(id: $0.id, start: $0.start, end: $0.end, isAllDay: $0.isAllDay, declined: $0.declined) }
+        guard let picked = UpcomingMeeting.pick(entries, now: now) else { return nil }
+        return meetings.first { $0.id == picked.id }
+    }
+
+    /// Adds an event to the default calendar (quick add). Needs full access.
+    public func addEvent(title: String, start: Date, end: Date) throws {
+        guard eventKit, access == .granted else { throw CalendarWriteError.noAccess }
+        let event = EKEvent(eventStore: store)
+        event.title = title
+        event.startDate = start
+        event.endDate = end
+        guard let calendar = store.defaultCalendarForNewEvents else { throw CalendarWriteError.noCalendar }
+        event.calendar = calendar
+        try store.save(event, span: .thisEvent, commit: true)
+        refresh()
+    }
+
+    /// Where quick-add events go (Settings shows it).
+    public var defaultCalendarTitle: String? {
+        guard eventKit, access == .granted else { return nil }
+        return store.defaultCalendarForNewEvents?.title
     }
 
     /// Opens PlatyNotch Settings at Permissions when wired (the app does), else System Settings.
@@ -84,9 +162,10 @@ public final class CalendarService {
         if let onOpenSettings { onOpenSettings() } else { NSWorkspace.shared.open(Self.settingsURL) }
     }
 
-    /// Re-reads the authorization status (never prompts).
-    public func refreshAccess() {
-        access = Self.currentAccess()
+    /// Tests: pretend EventKit answered.
+    func setForTesting(access: Access, meetings: [CalendarMeeting]) {
+        self.access = access
+        self.meetings = meetings
     }
 
     private static func isDeclined(_ e: EKEvent) -> Bool {
@@ -95,11 +174,29 @@ public final class CalendarService {
     }
 
     private func observeChanges() {
-        guard changeObserver == nil else { return }
+        guard changeObserver == nil, eventKit else { return }
         changeObserver = NotificationCenter.default.addObserver(
             forName: .EKEventStoreChanged, object: store, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
+        }
+    }
+
+    private func stopObservingChanges() {
+        if let changeObserver { NotificationCenter.default.removeObserver(changeObserver) }
+        changeObserver = nil
+    }
+}
+
+public enum CalendarWriteError: LocalizedError, Equatable {
+    case noAccess, noCalendar, noList, notFound
+
+    public var errorDescription: String? {
+        switch self {
+        case .noAccess: "PlatyNotch is not allowed to change your calendar."
+        case .noCalendar: "There is no calendar to add events to."
+        case .noList: "There is no Reminders list to add to."
+        case .notFound: "That reminder is gone."
         }
     }
 }

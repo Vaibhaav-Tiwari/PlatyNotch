@@ -24,7 +24,7 @@ Note the Mac model and macOS version next to each tick.
 
 ## Task 1a: widget API, registry, live arbiter
 
-- [ ] **1. Today tab is widget tiles.** Expand the panel, open Today: Music, Next meeting,
+- [ ] **1. Today tab is widget tiles.** Expand the panel, open Today: Music, Meetings (was "Next meeting" before Task 7),
   Focus and Open loops tiles, in that order, scrolling when they do not fit. With no
   music app open the music tile says "Nothing playing".
 - [ ] **2. Music feeds the pill from launch.** Quit PlatyNotch, start music in Music or
@@ -472,3 +472,64 @@ History, Clear All, and the Accessibility button.
   `…/shelf` show `com.apple.metadata:com_apple_backup_excludeItem`; both folders contain
   `.metadata_never_index`; `mdfind -onlyin "$PLATYNOTCH_HOME/clipboard" <copied word>`
   finds nothing. `tmutil isexcluded "$PLATYNOTCH_HOME/clipboard"` says excluded.
+
+## Task 7: reminders, meeting countdowns, weather
+
+Use the installed app (`scripts/build-app.sh`; EventKit needs the bundle's usage strings,
+under `swift run` both widgets say "needs the installed app"). Reset permissions first:
+`tccutil reset Calendar dev.platynotch.app; tccutil reset Reminders dev.platynotch.app`.
+Watch network with Little Snitch / LuLu or `nettop -p PlatyNotch` for the weather checks.
+
+- [ ] **88. No calendar prompt on show.** Fresh permissions, launch, open Today: the
+  Meetings tile says "See your next meetings here" with "Allow Calendar Access" and no
+  system prompt appears. Click it: the prompt appears once. Allow: meetings show without
+  relaunch. Deny instead, then allow in System Settings › Privacy › Calendars: within 30 s
+  (or on the next panel open) the tile shows meetings, without relaunching.
+- [ ] **89. Meetings in the next 12 h.** Make three events today (one now, two later,
+  one with a Zoom link in Location, one with a Meet link in Notes, one with a Teams link
+  wrapped by Outlook Safe Links): the tile shows "In meeting · ends in N min", the next
+  meeting, then the others; Join buttons only where a link exists; Join opens the right
+  meeting and nothing opens by itself. Declined and all-day events are not shown.
+- [ ] **90. 10 / 5 / 1-minute reminders.** An event starting in 11 min: at 10, 5 and 1
+  minutes before, a peek below the notch shows the title, a countdown ring and Join (for
+  ~12 s, never past the start); the pill shows the ring with m:ss for the last 10 min,
+  also with the panel closed. Sleep the Mac across the 10 and 5-minute marks and wake at
+  3 min: one reminder (5) shows, not two.
+- [ ] **91. Quiet during focus.** Start a 25-min focus session, then an event 6 min away:
+  no reminder peeks; the pill countdown still shows.
+- [ ] **92. Calendar changes.** With the panel open, add/move an event in Calendar.app:
+  the tile follows within a second or two (EKEventStoreChanged).
+- [ ] **93. Meetings off does nothing.** Turn Meetings off in Settings › Widgets: no pill,
+  no peeks; `sample PlatyNotch 5` shows no EventKit work in the following minutes.
+- [ ] **94. Reminders permission on enable.** Reminders is off by default. Turn it on:
+  no prompt. Click "Allow Reminders Access" in its tile or settings: one prompt; allow:
+  today's and overdue reminders show (overdue time in red). Settings › Permissions has a
+  Reminders row with the same state.
+- [ ] **95. Tick and quick add.** Tick a reminder: it disappears here and is completed in
+  Reminders.app. Type "call Priya at 5pm" (before 17:00): the preview says "Reminder ·
+  Today 5:00 PM"; Return adds it to the list chosen in settings, with an alert at 17:00.
+  After 17:00 the preview says Tomorrow. "meeting with Sam tomorrow 3pm for 30 min" →
+  "Event · Tomorrow 3:00 PM – 3:30 PM", added to the default calendar (with Calendar
+  allowed) or to Reminders with "Calendar access is off" (without). "buy milk" → a
+  reminder with no date (not shown in the tile since it is not due today).
+- [ ] **96. Default list.** Pick another list in Settings › Widgets › Reminders: quick add
+  goes there; delete that list in Reminders.app: the picker falls back to Default list.
+- [ ] **97. Weather is off and silent by default.** Fresh defaults
+  (`defaults delete dev.platynotch.app weather.place`): with Weather off, no connection to
+  any open-meteo.com host at launch or after an hour.
+- [ ] **98. City search and forecast hosts.** Turn Weather on, type "Lisbon" › Search:
+  exactly one request to `geocoding-api.open-meteo.com` (https). Choose a result: one
+  request to `api.open-meteo.com`; nothing else is contacted, no cookies are stored
+  (`~/Library/Cookies` has no open-meteo entry), no cache files appear under
+  `~/Library/Caches/dev.platynotch.app`. The tile shows temperature, conditions, "Rain
+  likely around …" or "No rain expected in the next 12 h"; °F in settings switches it at once.
+- [ ] **99. Refresh, sleep, offline.** Weather refreshes about every 30 minutes. Turn
+  Wi-Fi off: no further attempts while offline; after 45 min the tile shows "Offline ·
+  Updated N min ago". Wi-Fi on: a refresh within ~5 s. Sleep for an hour and wake: a
+  refresh ~5 s after wake, none while asleep. Block api.open-meteo.com (e.g. /etc/hosts):
+  retries back off 1, 2, 4, 8, 16, 30 min and the old data stays with its age.
+- [ ] **100. Weather in the pill.** With nothing else live (no music, timer, meeting),
+  the pill shows the weather symbol and temperature; anything else live replaces it and
+  it never shows as the side bubble.
+- [ ] **101. Signed build entitlements.** On a Developer ID build (`--sign`), Calendar and
+  Reminders prompts still appear and work (the calendars entitlement covers both).

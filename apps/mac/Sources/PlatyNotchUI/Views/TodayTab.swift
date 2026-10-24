@@ -2,21 +2,25 @@ import PlatyNotchKit
 import SwiftUI
 
 /// The models behind the built-in widgets, one set shared by every display's panel.
-/// A thin holder until the widgets own their models (Plan 3b Task 7).
+/// Calendar and Reminders are shared because quick add (Reminders widget) also writes
+/// events, and Settings › Permissions shows both.
 @MainActor
 public final class TodayServices {
     public let nowPlaying: NowPlaying
     /// The music bars' live visualiser (off until the user turns it on).
     public let visualiser: MusicVisualiser
     public let calendar: CalendarService
+    public let reminders: RemindersService
     public let focus: FocusModel
     public let loops: LoopActions
 
     public init(client: CoreClient, nowPlaying: NowPlaying = NowPlaying(), visualiser: MusicVisualiser? = nil,
-                calendar: CalendarService = CalendarService(), focus: FocusModel = FocusModel()) {
+                calendar: CalendarService = CalendarService(), reminders: RemindersService = RemindersService(),
+                focus: FocusModel = FocusModel()) {
         self.nowPlaying = nowPlaying
         self.visualiser = visualiser ?? MusicVisualiser()
         self.calendar = calendar
+        self.reminders = reminders
         self.focus = focus
         loops = LoopActions(client: client)
     }
