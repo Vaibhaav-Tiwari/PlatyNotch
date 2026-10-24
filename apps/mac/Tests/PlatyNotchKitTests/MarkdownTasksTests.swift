@@ -173,6 +173,12 @@ final class MarkdownTasksTests: DefaultsTestCase {
         XCTAssertEqual(MarkdownTasks.toggle(md, line: 3), md)
     }
 
+    func testPercentsInCodeSpansAreNotComments() {
+        let md = "- [ ] use `%%` for comments\n- [ ] second ``a %% b``\n- [ ] third\n- [ ] odd ` %% stays literal\n- [ ] hidden\n"
+        // The 4th line's lone backtick is literal, so its %% opens a comment.
+        XCTAssertEqual(MarkdownTasks.parse(md, file: "f").map(\.line), [1, 2, 3, 4])
+    }
+
     func testRecurringTasksAreListedButNeverToggled() {
         let md = "- [ ] stretch 🔁 every day\n"
         let tasks = MarkdownTasks.parse(md, file: "r.md")

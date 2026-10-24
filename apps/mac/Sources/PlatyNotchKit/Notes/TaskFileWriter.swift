@@ -57,7 +57,7 @@ public enum TaskFileWriter {
 
     public static func toggle(_ task: MarkdownTask, fileManager: FileManager = .default,
                               calendar: Calendar = .current,
-                              beforeSwap: (() -> Void)? = nil) -> TaskWriteResult {
+                              io: SwapIO = .system, beforeSwap: (() -> Void)? = nil) -> TaskWriteResult {
         if task.isRecurring { return .recurring }
         let path = task.file
         var st = stat()
@@ -81,7 +81,7 @@ public enum TaskFileWriter {
             let url = URL(fileURLWithPath: path)
             let result = coordinated(url) {
                 swapIn(out, original: data, at: url, stat: st, task: task, fileManager: fileManager,
-                       calendar: calendar, beforeSwap: beforeSwap)
+                       calendar: calendar, io: io, beforeSwap: beforeSwap)
             }
             guard case .toggled = result else { return result }
             guard let written = MarkdownTasks.locate(out, line: task.line, file: path, calendar: calendar) else {
@@ -96,8 +96,40 @@ public enum TaskFileWriter {
         !bytes.contains(0) && String(validating: bytes, as: UTF8.self) != nil
     }
 
+    /// How a change is swapped in. Tests replace it (a volume that only renames, a group
+    /// the user is not in).
+    public struct SwapIO: Sendable {
+        /// The volume says it can swap two files atomically.
+        public var supported: @Sendable (URL) -> Bool
+        /// `renamex_np(from, to, RENAME_SWAP)`: 0 on success.
+        public var swap: @Sendable (String, String) -> Int32
+
+        /// `chown(path, -1, gid)`: 0 on success.
+        public var keepGroup: @Sendable (String, gid_t) -> Int32
+
+        public init(supported: @escaping @Sendable (URL) -> Bool, swap: @escaping @Sendable (String, String) -> Int32,
+                    keepGroup: @escaping @Sendable (String, gid_t) -> Int32 = { chown($0, uid_t.max, $1) }) {
+            self.supported = supported
+            self.swap = swap
+            self.keepGroup = keepGroup
+        }
+
+        public static let system = SwapIO(
+            supported: { url in
+                (try? url.resourceValues(forKeys: [.volumeSupportsSwapRenamingKey]))?.volumeSupportsSwapRenaming ?? false
+            },
+            swap: { renamex_np($0, $1, UInt32(RENAME_SWAP)) })
+    }
+
+    /// The inode at `path` (never following a link), or nil when nothing is there.
+    private static func inode(_ path: String) -> ino_t? {
+        var s = stat()
+        return lstat(path, &s) == 0 ? s.st_ino : nil
+    }
+
     private static func swapIn(_ out: [UInt8], original data: Data, at url: URL, stat st: stat, task: MarkdownTask,
-                               fileManager: FileManager, calendar: Calendar, beforeSwap: (() -> Void)?) -> TaskWriteResult {
+                               fileManager: FileManager, calendar: Calendar, io: SwapIO,
+                               beforeSwap: (() -> Void)?) -> TaskWriteResult {
         let path = url.path
         do {
             let tmpDir = try fileManager.url(for: .itemReplacementDirectory, in: .userDomainMask,
@@ -108,39 +140,62 @@ public enum TaskFileWriter {
             guard fileManager.createFile(atPath: tmp.path, contents: Data(out), attributes: [.posixPermissions: 0o600]) else {
                 return .failed("The change could not be written.")
             }
-            // The note's group, then its mode (chown can clear set-id bits), else no write.
-            guard chown(tmp.path, uid_t.max, st.st_gid) == 0 else { return .failed("The note's group could not be kept.") }
+            // The note's group, then its mode (chown can clear set-id bits). A group that
+            // grants nothing (no group bits) need not be kept; any other must be, or no write.
+            if io.keepGroup(tmp.path, st.st_gid) != 0, st.st_mode & 0o070 != 0 {
+                return .failed("This note belongs to group \(groupName(st.st_gid)) — tick it in Obsidian.")
+            }
             guard chmod(tmp.path, st.st_mode & 0o7777) == 0 else { return .failed("The note's permissions could not be kept.") }
             copyExtendedAttributes(from: path, to: tmp.path)
             if let created = (try? fileManager.attributesOfItem(atPath: path))?[.creationDate] as? Date {
                 try? fileManager.setAttributes([.creationDate: created], ofItemAtPath: tmp.path)
             }
             beforeSwap?()
+            // Read once more: an edit that landed meanwhile wins.
             var lst = stat()
             guard lstat(path, &lst) == 0, (lst.st_mode & S_IFMT) == S_IFREG, lst.st_nlink == 1 else {
                 return .failed("The note was moved or replaced.")
             }
-            if renamex_np(tmp.path, path, UInt32(RENAME_SWAP)) == 0 {
-                // `tmp` now holds what was at `path`: it must be exactly what was read.
-                let swappedOut = fileManager.contents(atPath: tmp.path)
-                guard swappedOut == data, lst.st_ino == st.st_ino else {
-                    guard renamex_np(tmp.path, path, UInt32(RENAME_SWAP)) == 0 else {
-                        keep = true   // never delete the other version
-                        return .failed("The note changed while it was being ticked; its other version is in \(tmp.path).")
-                    }
-                    return stale(task, now: swappedOut ?? Data(), calendar: calendar)
-                }
-                return .toggled(task)
-            }
-            // A volume without swap support: check once more, then replace.
-            guard let again = fileManager.contents(atPath: path), again == data, lst.st_ino == st.st_ino else {
+            guard lst.st_ino == st.st_ino, let again = fileManager.contents(atPath: path), again == data else {
                 return stale(task, now: fileManager.contents(atPath: path) ?? Data(), calendar: calendar)
             }
-            _ = try fileManager.replaceItemAt(url, withItemAt: tmp, backupItemName: nil, options: [])
+            guard io.supported(url) else {
+                _ = try fileManager.replaceItemAt(url, withItemAt: tmp, backupItemName: nil, options: [])
+                return .toggled(task)
+            }
+            guard io.swap(tmp.path, path) == 0 else {
+                // Refused: nothing moved; replace instead.
+                _ = try fileManager.replaceItemAt(url, withItemAt: tmp, backupItemName: nil, options: [])
+                return .toggled(task)
+            }
+            // A real swap leaves the original (its inode) at `tmp`. A volume that says it
+            // swapped but only renamed (FAT32 under FSKit) leaves nothing there: the change
+            // is in place and there is nothing to swap back.
+            guard inode(tmp.path) == st.st_ino else {
+                let now = fileManager.contents(atPath: path)
+                return now == Data(out) ? .toggled(task) : .failed("The note could not be checked after the change.")
+            }
+            let swappedOut = fileManager.contents(atPath: tmp.path)
+            guard swappedOut == data else {
+                // Written meanwhile: put that version back.
+                if io.swap(tmp.path, path) == 0, inode(path) == st.st_ino {
+                    return stale(task, now: swappedOut ?? Data(), calendar: calendar)
+                }
+                if inode(tmp.path) != nil {
+                    keep = true   // never delete the other version
+                    return .failed("The note changed while it was being ticked; its other version is in \(tmp.path).")
+                }
+                return .failed("The note changed while it was being ticked.")
+            }
             return .toggled(task)
         } catch {
             return .failed("The change could not be written.")
         }
+    }
+
+    private static func groupName(_ gid: gid_t) -> String {
+        guard let g = getgrgid(gid), let name = g.pointee.gr_name else { return String(gid) }
+        return String(cString: name)
     }
 
     /// The note changed during the write: what to tell the user (never `toggled`).

@@ -203,6 +203,56 @@ final class NoteFilesTests: DefaultsTestCase {
         XCTAssertEqual(read(url), "- [ ] ONE\n- [ ] two\n")
     }
 
+    func testSwapThatOnlyRenamesStillReportsTheTick() {
+        // FAT32 under FSKit: RENAME_SWAP returns 0 but renames, leaving nothing at `from`.
+        let url = write("n.md", "- [ ] one\n- [ ] two\n")
+        let io = TaskFileWriter.SwapIO(supported: { _ in true }, swap: { rename($0, $1) })
+        let result = TaskFileWriter.toggle(tasks(url)[1], io: io)
+        guard case .toggled(let t) = result else { return XCTFail("expected toggled, got \(result)") }
+        XCTAssertTrue(t.done)
+        XCTAssertEqual(read(url), "- [ ] one\n- [x] two\n")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path), ["n.md"])
+    }
+
+    func testVolumeWithoutSwapReplaces() {
+        let url = write("n.md", "- [ ] one\n")
+        let swaps = LockedCount()
+        let io = TaskFileWriter.SwapIO(supported: { _ in false }, swap: { _, _ in swaps.bump(); return -1 })
+        guard case .toggled = TaskFileWriter.toggle(tasks(url)[0], io: io) else { return XCTFail("not toggled") }
+        XCTAssertEqual(read(url), "- [x] one\n")
+        XCTAssertEqual(swaps.value, 0)
+    }
+
+    func testEditBetweenTheCheckAndTheSwapIsSwappedBack() {
+        let url = write("n.md", "- [ ] one\n- [ ] two\n")
+        let path = url.path
+        // An editor writes in place (same inode) right before the swap.
+        let io = TaskFileWriter.SwapIO(supported: { _ in true }, swap: { from, to in
+            if to == path, let h = FileHandle(forWritingAtPath: path) {
+                h.write(Data("- [ ] ONE\n".utf8))
+                try? h.close()
+            }
+            return renamex_np(from, to, UInt32(RENAME_SWAP))
+        })
+        let result = TaskFileWriter.toggle(tasks(url)[1], io: io)
+        guard case .changed = result else { return XCTFail("expected changed, got \(result)") }
+        XCTAssertEqual(read(url), "- [ ] ONE\n- [ ] two\n")
+    }
+
+    func testAGroupThatCannotBeKeptIsRefusedUnlessItGrantsNothing() {
+        let url = write("n.md", "- [ ] one\n")
+        let io = TaskFileWriter.SwapIO(supported: TaskFileWriter.SwapIO.system.supported,
+                                       swap: TaskFileWriter.SwapIO.system.swap, keepGroup: { _, _ in -1 })
+        XCTAssertEqual(chmod(url.path, 0o640), 0)
+        guard case .failed(let why) = TaskFileWriter.toggle(tasks(url)[0], io: io) else { return XCTFail("wrote") }
+        XCTAssertTrue(why.hasPrefix("This note belongs to group "), why)
+        XCTAssertTrue(why.hasSuffix(" — tick it in Obsidian."), why)
+        XCTAssertEqual(read(url), "- [ ] one\n")
+        XCTAssertEqual(chmod(url.path, 0o600), 0)
+        guard case .toggled = TaskFileWriter.toggle(tasks(url)[0], io: io) else { return XCTFail("no group bits: should write") }
+        XCTAssertEqual(read(url), "- [x] one\n")
+    }
+
     func testSameTextOnSeveralLinesAfterAChangeAsks() {
         let url = write("n.md", "- [ ] same\n- [ ] x\n")
         let t = tasks(url)[0]
@@ -482,4 +532,11 @@ final class NoteFilesTests: DefaultsTestCase {
         XCTAssertFalse(VaultScanner.isHidden("/v/a/x.md", under: "/v"))
         XCTAssertFalse(VaultScanner.isHidden("/.x/v/a.md", under: "/.x/v"))
     }
+}
+
+private final class LockedCount: @unchecked Sendable {
+    private let lock = NSLock()
+    private var n = 0
+    func bump() { lock.lock(); n += 1; lock.unlock() }
+    var value: Int { lock.lock(); defer { lock.unlock() }; return n }
 }

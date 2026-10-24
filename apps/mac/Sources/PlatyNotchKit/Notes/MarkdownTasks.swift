@@ -209,11 +209,25 @@ public enum MarkdownTasks {
 
     private static let percent: UInt8 = 0x25
 
-    /// How many `%%` the line holds (not overlapping).
+    private static let backtick: UInt8 = 0x60
+
+    /// How many `%%` the line holds (not overlapping), outside backtick code spans.
     private static func commentMarks(_ bytes: [UInt8], _ span: LineSpan) -> Int {
         var n = 0
         var i = span.start
         while i + 1 < span.end {
+            if bytes[i] == backtick {
+                // A code span: a run of n backticks up to the next run of exactly n.
+                var j = i
+                while j < span.end, bytes[j] == backtick { j += 1 }
+                let run = j - i
+                if let close = closingRun(bytes, from: j, end: span.end, length: run) {
+                    i = close
+                } else {
+                    i = j   // no closing run: the backticks are literal
+                }
+                continue
+            }
             if bytes[i] == percent, bytes[i + 1] == percent {
                 n += 1
                 i += 2
@@ -222,6 +236,22 @@ public enum MarkdownTasks {
             }
         }
         return n
+    }
+
+    /// Where a run of exactly `length` backticks at or after `from` ends, if there is one.
+    private static func closingRun(_ bytes: [UInt8], from: Int, end: Int, length: Int) -> Int? {
+        var k = from
+        while k < end {
+            guard bytes[k] == backtick else {
+                k += 1
+                continue
+            }
+            var m = k
+            while m < end, bytes[m] == backtick { m += 1 }
+            if m - k == length { return m }
+            k = m
+        }
+        return nil
     }
 
     private static func startsWithComment(_ bytes: [UInt8], _ span: LineSpan) -> Bool {
