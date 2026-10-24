@@ -96,7 +96,8 @@ final class NotesWidgetTests: DefaultsTestCase {
         String(decoding: FileManager.default.contents(atPath: vaultDir.appendingPathComponent(name).path) ?? Data(), as: UTF8.self)
     }
 
-    private func make(_ rec: Recorder, bookmarks: PathBookmarks = PathBookmarks(), scans: Counter = Counter()) -> NotesWidget {
+    private func make(_ rec: Recorder, bookmarks: PathBookmarks = PathBookmarks(), scans: Counter = Counter(),
+                      periodic: Duration = .seconds(3600)) -> NotesWidget {
         var s = VaultServices.system()
         s.identity = { [unowned rec] in rec.identity }
         s.bookmarks = bookmarks
@@ -110,7 +111,7 @@ final class NotesWidgetTests: DefaultsTestCase {
             return w
         }
         s.rescanDelay = .milliseconds(30)
-        s.periodicRescan = .seconds(3600)
+        s.periodicRescan = periodic
         let scan = s.scan
         s.scan = { url, now in
             scans.bump()
@@ -157,7 +158,8 @@ final class NotesWidgetTests: DefaultsTestCase {
         let scans = Counter()
         let w = make(rec, scans: scans)
         w.start(context: context())
-        w.tileShown()
+        let tile = NotesTileToken()
+        w.tileAppeared(tile, visible: true)
         await settle(w)
         XCTAssertTrue(rec.watches.isEmpty)
         XCTAssertTrue(rec.probes.isEmpty)
@@ -455,13 +457,70 @@ final class NotesWidgetTests: DefaultsTestCase {
         let rec = Recorder()
         let w = make(rec)
         w.start(context: context())
-        w.tileShown()
+        let tile = NotesTileToken()
+        w.tileAppeared(tile, visible: true)
         XCTAssertFalse(w.periodicWalkRunning, "no vault, no walk")
         w.chooseVault(vaultDir)
         await settle(w)
         XCTAssertTrue(w.periodicWalkRunning)
-        w.tileHidden()
+        w.tileDisappeared(tile)
         XCTAssertFalse(w.periodicWalkRunning)
+        w.stop()
+    }
+
+    /// Final review M3: the walk follows tiles by a weak token and visibility, like
+    /// Mirror's, not only onAppear/onDisappear.
+    func testPeriodicWalkRunsOnlyWhileATileShows() async {
+        let rec = Recorder()
+        let w = make(rec)
+        w.start(context: context())
+        w.chooseVault(vaultDir)
+        await settle(w)
+        XCTAssertFalse(w.periodicWalkRunning, "no tile, no walk")
+
+        // Two displays' tiles: the walk runs while either shows.
+        let a = NotesTileToken()
+        var b: NotesTileToken? = NotesTileToken()
+        w.tileAppeared(a, visible: false)
+        XCTAssertFalse(w.periodicWalkRunning, "the panel's content is hidden")
+        w.tileVisibility(a, visible: true)
+        XCTAssertTrue(w.periodicWalkRunning)
+        w.tileAppeared(b!, visible: true)
+        w.tileVisibility(a, visible: false)
+        XCTAssertTrue(w.periodicWalkRunning, "b still shows")
+
+        // b's panel is torn down without onDisappear: its token goes, and so does the walk.
+        b = nil
+        w.tileVisibility(a, visible: false)
+        XCTAssertFalse(w.tileVisible)
+        XCTAssertFalse(w.periodicWalkRunning)
+
+        // A visibility change for a tile that never appeared changes nothing.
+        w.tileVisibility(NotesTileToken(), visible: true)
+        XCTAssertFalse(w.periodicWalkRunning)
+        w.tileVisibility(a, visible: true)
+        XCTAssertTrue(w.periodicWalkRunning)
+        w.stop()
+        XCTAssertFalse(w.periodicWalkRunning, "stopping ends the walk")
+    }
+
+    /// A tile that went without saying so: the next tick finds no tile and ends the walk
+    /// without walking the vault.
+    func testWalkTickEndsWhenTheOnlyTileVanished() async {
+        let rec = Recorder()
+        let scans = Counter()
+        let w = make(rec, scans: scans, periodic: .milliseconds(20))
+        w.start(context: context())
+        w.chooseVault(vaultDir)
+        await settle(w)
+        var tile: NotesTileToken? = NotesTileToken()
+        w.tileAppeared(tile!, visible: true)
+        XCTAssertTrue(w.periodicWalkRunning)
+        let before = scans.value
+        tile = nil
+        let ended = await eventually { !w.periodicWalkRunning }
+        XCTAssertTrue(ended)
+        XCTAssertEqual(scans.value, before, "no walk after the tile went")
         w.stop()
     }
 
