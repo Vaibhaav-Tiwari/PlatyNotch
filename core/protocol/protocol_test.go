@@ -94,6 +94,22 @@ func TestGoldenFixtures(t *testing.T) {
 		TermProgram: "Apple_Terminal", WantDecision: true, At: ts(t1),
 	}
 	decision := HookDecision{Behavior: BehaviorDeny, Message: "Blocked by policy", Source: "policy"}
+	graphQuery := MemoryGraphQuery{Since: tsp("2026-10-16T10:00:00Z"), Hours: 168, App: "Slack", MaxNodes: 100}
+	graph := MemoryGraph{
+		Nodes: []GraphNode{
+			{ID: "app:com.tinyspeck.slackmacgap", Kind: GraphApp, Label: "Slack", Weight: 5},
+			{ID: "thr_9", Kind: GraphThread, Label: "Budget chat with Sam", Weight: 4},
+			{ID: "loop:loop_1", Kind: GraphLoop, Label: "Send the budget draft to Sam", Weight: 5},
+			{ID: "site:docs.google.com", Kind: GraphSite, Label: "docs.google.com", Weight: 1},
+			{ID: "thr_10", Kind: GraphThread, Label: "Budget 2027", Weight: 1},
+		},
+		Edges: []GraphEdge{
+			{From: "app:com.tinyspeck.slackmacgap", To: "thr_9", Kind: EdgeIn, Weight: 4},
+			{From: "loop:loop_1", To: "thr_9", Kind: EdgeDetectedIn, Weight: 5},
+			{From: "thr_10", To: "site:docs.google.com", Kind: EdgeOn, Weight: 1},
+			{From: "thr_10", To: "thr_9", Kind: EdgeTogether, Weight: 3},
+		},
+	}
 	ext := ExtMessage{Ext: "example-ext", Kind: "ping", Data: json.RawMessage(`{"n":1}`)}
 	removed := SessionRemoved{Key: "claude-code:abc123"}
 
@@ -101,7 +117,7 @@ func TestGoldenFixtures(t *testing.T) {
 		"snapshot": snapshot, "session": session, "approval": approval,
 		"hook_event": hookEvent, "hook_decision": decision, "usage": usage,
 		"loop": loop, "memory_hit": hit, "ext_message": ext,
-		"session_removed": removed,
+		"session_removed": removed, "memory_graph_query": graphQuery, "memory_graph": graph,
 	}
 	for name, v := range fixtures {
 		t.Run(name, func(t *testing.T) {

@@ -136,6 +136,28 @@ func TestIngestThenSearch(t *testing.T) {
 	}
 }
 
+// TestGraphUsesTheEngineClock: the window is measured from the engine's now.
+func TestGraphUsesTheEngineClock(t *testing.T) {
+	clk := newClock(t0)
+	e, _ := openTest(t, filepath.Join(t.TempDir(), "m.db"), memCfg("none", "none"), clk)
+	ctx := context.Background()
+	if err := e.Ingest(ctx, capture(t0)); err != nil {
+		t.Fatal(err)
+	}
+	g, err := e.Graph(ctx, protocol.MemoryGraphQuery{Hours: 24})
+	if err != nil || len(g.Nodes) != 2 || len(g.Edges) != 1 {
+		t.Fatalf("graph %+v %v", g, err)
+	}
+	clk.add(48 * time.Hour)
+	if g, err := e.Graph(ctx, protocol.MemoryGraphQuery{Hours: 24}); err != nil || len(g.Nodes) != 0 {
+		t.Fatalf("two days later: %+v %v", g, err)
+	}
+	e.Close()
+	if _, err := e.Graph(ctx, protocol.MemoryGraphQuery{}); err == nil {
+		t.Fatal("Graph after Close succeeded")
+	}
+}
+
 func TestStatusCounts(t *testing.T) {
 	e, _ := openTest(t, filepath.Join(t.TempDir(), "m.db"), memCfg("none", "none"), newClock(t0))
 	if err := e.Ingest(context.Background(), capture(t0)); err != nil {

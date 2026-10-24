@@ -10,10 +10,13 @@ import (
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/protocol"
 )
 
-// Service is the memory engine behind capture.text, memory.search and loops.
+// Service is the memory engine behind capture.text, memory.search,
+// memory.graph and loops.
 type Service interface {
 	Ingest(ctx context.Context, c protocol.CaptureText) error
 	Search(ctx context.Context, q protocol.MemorySearch) ([]protocol.MemoryHit, error)
+	// Graph returns the apps, threads, sites and open loops active in q's window.
+	Graph(ctx context.Context, q protocol.MemoryGraphQuery) (protocol.MemoryGraph, error)
 	Loops(ctx context.Context, status string) ([]protocol.Loop, error)
 	SetLoopStatus(ctx context.Context, s protocol.LoopSetStatus) error
 	Status() protocol.MemoryStatus

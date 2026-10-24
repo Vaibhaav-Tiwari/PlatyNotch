@@ -96,4 +96,9 @@ CREATE INDEX chunks_thread_recent ON chunks(thread_id, captured_at, id);
 	// 5: chunks_thread is the prefix of chunks_thread_recent.
 	`
 DROP INDEX IF EXISTS chunks_thread;
+`,
+	// 6: the memory graph reads a window of versions in time order (window
+	// switches) from the index alone.
+	`
+CREATE INDEX IF NOT EXISTS versions_created ON versions(created_at, thread_id);
 `}

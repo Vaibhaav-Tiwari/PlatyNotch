@@ -38,6 +38,8 @@ final class ModelsTests: XCTestCase {
         try roundTrip(MemoryHit.self, "memory_hit")
         try roundTrip(ExtMessage.self, "ext_message")
         try roundTrip(SessionRemoved.self, "session_removed")
+        try roundTrip(MemoryGraphQuery.self, "memory_graph_query")
+        try roundTrip(MemoryGraph.self, "memory_graph")
     }
 
     func testFixtureValues() throws {
@@ -49,6 +51,25 @@ final class ModelsTests: XCTestCase {
         XCTAssertEqual(snap.usage.claude?.extra?["seven_day_opus"]?.usedPercent, 3.5)
         XCTAssertNil(snap.usage.codex?.fiveHour?.resetsAt)
         XCTAssertEqual(snap.edition, "free")
+    }
+
+    func testMemoryGraphFixtureValues() throws {
+        let g = try JSONCoding.decoder.decode(MemoryGraph.self, from: fixture("memory_graph"))
+        XCTAssertEqual(g.nodes.map(\.nodeKind), [.app, .thread, .loop, .site, .thread])
+        XCTAssertEqual(g.nodes[1].id, "thr_9")
+        XCTAssertEqual(g.edges.first { $0.kind == "together" }?.weight, 3)
+        let q = try JSONCoding.decoder.decode(MemoryGraphQuery.self, from: fixture("memory_graph_query"))
+        XCTAssertEqual(q.maxNodes, 100)
+        XCTAssertEqual(q.since, Date(timeIntervalSince1970: 1_792_144_800))
+        // An omitted field stays out of the request.
+        let out = String(decoding: try JSONCoding.encoder.encode(MemoryGraphQuery(hours: 24)), as: UTF8.self)
+        XCTAssertEqual(out, #"{"hours":24}"#)
+    }
+
+    func testUnknownGraphNodeKindStillDecodes() throws {
+        let json = #"{"nodes":[{"id":"p","kind":"person","label":"Sam","weight":1}],"edges":[]}"#
+        let g = try JSONCoding.decoder.decode(MemoryGraph.self, from: Data(json.utf8))
+        XCTAssertNil(g.nodes[0].nodeKind)
     }
 
     func testUnknownStateFails() throws {
@@ -105,7 +126,7 @@ final class ModelsTests: XCTestCase {
         let expected = ["hello","ping","pong","error","hook.event","hook.ack","hook.decision","subscribe",
             "snapshot","session.updated","session.removed","approval.added","approval.resolved",
             "approval.decide","usage.updated","loops.updated","loop.set_status","notice","memory.status",
-            "config.reload","capture.text","memory.search","memory.results","ext.request","ext.event"]
+            "config.reload","capture.text","memory.search","memory.results","memory.graph","ext.request","ext.event"]
         XCTAssertEqual(Set(MessageType.allCases.map(\.rawValue)), Set(expected))
     }
 }

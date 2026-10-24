@@ -416,6 +416,11 @@ func TestMemoryOff(t *testing.T) {
 	if env.ID != "q1" || !strings.Contains(string(env.Data), "memory is off") {
 		t.Fatalf("got %s %s", env.ID, env.Data)
 	}
+	c.send(protocol.TypeMemoryGraph, "g1", protocol.MemoryGraphQuery{Hours: 24})
+	env = c.waitFor(protocol.TypeError)
+	if env.ID != "g1" || !strings.Contains(string(env.Data), "memory is off") {
+		t.Fatalf("graph: got %s %s", env.ID, env.Data)
+	}
 }
 
 // fakeMemory records ingests and answers searches.
@@ -433,6 +438,15 @@ func (m *fakeMemory) Ingest(_ context.Context, c protocol.CaptureText) error {
 }
 func (m *fakeMemory) Search(_ context.Context, q protocol.MemorySearch) ([]protocol.MemoryHit, error) {
 	return []protocol.MemoryHit{{ThreadID: "t1", Snippet: q.Query}}, nil
+}
+func (m *fakeMemory) Graph(_ context.Context, q protocol.MemoryGraphQuery) (protocol.MemoryGraph, error) {
+	if q.App == "fail" {
+		return protocol.MemoryGraph{}, errors.New("graph failed")
+	}
+	return protocol.MemoryGraph{
+		Nodes: []protocol.GraphNode{{ID: "app:mail", Kind: "app", Label: "Mail", Weight: float64(q.Hours)}, {ID: "t1", Kind: "thread", Label: "Inbox", Weight: 1}},
+		Edges: []protocol.GraphEdge{{From: "app:mail", To: "t1", Kind: "in", Weight: 1}},
+	}, nil
 }
 func (m *fakeMemory) Loops(context.Context, string) ([]protocol.Loop, error) {
 	return []protocol.Loop{{ID: "loop_1", Title: "Send draft", Status: "open"}}, nil
@@ -470,6 +484,15 @@ func TestMemoryOn(t *testing.T) {
 	env := ui.waitFor(protocol.TypeMemoryResults)
 	if res := decode[protocol.MemoryResults](t, env); env.ID != "q1" || len(res.Hits) != 1 || res.Hits[0].Snippet != "budget" {
 		t.Fatalf("results %s %s", env.ID, env.Data)
+	}
+	ui.send(protocol.TypeMemoryGraph, "g1", protocol.MemoryGraphQuery{Hours: 24})
+	genv := ui.waitFor(protocol.TypeMemoryGraph)
+	if g := decode[protocol.MemoryGraph](t, genv); genv.ID != "g1" || len(g.Nodes) != 2 || g.Nodes[0].Weight != 24 || len(g.Edges) != 1 {
+		t.Fatalf("graph %s %s", genv.ID, genv.Data)
+	}
+	ui.send(protocol.TypeMemoryGraph, "g2", protocol.MemoryGraphQuery{App: "fail"})
+	if e := ui.waitFor(protocol.TypeError); e.ID != "g2" || decode[protocol.ErrorMsg](t, e).Message != "graph failed" {
+		t.Fatalf("graph error reply %s %s", e.ID, e.Data)
 	}
 	ui.send(protocol.TypeLoopSetStatus, "l1", protocol.LoopSetStatus{ID: "loop_1", Status: "resolved"})
 	if loops := decode[[]protocol.Loop](t, ui.waitFor(protocol.TypeLoopsUpdated)); len(loops) != 0 {

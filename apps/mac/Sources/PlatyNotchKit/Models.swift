@@ -23,6 +23,7 @@ public enum MessageType: String, CaseIterable, Sendable {
     case captureText = "capture.text"
     case memorySearch = "memory.search"
     case memoryResults = "memory.results"
+    case memoryGraph = "memory.graph"
     case extRequest = "ext.request"
     case extEvent = "ext.event"
 }
@@ -371,6 +372,61 @@ public struct MemoryHit: Codable, Sendable, Equatable {
 public struct MemoryResults: Codable, Sendable, Equatable {
     public var hits: [MemoryHit]
     public init(hits: [MemoryHit]) { self.hits = hits }
+}
+
+/// `memory.graph` request: the window is `since`, else the last `hours` (core default 168).
+public struct MemoryGraphQuery: Codable, Sendable, Equatable {
+    public var since: Date?
+    public var hours: Int?
+    public var app: String?
+    public var maxNodes: Int?
+
+    public init(since: Date? = nil, hours: Int? = nil, app: String? = nil, maxNodes: Int? = nil) {
+        self.since = since; self.hours = hours; self.app = app; self.maxNodes = maxNodes
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case since, hours, app
+        case maxNodes = "max_nodes"
+    }
+}
+
+/// Node kinds the app draws. The wire keeps `kind` a string so a kind added later
+/// is skipped rather than failing the whole graph.
+public enum GraphNodeKind: String, Sendable, CaseIterable {
+    case app, thread, site, loop, topic
+}
+
+public struct GraphNode: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var kind: String
+    /// Captured screen text for threads and loops: untrusted.
+    public var label: String
+    public var weight: Double
+
+    public init(id: String, kind: String, label: String, weight: Double) {
+        self.id = id; self.kind = kind; self.label = label; self.weight = weight
+    }
+
+    public var nodeKind: GraphNodeKind? { GraphNodeKind(rawValue: kind) }
+}
+
+public struct GraphEdge: Codable, Sendable, Equatable {
+    public var from: String
+    public var to: String
+    public var kind: String
+    public var weight: Double
+
+    public init(from: String, to: String, kind: String, weight: Double) {
+        self.from = from; self.to = to; self.kind = kind; self.weight = weight
+    }
+}
+
+/// `memory.graph` reply: nodes heaviest first; both ends of every edge are in `nodes`.
+public struct MemoryGraph: Codable, Sendable, Equatable {
+    public var nodes: [GraphNode]
+    public var edges: [GraphEdge]
+    public init(nodes: [GraphNode], edges: [GraphEdge]) { self.nodes = nodes; self.edges = edges }
 }
 
 public struct Notice: Codable, Sendable, Equatable {

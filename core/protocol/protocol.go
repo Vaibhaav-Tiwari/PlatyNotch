@@ -51,6 +51,7 @@ const (
 	TypeCaptureText   = "capture.text"   // capture → core
 	TypeMemorySearch  = "memory.search"  // any → core
 	TypeMemoryResults = "memory.results" // core → requester
+	TypeMemoryGraph   = "memory.graph"   // any → core (MemoryGraphQuery); core → requester (MemoryGraph)
 
 	// Extensions (Pro and third-party): opaque, namespaced messages.
 	TypeExtRequest = "ext.request" // ext/ui → core → extension handler
@@ -253,6 +254,53 @@ type MemoryHit struct {
 
 type MemoryResults struct {
 	Hits []MemoryHit `json:"hits"`
+}
+
+// MemoryGraphQuery asks for the graph of threads, apps, sites and open loops
+// active in a window: since, else the last Hours (default 168); at most 90 days.
+type MemoryGraphQuery struct {
+	Since    *time.Time `json:"since,omitempty"`
+	Hours    int        `json:"hours,omitempty"`
+	App      string     `json:"app,omitempty"`
+	MaxNodes int        `json:"max_nodes,omitempty"` // default 100
+}
+
+// Graph node kinds. Thread node ids are thread ids; the others are prefixed
+// ("app:", "site:", "loop:"). "topic" is reserved: no topics are stored yet.
+const (
+	GraphApp    = "app"
+	GraphThread = "thread"
+	GraphSite   = "site"
+	GraphLoop   = "loop"
+	GraphTopic  = "topic"
+)
+
+// Graph edge kinds.
+const (
+	EdgeIn         = "in"          // app → thread
+	EdgeOn         = "on"          // thread → site
+	EdgeDetectedIn = "detected_in" // loop → thread
+	EdgeFromApp    = "from_app"    // loop → app, when its thread is gone, outside the window or cut
+	EdgeTogether   = "together"    // thread ↔ thread: active one after another (hourly versions ≤ 45 min apart)
+)
+
+type GraphNode struct {
+	ID     string  `json:"id"`
+	Kind   string  `json:"kind"`
+	Label  string  `json:"label"` // captured screen text for threads and loops: untrusted
+	Weight float64 `json:"weight"`
+}
+
+type GraphEdge struct {
+	From   string  `json:"from"`
+	To     string  `json:"to"`
+	Kind   string  `json:"kind"`
+	Weight float64 `json:"weight"`
+}
+
+type MemoryGraph struct {
+	Nodes []GraphNode `json:"nodes"`
+	Edges []GraphEdge `json:"edges"`
 }
 
 type Notice struct {

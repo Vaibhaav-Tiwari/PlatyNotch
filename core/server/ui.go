@@ -16,7 +16,7 @@ const (
 )
 
 // handleUI serves every non-hook message. Requests that may be slow (memory
-// search, loop status, extension requests) run on their own goroutine
+// search and graph, loop status, extension requests) run on their own goroutine
 // (goRequest) and reply by ID.
 func (s *Server) handleUI(ctx context.Context, c *conn, env protocol.Envelope) {
 	id := env.ID
@@ -100,6 +100,27 @@ func (s *Server) handleUI(ctx context.Context, c *conn, env protocol.Envelope) {
 				hits = []protocol.MemoryHit{}
 			}
 			c.reply(protocol.TypeMemoryResults, id, protocol.MemoryResults{Hits: hits})
+		})
+
+	case protocol.TypeMemoryGraph:
+		var q protocol.MemoryGraphQuery
+		if err := env.Decode(&q); err != nil {
+			c.replyErr(id, "bad memory.graph: "+err.Error())
+			return
+		}
+		if s.mem == nil {
+			c.replyErr(id, memoryOff)
+			return
+		}
+		s.goRequest(func() {
+			rctx, cancel := context.WithTimeout(ctx, requestTimeout)
+			defer cancel()
+			g, err := s.mem.Graph(rctx, q)
+			if err != nil {
+				c.replyErr(id, err.Error())
+				return
+			}
+			c.reply(protocol.TypeMemoryGraph, id, g)
 		})
 
 	case protocol.TypeCaptureText:
