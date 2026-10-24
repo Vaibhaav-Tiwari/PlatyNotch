@@ -67,4 +67,31 @@ final class MemoryModelsTests: DefaultsTestCase {
         XCTAssertNil(capture.pausedUntil)
         XCTAssertEqual(capture.status, .off)   // memory still off
     }
+
+    /// The recent list was fetched only when the tab appeared, so an open tab kept
+    /// showing what was current when it opened.
+    func testCaptureRefreshesRecentButNotATypedSearch() async {
+        let box = Box()
+        let model = MemorySearchModel(debounce: .milliseconds(10)) { env in
+            box.queries.append(try env.decode(MemorySearch.self).query)
+            return try Envelope.make(.memoryResults, id: env.id, MemoryResults(hits: []))
+        }
+        model.captureArrived()
+        await waitUntil { box.queries.count == 1 }
+        XCTAssertEqual(box.queries, [""])
+        model.query = "deck"
+        await waitUntil { box.queries.count == 2 }
+        model.captureArrived()
+        try? await Task.sleep(for: .milliseconds(60))
+        XCTAssertEqual(box.queries, ["", "deck"])
+    }
+
+    func testTodayCountSurvivesRelaunch() {
+        let defaults = self.defaults()
+        let today = Calendar.current.startOfDay(for: Date())
+        defaults.set(5, forKey: CaptureService.todayCountKey)
+        defaults.set(today.timeIntervalSince1970, forKey: CaptureService.todayDayKey)
+        let capture = CaptureService(send: { _ in }, defaults: defaults)
+        XCTAssertEqual(capture.activity.capturedToday(now: Date()), 5)
+    }
 }
