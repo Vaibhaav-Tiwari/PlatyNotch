@@ -31,8 +31,10 @@ final class WindowSnapWidget: NotchWidget {
 
     private(set) var status: Status = .stopped
     private(set) var advice: PermissionAdvice.AccessibilityAdvice = .none
-    /// Shortcuts another app holds ("shortcut taken" in Settings).
+    /// Shortcuts not held ("shortcut taken" in Settings, or "used by …" for `usedBy`).
     private(set) var taken: [SnapTarget] = []
+    /// Shortcuts another PlatyNotch feature holds: its name.
+    private(set) var usedBy: [SnapTarget: String] = [:]
     /// Points between windows and screen edges (`SnapLayout.gapPresets`).
     private(set) var gap: Int = 0
 
@@ -70,6 +72,7 @@ final class WindowSnapWidget: NotchWidget {
     func start(context: WidgetContext) {
         guard self.context == nil else { return }
         self.context = context
+        hotKeys.catalog = context.hotKeys
         let saved = context.defaults.integer(forKey: SnapLayout.gapDefaultsKey)
         gap = SnapLayout.gapPresets.contains(saved) ? saved : 0
         gate.start(defaults: context.defaults)
@@ -86,6 +89,7 @@ final class WindowSnapWidget: NotchWidget {
         status = .stopped
         advice = .none
         taken = []
+        usedBy = [:]
     }
 
     /// Reads Accessibility trust (`trustRead` does the rest).
@@ -101,12 +105,14 @@ final class WindowSnapWidget: NotchWidget {
         guard trusted else {
             hotKeys.unregister()
             if !taken.isEmpty { taken = [] }
+            if !usedBy.isEmpty { usedBy = [:] }
             status = .needsAccessibility
             return
         }
         if !hotKeys.isRegistered {
             hotKeys.register { [weak self] target in self?.snap(target) }
             if taken != hotKeys.taken { taken = hotKeys.taken }
+            if usedBy != hotKeys.usedBy { usedBy = hotKeys.usedBy }
         }
         status = .on
     }
@@ -128,6 +134,7 @@ final class WindowSnapWidget: NotchWidget {
         guard status == .on else { return }
         hotKeys.register { [weak self] target in self?.snap(target) }
         taken = hotKeys.taken
+        usedBy = hotKeys.usedBy
     }
 
     // MARK: - Permission (`AccessibilityGate`, shared with the HUD)
@@ -164,11 +171,21 @@ final class WindowSnapWidget: NotchWidget {
         }
     }
 
-    /// "Shortcut taken" for the shortcuts another app holds; nil when none.
+    /// "Shortcut taken" for the shortcuts not held: by another app, or "used by" another
+    /// PlatyNotch feature (named); nil when none.
     var takenNote: String? {
         guard !taken.isEmpty else { return nil }
-        let list = taken.map { $0.defaultCombo.display }.joined(separator: ", ")
-        return "Shortcut taken by another app: \(list). Quit that app or change its shortcut, then Try Again."
+        var parts: [String] = []
+        let others = taken.filter { usedBy[$0] == nil }
+        if !others.isEmpty {
+            let list = others.map { $0.defaultCombo.display }.joined(separator: ", ")
+            parts.append("Shortcut taken by another app: \(list). Quit that app or change its shortcut, then Try Again.")
+        }
+        let ours = taken.compactMap { t in usedBy[t].map { (t.defaultCombo.display, $0) } }
+        for (combo, owner) in ours {
+            parts.append("\(combo) is used by \(owner) in PlatyNotch. Change that shortcut, then Try Again.")
+        }
+        return parts.joined(separator: " ")
     }
 }
 
@@ -206,7 +223,9 @@ struct WindowSnapSettingsView: View {
                     GridRow {
                         Text(verbatim: t.defaultCombo.display).monospaced()
                         Text(verbatim: t.title)
-                        if widget.taken.contains(t) {
+                        if let owner = widget.usedBy[t] {
+                            Text(verbatim: "used by \(owner)").foregroundStyle(.orange)
+                        } else if widget.taken.contains(t) {
                             Text("shortcut taken").foregroundStyle(.orange)
                         }
                     }

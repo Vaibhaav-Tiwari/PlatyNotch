@@ -69,8 +69,13 @@ final class BasketController: DragMonitorListener {
     @ObservationIgnored private var revealed = false
     /// Screens read when a header drag starts (not on every step, M8).
     @ObservationIgnored private var moveScreens: [BasketScreen]?
-    /// The switcher's shortcut is held by another app.
+    /// The switcher's shortcut is not held: another app holds it, or another PlatyNotch
+    /// feature does (`switcherUsedBy`).
     private(set) var switcherTaken = false
+    /// The PlatyNotch feature holding the switcher's shortcut ("Window snapping"), if any.
+    private(set) var switcherUsedBy: String?
+    /// The app's one runtime catalog (`WidgetContext.hotKeys`), set before `start`.
+    @ObservationIgnored var hotKeyCatalog = SharedHotKeyCatalog()
     private(set) var isRunning = false
 
     @ObservationIgnored let store: BasketStore
@@ -144,7 +149,9 @@ final class BasketController: DragMonitorListener {
         subscription = nil
         hotKey?.unregister()
         hotKey = nil
+        hotKeyCatalog.release(BasketSettings.switcherFeature)
         switcherTaken = false
+        switcherUsedBy = nil
         stopObserving?()
         stopObserving = nil
         for t in [expiryTask, switcherTask] { t?.cancel() }
@@ -175,11 +182,20 @@ final class BasketController: DragMonitorListener {
     func setSwitcher(_ combo: KeyCombo?) {
         hotKey?.unregister()
         hotKey = nil
+        let feature = BasketSettings.switcherFeature
+        hotKeyCatalog.release(feature)
         self.combo = combo
         switcherTaken = false
+        switcherUsedBy = nil
         guard isRunning, let combo else { return }
-        guard HotKeyCatalog().conflict(combo, for: BasketSettings.switcherFeature) == nil,
-              let reg = makeHotKey(combo.keyCode, combo.modifiers, { [weak self] in self?.switchNext() }) else {
+        if let conflict = hotKeyCatalog.claim(combo, for: feature) {
+            switcherTaken = true
+            switcherUsedBy = SharedHotKeyCatalog.owner(of: conflict)
+            Self.log.error("basket switcher shortcut \(combo.display, privacy: .public) is used in PlatyNotch")
+            return
+        }
+        guard let reg = makeHotKey(combo.keyCode, combo.modifiers, { [weak self] in self?.switchNext() }) else {
+            hotKeyCatalog.release(feature)
             switcherTaken = true
             Self.log.error("basket switcher shortcut \(combo.display, privacy: .public) is taken")
             return

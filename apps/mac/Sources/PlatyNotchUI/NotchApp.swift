@@ -125,6 +125,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var defaultsObserver: NSObjectProtocol?
     /// Settings › Appearance; the panels are built from it (`AppearanceStore`, C32).
     private var appearance = AppearanceStore.load(from: .standard)
+    /// The one runtime shortcut catalog every widget claims global shortcuts in (M1).
+    private let hotKeys = SharedHotKeyCatalog()
     private var signalSources: [DispatchSourceSignal] = []
     /// What launch did to `<home>/bin/notch` (reported by smoke runs).
     private var hookLink: HookBinaryLink.Outcome?
@@ -345,7 +347,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startWidgets() {
         let context = WidgetContext(store: store, client: client, config: config, events: events,
                                     defaults: .standard, notify: Notifiers.make(), surfaces: surfaces,
-                                    drags: drags, openPanel: { [weak self] in self?.openPanel(tab: $0) })
+                                    drags: drags, hotKeys: hotKeys, openPanel: { [weak self] in self?.openPanel(tab: $0) })
         widgets.start(context: context)
         // The shelf's privacy promise holds while it is off: expired copies (7 days) go at
         // launch in one bounded directory pass (no timers, no monitors). Never in smoke runs.

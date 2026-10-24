@@ -105,11 +105,15 @@ public struct WidgetContext {
     /// The app's one drag monitor (R2): subscribe to hear about drags anywhere on screen.
     /// It also opens and closes the drag session (its only writer, R5).
     public let drags: DragMonitor
+    /// The app's one runtime shortcut catalog (final review M1): features claim their
+    /// global shortcuts here, so a clash between two of them is named.
+    public let hotKeys: SharedHotKeyCatalog
     private let openPanelHandler: (String?) -> Void
 
     public init(store: AppStore, client: CoreClient, config: ConfigFileStore, events: CoreEventHub,
                 defaults: UserDefaults = .standard, notify: Notifier, surfaces: PanelSurfaces? = nil,
-                drags: DragMonitor? = nil, openPanel: @escaping (String?) -> Void) {
+                drags: DragMonitor? = nil, hotKeys: SharedHotKeyCatalog? = nil,
+                openPanel: @escaping (String?) -> Void) {
         self.store = store
         self.client = client
         self.config = config
@@ -120,6 +124,7 @@ public struct WidgetContext {
         self.surfaces = surfaces
         // Without one (tests, headless contexts) drags are never seen.
         self.drags = drags ?? DragMonitor.inert(surfaces: surfaces)
+        self.hotKeys = hotKeys ?? SharedHotKeyCatalog()
         self.openPanelHandler = openPanel
     }
 

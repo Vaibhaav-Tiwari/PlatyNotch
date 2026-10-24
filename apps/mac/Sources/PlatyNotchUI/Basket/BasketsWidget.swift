@@ -59,6 +59,7 @@ final class BasketsWidget: NotchWidget {
         sensitivity = BasketSettings.sensitivity(d)
         switcherCombo = BasketSettings.switcherCombo(d)
         controller.store.defaults = d
+        controller.hotKeyCatalog = context.hotKeys
         let surfaces = context.surfaces
         controller.coveredDisplays = {
             AppearanceStore.load(from: d).hideInFullScreen ? surfaces.fullScreenDisplays : []
@@ -107,6 +108,12 @@ final class BasketsWidget: NotchWidget {
 struct BasketsSettingsView: View {
     let widget: BasketsWidget
 
+    /// Why the switcher's shortcut is not held: another app, or a named PlatyNotch feature.
+    static func takenNote(_ combo: KeyCombo, usedBy owner: String?) -> String {
+        if let owner { return "\(combo.display) is used by \(owner) in PlatyNotch. Choose another shortcut." }
+        return "\(combo.display) is taken by another app. Choose another shortcut."
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("""
@@ -118,7 +125,7 @@ struct BasketsSettingsView: View {
             sensitivityRow
             switcherRow
             if widget.controller.switcherTaken, let combo = widget.switcherCombo {
-                Label { Text(verbatim: "\(combo.display) is taken by another app. Choose another shortcut.") }
+                Label { Text(verbatim: Self.takenNote(combo, usedBy: widget.controller.switcherUsedBy)) }
                     icon: { Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange) }
             }
             Text("""
