@@ -124,7 +124,7 @@ func (s *Store) SetChunkStatus(kind string, ids []int64, status string) error {
 		return err
 	}
 	ph, args := idArgs(ids)
-	tx, err := s.db.Begin()
+	tx, err := s.w.Begin()
 	if err != nil {
 		return err
 	}
@@ -146,7 +146,7 @@ func (s *Store) FailChunks(kind string, ids []int64, lastErr string, next func(a
 	if err != nil {
 		return err
 	}
-	tx, err := s.db.Begin()
+	tx, err := s.w.Begin()
 	if err != nil {
 		return err
 	}
@@ -223,7 +223,7 @@ func (s *Store) ResetSkipped(kind string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	res, err := s.db.Exec(`UPDATE chunks SET ` + col + `='pending' WHERE ` + col + `='skipped'`)
+	res, err := s.w.Exec(`UPDATE chunks SET ` + col + `='pending' WHERE ` + col + `='skipped'`)
 	if err != nil {
 		return 0, err
 	}
@@ -239,7 +239,7 @@ func (s *Store) RequeueFailed(kind string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	res, err := s.db.Exec(`UPDATE chunks SET ` + col + `='pending' WHERE ` + col + `='failed'`)
+	res, err := s.w.Exec(`UPDATE chunks SET ` + col + `='pending' WHERE ` + col + `='failed'`)
 	if err != nil {
 		return 0, err
 	}
@@ -251,7 +251,7 @@ func (s *Store) RequeueFailed(kind string) (int, error) {
 // ("failed") but have no vector from model as pending, so a changed
 // embedding model re-embeds everything. It returns how many changed.
 func (s *Store) RequeueOtherModel(model string) (int, error) {
-	res, err := s.db.Exec(`UPDATE chunks SET embed_status='pending'
+	res, err := s.w.Exec(`UPDATE chunks SET embed_status='pending'
 		WHERE embed_status IN ('done','failed') AND id NOT IN (SELECT chunk_id FROM chunk_vectors WHERE model=?)`, model)
 	if err != nil {
 		return 0, err
