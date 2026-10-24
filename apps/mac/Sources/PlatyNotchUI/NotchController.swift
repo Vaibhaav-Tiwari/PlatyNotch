@@ -24,7 +24,7 @@ public final class NotchController {
     private let memory: MemoryServices
 
     private var machine: PanelStateMachine
-    private let model: PanelViewModel = PanelViewModel()
+    let model: PanelViewModel = PanelViewModel()
     private let tracker = HoverTracker()
     private var debouncer = HoverDebouncer()
     private var panel: NotchPanel?
@@ -67,6 +67,8 @@ public final class NotchController {
     var graceSleep: @MainActor (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     /// The clock approval arming notes cards against (tests move it).
     var armingClock: () -> Date = { Date() }
+    /// The open panel's gear (the menu bar icon may be hidden): the app shows Settings.
+    var onOpenSettings: () -> Void = {}
     private var workspaceObservers: [NSObjectProtocol] = []
 
     /// `carryOver` restores the panel state of the controller this one replaces (display change).
@@ -112,6 +114,7 @@ public final class NotchController {
         debouncer.reset(hovering: machine.mode == .expanded)
         model.onClick = { [weak self] in self?.handle(.click) }
         model.onStopRinging = { [weak self] id in self?.surfaces.stopRinging(id: id) }
+        model.onOpenSettings = { [weak self] in self?.onOpenSettings() }
         tracker.onMove = { [weak self] _ in self?.sampleCursor() }
         self.surfaces.attach(self)   // replays rings, a current peek / HUD and the drag session
     }

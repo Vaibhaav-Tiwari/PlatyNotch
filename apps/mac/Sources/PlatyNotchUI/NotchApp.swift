@@ -328,6 +328,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                     onOpenTerminal: { TerminalFocus.focus(session: $0) },
                                     appearance: appearance,
                                     carryOver: state)
+            c.onOpenSettings = { [weak self] in self?.openSettings(section: nil) }
             c.attach(to: screen)
             return c
         }

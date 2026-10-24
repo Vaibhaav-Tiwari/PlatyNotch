@@ -20,6 +20,8 @@ struct ExpandedPanel: View {
     let extraTabs: [PanelTab]
     @Binding var selectedTab: String
     let onCollapse: () -> Void
+    /// Opens the Settings window (the gear; mouse only, no keyboard shortcut).
+    var onOpenSettings: () -> Void = {}
     let onDecide: (Approval, ApprovalBehavior) -> Void
     let onOpenTerminal: (Session) -> Void
 
@@ -118,6 +120,16 @@ struct ExpandedPanel: View {
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.color(.attention))
             }
+            Button(action: onOpenSettings) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 20, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("PlatyNotch Settings")
+            .accessibilityLabel("Open PlatyNotch Settings")
             Button(action: onCollapse) {
                 Image(systemName: "chevron.up")
                     .font(.system(size: 11, weight: .semibold))
