@@ -1035,20 +1035,29 @@ OCRs small files made by the tests (`FileActionsEngineTests`); these checks use 
   a folder item with the same contents. While a large zip runs, `ls` the shelf folder shows
   `<name>.zip.partial`, renamed when done. An archive that would unpack to more than 2 GB
   (e.g. a zip of a large sparse disk image) is refused with "it would unpack to more than 2 GB".
+  An archive that is damaged or hostile (entries outside its folder, headers that disagree,
+  a link to an absolute path) says "the archive is damaged or unsafe"; one that unpacks to
+  more than it declares is stopped within a quarter second and deleted. With less free
+  disk space than the archive holds, it says "there is not enough free disk space".
 - [ ] **205. Batch rename.** Select three files in a Downloads subfolder (⌘-click), Actions
   › Batch Rename…, pattern `{date:yyyy-MM-dd} trip {n:2}`: the preview lists every new name;
   Rename renames them in Finder, and the cards follow. A name already taken gets " 2".
-  Actions › Undo Rename puts every name back; it then disappears (one level).
+  Actions › Undo Rename puts every name back; it then disappears (one level). Rename is not
+  offered for Desktop, Documents, Downloads or other folders directly in your home, for
+  hidden files there, or for anything in PlatyNotch's own folder (shelf copies: use Save As…).
 - [ ] **206. Finder service.** After installing, run `/System/Library/CoreServices/pbs -flush`
   and relaunch PlatyNotch. In Finder, select two files › right-click › Services (or Quick
   Actions) › Add to PlatyNotch Shelf: a peek says "Added 2 files to the shelf" and both are
-  on the shelf (in place, not copied). Turn the shelf off and repeat: the peek says "Turn on
+  on the shelf (in place, not copied). Selecting more than 200 adds the first 200 and says so. Turn the shelf off and repeat: the peek says "Turn on
   the Shelf" and nothing is added.
 - [ ] **207. Links ask first.** In Terminal: `open "platynotch://shelf/add?path=$HOME/Desktop/a.txt"`
   (an existing file): a peek asks "Add 1 file to the shelf?" with the file name, "Asked by a
   link", Cancel and Add; nothing is added until Add. `open "platynotch://timer/start?d=25m"`
   asks "Start a 25 minute timer?"; Start starts it, Cancel or waiting 30 s does nothing.
+  The Add / Start button stays dim for half a second after the card appears. Open three
+  links in a row: only the first asks; the others are ignored until it is answered.
   With the shelf (or Time) widget off, the same links do nothing at all. A path inside
   `~/Library/Application Support/PlatyNotch`, a relative path or more than 20 paths: no
   peek. `open platynotch://clipboard/open` opens the clipboard picker only while Clipboard
-  history is on.
+  history is on, and opening it again leaves it open. In a picker a link opened, ↩ does
+  nothing until you press ↑/↓ or move the mouse over it.
