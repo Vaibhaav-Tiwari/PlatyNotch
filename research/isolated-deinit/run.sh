@@ -27,11 +27,13 @@ done
 for t in test_sync_noTaskLocal test_sync_taskLocal test_sync_plainDeinit test_async_noTaskLocal test_sync_customActor; do
   echo "== xctest $t"
   if [ -n "${REPRO_BIN:-}" ]; then
+    DYLD_FRAMEWORK_PATH="$(xcode-select -p)/Platforms/MacOSX.platform/Developer/Library/Frameworks" \
     xcrun xctest -XCTest "ReproTests.ReproTests/$t" "$(ls -d "$BIN"/*.xctest)" > t.log 2>&1; rc=$?
   else
     swift test --skip-build --filter "ReproTests.ReproTests/$t" > t.log 2>&1; rc=$?
   fi
   grep -vE "^\s*$" t.log | tail -12
+  [ ! -s t.log ] && echo "(no output, rc=$rc)"
   summary+=("test $t rc=$rc $(verdict $rc)$(grep -q 'pointer being freed was not allocated' t.log && echo ' malloc:pointer-being-freed-not-allocated')")
 done
 echo "== lldb backtrace: exe a_noTask_taskLocal"
