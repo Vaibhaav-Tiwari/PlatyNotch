@@ -7,7 +7,7 @@ import os
 /// activate the app.
 @MainActor
 enum TerminalFocus {
-    private static let log = Logger(subsystem: "dev.platynotch", category: "TerminalFocus")
+    private static let log = Logger(subsystem: "dev.platynotch.app", category: "TerminalFocus")
     private static var loggedAutomationDenied = false
 
     // The tty is never spliced into script source: it is passed as `argv` to `on run`.

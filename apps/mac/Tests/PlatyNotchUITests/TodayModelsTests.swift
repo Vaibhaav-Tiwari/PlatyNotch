@@ -73,6 +73,19 @@ final class TodayModelsTests: DefaultsTestCase {
         XCTAssertNil(FocusModel(defaults: defaults).timer)
     }
 
+    /// Final review C5: turning the Focus widget off ends a running session (no focus
+    /// timer while focus is off); quitting (stop) keeps it.
+    func testDisablingFocusWidgetStopsTheSession() {
+        let focus = FocusModel(defaults: self.defaults())
+        let widget = FocusWidget(focus: focus)
+        focus.start(minutes: 25)
+        widget.stop()
+        XCTAssertTrue(focus.focusActive, "quit keeps the session")
+        widget.disabled()
+        XCTAssertNil(focus.timer)
+        XCTAssertFalse(focus.focusActive)
+    }
+
     func testFinishedFocusIsNotActive() {
         let defaults = self.defaults()
         var finished = 0

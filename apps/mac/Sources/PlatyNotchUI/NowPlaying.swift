@@ -41,7 +41,7 @@ public final class NowPlaying {
     /// Called when `isPlaying` changes (the visualiser follows it).
     @ObservationIgnored public var onPlayingChange: ((Bool) -> Void)?
 
-    @ObservationIgnored private static let log = Logger(subsystem: "dev.platynotch", category: "NowPlaying")
+    @ObservationIgnored private static let log = Logger(subsystem: "dev.platynotch.app", category: "NowPlaying")
     @ObservationIgnored private var adapter: AdapterStream?
     @ObservationIgnored private var adapterRestarts = 0
     @ObservationIgnored private var pollTask: Task<Void, Never>?
