@@ -4,7 +4,7 @@ Checks for the widget system (Plan 3b). Automated checks cover the logic (`swift
 `LiveArbiterTests`, `WidgetLayoutTests`, `WidgetRegistryTests`) and the launch
 (`swift run PlatyNotch --smoke` prints `widgets=<n>`, the number of enabled widgets whose
 tile was built; `--smoke-settings` visits Settings › Widgets). This list covers what only
-a person looking at the screen can confirm. Each later widget task appends its own section.
+a person looking at the screen can confirm.
 
 ## Setup
 
@@ -25,8 +25,9 @@ Note the Mac model and macOS version next to each tick.
 
 ## Task 1a: widget API, registry, live arbiter
 
-- [ ] **1. Today tab is widget tiles.** Expand the panel, open Today: Music, Meetings (was "Next meeting" before Task 7),
-  Focus and Open loops tiles, in that order, scrolling when they do not fit. With no
+- [ ] **1. Today tab is widget tiles.** Expand the panel, open Today: the nine widgets that are
+  on by default, in this order: Music, Meetings, Focus, Open loops, Time, Shelf, System, Games,
+  Sites & Shortcuts, scrolling when they do not fit. With no
   music app open the music tile says "Nothing playing".
 - [ ] **2. Music feeds the pill from launch.** Quit PlatyNotch, start music in Music or
   Spotify, launch PlatyNotch and do not open the panel. Within a few seconds the right
@@ -365,22 +366,28 @@ lives in `$PLATYNOTCH_HOME/shelf` (0700; `items.json` 0600; owned copies in
 - [ ] **66. Idle cost.** Shelf on, collapsed: no CPU while the button is up (only click
   callbacks); while holding the button down (a window drag) a 20 Hz read of two integers
   that stops at release.
-- [ ] **67. Drop on release (fix round 1).** Drop 20 files one after another, quickly, on
+- [ ] **67. Drop on release.** Drop 20 files one after another, quickly, on
   the zone: every drop is taken (none bounces back to Finder). Release on the zone with
   nothing droppable: the zone closes within about 0.3 s.
-- [ ] **68. Expiry while off (fix round 1).** Shelf off, an owned item 8 days old in
+- [ ] **68. Expiry while off.** Shelf off, an owned item 8 days old in
   `items.json` (quit first): relaunch PlatyNotch; its `<uuid>/` folder and entry are gone
   although the shelf stays off. Shelf off and never used: launch creates no `shelf/` folder.
 - [ ] **69. Shelf off, drag over the pill.** Turn the shelf off, drag a file over the
   pill: no drop zone and no "Drop here" placeholder; after release, Activity Monitor
   shows PlatyNotch idle (no leftover cursor polling).
-- [ ] **70. Promise file modes.** After a Photos drop, `ls -l "$PLATYNOTCH_HOME/shelf"/*/`:
+- [ ] **70. Promise file modes.** After a Photos drop, `ls -l "$PLATYNOTCH_HOME/shelf.noindex"/*/`:
   note the mode the promised file got (written by Photos; the folder is 0700).
-- [ ] **71. Damaged index (fix round 2).** Quit, put a few owned items on the shelf
-  first, then write junk into `shelf/items.json` and relaunch (shelf on, and once with it
+- [ ] **71. Damaged index.** Quit, put a few owned items on the shelf
+  first, then write junk into `shelf.noindex/items.json` and relaunch (shelf on, and once with it
   off): the shelf starts empty, `items.json.corrupt-<date>` (0600) holds the old text,
   Console shows "shelf index unreadable; moved aside", and every `<uuid>/` folder is
-  still there. Delete the `.corrupt-` file: folders older than 7 days go at the next start.
+  still there. Settings › Widgets › Shelf shows the damaged-index notice with "N kept",
+  Show in Finder (opens the shelf folder) and Delete Kept Copies; deleting removes the
+  `.corrupt-` file and every copy no shelf item lists, and the notice goes. (Deleting the
+  `.corrupt-` file by hand instead: folders older than 7 days go at the next start.)
+- [ ] **71a. No file checks at launch.** Put a file from ~/Downloads on the shelf, rebuild
+  the app (a new ad-hoc signature), relaunch and wait: no Files & Folders prompt until you
+  open the panel's Today tab and the shelf tile shows.
 
 ## Task 6: clipboard history and picker
 
@@ -400,7 +407,7 @@ History, Clear All, and the Accessibility button.
   them is listed. `grep -r "<the password>" "$PLATYNOTCH_HOME/clipboard"` finds nothing.
   Note which managers set `org.nspasteboard.ConcealedType` (an app like Pasteboard Viewer
   shows the types) and which were caught only by the app rule.
-  **Explicitly (fix round 1):** copy a password from the **Apple Passwords menu bar extra**
+  **Explicitly:** copy a password from the **Apple Passwords menu bar extra**
   (menu bar key icon › pick an entry › copy password) and from **1Password Quick Access**
   (⇧⌘Space › an item › copy password) while TextEdit is the frontmost app, then switch
   straight back to TextEdit. These may never become frontmost, so only ConcealedType or
@@ -457,7 +464,7 @@ History, Clear All, and the Accessibility button.
 - [ ] **84. Full screen and Spaces.** In a full-screen app, ⌥⇧V opens the picker on that
   Space over the app; paste works there.
 
-## Task 6 fix round 1
+## Clipboard and shelf: panel level, paste focus, backup and Spotlight
 
 - [ ] **85. Notch panel at status-bar level.** The panel is now really at `.statusBar`
   (it used to fall back to `.floating`). Check: the pill and an approval peek stay visible
@@ -469,10 +476,13 @@ History, Clear All, and the Accessibility button.
 - [ ] **86. Paste focus check.** With Accessibility on, ⌥⇧V in TextEdit › ↩ pastes. Then
   ⌥⇧V in TextEdit, quit TextEdit from the Dock (right-click › Quit) while the picker is
   open, then ↩: nothing is typed anywhere and the notch says "Copied — press ⌘V".
-- [ ] **87. Backup and Spotlight.** `xattr -l "$PLATYNOTCH_HOME/clipboard"` and
-  `…/shelf` show `com.apple.metadata:com_apple_backup_excludeItem`; both folders contain
-  `.metadata_never_index`; `mdfind -onlyin "$PLATYNOTCH_HOME/clipboard" <copied word>`
-  finds nothing. `tmutil isexcluded "$PLATYNOTCH_HOME/clipboard"` says excluded.
+- [ ] **87. Backup and Spotlight.** `xattr -l "$PLATYNOTCH_HOME/clipboard.noindex"` and
+  `…/shelf.noindex` show `com.apple.metadata:com_apple_backup_excludeItem`; both folders
+  also contain `.metadata_never_index`; `mdfind -onlyin "$PLATYNOTCH_HOME/clipboard.noindex"
+  <copied word>` finds nothing. `tmutil isexcluded "$PLATYNOTCH_HOME/clipboard.noindex"` says
+  excluded. With `clipboard`, `shelf` and `favicons` folders left by an older build, the first
+  launch renames them to the `.noindex` names with everything inside (history, pins and
+  copies still there).
 
 ## Task 7: reminders, meeting countdowns, weather
 
@@ -685,7 +695,7 @@ Probe on the build Mac (macOS 26.4, nothing granted): IOBluetoothDevice answers
   leaves the pill at once; new downloads show nothing; `sample PlatyNotch 3` shows no
   FSEvents callbacks.
 
-### Task 9 fix round 1
+### Downloads permission and the charger
 
 - [ ] **141. Quit mid-prompt.** Turn On… downloads, and quit PlatyNotch while the macOS
   prompt is up. Relaunch: downloads are off, no prompt at launch.
@@ -700,7 +710,7 @@ Probe on the build Mac (macOS 26.4, nothing granted): IOBluetoothDevice answers
 - [ ] **144. Loose charger.** Plug and unplug the charger three times within a second or
   two: one peek, showing the last state, not three.
 
-### Task 9 fix round 3
+### Downloads: folders and the shelf
 
 Known limit: with downloads on and a matching stamp, a TCC reset done outside PlatyNotch
 (`tccutil reset SystemPolicyDownloadsFolder`, or removing it in System Settings) cannot be
@@ -842,8 +852,8 @@ scripts/perf-idle.sh --app                    # build/PlatyNotch.app, run as a d
 Themed views in both schemes (HUD, approval card, game boards, shelf), as PNGs to look at:
 
 ```sh
-PLATYNOTCH_RENDER_DIR=/tmp/pn-renders PLATYNOTCH_HOME=<temp home> PLATYNOTCH_CORE_BIN=<core> \
-  .build/debug/PlatyNotch --smoke    # SMOKE OK … renders=18 theme=<current theme>
+cd apps/mac && swift build && PLATYNOTCH_RENDER_DIR=/tmp/pn-renders PLATYNOTCH_HOME=<temp home> \
+  PLATYNOTCH_CORE_BIN=<core> .build/debug/PlatyNotch --smoke    # SMOKE OK … renders=18 theme=<current theme>
 ```
 
 - [ ] **171. Idle under 1%.** On a notched M1 both runs print PASS (mean of 60 one-second
@@ -923,3 +933,22 @@ PLATYNOTCH_RENDER_DIR=/tmp/pn-renders PLATYNOTCH_HOME=<temp home> PLATYNOTCH_COR
 - [ ] **187. Onboarding and empty states.** Settings › Permissions › Show onboarding: Platy
   paddles beside "Your coding agents". With no sessions, the Agents tab shows Platy above "No
   agent sessions". With every widget off, Today shows Platy above "No widgets are on."
+
+## Updates, secrets and keyboard focus
+
+- [ ] **188. Visualiser after an update.** Turn on Settings › Widgets › Music › Live
+  visualiser (macOS asks for System Audio Recording), quit, rebuild the app
+  (`scripts/build-app.sh`, a new ad-hoc signature) and relaunch. Play music with the pill
+  showing: no prompt. Settings shows the toggle off with "Turned off: PlatyNotch was updated
+  or reinstalled…" and Turn On Again; pressing it asks (or not, if macOS kept the grant) and
+  the bars follow the sound again.
+- [ ] **189. Secrets are not kept.** With clipboard history on, copy an `sk-…` key, a GitHub
+  token (`ghp_` and 36 letters), a JWT and the test card `4242 4242 4242 4242` from TextEdit:
+  none appears in the ⌥⇧V picker. An ordinary sentence copied next does.
+- [ ] **190. No keyboard focus without a click.** Open the panel, then Settings (menu bar ›
+  Settings…), close Settings with ⌘W, and type: the keys go to the app you were using, not
+  the notch panel (no game moves, no approval shortcut). The same after closing onboarding
+  and a shelf item's Locate… panel. Click into the open panel: it takes the keyboard again.
+- [ ] **191. Ringing card pulse.** Let a 5 s timer ring with the panel closed: the ring
+  around the bell grows and fades smoothly; Activity Monitor shows PlatyNotch near 0% CPU
+  while it rings. With Reduce Motion the ring is still.

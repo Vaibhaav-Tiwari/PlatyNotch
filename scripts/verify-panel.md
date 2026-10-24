@@ -75,13 +75,13 @@ Tick each on the hardware you have; note the Mac model and macOS version.
   the panel must still hide there (a maximised, non-full-screen window must *not*
   hide it). Multi-display caveat: only the *frontmost* app is checked, so a
   full-screen app on display A that is not frontmost (you clicked an app on display
-  B) leaves A's panel showing; with "Show on all displays" each display checks the
+  B) leaves A's panel showing; with Settings › Appearance › Show on: All displays, each display checks the
   frontmost app's windows against its own bounds.
 - [ ] **4. Display changes.** Plug or unplug an external display, change which
   display is main (System Settings › Displays › arrangement, drag the menu bar), and
   change resolution ("More Space"). Each time the panel is rebuilt on the main
   display at the right place (notch or pill) within a second, with no leftover
-  panel on the old display. With "Show on all displays" on, every display has one.
+  panel on the old display. With Show on: All displays, every display has one.
 - [ ] **5. Spaces and Mission Control.** Switching Spaces (⌃→) keeps the panel in
   place without sliding with the Space; Mission Control and ⌘-Tab do not list it;
   clicking the panel never activates PlatyNotch or takes focus from the frontmost
@@ -141,8 +141,8 @@ long multi-line command with a Unicode path). The core default expiry is 100 s.
   shortcut hints. VoiceOver reads "Allow" / "Deny" with the shortcut as hint, and the
   summary text.
 - [ ] **13. Sending.** Click Allow: the countdown changes to "Sending…" and both
-  buttons disable until the card disappears (normally at once). With "Show on all
-  displays", the other display's card shows "Sending…" too and cannot answer again. Terminal A prints
+  buttons disable until the card disappears (normally at once). With Show on: All
+  displays, the other display's card shows "Sending…" too and cannot answer again. Terminal A prints
   `decision: ... allow`.
 - [ ] **14. Reconnecting.** With approvals pending (app supervising its own core, as in
   case 8), kill the core: the cards stay, show "Reconnecting… m:ss" in amber and the
@@ -155,7 +155,8 @@ long multi-line command with a Unicode path). The core default expiry is 100 s.
   before the tick shows Expired immediately and sends nothing); the card goes away when the core
   resolves it, and the hook in terminal A falls back to the terminal prompt.
 - [ ] **16. Open terminal.** "Open terminal" shows when the approval's session is
-  known; clicking it does nothing yet (terminal focus is Task 7). Agents tab rows
+  known; clicking it brings that session's terminal tab to the front (Terminal or iTerm2;
+  macOS asks for Automation the first time, and without it only the app is activated). Agents tab rows
   highlight on hover and are clickable the same way.
 - [ ] **17. Light and dark.** With Settings › Appearance › Theme on Dark, switch System
   Settings › Appearance between Light and Dark: the panel stays black with legible text
