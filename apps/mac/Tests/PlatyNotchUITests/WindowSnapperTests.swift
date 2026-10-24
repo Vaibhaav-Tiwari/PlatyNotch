@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import PlatyNotchKit
 import XCTest
@@ -9,6 +10,7 @@ private final class FakeDriver: SnapWindowDriver, @unchecked Sendable {
         case read(pid_t)
         case position(CGPoint)
         case size(CGSize)
+        case readSize
     }
 
     private let lock = NSLock()
@@ -18,12 +20,19 @@ private final class FakeDriver: SnapWindowDriver, @unchecked Sendable {
     var refuseSize = false
     /// Blocks `focusedWindow` until signalled (a snap still running).
     var gate: DispatchSemaphore?
+    /// The size the window keeps whatever is set (an app that says it is settable).
+    var keptSize: CGSize?
+    private var lastSize: CGSize?
+    private var _onMain: [Bool] = []
 
     var calls: [Call] { lock.withLock { _calls } }
+    /// `Thread.isMainThread` at each `focusedWindow`.
+    var readsOnMain: [Bool] { lock.withLock { _onMain } }
     private func record(_ c: Call) { lock.withLock { _calls.append(c) } }
 
     func focusedWindow(pid: pid_t) -> SnapWindowInfo? {
         record(.read(pid))
+        lock.withLock { _onMain.append(Thread.isMainThread) }
         gate?.wait()
         return window
     }
@@ -35,7 +44,13 @@ private final class FakeDriver: SnapWindowDriver, @unchecked Sendable {
 
     func setSize(_ size: CGSize, of window: SnapWindowHandle) -> Bool {
         record(.size(size))
+        if !refuseSize { lock.withLock { lastSize = size } }
         return !refuseSize
+    }
+
+    func size(of window: SnapWindowHandle) -> CGSize? {
+        record(.readSize)
+        return keptSize ?? lock.withLock { lastSize } ?? self.window?.frame.size
     }
 }
 
@@ -89,7 +104,7 @@ final class WindowSnapperTests: DefaultsTestCase {
         let out = WindowSnapper.perform(.leftHalf, pid: 7, driver: d, displays: displays, gap: 0)
         XCTAssertEqual(out, .snapped)
         XCTAssertEqual(d.calls, [.read(7), .position(CGPoint(x: 0, y: 25)), .size(CGSize(width: 720, height: 875)),
-                                 .position(CGPoint(x: 0, y: 25))])
+                                 .readSize, .position(CGPoint(x: 0, y: 25))])
     }
 
     /// Review focus: a fixed-size window is moved, never resized, and nothing is retried.
@@ -113,7 +128,51 @@ final class WindowSnapperTests: DefaultsTestCase {
         s.window = window()
         s.refuseSize = true
         XCTAssertEqual(WindowSnapper.perform(.rightHalf, pid: 7, driver: s, displays: displays, gap: 0), .moved)
-        XCTAssertEqual(s.calls.count, 4, "position, size (refused), position: no loop")
+        XCTAssertEqual(s.calls.count, 5, "position, size (refused), one read, position: no loop")
+        XCTAssertEqual(s.calls.last, .position(CGPoint(x: 880, y: 313)), "the kept size centred in the right half")
+    }
+
+    /// Fix round 1: an app that says its size is settable but keeps its own gets one
+    /// re-centred move (not the target's top-left), and nothing more.
+    func testKeptSizeIsCentredOnce() {
+        let d = FakeDriver()
+        d.window = window()
+        d.keptSize = CGSize(width: 400, height: 300)
+        let out = WindowSnapper.perform(.leftHalf, pid: 7, driver: d, displays: displays, gap: 0)
+        XCTAssertEqual(out, .moved)
+        XCTAssertEqual(d.calls, [.read(7), .position(CGPoint(x: 0, y: 25)), .size(CGSize(width: 720, height: 875)),
+                                 .readSize, .position(CGPoint(x: 160, y: 313))])
+    }
+
+    /// Fix round 1 (critical): never PlatyNotch's own windows, nothing while a panel is key.
+    func testOwnWindowsAndKeyPanelAreNeverSnapped() {
+        let d = FakeDriver()
+        d.window = window()
+        let own = WindowSnapper(driver: d, displays: { [displays] in displays }, frontmost: { 42 }, blocked: { false },
+                                ownPID: 42)
+        XCTAssertNil(own.snap(.maximize))
+        let selfPID = WindowSnapper(driver: d, displays: { [displays] in displays },
+                                    frontmost: { ProcessInfo.processInfo.processIdentifier }, blocked: { false })
+        XCTAssertNil(selfPID.snap(.maximize), "the default own pid is this process")
+        let blocked = WindowSnapper(driver: d, displays: { [displays] in displays }, frontmost: { 42 }, blocked: { true })
+        XCTAssertNil(blocked.snap(.maximize))
+        XCTAssertEqual(d.calls, [], "no AX call at all")
+    }
+
+    /// Fix round 1: turning snapping off while a snap runs leaves the window alone.
+    func testDisableCancelsARunningSnap() async {
+        let r = rig(trusted: true)
+        let gate = DispatchSemaphore(value: 0)
+        r.driver.gate = gate
+        r.keys.press(.maximize)
+        let task = r.widget.snapper.inFlight
+        XCTAssertNotNil(task)
+        r.registry.setEnabled(WindowSnapWidget.widgetID, false)
+        XCTAssertNil(r.widget.snapper.inFlight)
+        gate.signal()
+        let out = await task?.value
+        XCTAssertEqual(out, .cancelled)
+        XCTAssertEqual(r.driver.calls, [.read(42)], "nothing set after the feature was turned off")
     }
 
     func testNoWindowFullScreenAndNoScreens() {
@@ -144,7 +203,7 @@ final class WindowSnapperTests: DefaultsTestCase {
         d.window = window()
         let gate = DispatchSemaphore(value: 0)
         d.gate = gate
-        let snapper = WindowSnapper(driver: d, displays: { [displays] in displays }, frontmost: { 42 })
+        let snapper = WindowSnapper(driver: d, displays: { [displays] in displays }, frontmost: { 42 }, blocked: { false })
         let first = snapper.snap(.leftHalf)
         XCTAssertNotNil(first)
         XCTAssertNil(snapper.snap(.rightHalf), "dropped while the first runs")
@@ -153,9 +212,10 @@ final class WindowSnapperTests: DefaultsTestCase {
         XCTAssertEqual(out, .snapped)
         XCTAssertNil(snapper.inFlight)
         XCTAssertEqual(d.calls.first, .read(42))
-        XCTAssertEqual(d.calls.count, 4, "only the first press did anything")
+        XCTAssertEqual(d.calls.count, 5, "only the first press did anything")
+        XCTAssertEqual(d.readsOnMain, [false], "AX work never runs on the main thread")
 
-        let noFront = WindowSnapper(driver: d, displays: { [displays] in displays }, frontmost: { nil })
+        let noFront = WindowSnapper(driver: d, displays: { [displays] in displays }, frontmost: { nil }, blocked: { false })
         XCTAssertNil(noFront.snap(.leftHalf))
     }
 
@@ -178,7 +238,8 @@ final class WindowSnapperTests: DefaultsTestCase {
         box.trusted = trusted
         let driver = FakeDriver()
         driver.window = window()
-        let snapper = WindowSnapper(driver: driver, displays: { [displays] in displays }, frontmost: { 42 })
+        let snapper = WindowSnapper(driver: driver, displays: { [displays] in displays }, frontmost: { 42 },
+                                    blocked: { false })
         let widget = WindowSnapWidget(snapper: snapper, makeHotKey: keys.make,
                                       trust: AccessibilityTrust(isTrusted: { box.trusted }, request: { box.requests += 1 }),
                                       identity: { "build-1" }, pollSleep: {}, allowSleep: { await Task.yield() })
@@ -219,7 +280,7 @@ final class WindowSnapperTests: DefaultsTestCase {
         XCTAssertEqual(r.defaults.string(forKey: AccessibilityGrant.key), "build-1")
 
         r.keys.press(.rightHalf)
-        await r.widget.snapper.inFlight?.value
+        _ = await r.widget.snapper.inFlight?.value
         XCTAssertEqual(r.driver.calls.first, .read(42))
         XCTAssertEqual(r.driver.calls[1], .position(CGPoint(x: 720, y: 25)))
 
@@ -240,6 +301,21 @@ final class WindowSnapperTests: DefaultsTestCase {
         r.widget.recheckTrust()
         XCTAssertEqual(r.widget.status, .needsAccessibility)
         XCTAssertTrue(r.keys.active.isEmpty, "a revoked grant drops the shortcuts")
+    }
+
+    /// Fix round 1: the Settings window closing re-reads trust (`AccessibilityGate`).
+    func testSettingsClosingRechecksTrust() async {
+        let r = rig(trusted: false)
+        r.trust.trusted = true
+        let settings = NSWindow(contentRect: .init(x: 0, y: 0, width: 10, height: 10), styleMask: [.titled],
+                                backing: .buffered, defer: true)
+        settings.isReleasedWhenClosed = false
+        settings.identifier = AppWindowID.settings
+        NotificationCenter.default.post(name: NSWindow.willCloseNotification, object: settings)
+        let on = await eventually { r.widget.status == .on }
+        XCTAssertTrue(on)
+        XCTAssertEqual(r.keys.active.count, 15)
+        r.registry.setEnabled(WindowSnapWidget.widgetID, false)
     }
 
     func testTakenShortcutsAreReported() {
@@ -263,7 +339,7 @@ final class WindowSnapperTests: DefaultsTestCase {
         XCTAssertEqual(r.widget.gap, 8)
         XCTAssertEqual(r.defaults.integer(forKey: SnapLayout.gapDefaultsKey), 8)
         r.keys.press(.maximize)
-        await r.widget.snapper.inFlight?.value
+        _ = await r.widget.snapper.inFlight?.value
         XCTAssertEqual(r.driver.calls[1], .position(CGPoint(x: 8, y: 33)))
     }
 
