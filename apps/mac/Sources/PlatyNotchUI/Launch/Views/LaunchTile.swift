@@ -227,10 +227,45 @@ private struct NoticeLine: View {
     let notice: LaunchNotice
 
     var body: some View {
-        Label(notice.text, systemImage: notice.isError ? "exclamationmark.triangle" : "checkmark.circle")
-            .font(.system(size: 11))
-            .foregroundStyle(notice.isError ? Theme.tint(.warning) : Color.secondary)
-            .lineLimit(2)
+        if let help = notice.help {
+            VStack(alignment: .leading, spacing: 4) {
+                Label(notice.text, systemImage: "exclamationmark.triangle")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.tint(.warning))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                PermissionHelpButtons(help: help)
+            }
+        } else {
+            Label(notice.text, systemImage: notice.isError ? "exclamationmark.triangle" : "checkmark.circle")
+                .font(.system(size: 11))
+                .foregroundStyle(notice.isError ? Theme.tint(.warning) : Color.secondary)
+                .lineLimit(2)
+        }
+    }
+}
+
+/// "Open Automation Settings" and, after a rebuild, "Copy Command" (the reset is the
+/// user's to run; PlatyNotch never changes privacy settings).
+struct PermissionHelpButtons: View {
+    let help: LaunchNotice.Help
+
+    var body: some View {
+        HStack(spacing: 8) {
+            switch help {
+            case .automation(let reset):
+                Button("Open Automation Settings") { Permissions.open(.automation) }
+                if reset {
+                    Button("Copy Command") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(PermissionAdvice.resetAppleEvents, forType: .string)
+                    }
+                    .help(PermissionAdvice.resetAppleEvents)
+                }
+            }
+        }
+        .buttonStyle(.borderless)
+        .font(.system(size: 11))
     }
 }
 

@@ -97,7 +97,8 @@ final class AppleScriptTabReader: BrowserTabReading {
             return .url(url, browser)
         case .failure(let code):
             switch code {
-            case -1743: return .denied(browser)
+            // -1744: would need consent, but no prompt came (a stale grant): the same refusal.
+            case -1743, -1744: return .denied(browser)
             case -1712: return .timedOut(browser)
             case -600, -609: return .noBrowser
             case -1728, -1719: return .noWindow(browser)
