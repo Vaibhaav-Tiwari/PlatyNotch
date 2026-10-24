@@ -42,6 +42,15 @@ public enum ChaseRules {
     /// A bonus item stays between 9 and 10 seconds (seeded).
     public static let bonusTime: ClosedRange<Double> = 9...10
 
+    // MARK: Targets (tiles)
+
+    /// The ambusher aims this far ahead of the player, the flanker pivots on a point this
+    /// far ahead, and the shy one chases only from at least this far away. (The scatter
+    /// corners depend on the maze's size: `ChaseMaze.scatterCorner`.)
+    public static let ambusherAhead = 4
+    public static let flankerAhead = 2
+    public static let shyDistance = 8
+
     // MARK: Pauses and sequences (seconds)
 
     public static let readyTime: Double = 2.0
@@ -52,7 +61,7 @@ public enum ChaseRules {
     public static let deathAnimation: Double = 1.5
     /// The cleared maze flashes before the next level.
     public static let levelClearTime: Double = 2.0
-    /// One white-and-blue flash at the end of a fright (14 frames).
+    /// One pale-and-dark flash at the end of a fright (14 frames).
     public static let flashTime: Double = 14.0 / 60.0
 
     // MARK: Not in the reference tables (chosen)

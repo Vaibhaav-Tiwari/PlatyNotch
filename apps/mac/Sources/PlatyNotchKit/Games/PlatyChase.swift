@@ -11,15 +11,8 @@ public enum ChaserKind: Int, CaseIterable, Equatable, Sendable {
     /// Chases when 8 or more tiles away, retreats to its corner when closer.
     case shy
 
-    /// The scatter corner: a tile outside the maze near its home corner.
-    public var scatterTarget: Point {
-        switch self {
-        case .chaser: Point(x: 25, y: -3)
-        case .ambusher: Point(x: 2, y: -3)
-        case .flanker: Point(x: 27, y: 32)
-        case .shy: Point(x: 0, y: 32)
-        }
-    }
+    /// The scatter corner: a tile outside the maze near its home corner (`ChaseMaze`).
+    public var scatterTarget: Point { ChaseMaze.scatterCorner(self) }
 }
 
 public enum ChaserState: Equatable, Sendable {
@@ -42,7 +35,7 @@ public struct Chaser: Equatable, Sendable {
     public var y: Double
     public var dir: Direction
     public var state: ChaserState
-    /// Blue and running (frightened mode).
+    /// Frightened and running (drawn muddy brown).
     public var frightened = false
     /// Its personal ghost-house dot counter.
     public var dotCounter = 0
@@ -172,10 +165,10 @@ public struct PlatyChase: Equatable, Sendable {
         return 0
     }
 
-    /// The end of a fright: blue and white in turn.
+    /// The end of a fright: dark and pale in turn.
     public var frightFlashing: Bool { Self.flashing(frightFrames: frightFrames, flashes: level.frightFlashes) }
 
-    /// While flashing: the white half of a flash.
+    /// While flashing: the pale half of a flash.
     public var flashWhite: Bool { Self.white(frightFrames: frightFrames, flashes: level.frightFlashes) }
 
     /// The last `flashes` flashes of a fright (14 frames each) flash.
@@ -183,16 +176,23 @@ public struct PlatyChase: Equatable, Sendable {
         frightFrames > 0 && frightFrames <= flashes * frames(ChaseRules.flashTime)
     }
 
-    /// Each flash is 7 frames white, then 7 blue.
+    /// Each flash is 7 frames pale, then 7 dark.
     public static func white(frightFrames: Int, flashes: Int) -> Bool {
         let half = max(frames(ChaseRules.flashTime) / 2, 1)
         return flashing(frightFrames: frightFrames, flashes: flashes) && ((frightFrames - 1) / half) % 2 == 1
     }
 
-    /// Steer: kept until it can be taken.
+    /// Steer: kept until it can be taken (or the player is stopped by a wall that way, or
+    /// the game pauses).
     public mutating func turn(_ d: Direction) {
         guard !isOver else { return }
         wanted = d
+    }
+
+    /// Forgets the buffered turn (the game paused: a key pressed before the pause must not
+    /// fire on resume).
+    public mutating func cancelTurn() {
+        wanted = nil
     }
 
     // MARK: - Targeting (pure)
@@ -207,14 +207,15 @@ public struct PlatyChase: Equatable, Sendable {
         case .chaser:
             return player
         case .ambusher:
-            return ahead(player, playerDir, 4)
+            return ahead(player, playerDir, ChaseRules.ambusherAhead)
         case .flanker:
-            let pivot = ahead(player, playerDir, 2)
+            let pivot = ahead(player, playerDir, ChaseRules.flankerAhead)
             return Point(x: pivot.x * 2 - chaserTile.x, y: pivot.y * 2 - chaserTile.y)
         case .shy:
             let dx = own.x - player.x
             let dy = own.y - player.y
-            return dx * dx + dy * dy >= 64 ? player : kind.scatterTarget
+            let far = ChaseRules.shyDistance * ChaseRules.shyDistance
+            return dx * dx + dy * dy >= far ? player : kind.scatterTarget
         }
     }
 
@@ -431,6 +432,8 @@ public struct PlatyChase: Equatable, Sendable {
             if open {
                 playerDir = w
                 playerMoving = true
+            } else {
+                wanted = nil   // blocked that way too: a stale turn must not fire later
             }
             return
         }
@@ -582,9 +585,17 @@ public struct PlatyChase: Equatable, Sendable {
         chasers[i] = c
     }
 
+    /// Eyes over the door: they glide sideways onto the door's centre line (they arrive on
+    /// a tile centre, half a tile off it), then sink into the house.
     private mutating func enterHouse(_ i: Int, _ dist: Double) {
         var c = chasers[i]
-        c.x = ChaseMaze.doorTop.x
+        let door = ChaseMaze.doorTop.x
+        if abs(c.x - door) > 1e-9 {
+            c.dir = c.x < door ? .right : .left
+            c.x = c.x < door ? min(c.x + dist, door) : max(c.x - dist, door)
+            chasers[i] = c
+            return
+        }
         c.dir = .down
         c.y = min(c.y + dist, ChaseMaze.houseCentre.y)
         if c.y >= ChaseMaze.houseCentre.y {
@@ -630,7 +641,6 @@ public struct PlatyChase: Equatable, Sendable {
             let t = c.tile
             if c.state == .eyes, t.y == Int(ChaseMaze.doorTop.y), t.x == 13 || t.x == 14 {
                 c.state = .entering
-                c.x = ChaseMaze.doorTop.x
                 break
             }
             c.dir = decide(c, at: t)

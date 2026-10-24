@@ -2,10 +2,11 @@ import PlatyNotchKit
 import SwiftUI
 
 /// Platy Chase: the maze (8.5 pt tiles, 238 × 263.5) between the level and dots column
-/// (left) and the lives and bonus column (right). Everything is drawn here in code: the
-/// walls (one path, built once), dots and blinking pellets, Platy with a chomping bill,
-/// four pond creatures (each its own colour and crest; blue when frightened, white when
-/// flashing, eyes only when eaten), the bonus snacks and the score popups.
+/// (left) and the lives and bonus column (right). Everything is drawn here in code, as a
+/// night creek: dark water, sandy banks with a mossy edge (one path, built once), dots
+/// and blinking pellets, Platy with a chomping bill, four pond creatures (each its own
+/// colour and crest; muddy brown when frightened, pale when flashing, eyes only when
+/// eaten), the bonus snacks and the score popups.
 struct ChaseView: View {
     let game: PlatyChase
     /// Chomp, wiggle, pellet blink and the death spin (off with Reduce Motion).
@@ -69,21 +70,31 @@ struct ChaseView: View {
 
 /// Platy Chase's drawing, in tile units scaled by `GameLayout.chaseTile`.
 enum ChaseArt {
-    static let background = Color(platyHex: 0x07101F)
-    static let wall = Color(platyHex: 0x3D9BD6)
-    static let wallFlash = Color.white
-    static let door = Color(platyHex: 0xF2A7C3)
+    /// Deep creek water at night.
+    static let background = Color(platyHex: 0x0A1A1C)
+    /// The banks: a sandy line inside a mossy edge.
+    static let wall = Color(platyHex: 0xE2B05A)
+    static let wallEdge = Color(platyHex: 0x5E9A55)
+    static let wallFlash = Color(platyHex: 0xFFF4DC)
+    /// The house door: a row of reeds.
+    static let door = Color(platyHex: 0x9CCB6B)
     static let dot = Color(platyHex: 0xF6E7C6)
-    static let ready = Color(platyHex: 0xFFD23F)
-    static let frightBody = Color(platyHex: 0x2B3FD6)
-    static let frightFace = Color(platyHex: 0xFFC9A8)
+    static let ready = Color(platyHex: 0x9BCBB5)
+    static let points = Color(platyHex: 0xFFD25A)
+    /// Frightened: a muddy brown critter with a pale face; flashing turns it pale.
+    static let frightBody = Color(platyHex: 0x8A7352)
+    static let frightFace = Color(platyHex: 0xF3E6C8)
+    static let flashBody = Color(platyHex: 0xF3E6C8)
+    static let flashFace = Color(platyHex: 0x6B5236)
 
+    /// Violet, sunflower, cornflower and lime: none of the arcade's four, and far apart in
+    /// lightness as well as hue (each also has its own crest shape).
     static func colour(_ kind: ChaserKind) -> Color {
         switch kind {
-        case .chaser: Color(platyHex: 0xF0524F)
-        case .ambusher: Color(platyHex: 0xE37BD9)
-        case .flanker: Color(platyHex: 0x3FD9C9)
-        case .shy: Color(platyHex: 0xF5A23A)
+        case .chaser: Color(platyHex: 0xB98CFF)
+        case .ambusher: Color(platyHex: 0xF5D33B)
+        case .flanker: Color(platyHex: 0x3D6BFF)
+        case .shy: Color(platyHex: 0x86C94A)
         }
     }
 
@@ -164,10 +175,18 @@ enum ChaseArt {
     private static func drawWalls(_ g: PlatyChase, in ctx: GraphicsContext, decorate: Bool) {
         var colour = wall
         if g.phase == .levelClear, decorate, (g.phaseFrames / 12) % 2 == 1 { colour = wallFlash }
-        ctx.stroke(wallPath, with: .color(colour.opacity(0.35)), style: StrokeStyle(lineWidth: 0.42, lineCap: .round, lineJoin: .round))
+        let edge: Color = colour == wallFlash ? wallFlash : wallEdge
+        ctx.stroke(wallPath, with: .color(edge.opacity(0.55)), style: StrokeStyle(lineWidth: 0.46, lineCap: .round, lineJoin: .round))
         ctx.stroke(wallPath, with: .color(colour), style: StrokeStyle(lineWidth: 0.16, lineCap: .round, lineJoin: .round))
-        let doorRect = CGRect(x: 13, y: 12.42, width: 2, height: 0.16)
-        ctx.fill(Path(doorRect), with: .color(door))
+        // The door: a low line of reeds across the house's mouth.
+        var reeds = Path()
+        for k in 0..<6 {
+            let x: CGFloat = 13.17 + CGFloat(k) * 0.33
+            let top: CGFloat = k % 2 == 0 ? 12.22 : 12.32
+            reeds.move(to: CGPoint(x: x, y: 12.78))
+            reeds.addLine(to: CGPoint(x: x, y: top))
+        }
+        ctx.stroke(reeds, with: .color(door), style: StrokeStyle(lineWidth: 0.1, lineCap: .round))
     }
 
     private static func drawFood(_ g: PlatyChase, in ctx: GraphicsContext, decorate: Bool) {
@@ -369,8 +388,8 @@ enum ChaseArt {
     private static func drawFrightened(in base: GraphicsContext, at c: CGPoint, white: Bool, wiggle: Bool) {
         var ctx = base
         ctx.translateBy(x: c.x, y: c.y)
-        let body: Color = white ? Color(platyHex: 0xF4F4FF) : frightBody
-        let face: Color = white ? Color(platyHex: 0xE0484A) : frightFace
+        let body: Color = white ? flashBody : frightBody
+        let face: Color = white ? flashFace : frightFace
         ctx.fill(bodyPath(wiggle: wiggle), with: .color(body))
         for s in [CGFloat(-1), 1] {
             ctx.fill(Path(ellipseIn: CGRect(x: 0.25 * s - 0.09, y: -0.2, width: 0.18, height: 0.18)), with: .color(face))
@@ -499,7 +518,7 @@ enum ChaseArt {
 
     private static func drawText(_ g: PlatyChase, in ctx: GraphicsContext, tile t: CGFloat) {
         for p in g.popups {
-            let label = Text(verbatim: "\(p.points)").font(.system(size: 9, weight: .bold)).foregroundColor(Color(platyHex: 0x7FE7FF))
+            let label = Text(verbatim: "\(p.points)").font(.system(size: 9, weight: .bold)).foregroundColor(points)
             ctx.draw(label, at: CGPoint(x: CGFloat(p.x) * t, y: CGFloat(p.y) * t))
         }
         if g.phase == .ready {

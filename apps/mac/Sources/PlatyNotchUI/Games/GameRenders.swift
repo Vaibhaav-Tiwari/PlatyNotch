@@ -173,18 +173,19 @@ extension GameRenders {
             AnyView(ZStack { ChaseView(game: g, decorate: true); overlay })
         }
         let start = PlatyChase(seed: 2)
-        // The first seed whose random pilot is still alive after 12 s.
+        // The first seed whose random pilot is still alive after 12 s, with no fright on.
+        func calm(_ g: PlatyChase) -> Bool { g.phase == .playing && g.frightFrames == 0 }
         var mid = played(seed: 1, frames: 720)
-        for seed: UInt64 in 2...60 where mid.phase != .playing { mid = played(seed: seed, frames: 720) }
+        for seed: UInt64 in 2...60 where !calm(mid) { mid = played(seed: seed, frames: 720) }
         var fright = mid
-        fright.placePlayer(x: 26.5, y: 3.9, dir: .up)
+        fright.placePlayer(x: 26.5, y: 2.9, dir: .up)   // onto the pellet at (26, 2)
         for _ in 0..<40 { fright.frame() }
         var flash = fright
         while flash.frightFrames > 40, flash.phase == .playing || flash.phase == .chaserEaten { flash.frame() }
         while !flash.flashWhite, flash.frightFrames > 1 { flash.frame() }
         var eaten = fright
-        if let blue = eaten.chasers.first(where: { $0.frightened && $0.state == .active }) {
-            eaten.placePlayer(x: blue.x, y: blue.y, dir: eaten.playerDir, moving: false)
+        if let scared = eaten.chasers.first(where: { $0.frightened && $0.state == .active }) {
+            eaten.placePlayer(x: scared.x, y: scared.y, dir: eaten.playerDir, moving: false)
             eaten.frame()
             for _ in 0..<45 { eaten.frame() }
         }

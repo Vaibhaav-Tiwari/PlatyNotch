@@ -43,8 +43,8 @@ final class ChaseMazeTests: XCTestCase {
                 }
             }
         }
-        var seen: Set<Point> = [Point(x: 13, y: 23)]
-        var stack = [Point(x: 13, y: 23)]
+        var seen: Set<Point> = [Point(x: 13, y: 24)]
+        var stack = [Point(x: 13, y: 24)]
         while let p = stack.popLast() {
             for d in Direction.allCases {
                 let q = Point(x: ((p.x + d.dx) % 28 + 28) % 28, y: p.y + d.dy)
@@ -67,13 +67,65 @@ final class ChaseMazeTests: XCTestCase {
         XCTAssertEqual(ChaseMaze.tile(-1, 13), .wall)
         XCTAssertTrue(ChaseMaze.isTunnel(2, 14))
         XCTAssertFalse(ChaseMaze.isTunnel(9, 14))
-        // Classic start positions: the player at (13.5, 23) between tiles 13 and 14 with
-        // no dots under it, the direct chaser above the door, the rest inside.
+        // The player between tiles 13 and 14 on the channel below the house with no dots
+        // under it, the direct chaser above the door, the rest inside.
         XCTAssertEqual(ChaseMaze.playerStart.x, 14)
-        XCTAssertEqual(ChaseMaze.tile(13, 23), .empty)
-        XCTAssertEqual(ChaseMaze.tile(14, 23), .empty)
+        XCTAssertEqual(ChaseMaze.playerStart.y, 24.5)
+        XCTAssertEqual(ChaseMaze.tile(13, 24), .empty)
+        XCTAssertEqual(ChaseMaze.tile(14, 24), .empty)
+        XCTAssertGreaterThan(ChaseMaze.playerStart.y, 16, "below the house")
         XCTAssertEqual(ChaseMaze.tile(13, 11), .empty)
-        XCTAssertEqual(ChaseMaze.tile(13, 17), .empty, "the bonus spot")
+        XCTAssertEqual(ChaseMaze.tile(13, 18), .empty, "the bonus spot")
+        XCTAssertEqual(ChaseMaze.tile(14, 18), .empty)
+        XCTAssertEqual(ChaseMaze.tile(14, 17), .wall, "the bonus spot is under the house")
+    }
+
+    /// The slow stretch runs from each edge up to the first side channel crossing the
+    /// tunnel; the crossing itself is full speed.
+    func testTunnelSlowStretchStopsBeforeTheJunction() {
+        let row = ChaseMaze.tunnelRow
+        XCTAssertEqual(ChaseMaze.tunnelEnd, 4)
+        for x in -2..<30 {
+            let crossing = ChaseMaze.tile(x, row - 1) != .wall || ChaseMaze.tile(x, row + 1) != .wall
+            if crossing { XCTAssertFalse(ChaseMaze.isTunnel(x, row), "junction \(x) is not slow") }
+        }
+        XCTAssertNotEqual(ChaseMaze.tile(4, row - 1), .wall, "column 4 crosses the tunnel")
+        XCTAssertFalse(ChaseMaze.isTunnel(4, row))
+        XCTAssertFalse(ChaseMaze.isTunnel(23, row))
+        XCTAssertTrue(ChaseMaze.isTunnel(3, row))
+        XCTAssertTrue(ChaseMaze.isTunnel(24, row))
+        XCTAssertTrue(ChaseMaze.isTunnel(-1, row), "off the maze")
+        XCTAssertFalse(ChaseMaze.isTunnel(2, row + 1))
+    }
+
+    /// The no-up tiles are real junctions with a way up: two on the lane just above the
+    /// house, two on the player's channel either side of the start.
+    func testNoUpTilesAreJunctionsAboveTheHouseAndTheStart() {
+        let walk: Set<ChaseTile> = [.dot, .pellet, .empty]
+        XCTAssertEqual(ChaseMaze.noUpTiles.count, 4)
+        for p in ChaseMaze.noUpTiles {
+            XCTAssertTrue(walk.contains(ChaseMaze.tile(p.x, p.y)), "\(p) is open")
+            XCTAssertTrue(walk.contains(ChaseMaze.tile(p.x, p.y - 1)), "\(p) has a way up")
+            let exits = Direction.allCases.filter { walk.contains(ChaseMaze.tile(p.x + $0.dx, p.y + $0.dy)) }.count
+            XCTAssertGreaterThanOrEqual(exits, 3, "\(p) is a junction")
+            XCTAssertTrue(ChaseMaze.noUpTiles.contains(Point(x: 27 - p.x, y: p.y)), "symmetric")
+        }
+        let rows = Set(ChaseMaze.noUpTiles.map(\.y))
+        XCTAssertEqual(rows, [10, Int(ChaseMaze.playerStart.y)])
+        // The nearest junctions with a way up either side of the player's start.
+        let start = Int(ChaseMaze.playerStart.y)
+        let ups = (0..<14).filter { walk.contains(ChaseMaze.tile($0, start)) && walk.contains(ChaseMaze.tile($0, start - 1)) }
+        XCTAssertEqual(ups.max(), 10)
+    }
+
+    func testScatterCornersAreOutsideTheMaze() {
+        for k in ChaserKind.allCases {
+            let p = ChaseMaze.scatterCorner(k)
+            XCTAssertEqual(k.scatterTarget, p)
+            XCTAssertTrue(p.y < 0 || p.y >= ChaseMaze.height, "\(k) beyond the top or bottom")
+        }
+        XCTAssertEqual(ChaseMaze.scatterCorner(.chaser), Point(x: 25, y: -3))
+        XCTAssertEqual(ChaseMaze.scatterCorner(.shy), Point(x: 0, y: 32))
     }
 }
 
@@ -260,7 +312,7 @@ final class PlatyChaseTests: XCTestCase {
     func testPlayerSpeedAndDotPause() {
         var g = playing()
         clearChasers(&g)
-        g.placePlayer(x: 20.5, y: 29.5, dir: .left)   // row 29: dots all along
+        g.placePlayer(x: 20.5, y: 27.5, dir: .left)   // row 27: dots all along
         let step = 0.80 * ChaseRules.maxSpeed / 60
         g.frame()
         XCTAssertEqual(g.playerX, 20.5 - step, accuracy: 1e-9)
@@ -270,7 +322,7 @@ final class PlatyChaseTests: XCTestCase {
     func testEatingADotPausesOneFrame() {
         var g = playing()
         clearChasers(&g)
-        g.placePlayer(x: 20.05, y: 29.5, dir: .left)
+        g.placePlayer(x: 20.05, y: 27.5, dir: .left)
         g.frame()   // crosses into tile 19: eats its dot
         XCTAssertEqual(g.score, 10)
         let x = g.playerX
@@ -283,15 +335,15 @@ final class PlatyChaseTests: XCTestCase {
     func testPreTurnCutsTheCorner() {
         var g = playing()
         clearChasers(&g)
-        // Row 4, moving left towards the junction at column 5 (up is open), before its centre.
-        g.placePlayer(x: 5.8, y: 4.5, dir: .left)
+        // Row 4, moving left towards the junction at column 4 (up is open), before its centre.
+        g.placePlayer(x: 4.8, y: 4.5, dir: .left)
         g.turn(.up)
         g.frame()
         XCTAssertEqual(g.playerDir, .up, "turned before reaching the centre")
         XCTAssertLessThan(g.playerY, 4.5, "already going up")
-        XCTAssertLessThan(g.playerX, 5.8, "and closing on the centre line: a diagonal")
+        XCTAssertLessThan(g.playerX, 4.8, "and closing on the centre line: a diagonal")
         run(&g, 6)
-        XCTAssertEqual(g.playerX, 5.5, accuracy: 1e-9, "aligned on the new corridor")
+        XCTAssertEqual(g.playerX, 4.5, accuracy: 1e-9, "aligned on the new corridor")
     }
 
     func testPostTurnWindowAndBuffering() {
@@ -306,13 +358,13 @@ final class PlatyChaseTests: XCTestCase {
         XCTAssertEqual(ChaseRules.cornerWindow(.left).pre * 8, 4)
         var g = playing()
         clearChasers(&g)
-        g.placePlayer(x: 5.2, y: 4.5, dir: .left)   // 0.3 past the centre: still turns
+        g.placePlayer(x: 4.2, y: 4.5, dir: .left)   // 0.3 past the centre: still turns
         g.turn(.up)
         g.frame()
         XCTAssertEqual(g.playerDir, .up)
         var late = playing()
         clearChasers(&late)
-        late.placePlayer(x: 5.05, y: 4.5, dir: .left)   // 0.45 past: too late here
+        late.placePlayer(x: 4.05, y: 4.5, dir: .left)   // 0.45 past: too late here
         late.turn(.up)
         late.frame()
         XCTAssertEqual(late.playerDir, .left, "kept going")
@@ -342,17 +394,23 @@ final class PlatyChaseTests: XCTestCase {
         XCTAssertGreaterThan(g.playerX, 25, "came out on the right")
         XCTAssertEqual(g.playerTile.y, 14)
         var h = playing()
-        h.placePlayer(x: 14, y: 23.5, dir: .left, moving: false)
+        h.placePlayer(x: 14, y: 24.5, dir: .left, moving: false)
         h.setChaser(Chaser(kind: .chaser, x: 3.4, y: 14.5, dir: .left, state: .active))
         h.frame()
         let red = h.chasers[0]
         XCTAssertEqual(3.4 - red.x, 0.40 * ChaseRules.maxSpeed / 60, accuracy: 1e-9, "tunnel speed")
+        var j = playing()
+        j.placePlayer(x: 14, y: 24.5, dir: .left, moving: false)
+        j.setChaser(Chaser(kind: .chaser, x: 4.9, y: 14.5, dir: .left, state: .active))
+        j.frame()
+        XCTAssertEqual(4.9 - j.chasers[0].x, 0.75 * ChaseRules.maxSpeed / 60, accuracy: 1e-9,
+                       "full speed on the junction where the side channel crosses")
     }
 
     func testFrightenedModeScoresAndFlashes() {
         var g = playing()
         clearChasers(&g)
-        g.placePlayer(x: 1.5, y: 3.9, dir: .up)   // on the pellet's tile (1, 3)
+        g.placePlayer(x: 1.5, y: 2.9, dir: .up)   // on the pellet's tile (1, 2)
         var n = 0
         while g.frightFrames == 0, n < 30 {
             g.frame()
@@ -360,7 +418,7 @@ final class PlatyChaseTests: XCTestCase {
         }
         XCTAssertEqual(g.score, 50)
         XCTAssertEqual(g.frightFrames, 6 * 60)
-        XCTAssertTrue(g.chasers.allSatisfy(\.frightened), "even those at home turn blue")
+        XCTAssertTrue(g.chasers.allSatisfy(\.frightened), "even those at home are frightened")
         XCTAssertFalse(g.frightFlashing)
         // Eat four in a row: 200, 400, 800, 1600.
         var expected = 50
@@ -387,7 +445,7 @@ final class PlatyChaseTests: XCTestCase {
         XCTAssertFalse(PlatyChase.flashing(frightFrames: 43, flashes: 3))
         XCTAssertTrue(PlatyChase.flashing(frightFrames: 42, flashes: 3))
         let whites = (1...70).filter { PlatyChase.white(frightFrames: $0, flashes: 5) }.count
-        XCTAssertEqual(whites, 35, "half of each flash is white")
+        XCTAssertEqual(whites, 35, "half of each flash is pale")
         XCTAssertFalse(PlatyChase.white(frightFrames: 7, flashes: 5))
         XCTAssertTrue(PlatyChase.white(frightFrames: 8, flashes: 5))
     }
@@ -395,7 +453,7 @@ final class PlatyChaseTests: XCTestCase {
     func testFrightEndsAndChasersReturnToNormal() {
         var g = playing()
         clearChasers(&g)
-        g.placePlayer(x: 1.5, y: 3.9, dir: .up)
+        g.placePlayer(x: 1.5, y: 2.9, dir: .up)
         g.frame()
         XCTAssertEqual(g.frightFrames, 360)
         var n = 0
@@ -409,9 +467,9 @@ final class PlatyChaseTests: XCTestCase {
 
     func testReversalWaitsForTheNextTile() {
         var g = playing()
-        g.placePlayer(x: 14, y: 23.5, dir: .left, moving: false)
+        g.placePlayer(x: 14, y: 24.5, dir: .left, moving: false)
         g.setChaser(Chaser(kind: .chaser, x: 21.6, y: 4.5, dir: .right, state: .active))   // 0.1 past the centre
-        g.placePlayer(x: 1.5, y: 3.9, dir: .up)   // eats the pellet: a reversal is signalled
+        g.placePlayer(x: 1.5, y: 2.9, dir: .up)   // eats the pellet: a reversal is signalled
         g.frame()
         let red = g.chasers[0]
         XCTAssertEqual(g.lastReversal, g.frames)
@@ -426,11 +484,11 @@ final class PlatyChaseTests: XCTestCase {
         XCTAssertEqual(g.chasers[0].x, 22, accuracy: 0.2, "turned round at the edge of tile 22")
     }
 
-    func testPelletReversesChasersAndLevelSeventeenHasNoBlue() {
+    func testPelletReversesChasersAndLevelSeventeenHasNoFright() {
         var g = PlatyChase(seed: 3, level: 17)
         g.skipReady()
-        g.placePlayer(x: 1.5, y: 3.9, dir: .up)
-        g.setChaser(Chaser(kind: .chaser, x: 20.5, y: 29.5, dir: .left, state: .active))
+        g.placePlayer(x: 1.5, y: 2.9, dir: .up)
+        g.setChaser(Chaser(kind: .chaser, x: 20.5, y: 27.5, dir: .left, state: .active))
         while g.score < 50 { g.frame() }
         XCTAssertEqual(g.frightFrames, 0)
         XCTAssertFalse(g.chasers.contains(where: \.frightened))
@@ -482,7 +540,7 @@ final class PlatyChaseTests: XCTestCase {
 
     func testGhostHouseRelease() {
         var g = playing()
-        g.placePlayer(x: 14, y: 23.5, dir: .left, moving: false)
+        g.placePlayer(x: 14, y: 24.5, dir: .left, moving: false)
         g.frame()
         XCTAssertEqual(g.chasers[1].state, .leaving, "the ambusher's limit is 0")
         XCTAssertEqual(g.chasers[2].state, .home)
@@ -507,7 +565,7 @@ final class PlatyChaseTests: XCTestCase {
         run(&g, 150)
         XCTAssertEqual(g.phase, .ready)
         g.skipReady()
-        g.placePlayer(x: 14, y: 23.5, dir: .left, moving: false)
+        g.placePlayer(x: 14, y: 24.5, dir: .left, moving: false)
         for _ in 0..<6 { g.simulateDotEaten() }
         g.frame()
         XCTAssertEqual(g.chasers[1].state, .home, "6 of 7")
@@ -530,7 +588,7 @@ final class PlatyChaseTests: XCTestCase {
         XCTAssertEqual(g.elroy, 1)
         g.clearFood(keeping: 10)
         XCTAssertEqual(g.elroy, 2)
-        g.placePlayer(x: 14, y: 23.5, dir: .left, moving: false)
+        g.placePlayer(x: 14, y: 24.5, dir: .left, moving: false)
         g.setChaser(Chaser(kind: .chaser, x: 21.5, y: 4.5, dir: .left, state: .active))   // not in the tunnel
         g.frame()
         let moved = 21.5 - g.chasers[0].x
@@ -588,6 +646,121 @@ final class PlatyChaseTests: XCTestCase {
         }
         XCTAssertEqual(play(5), play(5))
         XCTAssertNotEqual(play(5), play(6))
+    }
+
+    /// The player and a chaser swapping tiles in one frame (each moving into the other's
+    /// tile) is still a catch: the player moves and is checked before the chasers move.
+    func testSwapThroughInOneFrameIsACatch() {
+        for (level, elroy) in [(1, false), (1, true), (5, true)] {
+            var g = PlatyChase(seed: 1, level: level)
+            g.skipReady()
+            if elroy { g.clearFood(keeping: 5) }   // Elroy 2: the fastest chaser
+            XCTAssertEqual(g.elroy, elroy ? 2 : 0)
+            for k in ChaserKind.allCases where k != .chaser {
+                g.setChaser(Chaser(kind: k, x: 14, y: 14.5, dir: .up, state: .home))
+            }
+            // Row 21, a straight lane: the player at the right edge of tile 10, the chaser
+            // at the left edge of tile 11; each crosses into the other's tile this frame.
+            g.placePlayer(x: 10.95, y: 21.5, dir: .right)
+            g.setChaser(Chaser(kind: .chaser, x: 11.05, y: 21.5, dir: .left, state: .active))
+            g.frame()
+            XCTAssertEqual(g.phase, .dying, "level \(level), Elroy \(elroy): caught, not passed through")
+        }
+        // The player standing still while the chaser crosses into its tile.
+        var p = playing()
+        clearChasers(&p)
+        p.placePlayer(x: 11.05, y: 21.5, dir: .left, moving: false)
+        p.setChaser(Chaser(kind: .chaser, x: 12.02, y: 21.5, dir: .left, state: .active))
+        p.frame()
+        XCTAssertEqual(p.phase, .dying)
+    }
+
+    /// Every frame of a fast chaser and the player closing on each other at Elroy 2
+    /// speed ends either before they meet or with a catch: never with them past each other.
+    func testNeverPassesThroughAtElroyTwoSpeed() {
+        for start in stride(from: 0.0, to: 1.0, by: 0.05) {
+            var g = PlatyChase(seed: 2, level: 5)
+            g.skipReady()
+            g.clearFood(keeping: 5)
+            for k in ChaserKind.allCases where k != .chaser {
+                g.setChaser(Chaser(kind: k, x: 14, y: 14.5, dir: .up, state: .home))
+            }
+            g.placePlayer(x: 8.5 + start, y: 21.5, dir: .right)
+            g.setChaser(Chaser(kind: .chaser, x: 16.5, y: 21.5, dir: .left, state: .active))
+            var n = 0
+            while g.phase == .playing, n < 120 {
+                g.frame()
+                n += 1
+                if g.phase == .playing {
+                    XCTAssertLessThan(g.playerX, g.chasers[0].x, "start \(start): passed through on frame \(n)")
+                }
+            }
+            XCTAssertEqual(g.phase, .dying, "start \(start)")
+        }
+    }
+
+    func testBufferedTurnClearedWhenBlocked() {
+        var g = playing()
+        clearChasers(&g)
+        g.placePlayer(x: 3.5, y: 4.5, dir: .left)
+        g.turn(.down)   // no way down before the wall at column 0 except column 1
+        run(&g, 60)
+        XCTAssertEqual(g.playerDir, .down, "taken at column 1")
+        var h = playing()
+        clearChasers(&h)
+        h.placePlayer(x: 1.5, y: 1.5, dir: .left, moving: false)   // top-left corner: wall left and up
+        h.turn(.up)
+        h.frame()
+        XCTAssertNil(h.wanted, "blocked that way: forgotten")
+        XCTAssertFalse(h.playerMoving)
+        h.turn(.right)
+        h.frame()
+        XCTAssertTrue(h.playerMoving)
+        XCTAssertEqual(h.playerDir, .right)
+    }
+
+    func testPauseForgetsTheBufferedTurn() {
+        var s = GameSession(kind: .chase, seed: 2)
+        s.setBlockers(GameBlockers())
+        _ = s.key(.space)
+        _ = s.key(.up)
+        XCTAssertEqual(s.chase.wanted, .up)
+        _ = s.key(.escape)
+        XCTAssertEqual(s.phase, .paused)
+        XCTAssertNil(s.chase.wanted, "a turn pressed before the pause does not fire on resume")
+        _ = s.key(.space)
+        _ = s.key(.down)
+        XCTAssertEqual(s.chase.wanted, .down)
+        s.setBlockers(GameBlockers(approval: true))
+        XCTAssertNil(s.chase.wanted, "blocked: paused, forgotten")
+    }
+
+    /// Eaten eyes reach the door on a tile centre (13.5 or 14.5), half a tile off the
+    /// door's line: they glide onto it, never jump.
+    func testReturningEyesGlideOntoTheDoor() {
+        for (x, dir) in [(11.5, Direction.right), (16.5, Direction.left)] {
+            var g = playing()
+            g.placePlayer(x: 14, y: 24.5, dir: .left, moving: false)
+            for k in ChaserKind.allCases where k != .chaser {
+                g.setChaser(Chaser(kind: k, x: 14, y: 14.5, dir: .up, state: .home))
+            }
+            g.setChaser(Chaser(kind: .chaser, x: x, y: 11.5, dir: dir, state: .eyes))
+            var lastX = x
+            var lastY = 11.5
+            var n = 0
+            let step = ChaseRules.eyesSpeed * ChaseRules.maxSpeed / 60
+            while g.chasers[0].state != .leaving, n < 200 {
+                g.frame()
+                n += 1
+                let c = g.chasers[0]
+                XCTAssertLessThanOrEqual(abs(c.x - lastX), step + 1e-9, "from \(x): no sideways jump on frame \(n)")
+                XCTAssertLessThanOrEqual(abs(c.y - lastY), step + 1e-9)
+                if c.y > 11.5 + 1e-9 { XCTAssertEqual(c.x, ChaseMaze.doorTop.x, accuracy: 1e-9, "on the door's line before sinking") }
+                lastX = c.x
+                lastY = c.y
+            }
+            XCTAssertEqual(g.chasers[0].state, .leaving, "from \(x): reached the house")
+        }
     }
 
     func testSessionPlaysChase() {
