@@ -72,12 +72,12 @@ final class PanelSurfacesTests: DefaultsTestCase {
         XCTAssertEqual(r.controller.mode, .compact)
     }
 
-    func testPeekExpiresOnItsOwn() async throws {
+    func testPeekExpiresOnItsOwn() async {
         let r = rig()
         r.context.peek(id: "fake.short", until: Date().addingTimeInterval(0.2))
         XCTAssertEqual(r.controller.mode, .peek(.widget(id: "fake.short")))
-        try await Task.sleep(for: .milliseconds(600))
-        XCTAssertEqual(r.controller.mode, .compact)
+        let expired = await eventually { r.controller.mode == .compact }
+        XCTAssertTrue(expired, "the peek ends at its until without any other event")
     }
 
     func testRingingSharedAndStopped() {

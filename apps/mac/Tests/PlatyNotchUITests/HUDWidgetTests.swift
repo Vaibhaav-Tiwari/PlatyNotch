@@ -125,7 +125,7 @@ final class HUDWidgetTests: DefaultsTestCase {
 
     /// Lets the main-queue hand-off from the router run.
     private func drain() async {
-        try? await Task.sleep(for: .milliseconds(50))
+        await drainMainQueue()
     }
 
     func testOffByDefaultAndDoesNoWork() {

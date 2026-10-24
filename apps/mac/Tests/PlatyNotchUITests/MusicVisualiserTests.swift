@@ -95,8 +95,9 @@ final class MusicVisualiserTests: DefaultsTestCase {
         XCTAssertTrue(d.bool(forKey: MusicVisualiser.enabledKey))
         XCTAssertEqual(taps().count, 1, "the prompt belongs to turning the toggle on")
         XCTAssertTrue(v.isRunning)
-        try await Task.sleep(for: .milliseconds(200))
-        XCTAssertTrue(v.isRunning, "priming over: the stop grace starts")
+        let graceStarted = await eventually { sleeper.pending > 0 }
+        XCTAssertTrue(graceStarted, "priming over: the stop grace starts")
+        XCTAssertTrue(v.isRunning, "the tap outlives priming by the grace")
         await sleeper.fire()
         XCTAssertFalse(v.isRunning, "nothing playing or visible: the tap stops after priming")
         XCTAssertEqual(taps()[0].stops, 1)

@@ -67,6 +67,8 @@ private final class FakeDraggingInfo: NSObject, NSDraggingInfo {
 
 @MainActor
 final class ShelfWidgetTests: DefaultsTestCase {
+    /// The drop zone's release grace: nothing wakes until `fire()` (C11).
+    private let grace = ManualSleeper()
     nonisolated(unsafe) private var dirs: [URL] = []
 
     override func tearDown() {
@@ -108,6 +110,8 @@ final class ShelfWidgetTests: DefaultsTestCase {
         let c = NotchController(store: AppStore(), client: client, plugins: [], widgets: registry,
                                 surfaces: surfaces, appearance: AppearanceSettings())
         c.cursorLocation = { CGPoint(x: 100, y: 100) }   // never the real mouse
+        let grace = self.grace
+        c.graceSleep = { _ in await grace.sleep(0) }
         c.debugHandle(.layout(PanelLayout(screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),
                                           visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 950),
                                           auxLeft: CGRect(x: 0, y: 950, width: 654, height: 32),
@@ -305,7 +309,7 @@ final class ShelfWidgetTests: DefaultsTestCase {
         down = false
         r.controller.dragMoved(to: CGPoint(x: 756, y: 800))
         XCTAssertEqual(r.controller.mode, .peek(.drop))
-        try await Task.sleep(for: .milliseconds(600))
+        await grace.fire()   // the grace passes with no drop
         XCTAssertEqual(r.controller.mode, .compact)
         XCTAssertFalse(r.controller.awaitingDrop)
         r.surfaces.setDragSession(active: false)
@@ -356,7 +360,7 @@ final class ShelfWidgetTests: DefaultsTestCase {
         r.surfaces.setDragSession(active: true)   // the next drag, within 300 ms
         XCTAssertFalse(r.controller.awaitingDrop)
         r.controller.dragMoved(to: CGPoint(x: 756, y: 900))
-        try await Task.sleep(for: .milliseconds(500))
+        await grace.fire()   // the old (cancelled) grace wakes
         XCTAssertEqual(r.controller.mode, .peek(.drop), "the old grace did not close the new drag's zone")
         r.controller.dragMoved(to: CGPoint(x: 100, y: 100))
         r.surfaces.setDragSession(active: false)

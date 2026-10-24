@@ -63,6 +63,8 @@ public final class NotchController {
     var mouseDown: () -> Bool = { NSEvent.pressedMouseButtons & 1 != 0 }
     /// Where the cursor is now (tests pin it, so no result depends on the real mouse).
     var cursorLocation: () -> CGPoint = { NSEvent.mouseLocation }
+    /// Waits out `dropGrace` (tests inject one they release by hand).
+    var graceSleep: @MainActor (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     /// The clock approval arming notes cards against (tests move it).
     var armingClock: () -> Date = { Date() }
     private var workspaceObservers: [NSObjectProtocol] = []
@@ -397,8 +399,9 @@ public final class NotchController {
             return
         }
         guard dropGraceTask == nil else { return }
+        let sleep = graceSleep
         dropGraceTask = Task { [weak self] in
-            try? await Task.sleep(for: NotchController.dropGrace)
+            await sleep(NotchController.dropGrace)
             guard !Task.isCancelled else { return }
             self?.finishDrop()
         }
