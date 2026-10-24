@@ -87,36 +87,12 @@ func (i *Ingester) Ingest(c protocol.CaptureText) (int, error) {
 		ID: hex.EncodeToString(vid), ThreadID: th.ID, HourBucket: at.Unix() / 3600,
 		Content: text, ContentHash: hash, Chars: utf8.RuneCountInString(text), CreatedAt: at,
 	}
-	prev, err := i.store.PutVersion(v)
-	if err != nil {
-		return 0, err
-	}
-	prevContent, versionID := "", v.ID
-	if prev != nil {
-		if prev.ContentHash == hash {
-			return 0, nil
-		}
-		prevContent, versionID = prev.Content, prev.ID
-	}
-	pieces := Chunk(NewText(prevContent, text), chunkSize, chunkOverlap)
-	if len(pieces) == 0 {
-		return 0, nil
-	}
-	idx := 0
-	if prev != nil {
-		if idx, err = i.store.CountChunks(versionID); err != nil {
-			return 0, err
-		}
-	}
-	cs := make([]store.Chunk, len(pieces))
-	for k, p := range pieces {
-		cs[k] = store.Chunk{VersionID: versionID, ThreadID: th.ID, Idx: idx + k, Text: p,
-			CapturedAt: at, EmbedStatus: "pending", ExtractStatus: "pending"}
-	}
-	if _, err := i.store.AddChunks(cs); err != nil {
-		return 0, err
-	}
-	return len(cs), nil
+	// One transaction: the version and its chunks are stored together, and only
+	// lines not in the last chunked version are chunked, so a window left open is
+	// not chunked (and embedded) again every hour.
+	return i.store.SaveCapture(v, func(base string) []string {
+		return Chunk(NewText(base, text), chunkSize, chunkOverlap)
+	})
 }
 
 // stripURL keeps only scheme, host and path: query strings and fragments

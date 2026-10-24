@@ -53,6 +53,13 @@ public final class MemorySearchModel {
     /// Searches now (tab shown, memory turned on, reconnected).
     func refresh() { schedule(debounced: false) }
 
+    /// Re-lists recent activity after a capture (debounced, so the core has stored it);
+    /// a typed search is left alone.
+    func captureArrived() {
+        guard query.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        schedule(debounced: true)
+    }
+
     private func schedule(debounced: Bool) {
         task?.cancel()
         let q = query
@@ -91,22 +98,9 @@ struct MemoryTab: View {
     let memory: MemoryServices
 
     var body: some View {
-        @Bindable var search = memory.search
+        let search = memory.search
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
-                TextField("Search memory", text: $search.query)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 12))
-                if !search.query.isEmpty {
-                    Button { search.query = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Clear search")
-                }
-            }
-            .padding(6)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            MemorySearchField(search: search)
 
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -116,7 +110,10 @@ struct MemoryTab: View {
         .onAppear { search.refresh() }
         .onChange(of: store.memory.enabled) { _, _ in search.refresh() }
         .onChange(of: store.connection) { _, c in if c == .connected { search.refresh() } }
+        .onChange(of: lastCapture) { _, _ in search.captureArrived() }
     }
+
+    private var lastCapture: Date? { memory.capture?.activity.lastCaptureAt }
 
     @ViewBuilder private var content: some View {
         switch memory.search.phase {
@@ -155,6 +152,27 @@ struct MemoryTab: View {
                 }
             }
         }
+    }
+}
+
+private struct MemorySearchField: View {
+    @Bindable var search: MemorySearchModel
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary).accessibilityHidden(true)
+            TextField("Search memory", text: $search.query)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+            if !search.query.isEmpty {
+                Button { search.query = "" } label: { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(6)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
@@ -235,5 +253,26 @@ private struct MemoryStatusLine: View {
         }
         .font(.system(size: 10))
         .lineLimit(2)
+        if capture.status == .capturing { CaptureActivityLines(activity: capture.activity) }
+    }
+}
+
+/// What capture last did: when and from which app, how many today, and why the last
+/// window was skipped, so nobody has to guess whether memory is working.
+private struct CaptureActivityLines: View {
+    let activity: CaptureActivity
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { ctx in
+            VStack(alignment: .leading, spacing: 1) {
+                Text(verbatim: activity.captureLine(now: ctx.date))
+                    .foregroundStyle(.tertiary)
+                if let skip = activity.skipLine(now: ctx.date) {
+                    Text(verbatim: skip).foregroundStyle(.tertiary)
+                }
+            }
+            .font(.system(size: 10))
+            .lineLimit(1)
+        }
     }
 }

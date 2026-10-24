@@ -266,3 +266,55 @@ func TestPerf20k(t *testing.T) {
 		t.Fatalf("too slow: %v", d)
 	}
 }
+
+// One long, busy thread (a terminal, an editor) produced the 50 newest chunks,
+// so the recent list showed only that thread: memory looked "stuck on a single
+// thing" while other windows were being captured.
+func TestEmptyQueryListsEveryRecentThread(t *testing.T) {
+	s := openStore(t)
+	now := time.Now()
+	for i, name := range []string{"Mail", "Notes", "Slack"} {
+		add(t, s, "b."+name, name, name+" text", now.Add(-time.Duration(10-i)*time.Minute), "", nil)
+	}
+	th, _ := s.UpsertThread(store.Thread{AppBundle: "t", AppName: "Terminal", Key: "zsh", Title: "zsh"})
+	s.PutVersion(store.Version{ID: "vt", ThreadID: th.ID, HourBucket: 1, Content: "x", ContentHash: "x", CreatedAt: now})
+	var cs []store.Chunk
+	for i := 0; i < 80; i++ {
+		cs = append(cs, store.Chunk{VersionID: "vt", ThreadID: th.ID, Idx: i, Text: fmt.Sprint("log ", i), CapturedAt: now})
+	}
+	if _, err := s.AddChunks(cs); err != nil {
+		t.Fatal(err)
+	}
+	hits, err := Search(context.Background(), s, nil, protocol.MemorySearch{Limit: 30})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var apps []string
+	for _, h := range hits {
+		apps = append(apps, h.SourceApp)
+	}
+	if fmt.Sprint(apps) != "[Terminal Slack Notes Mail]" {
+		t.Fatalf("recent = %v", apps)
+	}
+	if hits[0].Snippet != "log 0" { // the start of the newest capture's text
+		t.Fatalf("snippet = %q", hits[0].Snippet)
+	}
+}
+
+func TestEmptyQueryRecentHonoursFilters(t *testing.T) {
+	s := openStore(t)
+	now := time.Now()
+	add(t, s, "com.apple.mail", "Mail", "mail text", now.Add(-2*time.Hour), "", nil)
+	add(t, s, "com.apple.Notes", "Notes", "notes text", now.Add(-time.Hour), "", nil)
+	add(t, s, "com.apple.Notes", "Notes", "newer notes", now, "", nil)
+	hits, _ := Search(context.Background(), s, nil, protocol.MemorySearch{App: "mail"})
+	if len(hits) != 1 || hits[0].Snippet != "mail text" {
+		t.Fatalf("app: %+v", hits)
+	}
+	since := now.Add(-90 * time.Minute)
+	until := now.Add(-30 * time.Minute)
+	hits, _ = Search(context.Background(), s, nil, protocol.MemorySearch{Since: &since, Until: &until})
+	if len(hits) != 1 || hits[0].Snippet != "notes text" {
+		t.Fatalf("window: %+v", hits)
+	}
+}

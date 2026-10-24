@@ -173,6 +173,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        capture.revertManualAccessibility(wait: true)
         widgets.stopAll()
         supervisor?.stop()
     }

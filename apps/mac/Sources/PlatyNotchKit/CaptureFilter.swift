@@ -2,8 +2,9 @@ import Foundation
 
 /// Decides whether an on-screen text capture is sent to the core.
 public struct CaptureFilter: Sendable {
-    /// Shorter captures (after trimming) carry nothing worth remembering.
-    public static let minChars = 20
+    /// Shorter captures (after trimming) carry nothing worth remembering. The core's
+    /// minimum (`ingest.minChars`): shorter text was sent, dropped there, and looked captured.
+    public static let minChars = 40
     /// Password managers: never captured, even if `exclude_apps` drops them.
     public static let passwordManagers: Set<String> = [
         "com.1password.1password", "com.agilebits.onepassword7",
@@ -40,6 +41,12 @@ public struct CaptureFilter: Sendable {
     /// Case-insensitive markers of private / incognito windows in titles and AX descriptions.
     public static let privateMarkers = ["incognito", "inprivate", "private browsing", "private window",
                                         " — private", " - private"]
+
+    /// No keyboard or mouse input for this long: nothing new is on screen, so the
+    /// walk (load on the frontmost app) is skipped.
+    public static let idleAfterSeconds: Double = 120
+
+    public static func isIdle(secondsSinceInput: Double) -> Bool { secondsSinceInput >= idleAfterSeconds }
 
     public let excluded: Set<String>
 
