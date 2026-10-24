@@ -8,9 +8,11 @@ import SwiftUI
 /// below the notch at 10, 5 and 1 minutes before the start (`MeetingReminderSchedule`).
 ///
 /// Calendar access is asked for only from a button (the tile's "Allow Calendar Access",
-/// this widget's settings or Settings › Permissions). While enabled, the widget re-reads
-/// the access status and the events every `refreshInterval` (sooner at a reminder, start
-/// or end), on every calendar change (`EKEventStoreChanged`) and after the Mac wakes.
+/// this widget's settings or Settings › Permissions). While enabled with access, the
+/// widget re-reads the events every `refreshInterval` (sooner at a reminder, start or
+/// end), on every calendar change (`EKEventStoreChanged`) and after the Mac wakes. Without
+/// access there is no timer at all (C13): it wakes only when the access status changes
+/// (an Allow button, the tile re-reading it when shown) or after the Mac wakes.
 /// Turned off, it reads nothing and observes nothing.
 ///
 /// Reminder peeks stay quiet during a PlatyNotch focus session (the pill countdown still
@@ -78,7 +80,24 @@ final class MeetingWidget: NotchWidget {
         self.context = context
         calendar.startWatching()
         observeWake()
+        observeAccess()
         tick()
+    }
+
+    /// A wake-up is scheduled (tests: none without calendar access).
+    var hasWakeScheduled: Bool { task != nil }
+
+    /// Ticks when the access status changes, while running (no polling for a grant).
+    private func observeAccess() {
+        withObservationTracking {
+            _ = calendar.access
+        } onChange: { [weak self] in
+            Task { @MainActor in
+                guard let self, self.context != nil else { return }
+                self.tick()
+                self.observeAccess()
+            }
+        }
     }
 
     func stop() {
@@ -108,6 +127,8 @@ final class MeetingWidget: NotchWidget {
 
     private func scheduleWake() {
         task?.cancel()
+        task = nil
+        guard calendar.access == .granted else { return }   // C13: no 30 s wakes without access
         let wake = MeetingTimeline.nextWake(calendar.meetings, now: now).map { $0.timeIntervalSince(now) + 0.05 }
         let delay = min(Self.refreshInterval, max(0.05, wake ?? Self.refreshInterval))
         task = Task { @MainActor [weak self] in

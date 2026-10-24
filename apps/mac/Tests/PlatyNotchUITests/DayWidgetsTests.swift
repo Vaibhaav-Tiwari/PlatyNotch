@@ -242,6 +242,22 @@ final class DayWidgetsTests: DefaultsTestCase {
         widget.stop()
     }
 
+    /// Final review C13: without calendar access there is no periodic wake; a grant (the
+    /// access status changing) starts the reads and the timer.
+    func testMeetingNoWakesWithoutAccess() async {
+        let calendar = CalendarService(eventKit: false)
+        let widget = MeetingWidget(calendar: calendar)
+        widget.start(context: context())
+        XCTAssertFalse(widget.hasWakeScheduled, "no 30 s timer while access is missing")
+        widget.tick()
+        XCTAssertFalse(widget.hasWakeScheduled)
+        calendar.setForTesting(access: .granted, meetings: [])
+        for _ in 0..<20 where !widget.hasWakeScheduled { await Task.yield() }
+        XCTAssertTrue(widget.hasWakeScheduled, "the grant is picked up without polling")
+        widget.stop()
+        XCTAssertFalse(widget.hasWakeScheduled)
+    }
+
     // MARK: - Reminders
 
     func testRemindersWidgetOffByDefaultAndInert() {

@@ -376,6 +376,17 @@ final class MusicVisualiserTests: DefaultsTestCase {
         moved.elapsed = 50
         XCTAssertEqual(NowPlaying.stamped(moved, previous: first, now: t0.addingTimeInterval(9))?.timestamp,
                        t0.addingTimeInterval(9))
+        // C6: same elapsed but paused, another track or another player: a fresh stamp.
+        let later = t0.addingTimeInterval(9)
+        var paused = report
+        paused.isPlaying = false
+        XCTAssertEqual(NowPlaying.stamped(paused, previous: first, now: later)?.timestamp, later)
+        var other = report
+        other.title = "Other"
+        XCTAssertEqual(NowPlaying.stamped(other, previous: first, now: later)?.timestamp, later)
+        var player = report
+        player.bundleIdentifier = "y"
+        XCTAssertEqual(NowPlaying.stamped(player, previous: first, now: later)?.timestamp, later)
         let given = NowPlayingInfo(bundleIdentifier: "x", title: "T", isPlaying: true, elapsed: 1, timestamp: t0)
         XCTAssertEqual(NowPlaying.stamped(given, previous: nil, now: t0.addingTimeInterval(3))?.timestamp, t0)
         XCTAssertNil(NowPlaying.stamped(NowPlayingInfo(bundleIdentifier: "x", title: "T", isPlaying: true),

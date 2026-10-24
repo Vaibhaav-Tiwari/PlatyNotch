@@ -194,15 +194,22 @@ public final class NowPlaying {
 
     /// A report with an elapsed time but no timestamp is stamped once, when it arrives (so
     /// `clock` does not restart from `elapsed` on every read). An unchanged elapsed time
-    /// keeps the earlier stamp: a diff about something else does not move the clock.
+    /// keeps the earlier stamp only for the same track in the same state (elapsed, playing,
+    /// title and player all equal): a diff about something else does not move the clock, but
+    /// a pause, resume or new track at the same elapsed time is stamped afresh (C6).
     static func stamped(_ new: NowPlayingInfo?, previous: NowPlayingInfo?, now: Date) -> NowPlayingInfo? {
         guard var new, new.elapsed != nil, new.timestamp == nil else { return new }
-        if let previous, previous.elapsed == new.elapsed, let at = previous.timestamp {
+        if let previous, sameClock(previous, new), let at = previous.timestamp {
             new.timestamp = at
         } else {
             new.timestamp = now
         }
         return new
+    }
+
+    private static func sameClock(_ a: NowPlayingInfo, _ b: NowPlayingInfo) -> Bool {
+        a.elapsed == b.elapsed && a.isPlaying == b.isPlaying && a.title == b.title
+            && a.bundleIdentifier == b.bundleIdentifier
     }
 
     /// The glow colour, off the main thread; a newer artwork wins over a late result.
