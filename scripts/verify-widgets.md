@@ -1036,7 +1036,8 @@ OCRs small files made by the tests (`FileActionsEngineTests`); these checks use 
   `<name>.zip.partial`, renamed when done. An archive that would unpack to more than 2 GB
   (e.g. a zip of a large sparse disk image) is refused with "it would unpack to more than 2 GB".
   An archive that is damaged or hostile (entries outside its folder, headers that disagree,
-  a link to an absolute path) says "the archive is damaged or unsafe"; one that unpacks to
+  entries its list does not show, a link to an absolute path or with `..`, whatever system
+  made it) says "the archive is damaged or unsafe"; one that unpacks to
   more than it declares is stopped within a quarter second and deleted. With less free
   disk space than the archive holds, it says "there is not enough free disk space".
 - [ ] **205. Batch rename.** Select three files in a Downloads subfolder (⌘-click), Actions
@@ -1062,4 +1063,5 @@ OCRs small files made by the tests (`FileActionsEngineTests`); these checks use 
   `~/Library/Application Support/PlatyNotch`, a relative path or more than 20 paths: no
   peek. `open platynotch://clipboard/open` opens the clipboard picker only while Clipboard
   history is on, and opening it again leaves it open. In a picker a link opened, ↩ does
-  nothing until you press ↑/↓ or move the mouse over it.
+  nothing until you press ↑/↓ or move the mouse (a cursor that stays still where the
+  picker appears, e.g. near the bottom of the screen, does not count).
