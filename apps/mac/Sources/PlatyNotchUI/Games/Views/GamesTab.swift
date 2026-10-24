@@ -159,9 +159,9 @@ struct GameBoard: View {
 
     @ViewBuilder private var content: some View {
         switch session.kind {
-        case .snake: SnakeView(snake: session.snake, pulse: pulse, animate: decorate)
+        case .snake: SnakeView(snake: session.snake, deaths: session.snakeDeaths, pulse: pulse, animate: decorate)
         case .tetris: TetrisView(tetris: session.tetris)
-        case .twenty48: Game2048View(game: session.game2048, animate: decorate)
+        case .twenty48: Game2048View(game: session.game2048, moves: session.moves2048, animate: decorate)
         case .flappy: FlappyView(flappy: session.flappy, decorate: decorate)
         case .chase: ChaseView(game: session.chase, decorate: decorate)
         }

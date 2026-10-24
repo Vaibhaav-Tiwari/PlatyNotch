@@ -10,6 +10,9 @@ import SwiftUI
 /// Motion the grid snaps to its final state.
 struct Game2048View: View {
     let game: Game2048
+    /// `GameSession.moves2048`: a move's animation plays when it goes up (not when a new
+    /// game starts).
+    let moves: Int
     /// Slide and pop (false with Reduce Motion).
     let animate: Bool
 
@@ -18,7 +21,7 @@ struct Game2048View: View {
         Group {
             if animate {
                 Color.clear
-                    .keyframeAnimator(initialValue: 1.0, trigger: game.lastMove?.serial ?? 0) { _, progress in
+                    .keyframeAnimator(initialValue: 1.0, trigger: moves) { _, progress in
                         Game2048Canvas(game: game, progress: progress)
                     } keyframes: { _ in
                         KeyframeTrack {

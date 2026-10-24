@@ -973,7 +973,8 @@ writes `<dir>/games/*.png`.
 - [ ] **193. 2048 slides.** Each move slides the tiles from their old cell to their new
   one (about a tenth of a second), a merged tile pops, the new tile grows in. Press
   arrows quickly: every press is one move (none lost, none doubled) and the slide restarts
-  from the latest grid. With Reduce Motion the grid changes at once.
+  from the latest grid. Starting a new game plays no slide. With Reduce Motion the grid
+  changes at once.
 - [ ] **194. Tetris well.** The well is about 130 × 260 pt with the stats on the left and
   the next three pieces on the right. Grid lines are faint; the ghost outline shows where
   the piece will land and a soft lane joins the piece to it, so the column and row are
@@ -982,17 +983,21 @@ writes `<dir>/games/*.png`.
   speeds up a little with every food, topping out at 0.07 s after 33. Run into yourself:
   the hit cell flashes red three times with a ring, the eyes turn to crosses, the body
   fades from head to tail, and only then (about 1.1 s) "Game over" appears. Into a wall:
-  the same at the head. With Reduce Motion the faded snake and the card show at once.
+  the same at the head. A new game starts still (the death animation does not replay).
+  With Reduce Motion the faded snake and the card show at once.
 
 ## Platy Chase
 
 Automated: `PlatyChaseTests` (the maze: 28 × 31, 240 dots and 4 pellets in the corner
 regions, symmetric, connected, no dead ends or wide corridors, house, door, tunnel and
-start tiles; every rule table against the Pac-Man Dossier's Table A.1: speeds, Elroy
+start tiles, no-up tiles that are real junctions, a tunnel slow stretch that stops before
+the side channel's junction, scatter corners outside the maze; every rule table against the Pac-Man Dossier's Table A.1: speeds, Elroy
 thresholds and speeds, fright times and flashes, scatter/chase schedules, bonus values,
 house dot limits and the dot timer; the four targets including the facing-up quirk; the
 up-left-down-right tie-break and no reversal outside a mode change over 6000 frames;
-pre-turn and post-turn cornering and the buffered turn; the tunnel's wrap and slowdown;
+pre-turn and post-turn cornering and the buffered turn (forgotten when blocked or paused);
+the tunnel's wrap and slowdown; no passing through a chaser when both cross tiles in one
+frame, Elroy 2 included; returning eyes glide onto the door's line;
 frightened scoring 200/400/800/1600 and flashing; the one-frame dot pause; lives, game
 over and the extra life at 10,000; bonus items at 70 and 170 dots; the global counter
 after a lost life; the level clear; determinism). Renders: `--platy-gallery <dir>` writes
@@ -1003,14 +1008,16 @@ caught, death, the art sheet).
   seconds, then steer Platy with arrows or WASD. A turn pressed early is taken at the next
   opening and Platy cuts corners. The maze fits the panel with the level and dots on the
   left, lives and the level's bonus snack on the right.
-- [ ] **197. Chasers.** The red horned one heads straight for Platy, the pink one aims
-  ahead of it, the teal one flanks, the orange one wanders off when it gets close. They
+- [ ] **197. Chasers.** The maze is a night creek: dark water, sandy banks with a mossy
+  edge, a line of reeds across the house's door. The violet horned one heads straight for
+  Platy, the yellow one aims ahead of it, the blue one flanks, the green one wanders off
+  when it gets close. They
   scatter to their corners at the start (7 s on level 1) and turn round together whenever
   the mode changes, never otherwise.
-- [ ] **198. Power pellets.** Eat a corner pellet: the chasers turn blue and reverse, flash
-  white near the end (5 flashes on level 1), and are worth 200, 400, 800, 1600 in a row;
-  an eaten one shows its points for a second, then its eyes hurry home and it comes out
-  again.
+- [ ] **198. Power pellets.** Eat a corner pellet: the chasers turn muddy brown and
+  reverse, flash pale near the end (5 flashes on level 1), and are worth 200, 400, 800, 1600 in a row;
+  an eaten one shows its points for a second, then its eyes hurry home, slide onto the
+  door (no jump) and it comes out again.
 - [ ] **199. Lives, bonus, levels.** Caught: everything stops for a second, Platy spins
   away, and play restarts with a life fewer; after the third, "Game over". A snack appears
   under the house after 70 and 170 dots for 9–10 s (100 on level 1). Clearing every dot

@@ -176,6 +176,11 @@ public struct GameSession: Equatable, Sendable {
     public var scores: HighScores
     /// The last game over was a new best (Platy celebrates, Task 13); cleared by the next game.
     public private(set) var newBest: GameResult?
+    /// Snake deaths and 2048 moves so far, across games: they only go up (a new game
+    /// keeps them), so the views' one-shot animations, which play when these change,
+    /// never play for a new game.
+    public private(set) var snakeDeaths = 0
+    public private(set) var moves2048 = 0
     private var rng: SeededRNG
     private var lastTime: Double?
     private var accumulator: Double = 0
@@ -310,7 +315,9 @@ public struct GameSession: Equatable, Sendable {
             case .escape: break
             }
         case .twenty48:
+            let before = game2048.lastMove?.serial
             if let d = k.direction { game2048.move(d) }
+            if game2048.lastMove?.serial != before { moves2048 += 1 }
         case .flappy:
             if k.kind == .space || k.kind == .up { flappy.flap() }
         case .chase:
@@ -347,12 +354,16 @@ public struct GameSession: Equatable, Sendable {
         guard phase == .playing, engineOver else { return }
         phases[kind] = .over
         resetClock()
+        if kind == .snake { snakeDeaths += 1 }
         let result = GameResult(kind: kind, score: score)
         if scores.record(game: kind.rawValue, score: result.score) { newBest = result }
     }
 
     private mutating func pauseIfPlaying() {
-        if phase == .playing { phases[kind] = .paused }
+        if phase == .playing {
+            phases[kind] = .paused
+            if kind == .chase { chase.cancelTurn() }   // a turn pressed before the pause is forgotten
+        }
         resetClock()
     }
 

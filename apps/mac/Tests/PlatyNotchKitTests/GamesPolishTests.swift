@@ -294,3 +294,44 @@ final class SnakeSpeedTests: XCTestCase {
         XCTAssertEqual(t.crash, Point(x: 5, y: 5), "itself: the body cell it ran into")
     }
 }
+
+/// The views' one-shot animations (Snake's death, a 2048 move) play when these session
+/// counters go up; a new game must not change them.
+final class GameAnimationTriggerTests: XCTestCase {
+    func testSnakeDeathsCountDeathsOnly() {
+        var s = GameSession(kind: .snake, seed: 1)
+        s.setBlockers(GameBlockers())
+        _ = s.key(.space)
+        XCTAssertEqual(s.snakeDeaths, 0)
+        s.snake.food = Point(x: 0, y: 0)
+        var t = 0.0
+        s.advance(to: t)
+        while s.phase == .playing, t < 30 {
+            t += 0.05
+            s.advance(to: t)
+        }
+        XCTAssertEqual(s.phase, .over)
+        XCTAssertEqual(s.snakeDeaths, 1)
+        _ = s.key(.space)   // a new game
+        XCTAssertEqual(s.phase, .playing)
+        XCTAssertEqual(s.snakeDeaths, 1, "a new game plays no death animation")
+    }
+
+    func testMoves2048CountMovesOnly() {
+        var s = GameSession(kind: .twenty48, seed: 3)
+        s.setBlockers(GameBlockers())
+        _ = s.key(.space)
+        XCTAssertEqual(s.moves2048, 0)
+        var moved = 0
+        for k in [GameKey.left, .right, .up, .down, .left, .right] {
+            let before = s.game2048.lastMove?.serial
+            _ = s.key(k)
+            if s.game2048.lastMove?.serial != before { moved += 1 }
+        }
+        XCTAssertGreaterThan(moved, 0)
+        XCTAssertEqual(s.moves2048, moved, "one per move that changed the grid")
+        _ = s.key(.escape)
+        _ = s.key(.space)   // resume
+        XCTAssertEqual(s.moves2048, moved, "pausing and resuming plays nothing")
+    }
+}

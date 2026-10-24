@@ -22,6 +22,9 @@ enum GameColors {
 /// final, faded state at once.
 struct SnakeView: View {
     let snake: Snake
+    /// `GameSession.snakeDeaths`: the death animation plays when it goes up (only then,
+    /// not when a new game starts).
+    let deaths: Int
     /// 0…1: the food's gentle pulse (always 0 with Reduce Motion).
     let pulse: Double
     /// The death animation (false with Reduce Motion).
@@ -32,7 +35,7 @@ struct SnakeView: View {
         Group {
             if animate {
                 Color.clear
-                    .keyframeAnimator(initialValue: 1.0, trigger: snake.isOver) { _, progress in
+                    .keyframeAnimator(initialValue: 1.0, trigger: deaths) { _, progress in
                         SnakeCanvas(snake: snake, pulse: pulse, death: snake.isOver ? progress : 0)
                     } keyframes: { _ in
                         KeyframeTrack {
