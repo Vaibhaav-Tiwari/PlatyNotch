@@ -10,9 +10,24 @@ public struct CaptureFilter: Sendable {
         "com.apple.keychainaccess", "com.bitwarden.desktop",
         "com.apple.Passwords", "com.lastpass.LastPass",
     ]
+    /// More password managers in the floor only (not in Go's default `exclude_apps`, so
+    /// existing config files are unchanged; capture and clipboard history skip them all
+    /// the same). Each id's source; an id that matches no installed app costs nothing.
+    public static let morePasswordManagers: Set<String> = [
+        "org.keepassxc.keepassxc",            // KeePassXC: MACOSX_BUNDLE_IDENTIFIER in its CMakeLists.txt
+        "com.hicknhacksoftware.MacPass",      // MacPass: PRODUCT_BUNDLE_IDENTIFIER in its Xcode project
+        "me.proton.pass.electron",            // Proton Pass: appBundleId in its forge config (WebClients)
+        "in.sinew.Enpass-Desktop",            // Enpass 6: published Info.plist listing (doesitarm.com)
+        "com.nordsec.nordpass",               // NordPass: published Info.plist listing (doesitarm.com)
+        "com.markmcguill.strongbox.mac.pro",  // Strongbox Pro: published listing (doesitarm.com)
+        "com.markmcguill.strongbox.mac",      // Strongbox (non-Pro): unverified, developer's id pattern
+        "com.dashlane.dashlanephonefinal",    // Dashlane (Mac App Store): unverified
+        "com.callpod.keepermac",              // Keeper: unverified
+    ]
     /// Never captured, whatever the config says: PlatyNotch itself, the login window and
     /// password managers.
     public static let alwaysExcluded: Set<String> = passwordManagers
+        .union(morePasswordManagers)
         .union(["dev.platynotch.app", "com.apple.loginwindow"])
     /// Browsers whose window title must be readable (to rule out a private window).
     public static let browsers: Set<String> = [

@@ -4,7 +4,7 @@ import XCTest
 @testable import PlatyNotchUI
 
 @MainActor
-final class TodayModelsTests: XCTestCase {
+final class TodayModelsTests: DefaultsTestCase {
     private func waitUntil(_ condition: @MainActor () -> Bool) async {
         for _ in 0..<200 where !condition() { try? await Task.sleep(for: .milliseconds(5)) }
     }
@@ -54,7 +54,7 @@ final class TodayModelsTests: XCTestCase {
     }
 
     func testFocusPersistsAndHoldsWhileRunning() {
-        let defaults = UserDefaults(suiteName: "FocusModelTests-\(UUID().uuidString)")!
+        let defaults = self.defaults()
         let now = Date()
         let focus = FocusModel(defaults: defaults)
         XCTAssertFalse(focus.focusActive)
@@ -73,8 +73,21 @@ final class TodayModelsTests: XCTestCase {
         XCTAssertNil(FocusModel(defaults: defaults).timer)
     }
 
+    /// Final review C5: turning the Focus widget off ends a running session (no focus
+    /// timer while focus is off); quitting (stop) keeps it.
+    func testDisablingFocusWidgetStopsTheSession() {
+        let focus = FocusModel(defaults: self.defaults())
+        let widget = FocusWidget(focus: focus)
+        focus.start(minutes: 25)
+        widget.stop()
+        XCTAssertTrue(focus.focusActive, "quit keeps the session")
+        widget.disabled()
+        XCTAssertNil(focus.timer)
+        XCTAssertFalse(focus.focusActive)
+    }
+
     func testFinishedFocusIsNotActive() {
-        let defaults = UserDefaults(suiteName: "FocusModelTests-\(UUID().uuidString)")!
+        let defaults = self.defaults()
         var finished = 0
         let focus = FocusModel(defaults: defaults, onFinish: { finished += 1 })
         focus.start(minutes: 25, now: Date().addingTimeInterval(-26 * 60))   // already over

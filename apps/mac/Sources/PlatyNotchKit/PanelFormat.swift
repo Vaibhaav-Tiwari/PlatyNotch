@@ -248,10 +248,29 @@ public enum ApprovalCardStatus: Sendable, Equatable {
     }
 }
 
+/// Where approval cards are drawn: the peek (the oldest card), or the open panel's list
+/// with or without the "N approvals waiting" header above it (which also shortens each
+/// card, so every card moves). Part of `ApprovalArming`'s key.
+public enum ApprovalPlacement: Hashable, Sendable {
+    case peek
+    case expanded(header: Bool)
+
+    /// nil when no approval card is drawn in `mode`.
+    public init?(mode: PanelMode, count: Int) {
+        guard count > 0 else { return nil }
+        switch mode {
+        case .peek(.approval): self = .peek
+        case .expanded: self = .expanded(header: count > 1)
+        default: return nil
+        }
+    }
+}
+
 /// Guards against answering an approval the user has not seen: a card is armed only
-/// after it has been visible in the same position for `delay`. A card that moves (the
-/// one above was answered), or is hidden and shown again, starts over. One instance
-/// per panel window.
+/// after it has been visible in the same place for `delay`. The place is the
+/// placement (peek, open panel, header above the list) plus the slot; a card that moves
+/// (the one above was answered, the panel opened or closed under it, the header
+/// appeared), or is hidden and shown again, starts over. One instance per panel window.
 public struct ApprovalArming: Sendable, Equatable {
     public static let delay: TimeInterval = 0.7
     /// How long an early click shows "Look first…".
@@ -259,6 +278,7 @@ public struct ApprovalArming: Sendable, Equatable {
 
     private struct Shown: Sendable, Equatable {
         var slot: Int
+        var placement: ApprovalPlacement
         var at: Date
     }
 
@@ -267,13 +287,17 @@ public struct ApprovalArming: Sendable, Equatable {
 
     public init() {}
 
-    /// Records which approvals are visible and answerable, in display order.
-    /// Returns whether anything changed (callers skip needless view updates).
+    /// Records which approvals are visible and answerable, in display order, and where
+    /// they are drawn. Returns whether anything changed (callers skip needless view updates).
     @discardableResult
-    public mutating func noteVisible(_ ids: [String], at now: Date) -> Bool {
+    public mutating func noteVisible(_ ids: [String], placement: ApprovalPlacement, at now: Date) -> Bool {
         var next: [String: Shown] = [:]
         for (slot, id) in ids.enumerated() {
-            if let old = shown[id], old.slot == slot { next[id] = old } else { next[id] = Shown(slot: slot, at: now) }
+            if let old = shown[id], old.slot == slot, old.placement == placement {
+                next[id] = old
+            } else {
+                next[id] = Shown(slot: slot, placement: placement, at: now)
+            }
         }
         let nextLook = lookFirstUntil.filter { next[$0.key] != nil }
         guard next != shown || nextLook != lookFirstUntil else { return false }
@@ -288,12 +312,15 @@ public struct ApprovalArming: Sendable, Equatable {
     }
 
     /// True when an answer may go ahead; otherwise shows "Look first…" for a moment.
-    /// `slot` is the approval's position at decide time (nil if no longer pending); it
-    /// must still be the slot the card was armed in, so a card that has just moved is
-    /// never answered even before the view re-notes positions.
+    /// `slot` and `placement` are where the approval is at decide time (nil if no longer
+    /// pending / not drawn); both must still be where the card was armed, so a card that
+    /// has just moved is never answered even before the view re-notes positions.
     @discardableResult
-    public mutating func attempt(_ id: String, slot: Int?, at now: Date) -> Bool {
-        if let slot, shown[id]?.slot == slot, isArmed(id, at: now) { return true }
+    public mutating func attempt(_ id: String, slot: Int?, placement: ApprovalPlacement?, at now: Date) -> Bool {
+        if let slot, let placement, let s = shown[id], s.slot == slot, s.placement == placement,
+           isArmed(id, at: now) {
+            return true
+        }
         lookFirstUntil[id] = now.addingTimeInterval(Self.lookFirstDuration)
         return false
     }

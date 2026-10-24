@@ -182,6 +182,12 @@ final class CapturePrivacyTests: XCTestCase {
         }
         XCTAssertEqual(CaptureFilter.passwordManagers, Set(CaptureSettings.defaultExcludeApps))
         XCTAssertTrue(CaptureFilter.alwaysExcluded.isSuperset(of: CaptureFilter.passwordManagers))
+        // Final review B5: the wider password-manager floor, for capture and clipboard history.
+        for id in ["org.keepassxc.keepassxc", "com.hicknhacksoftware.MacPass", "me.proton.pass.electron",
+                   "in.sinew.Enpass-Desktop", "com.nordsec.nordpass", "com.markmcguill.strongbox.mac.pro"] {
+            XCTAssertTrue(CaptureFilter(excluded: []).isExcluded(id), id)
+            XCTAssertFalse(ClipFilter.allowsApp(id, excluded: []), id)
+        }
     }
 
     func testPrivateWindowMarkers() {

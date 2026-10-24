@@ -152,9 +152,12 @@ final class CoreClientTests: XCTestCase {
         await client.start()
         let responder = Task.detached {
             XCTAssertTrue(server.accept())
-            _ = server.readLines(2)
-            let req = server.readLines(1)
-            let env = try JSONCoding.decoder.decode(Envelope.self, from: Data(req[0].utf8))
+            // The handshake is complete on the wire before `.connected` is reported, so a
+            // request made on `.connected` always comes third.
+            let lines = server.readLines(3)
+            let types = try lines.map { try JSONCoding.decoder.decode(Envelope.self, from: Data($0.utf8)).type }
+            XCTAssertEqual(types, ["hello", "subscribe", "memory.search"])
+            let env = try JSONCoding.decoder.decode(Envelope.self, from: Data(lines[2].utf8))
             // Unrelated message with a different id first, then the real reply.
             server.write("{\"v\":1,\"type\":\"pong\",\"id\":\"other\"}\n")
             server.write("{\"v\":1,\"type\":\"memory.results\",\"id\":\"\(env.id ?? "")\",\"data\":{\"hits\":[]}}\n")

@@ -1,12 +1,7 @@
 import AppKit
 import os
 import PlatyNotchKit
-
-/// UserDefaults keys for panel settings (Settings › Appearance).
-public enum NotchSettings {
-    public static let minimal = "appearance.minimal"
-    public static let showOnAllDisplays = "appearance.showOnAllDisplays"
-}
+import SwiftUI
 
 /// App entry point.
 public enum NotchApp {
@@ -15,10 +10,29 @@ public enum NotchApp {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let options = LaunchOptions(arguments: CommandLine.arguments, env: ProcessInfo.processInfo.environment)
+        if let dir = options.renderIconDir { finishRender("RENDER ICON", PlatyRenders.writeIconset(to: url(dir))) }
+        if let dir = options.platyGalleryDir { finishRender("PLATY GALLERY", PlatyRenders.writeGallery(to: url(dir))) }
         let delegate = AppDelegate(coreBinary: coreBinary, plugins: plugins, options: options)
         app.delegate = delegate
         withExtendedLifetime(delegate) { app.run() }
         exit(0)
+    }
+
+    private static func url(_ path: String) -> URL { URL(fileURLWithPath: path, isDirectory: true) }
+
+    /// `--render-icon` / `--platy-gallery`: report and exit before anything starts.
+    @MainActor
+    private static func finishRender(_ label: String, _ result: Result<Int, PlatyRenders.Failure>) -> Never {
+        switch result {
+        case .success(let n):
+            print("\(label) OK files=\(n)")
+            fflush(stdout)
+            exit(0)
+        case .failure(let f):
+            print("\(label) FAIL \(f.message)")
+            fflush(stdout)
+            exit(1)
+        }
     }
 }
 
@@ -39,7 +53,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Shared by every display's panel: one answer per approval, "Sending…" everywhere.
     private lazy var responder = ApprovalResponder(client: client)
     /// Now playing, calendar, focus and loop actions, shared by every display.
-    private lazy var today = TodayServices(client: client)
+    /// Smoke runs never create a real audio tap (the visualiser gets one that does nothing).
+    private lazy var today = TodayServices(client: client, visualiser: MusicVisualiser(makeTap: { [options] in
+        options.smoke || options.smokeSettings ? NoAudioTap() as AudioTapping : SystemAudioTap()
+    }))
+    /// Built-in and plugin widgets. Smoke runs read the saved layout but never write it.
+    /// Smoke and perf runs never save the layout (perf-idle forces it through the argument domain).
+    private lazy var widgets = WidgetRegistry(persist: !options.smoke && !options.smokeSettings && !options.perfRun)
+    /// Clipboard history (off by default). Smoke runs get an inert one: no pasteboard, no
+    /// hot key, no events, nothing on disk.
+    private lazy var clipboard = options.smoke || options.smokeSettings ? ClipboardWidget.inert() : ClipboardWidget()
+    /// Widget peeks, ringing, HUDs and the drag session, shown on every display's panel.
+    private lazy var surfaces = PanelSurfaces(registry: widgets)
     /// On-screen text capture (runs only while memory is on) and the Memory tab's search.
     private lazy var capture = CaptureService(client: client)
     private lazy var memory = MemoryServices(client: client, capture: capture)
@@ -47,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var updater = AppUpdater(start: !options.smoke && !options.smokeSettings)
     private lazy var settingsServices = SettingsServices(config: config, runner: runner, store: store,
                                                          capture: capture, calendar: today.calendar,
-                                                         updater: updater)
+                                                         reminders: today.reminders, widgets: widgets, updater: updater)
     private lazy var settings = SettingsWindowController(services: settingsServices,
                                                          pluginSections: plugins.flatMap { $0.settingsSections() })
     private lazy var onboarding = OnboardingWindowController(services: settingsServices)
@@ -59,7 +84,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var restartTask: Task<Void, Never>?
     private var screenObserver: NSObjectProtocol?
     private var defaultsObserver: NSObjectProtocol?
-    private var appearance = AppearanceState.current
+    /// Settings › Appearance; the panels are built from it (`AppearanceStore`, C32).
+    private var appearance = AppearanceStore.load(from: .standard)
     private var signalSources: [DispatchSourceSignal] = []
     /// What launch did to `<home>/bin/notch` (reported by smoke runs).
     private var hookLink: HookBinaryLink.Outcome?
@@ -80,6 +106,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before any widget opens its folder: shelf, clipboard and favicons move to their
+        // `.noindex` names (Spotlight). Smoke runs read and write nothing.
+        if !options.smoke, !options.smokeSettings { PrivateFolder.migrateToNoIndex(home: CorePaths.home()) }
         handleTerminationSignals()
         TerminalFocus.startTracking()
         repointHookBinary()
@@ -100,11 +129,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             for p in self.plugins { p.handle(event: ext) }
         }
         events.start(client.events)
+        today.platy.start(store: store)
         Task { await client.start() }
 
         watchConfig()
         wireSettingsEntryPoints()
+        if options.fakeNowPlaying { today.nowPlaying.fakePlaying = true }
+        BuiltInWidgets.register(in: widgets, store: store, today: today,
+                                persist: !options.smoke && !options.smokeSettings, clipboard: clipboard)
         startPlugins()
+        startWidgets()
 
         rebuildControllers()
         screenObserver = NotificationCenter.default.addObserver(
@@ -118,8 +152,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { self?.appearanceMayHaveChanged() }
         }
 
-        menuBar = MenuBarController(capture: capture, updater: updater,
-                                    onOpen: { [weak self] in self?.openPanel() },
+        menuBar = MenuBarController(capture: capture, updater: updater, surfaces: surfaces, clipboard: clipboard,
+                                    onOpen: { [weak self] in self?.openPanel(tab: nil) },
                                     onSettings: { [weak self] in self?.openSettings(section: nil) })
 
         if options.smokeSettings {
@@ -136,7 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        today.nowPlaying.stop()
+        widgets.stopAll()
         supervisor?.stop()
     }
 
@@ -146,7 +180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             switch AppURL.route(url) {
             case .settings(let section): openSettings(section: section)
             case .onboarding: onboarding.show()
-            case .open: openPanel()
+            case .open: openPanel(tab: nil)
             case .plugin(let u): _ = plugins.first { $0.handle(url: u) }
             case nil: break
             }
@@ -207,35 +241,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settings.show(section: section)
     }
 
-    private func openPanel() {
+    private func openPanel(tab: String?) {
         let primary = NSScreen.screens.first?.displayID
-        (controllers.first { $0.displayID == primary } ?? controllers.first)?.expand()
+        (controllers.first { $0.displayID == primary } ?? controllers.first)?.expand(tab: tab)
     }
 
     private func startPlugins() {
         let context = PluginContext(store: store, client: client, config: config, events: events, runner: runner,
+                                    widgets: widgets,
                                     openSettings: { [weak self] in self?.openSettings(section: $0) })
         for p in plugins { p.start(context: context) }
         pluginTabs = plugins.flatMap { $0.panelTabs() }
     }
 
-    // MARK: - Panels
-
-    /// The Appearance settings the panels are built from.
-    private struct AppearanceState: Equatable {
-        var minimal: Bool
-        var allDisplays: Bool
-        static var current: AppearanceState {
-            AppearanceState(minimal: UserDefaults.standard.bool(forKey: NotchSettings.minimal),
-                            allDisplays: UserDefaults.standard.bool(forKey: NotchSettings.showOnAllDisplays))
+    /// Starts every enabled widget (built-ins and those plugins registered), so live
+    /// activities such as music feed the pill from launch.
+    private func startWidgets() {
+        let context = WidgetContext(store: store, client: client, config: config, events: events,
+                                    defaults: .standard, notify: Notifiers.make(), surfaces: surfaces,
+                                    openPanel: { [weak self] in self?.openPanel(tab: $0) })
+        widgets.start(context: context)
+        // The shelf's privacy promise holds while it is off: expired copies (7 days) go at
+        // launch in one bounded directory pass (no timers, no monitors). Never in smoke runs.
+        if !options.smoke, !options.smokeSettings, !widgets.isEnabled(ShelfWidget.widgetID) {
+            ShelfStore.expireOnDisk(directory: CorePaths.shelf())
+        }
+        // The same for clipboard history: past its age or limit, items and images go.
+        if !options.smoke, !options.smokeSettings, !widgets.isEnabled(ClipboardWidget.widgetID) {
+            ClipboardWidget.expireWhileOff()
         }
     }
 
+    // MARK: - Panels
+
+    /// Settings › Appearance changed (any UserDefaults write lands here): new displays or
+    /// pill width rebuild the panels; everything else is applied to them live.
     private func appearanceMayHaveChanged() {
-        let now = AppearanceState.current
+        let now = AppearanceStore.load(from: .standard)
         guard now != appearance else { return }
+        let rebuild = now.needsRebuild(from: appearance)
         appearance = now
-        rebuildControllers()
+        if rebuild {
+            rebuildControllers()
+        } else {
+            for c in controllers { c.appearance = now }
+        }
     }
 
     /// SIGTERM / SIGINT (kill, Ctrl-C under `swift run`) quit through `terminate`, so the
@@ -255,25 +305,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// One controller per target screen: the primary (menu bar) display, or all
-    /// displays when "Show on all displays" is on.
+    /// One controller per target screen: Appearance › Displays (the menu-bar display, all,
+    /// or those with a notch). HUDs go to the display under the cursor; one without a
+    /// panel lets the system HUD show (`PanelSurfaces.showHUD`).
     /// Panel state carries over per display (falling back to the old primary panel), so a
     /// rebuild neither collapses an open panel nor replays the last notice.
     private func rebuildControllers() {
-        appearance = AppearanceState.current
+        appearance = AppearanceStore.load(from: .standard)
         var carry: [CGDirectDisplayID: PanelCarryOver] = [:]
         for c in controllers {
             if let id = c.displayID { carry[id] = c.carryOver }
             c.detach()
         }
         let fallback = controllers.first?.carryOver
-        let screens = appearance.allDisplays ? NSScreen.screens : Array(NSScreen.screens.prefix(1))
+        let all = NSScreen.screens
+        let screens = appearance.displays.select(hasNotch: all.map(\.hasNotch)).map { all[$0] }
         controllers = screens.enumerated().map { index, screen in
             let state = screen.displayID.flatMap { carry[$0] } ?? (index == 0 ? fallback : nil)
             let c = NotchController(store: store, client: client, plugins: plugins, responder: responder,
-                                    today: today, memory: memory, extraTabs: pluginTabs,
+                                    today: today, widgets: widgets, surfaces: surfaces, memory: memory,
+                                    extraTabs: pluginTabs,
                                     onOpenTerminal: { TerminalFocus.focus(session: $0) },
-                                    minimal: appearance.minimal,
+                                    appearance: appearance,
                                     carryOver: state)
             c.attach(to: screen)
             return c
@@ -293,6 +346,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             failure = "core not connected at \(socketPath)"
         }
         let mode = controllers.first.map { $0.mode.description } ?? "none"
+        let built = buildEnabledWidgets()
+        if failure == nil, built.failed.first != nil {
+            failure = "widget \(built.failed[0]) did not build"
+        }
+        // Every transient surface through the real controller (a moment on screen), and
+        // the built-in surface views laid out off screen.
+        if failure == nil, let c = controllers.first, let problem = c.runSurfaceSmoke() {
+            failure = "surfaces: \(problem)"
+        }
+        if failure == nil { buildSurfaceViews() }
+        if failure == nil, let problem = Self.checkGameViews() { failure = "games: \(problem)" }
+        var renders = ""
+        if failure == nil, let dir = options.renderDir {
+            switch ThemeRenders.write(to: URL(fileURLWithPath: dir, isDirectory: true)) {
+            case .success(let n): renders = " renders=\(n) theme=\(appearance.theme.rawValue)"
+            case .failure(let e): failure = "renders: \(e.message)"
+            }
+        }
+        if failure == nil, let menuBar,
+           !menuBar.menuTitles.contains("Pause clipboard history") || menuBar.menuAutoenables {
+            failure = "menu bar clipboard item missing or menu autoenables"
+        }
+        let sounds = TimeSound.allCases.filter { $0.url != nil }.count
+        if failure == nil, sounds != TimeSound.allCases.count {
+            failure = "bundled sounds missing (\(UIResources.bundleName))"
+        }
+        widgets.stopAll()
         await client.stop()
         supervisor?.stop()
         if let failure {
@@ -301,9 +381,143 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             exit(1)
         }
         print("SMOKE OK panels=\(controllers.count) mode=\(mode) menubar=\(menuBar != nil)"
-              + " updates=\(updater.isEnabled ? "on" : "off") hooklink=\(Self.describe(hookLink))")
+              + " updates=\(updater.isEnabled ? "on" : "off") hooklink=\(Self.describe(hookLink))"
+              + " widgets=\(built.count) surfaces=ok sounds=\(sounds) games=\(GameKind.allCases.count)" + renders)
         fflush(stdout)
         exit(0)
+    }
+
+    /// Lays out every enabled widget's tile and settings view off screen (no window, so
+    /// nothing appears and no tile's `.task` runs). Returns how many built and which did not.
+    private func buildEnabledWidgets() -> (count: Int, failed: [String]) {
+        var count = 0
+        var failed: [String] = []
+        for w in widgets.visibleWidgets {
+            let tile = NSHostingView(rootView: w.tileView().frame(width: 360).environment(\.colorScheme, .dark))
+            tile.layoutSubtreeIfNeeded()
+            if let settings = w.settingsView() {
+                NSHostingView(rootView: settings.frame(width: 480)).layoutSubtreeIfNeeded()
+            }
+            guard widgets.running.contains(w.id), tile.fittingSize.width > 0 else { failed.append(w.id); continue }
+            count += 1
+        }
+        return (count, failed)
+    }
+
+    /// Lays out the built-in HUD, indicator, drop zone and ringing fallback off screen,
+    /// and the HUD widget's views (an inert copy: it is off by default, and smoke never taps keys).
+    private func buildSurfaceViews() {
+        let hud = HUDWidget.inert()
+        // Built up statement by statement: one long `+` chain of arrays was too slow for
+        // Xcode 26.3's type checker (CI failed with "unable to type-check in reasonable time").
+        var views: [AnyView] = []
+        views += HUDKind.allCases.map { AnyView(HUDBar(state: HUDState(kind: $0, level: 0.5, until: Date()))) }
+        views += HUDKind.allCases.compactMap { hud.hudView(kind: $0, level: 0.5) }
+        views.append(AnyView(HUDView(kind: .volume, level: 0.5, output: "MacBook Pro Speakers")))
+        views.append(hud.tileView())
+        if let settings = hud.settingsView() { views.append(settings) }
+        views.append(AnyView(HUDIndicator(state: HUDState(kind: .volume, level: 0.5, until: Date()))))
+        views.append(AnyView(DropZonePlaceholder()))
+        views.append(AnyView(RingingFallback(id: "smoke", onStop: {})))
+        views.append(AnyView(ShelfDropZone(shelf: ShelfWidget.inert())))
+        views.append(AnyView(ClipCopiedPeek()))
+        views.append(AnyView(ClipboardTile(widget: ClipboardWidget.inert())))
+        views.append(AnyView(ClipboardSettings(widget: ClipboardWidget.inert())))
+        views.append(AnyView(ClipPickerView(model: ClipPickerModel(widget: clipboard), onChoose: { _ in },
+                                            trusted: { false }, imageURL: { _ in nil })))
+        views.append(AnyView(RingingOverlay(title: "Alarm", subtitle: "Alarm · 7:00", isAlarm: true,
+                                            onSnooze: {}, onStop: {})))
+        views += Self.dayViews()
+        views += Self.wellbeingViews()
+        views += Self.systemViews()
+        views += Self.launchViews()
+        views += PlatyMood.allCases.map { AnyView(PlatyView(mood: $0, size: PlatyEarFit.platy)) }
+        for v in views {
+            NSHostingView(rootView: v.frame(width: 380).environment(\.colorScheme, .dark)).layoutSubtreeIfNeeded()
+        }
+    }
+
+    /// Task 7's views with inert models (no EventKit, no network): the meeting tile, peek
+    /// and settings, the Reminders tile and settings, the weather tile and settings.
+    private static func dayViews() -> [AnyView] {
+        let calendar = CalendarService(eventKit: false)
+        let meeting = MeetingWidget(calendar: calendar)
+        let start = Date().addingTimeInterval(5 * 60)
+        let sample = CalendarMeeting(id: "smoke", title: "Standup", start: start, end: start.addingTimeInterval(1800),
+                                     joinURL: URL(string: "https://meet.google.com/abc-defg-hij"))
+        let reminders = RemindersWidget.inert()
+        let weather = WeatherWidget.inert()
+        return [meeting.tileView(), meeting.settingsView(),
+                AnyView(MeetingReminderPeek(reminder: .init(meeting: sample, minutes: 5), join: {})),
+                AnyView(CountdownRing(start: start, now: Date())),
+                reminders.tileView(), reminders.settingsView(), weather.tileView(), weather.settingsView()]
+            .compactMap { $0 }
+    }
+
+    /// Task 8's views with an inert widget (no idle reads, nothing saved): the tile, the
+    /// settings and the card for each nudge.
+    private static func wellbeingViews() -> [AnyView] {
+        let w = WellbeingWidget.inert()
+        let now = Date()
+        let cards = NudgeKind.allCases.map { AnyView(NudgeCard(widget: w, nudge: .init(kind: $0, shownAt: now, until: now))) }
+        return [w.tileView(), w.settingsView()].compactMap { $0 } + cards
+    }
+
+    /// Task 9's views with an inert widget (no IOKit, no assertion, nothing saved): the
+    /// tile and settings, a battery row, the plug-in / unplug peeks and the headphones
+    /// peek, row and settings, the downloads settings, notice and row with sample states
+    /// (no Bluetooth, no FSEvents, no file touched).
+    private static func systemViews() -> [AnyView] {
+        let w = SystemWidget.inert()
+        let charging = BatteryState(percent: 72, charging: true, pluggedIn: true, minutesRemaining: 48)
+        let low = BatteryState(percent: 8, charging: false, pluggedIn: false, minutesRemaining: 12)
+        let airPods = HeadphonesInfo(id: "smoke", name: "AirPods Pro", battery: .init(left: 80, right: 75, case: 40))
+        let file = URL(fileURLWithPath: "/nonexistent/Quarterly report.pdf")
+        return [w.tileView(), w.settingsView(), AnyView(BatteryRow(state: low)),
+                AnyView(PowerPeekView(peek: .init(change: .pluggedIn, state: charging))),
+                AnyView(PowerPeekView(peek: .init(change: .unplugged, state: low))),
+                AnyView(HeadphonesPeekView(info: airPods)), AnyView(HeadphonesRow(info: airPods)),
+                AnyView(HeadphonesPeekView(info: .init(id: "smoke2", name: "Headphones", battery: .init()))),
+                AnyView(HeadphonesSettings(widget: w)), AnyView(DownloadsSettings(widget: w)),
+                AnyView(DownloadPeekView(widget: w, url: file)), AnyView(FinishedDownloadRow(widget: w, url: file))]
+            .compactMap { $0 }
+    }
+
+    /// Task 11's views with an inert widget holding sample pins in memory (no icon fetch,
+    /// no Shortcuts, no Apple Events): the tile, the settings, the result peek and a letter icon.
+    private static func launchViews() -> [AnyView] {
+        let w = LaunchWidget.inert(sample: true)
+        let done = LaunchNotice(text: "“Log water” done", isError: false)
+        let failed = LaunchNotice(text: "“Log water” failed (exit 1)", isError: true)
+        return [w.tileView(), w.settingsView(), AnyView(LaunchResultPeek(notice: done)),
+                AnyView(LaunchResultPeek(notice: failed)), AnyView(SiteIcon(image: nil, letter: "E", size: 26))]
+            .compactMap { $0 }
+    }
+
+    /// Task 10's views with an inert widget (no scores saved, no frames: nothing plays):
+    /// the tile, the settings, the Games tab on every game, and each board. The tab must
+    /// lay out within `GameLayout.tabSize` (explicit frames; no ideal size may grow it).
+    /// Returns the first problem, nil when all fit.
+    static func checkGameViews() -> String? {
+        let w = GamesWidget.inert()
+        let tab = GameLayout.tabSize
+        let small: [AnyView] = [w.tileView(), w.settingsView()].compactMap { $0 }
+        for v in small {
+            NSHostingView(rootView: v.frame(width: 380).environment(\.colorScheme, .dark)).layoutSubtreeIfNeeded()
+        }
+        for kind in GameKind.allCases {
+            w.host.select(kind)
+            let host = NSHostingView(rootView: GamesTab(host: w.host).environment(\.colorScheme, .dark))
+            host.layoutSubtreeIfNeeded()
+            let fit = host.fittingSize
+            if fit.width > tab.width + 1 || fit.height > tab.height + 1 {
+                return "\(kind.title) tab is \(Int(fit.width))x\(Int(fit.height)), more than \(Int(tab.width))x\(Int(tab.height))"
+            }
+            let board = NSHostingView(rootView: GameBoard(session: w.host.session, date: Date(), decorate: true))
+            board.layoutSubtreeIfNeeded()
+            if board.fittingSize.width > GameLayout.boardArea.width + 1 { return "\(kind.title) board too wide" }
+        }
+        return nil
     }
 
     /// `--smoke-settings`: builds the Settings window (every section) and the onboarding

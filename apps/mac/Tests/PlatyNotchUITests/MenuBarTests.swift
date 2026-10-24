@@ -36,4 +36,44 @@ final class MenuBarTests: XCTestCase {
         XCTAssertEqual(s.title, "Download Updates from GitHub Releases…")
         XCTAssertTrue(s.enabled)
     }
+
+    /// C23: "Pause clipboard history" exists only while the widget runs, and flips to Resume.
+    func testClipboardItemFollowsTheWidget() {
+        XCTAssertTrue(MenuBarController.clipboardItemState(running: false, paused: false).hidden)
+        XCTAssertTrue(MenuBarController.clipboardItemState(running: false, paused: true).hidden)
+        let on = MenuBarController.clipboardItemState(running: true, paused: false)
+        XCTAssertEqual(on.title, "Pause clipboard history")
+        XCTAssertFalse(on.hidden)
+        XCTAssertEqual(MenuBarController.clipboardItemState(running: true, paused: true).title, "Resume clipboard history")
+    }
+
+    /// The clipboard item is added through the same non-autoenabling menu (C23).
+    func testClipboardItemKeepsAutoenableOff() {
+        let menu = MenuBarController.newMenu()
+        let item = NSMenuItem(title: "Pause clipboard history", action: #selector(NSObject.description), keyEquivalent: "")
+        item.target = NSObject()
+        item.isEnabled = false
+        menu.addItem(item)
+        menu.update()
+        XCTAssertFalse(menu.autoenablesItems)
+        XCTAssertFalse(item.isEnabled, "isEnabled is ours, not AppKit's")
+    }
+
+    /// C36: the menu bar icon is Platy's template silhouette (macOS tints it), 18 pt, and
+    /// actually draws something (opaque pixels, eyes cut out).
+    func testIconIsPlatyTemplate() throws {
+        for dot in [false, true] {
+            let image = MenuBarController.icon(dot: dot)
+            XCTAssertTrue(image.isTemplate)
+            XCTAssertEqual(image.size, NSSize(width: 18, height: 18))
+            let rep = try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(image.tiffRepresentation)))
+            var opaque = 0
+            for x in 0..<rep.pixelsWide {
+                for y in 0..<rep.pixelsHigh where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.5 { opaque += 1 }
+            }
+            let total = rep.pixelsWide * rep.pixelsHigh
+            XCTAssertGreaterThan(opaque, total / 5, "a solid silhouette")
+            XCTAssertLessThan(opaque, total * 3 / 4, "with room around it")
+        }
+    }
 }

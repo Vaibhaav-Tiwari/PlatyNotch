@@ -83,10 +83,9 @@ struct LoopsList: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)
             } else {
-                ScrollView(.vertical) {
-                    LazyVStack(alignment: .leading, spacing: 4) {
-                        ForEach(shown) { LoopRow(loop: $0, actions: actions) }
-                    }
+                // The Today tab scrolls; a nested scroll view would collapse to no height.
+                LazyVStack(alignment: .leading, spacing: 4) {
+                    ForEach(shown) { LoopRow(loop: $0, actions: actions) }
                 }
             }
         }

@@ -22,34 +22,45 @@ struct PermissionRows: View {
         VStack(alignment: .leading, spacing: 14) {
             PermissionRow(
                 title: "Accessibility", systemImage: "accessibility",
-                why: "Reads the text of the window in front, for Memory.",
-                withoutIt: "Memory capture stays off. Everything else works.",
+                why: "Reads the text of the window in front, for Memory, and lets the volume and brightness HUD take those keys.",
+                withoutIt: "Memory capture stays off and the system's volume and brightness HUD shows. Everything else works.",
                 state: permissions.accessibility ? .granted : .notAsked,
                 allow: { permissions.requestAccessibility() },
                 openSettings: { Permissions.open(.accessibility) })
             PermissionRow(
                 title: "Calendar", systemImage: "calendar",
-                why: "Shows your next meeting and its join link in the Today tab.",
-                withoutIt: "No next meeting in the notch.",
-                state: calendarState,
+                why: "Shows your meetings, their join links and 10, 5 and 1-minute reminders; quick add can create events.",
+                withoutIt: "No meetings in the notch; quick add saves events as reminders.",
+                state: state(permissions.calendar.access),
                 allow: { Task { await permissions.requestCalendar() } },
                 openSettings: { Permissions.open(.calendars) })
+            PermissionRow(
+                title: "Reminders", systemImage: "checkmark.circle",
+                why: "Shows reminders due today and overdue, ticks them off, and adds new ones from quick add.",
+                withoutIt: "The Reminders widget stays empty.",
+                state: state(permissions.reminders.access),
+                allow: { Task { await permissions.requestReminders() } },
+                openSettings: { Permissions.open(.reminders) })
             VStack(alignment: .leading, spacing: 6) {
                 PermissionHeader(title: "Automation", systemImage: "applescript",
-                                 why: "Brings a session's terminal tab forward and controls Music and Spotify.",
-                                 withoutIt: "Jumping to a session only activates the app; no play/pause for those players.")
+                                 why: "Brings a session's terminal tab forward, controls Music and Spotify, and reads a browser's front tab when you click Add current tab.",
+                                 withoutIt: "Jumping to a session only activates the app; no play/pause for those players; no Add current tab.")
                 let targets = permissions.installedAutomationTargets
                 if targets.isEmpty {
-                    Text("None of Terminal, iTerm, Music or Spotify is installed.").font(.caption).foregroundStyle(.secondary)
+                    Text("None of Terminal, iTerm, Music, Spotify, Safari, Chrome or Arc is installed.").font(.caption).foregroundStyle(.secondary)
                 }
                 ForEach(targets, id: \.id) { t in
                     HStack {
                         Text(verbatim: t.name).frame(width: 90, alignment: .leading)
                         StateText(state: permissions.automation[t.id] ?? .notAsked)
                         Spacer()
-                        AllowButtons(state: permissions.automation[t.id] ?? .notAsked,
-                                     allow: { permissions.requestAutomation(bundleID: t.id) },
-                                     openSettings: { Permissions.open(.automation) })
+                        if Permissions.asksFromSettings(t.id) {
+                            AllowButtons(state: permissions.automation[t.id] ?? .notAsked,
+                                         allow: { permissions.requestAutomation(bundleID: t.id) },
+                                         openSettings: { Permissions.open(.automation) })
+                        } else {
+                            BrowserAutomationNote(state: permissions.automation[t.id] ?? .notAsked)
+                        }
                     }
                     .padding(.leading, 28)
                 }
@@ -65,8 +76,8 @@ struct PermissionRows: View {
         .onAppear { permissions.refresh() }
     }
 
-    private var calendarState: Permissions.State {
-        switch permissions.calendar.access {
+    private func state(_ access: CalendarService.Access) -> Permissions.State {
+        switch access {
         case .granted: .granted
         case .denied: .denied
         case .notAsked: .notAsked
@@ -123,6 +134,19 @@ private struct StateText: View {
         case .denied: Label("Denied", systemImage: "xmark.circle").foregroundStyle(.secondary).font(.caption)
         case .notAsked: Text("Not allowed yet").foregroundStyle(.secondary).font(.caption)
         case .unavailable(let why): Text(verbatim: why).foregroundStyle(.secondary).font(.caption)
+        }
+    }
+}
+
+/// A browser's row: asked from "Add current tab" only, never from here.
+private struct BrowserAutomationNote: View {
+    let state: Permissions.State
+
+    var body: some View {
+        switch state {
+        case .denied: Button("Open System Settings") { Permissions.open(.automation) }
+        case .granted: EmptyView()
+        default: Text("Asked when you click Add current tab").font(.caption).foregroundStyle(.secondary)
         }
     }
 }

@@ -49,9 +49,17 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>Apache-2.0. See LICENSE and NOTICE.</string>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>PlatyNotch asks your terminal app to bring an agent's tab to the front, and asks Spotify or Music what is playing.</string>
+	<string>PlatyNotch asks your terminal app to bring an agent's tab to the front, asks Spotify or Music what is playing, and, only when you click Add current tab, asks Safari, Chrome or Arc for the address of the front tab so you can pin it.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>PlatyNotch listens to what your Mac is playing, only while music plays, to move the bars. Nothing is recorded or kept.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>PlatyNotch shows when your AirPods or other headphones connect, with their battery, after you turn this on in Settings. It never pairs or connects devices.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>PlatyNotch shows your next meetings in the notch. Calendar data stays on your Mac.</string>
+	<string>PlatyNotch shows your meetings and their reminders in the notch, and adds events you type in quick add. Calendar data stays on your Mac.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>PlatyNotch shows downloads in progress and a notice when one finishes, after you turn this on in Settings. It reads file names only, never their contents, and does nothing to a file unless you click.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>PlatyNotch shows reminders due today in the notch, ticks them off, and adds the ones you type in quick add. Reminders stay on your Mac.</string>
 	<key>SUFeedURL</key>
 	<string>https://vaibhaav-tiwari.github.io/PlatyNotch/appcast.xml</string>
 	<key>SUPublicEDKey</key>

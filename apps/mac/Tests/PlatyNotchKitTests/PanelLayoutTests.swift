@@ -52,7 +52,10 @@ final class PanelLayoutTests: XCTestCase {
         XCTAssertEqual(e.midX, 756)
         let p = ext.contentRect(for: .peek(.approval))
         XCTAssertEqual(p.maxY, 1055)
-        XCTAssertEqual(p.size, PanelLayout.peekSize)
+        // Without a notch the approval peek gets a header strip (ringing chip) on top of its card room.
+        XCTAssertEqual(p.size, CGSize(width: PanelLayout.peekSize.width,
+                                      height: PanelLayout.peekSize.height + PanelLayout.headerStripExtra))
+        XCTAssertEqual(ext.contentRect(for: .expanded).height, PanelLayout.expandedSize.height + PanelLayout.headerStripExtra)
         XCTAssertEqual(ext.hitRect(for: .expanded), ext.contentRect(for: .expanded))
     }
 

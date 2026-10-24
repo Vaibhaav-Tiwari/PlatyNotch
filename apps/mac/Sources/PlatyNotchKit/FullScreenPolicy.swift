@@ -19,13 +19,17 @@ public enum FullScreenPolicy {
     }
 
     /// Whether the panel should be suppressed (invisible, click-through).
-    /// Pending approvals and a panel the user opened always show. Otherwise touching
+    /// Pending approvals, a panel the user opened, a ringing alarm or timer and the drop
+    /// zone (the user dragged to the notch) always show. HUDs and widget peeks never reach
+    /// here over full screen (`PanelStateMachine.setFullScreen`). Otherwise touching
     /// `revealRect` reveals it, and it stays revealed while the cursor is on `hitRect`.
-    public static func shouldSuppress(fullScreen: Bool, mode: PanelMode, cursor: CGPoint,
-                                      revealRect: CGRect, hitRect: CGRect, wasSuppressed: Bool) -> Bool {
-        guard fullScreen else { return false }
+    /// With `hideInFullScreen` off (Appearance) nothing is suppressed.
+    public static func shouldSuppress(fullScreen: Bool, hideInFullScreen: Bool = true, mode: PanelMode,
+                                      cursor: CGPoint, revealRect: CGRect, hitRect: CGRect,
+                                      wasSuppressed: Bool) -> Bool {
+        guard fullScreen, hideInFullScreen else { return false }
         switch mode {
-        case .peek(.approval), .expanded: return false
+        case .peek(.approval), .expanded, .peek(.ringing), .peek(.drop): return false
         default: break
         }
         if PanelLayout.contains(revealRect, cursor) { return false }

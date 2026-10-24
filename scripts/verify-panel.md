@@ -7,15 +7,17 @@ this list covers what only a person looking at the screen can confirm.
 What each mode shows:
 
 - **Compact**: up to three agent dots on the left (green pulsing = working, amber =
-  waiting or needs approval, grey = idle) and `+n` for more; on the right a count of
-  pending approvals, or an amber bolt while the core is not connected. On a notch Mac
-  the dots sit in the left ear and the badge in the right ear.
+  waiting or needs approval, grey = idle) and `+n` for more; on the right (the live ear)
+  a count of pending approvals, an amber bolt while the core is not connected, else the
+  top live activity (music, a timer). On a notch Mac the dots sit in the left ear and the
+  badge in the right ear; Settings › Appearance › Live activities swaps the ears.
 - **Peek (approval)**: the oldest approval card in full; with several, the next one as
   a one-line row (agent · tool · first line, "+n more", "Open"). Clicking the card
   header, "More" or "Open" opens the full panel. **Peek (notice)**: a short toast ("Claude Code finished").
-- **Expanded**: tabs Agents, Today, Focus, Memory (the last three say "Coming soon"),
-  pending approvals above the tab, the Agents list and Claude/Codex usage bars, and a
-  chevron close button. An amber "Reconnecting…" shows in the tab bar while the core
+- **Expanded**: tabs Agents, Today (the enabled widgets' tiles, in the order set in
+  Settings › Widgets), Focus (while the focus widget is on), Memory and Games (while the
+  games widget is on); pending approvals above the tab, the Agents list and Claude/Codex
+  usage bars, and a chevron close button. An amber "Reconnecting…" shows in the tab bar while the core
   is down.
 
 ## Setup
@@ -35,10 +37,15 @@ cd apps/mac && PLATYNOTCH_EXTERNAL_CORE=1 PLATYNOTCH_HOME=… PLATYNOTCH_SOCKET=
 Start the app, wait for `connected`, then step through the script. Approvals only
 appear while the app is connected.
 
-Minimal mode (panel hidden when nothing is live): `defaults write PlatyNotch appearance.minimal -bool true`
-(the domain is the executable name under `swift run`; undo with `defaults delete PlatyNotch appearance.minimal`).
-Show on all displays: `defaults write PlatyNotch appearance.showOnAllDisplays -bool true`.
-Restart the app after changing either.
+Minimal mode (panel hidden when nothing is live), the displays (menu-bar display, all, or
+those with a notch), open on hover or click, pill width, live side, theme, motion and
+"Hide in full screen" are in Settings › Appearance and apply at once, no restart. They are
+one JSON value under `appearance.settings` (the domain is the executable name under
+`swift run`: `defaults read PlatyNotch appearance.settings`; `defaults delete PlatyNotch
+appearance.settings` resets them). Until the first change in Settings › Appearance saves
+`appearance.settings`, the Plan 3 keys `appearance.minimal`, `appearance.showOnAllDisplays`
+and `appearance.liveSide` (if set) give the starting values; once it is saved they are
+ignored. The theme is Dark by default.
 
 ## Cases
 
@@ -68,13 +75,13 @@ Tick each on the hardware you have; note the Mac model and macOS version.
   the panel must still hide there (a maximised, non-full-screen window must *not*
   hide it). Multi-display caveat: only the *frontmost* app is checked, so a
   full-screen app on display A that is not frontmost (you clicked an app on display
-  B) leaves A's panel showing; with "Show on all displays" each display checks the
+  B) leaves A's panel showing; with Settings › Appearance › Show on: All displays, each display checks the
   frontmost app's windows against its own bounds.
 - [ ] **4. Display changes.** Plug or unplug an external display, change which
   display is main (System Settings › Displays › arrangement, drag the menu bar), and
   change resolution ("More Space"). Each time the panel is rebuilt on the main
   display at the right place (notch or pill) within a second, with no leftover
-  panel on the old display. With "Show on all displays" on, every display has one.
+  panel on the old display. With Show on: All displays, every display has one.
 - [ ] **5. Spaces and Mission Control.** Switching Spaces (⌃→) keeps the panel in
   place without sliding with the Space; Mission Control and ⌘-Tab do not list it;
   clicking the panel never activates PlatyNotch or takes focus from the frontmost
@@ -134,8 +141,8 @@ long multi-line command with a Unicode path). The core default expiry is 100 s.
   shortcut hints. VoiceOver reads "Allow" / "Deny" with the shortcut as hint, and the
   summary text.
 - [ ] **13. Sending.** Click Allow: the countdown changes to "Sending…" and both
-  buttons disable until the card disappears (normally at once). With "Show on all
-  displays", the other display's card shows "Sending…" too and cannot answer again. Terminal A prints
+  buttons disable until the card disappears (normally at once). With Show on: All
+  displays, the other display's card shows "Sending…" too and cannot answer again. Terminal A prints
   `decision: ... allow`.
 - [ ] **14. Reconnecting.** With approvals pending (app supervising its own core, as in
   case 8), kill the core: the cards stay, show "Reconnecting… m:ss" in amber and the
@@ -148,10 +155,14 @@ long multi-line command with a Unicode path). The core default expiry is 100 s.
   before the tick shows Expired immediately and sends nothing); the card goes away when the core
   resolves it, and the hook in terminal A falls back to the terminal prompt.
 - [ ] **16. Open terminal.** "Open terminal" shows when the approval's session is
-  known; clicking it does nothing yet (terminal focus is Task 7). Agents tab rows
+  known; clicking it brings that session's terminal tab to the front (Terminal or iTerm2;
+  macOS asks for Automation the first time, and without it only the app is activated). Agents tab rows
   highlight on hover and are clickable the same way.
-- [ ] **17. Light and dark.** Switch System Settings › Appearance between Light and
-  Dark: the panel stays black with legible text and colors in both.
+- [ ] **17. Light and dark.** With Settings › Appearance › Theme on Dark, switch System
+  Settings › Appearance between Light and Dark: the panel stays black with legible text
+  and colors in both. Theme Light: the open panel and peeks are light with legible text;
+  System follows the system setting. In every theme the resting pill on a notch stays
+  black.
 
 ## Automated equivalents
 

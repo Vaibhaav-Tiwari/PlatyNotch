@@ -6,6 +6,7 @@ enum BuiltinTab {
     static let today = "today"
     static let focus = "focus"
     static let memory = "memory"
+    static let games = GamesWidget.tabID
 }
 
 /// The open panel: tab bar, pending approvals (always on top), then the selected tab.
@@ -14,6 +15,7 @@ struct ExpandedPanel: View {
     let responder: ApprovalResponder
     let arming: ApprovalArming
     let today: TodayServices
+    let widgets: WidgetRegistry
     let memory: MemoryServices
     let extraTabs: [PanelTab]
     @Binding var selectedTab: String
@@ -33,6 +35,7 @@ struct ExpandedPanel: View {
             (tabs.first { $0.id == selectedTab } ?? tabs[0]).view
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .clipped()
+                .environment(\.selectPanelTab, { selectedTab = $0 })   // the games tile opens its tab
         }
     }
 
@@ -61,21 +64,34 @@ struct ExpandedPanel: View {
         let store = self.store
         let open = onOpenTerminal
         let today = self.today
+        let widgets = self.widgets
         let memory = self.memory
-        return [
+        var tabs = [
             PanelTab(id: BuiltinTab.agents, title: "Agents", systemImage: "terminal") {
                 AgentsTab(sessions: store.sessions, usage: store.usage, onOpenTerminal: open)
             },
             PanelTab(id: BuiltinTab.today, title: "Today", systemImage: "calendar") {
-                TodayTab(store: store, today: today)
+                TodayTab(widgets: widgets)
             },
-            PanelTab(id: BuiltinTab.focus, title: "Focus", systemImage: "timer") {
+        ]
+        // The Focus tab belongs to the focus widget: hidden while it is off.
+        if widgets.isEnabled(FocusWidget.widgetID) {
+            tabs.append(PanelTab(id: BuiltinTab.focus, title: "Focus", systemImage: "timer") {
                 FocusTab(focus: today.focus)
-            },
-            PanelTab(id: BuiltinTab.memory, title: "Memory", systemImage: "brain") {
-                MemoryTab(store: store, memory: memory)
-            },
-        ] + extraTabs
+            })
+        }
+        tabs.append(PanelTab(id: BuiltinTab.memory, title: "Memory", systemImage: "brain") {
+            MemoryTab(store: store, memory: memory)
+        })
+        // The Games tab belongs to the games widget: shown only while it runs.
+        if widgets.running.contains(GamesWidget.widgetID),
+           let games = widgets.widget(GamesWidget.widgetID) as? GamesWidget {
+            let host = games.host
+            tabs.append(PanelTab(id: BuiltinTab.games, title: "Games", systemImage: "gamecontroller") {
+                GamesTab(host: host)
+            })
+        }
+        return tabs + extraTabs
     }
 
     private func tabBar(_ tabs: [PanelTab]) -> some View {

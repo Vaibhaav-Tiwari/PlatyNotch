@@ -81,16 +81,24 @@ public struct PluginContext {
     /// Every core event. Subscribe here; never read `client.events` (single consumer).
     public let events: CoreEventHub
     let runner: CoreRunner
+    let widgets: WidgetRegistry
     let openSettingsHandler: (String?) -> Void
 
     init(store: AppStore, client: CoreClient, config: ConfigFileStore, events: CoreEventHub,
-         runner: CoreRunner, openSettings: @escaping (String?) -> Void) {
+         runner: CoreRunner, widgets: WidgetRegistry, openSettings: @escaping (String?) -> Void) {
         self.store = store; self.client = client; self.config = config; self.events = events
-        self.runner = runner; self.openSettingsHandler = openSettings
+        self.runner = runner; self.widgets = widgets; self.openSettingsHandler = openSettings
     }
 
+    /// Adds a widget (Today tile, pill activity, Settings › Widgets entry). Call from
+    /// `start(context:)`. A new id is on only when `defaultEnabled`; the user can turn it
+    /// off and reorder it, and a disabled widget is never started.
+    public func register(widget: any NotchWidget) { widgets.register(widget) }
+
     /// Runs the bundled core binary (`notch <args>`) and returns its exit status and
-    /// combined stdout + stderr.
+    /// combined stdout + stderr. Cancelling the calling task does not stop the command: it
+    /// runs to completion or for at most 60 s. Incomplete output counts as a failure
+    /// (non-zero status, with a note in the output).
     public func runCore(_ args: [String]) async -> (status: Int32, output: String) {
         let r = await runner.run(args)
         return (r.status, r.combined)
@@ -100,61 +108,32 @@ public struct PluginContext {
     public func openSettings(section: String? = nil) { openSettingsHandler(section) }
 }
 
-/// Runs `notch` subcommands (hooks, statusline, mcp, doctor) for Settings and plugins.
+/// Runs `notch` subcommands (hooks, statusline, mcp, doctor) for Settings and plugins:
+/// a `ProcessRunner` for the bundled core binary.
+///
+/// Cancelling the calling task does not stop the command (a view's `.task` ending must
+/// not kill `hooks install` half way): it runs to completion or to `timeout`.
+/// Incomplete output (`truncated`, a process the command started kept its output open)
+/// is an error: status `truncatedStatus` when the command itself exited 0.
 struct CoreRunner: Sendable {
-    struct Result: Sendable {
-        var status: Int32
-        var stdout: String
-        var stderr: String
-        var combined: String {
-            [stdout, stderr].map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }.joined(separator: "\n")
-        }
-    }
+    typealias Result = ProcessRunner.Result
 
-    static let maxOutput = 1 << 20
+    static let maxOutput = ProcessRunner.maxOutput
+    /// EX_IOERR.
+    static let truncatedStatus: Int32 = 74
 
     let binaryURL: URL
 
     func run(_ args: [String], timeout: Duration = .seconds(60)) async -> Result {
-        let url = binaryURL
-        guard FileManager.default.isExecutableFile(atPath: url.path) else {
-            return Result(status: 127, stdout: "", stderr: "notch not found at \(url.path)")
+        guard FileManager.default.isExecutableFile(atPath: binaryURL.path) else {
+            return Result(status: 127, stdout: "", stderr: "notch not found at \(binaryURL.path)")
         }
-        return await withCheckedContinuation { (cont: CheckedContinuation<Result, Never>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let p = Process()
-                p.executableURL = url
-                p.arguments = args
-                let out = Pipe(), err = Pipe()
-                p.standardOutput = out
-                p.standardError = err
-                p.standardInput = FileHandle.nullDevice
-                do {
-                    try p.run()
-                } catch {
-                    cont.resume(returning: Result(status: 126, stdout: "", stderr: error.localizedDescription))
-                    return
-                }
-                let pid = p.processIdentifier
-                let killer = DispatchWorkItem { if p.isRunning { kill(pid, SIGKILL) } }
-                let seconds = Double(timeout.components.seconds)
-                DispatchQueue.global().asyncAfter(deadline: .now() + seconds, execute: killer)
-                // Read both pipes concurrently so neither fills up and blocks the child.
-                let group = DispatchGroup()
-                nonisolated(unsafe) var errData = Data()
-                group.enter()
-                DispatchQueue.global().async {
-                    errData = err.fileHandleForReading.readDataToEndOfFile()
-                    group.leave()
-                }
-                let outData = out.fileHandleForReading.readDataToEndOfFile()
-                group.wait()
-                p.waitUntilExit()
-                killer.cancel()
-                func text(_ d: Data) -> String { String(decoding: d.prefix(Self.maxOutput), as: UTF8.self) }
-                cont.resume(returning: Result(status: p.terminationStatus, stdout: text(outData), stderr: text(errData)))
-            }
+        var r = await ProcessRunner(executableURL: binaryURL, stopsOnCancel: false).run(args, timeout: timeout)
+        if r.truncated {
+            if r.status == 0 { r.status = Self.truncatedStatus }
+            let note = "notch output incomplete: a process it started kept the output open"
+            r.stderr = r.stderr.isEmpty ? note : r.stderr + "\n" + note
         }
+        return r
     }
 }

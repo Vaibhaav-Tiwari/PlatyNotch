@@ -13,26 +13,35 @@ final class Permissions {
         case granted, denied, notAsked, unavailable(String)
     }
 
-    /// Apps PlatyNotch scripts with Apple Events: terminals (jump to a session's tab)
-    /// and music players (now playing controls).
+    /// Apps PlatyNotch scripts with Apple Events: terminals (jump to a session's tab),
+    /// music players (now playing controls) and browsers ("Add current tab", Task 11).
     static let automationTargets: [(id: String, name: String)] = [
         (TerminalApps.appleTerminalID, "Terminal"), (TerminalApps.iTermID, "iTerm"),
         ("com.apple.Music", "Music"), ("com.spotify.client", "Spotify"),
-    ]
+    ] + SupportedBrowser.allCases.map { ($0.rawValue, $0.name) }
+
+    /// Browsers are asked only from "Add current tab" (the one place their Automation
+    /// prompt may appear), so Settings shows their status without an Allow button.
+    static func asksFromSettings(_ bundleID: String) -> Bool {
+        SupportedBrowser(rawValue: bundleID) == nil
+    }
 
     private(set) var accessibility = false
     private(set) var notifications: State = .notAsked
     private(set) var automation: [String: State] = [:]
     let calendar: CalendarService
+    let reminders: RemindersService
 
-    init(calendar: CalendarService) {
+    init(calendar: CalendarService, reminders: RemindersService) {
         self.calendar = calendar
+        self.reminders = reminders
     }
 
     /// Re-reads every status without prompting.
     func refresh() {
         accessibility = AXIsProcessTrusted()
         calendar.refreshAccess()
+        reminders.refreshAccess()
         refreshNotifications()
         for t in installedAutomationTargets {
             let id = t.id
@@ -70,6 +79,12 @@ final class Permissions {
         await calendar.requestAccess()
     }
 
+    // MARK: - Reminders
+
+    func requestReminders() async {
+        await reminders.requestAccess()
+    }
+
     // MARK: - Automation
 
     func requestAutomation(bundleID: String) {
@@ -102,9 +117,12 @@ final class Permissions {
     // MARK: - Notifications
 
     /// Notification Center needs a bundled app (`swift run` has no bundle identity).
-    private var canUseNotifications: Bool {
+    /// Also picks the widgets' notifier (`Notifiers.make`).
+    nonisolated static var canUseNotifications: Bool {
         Bundle.main.bundleIdentifier != nil && Bundle.main.bundleURL.pathExtension == "app"
     }
+
+    private var canUseNotifications: Bool { Self.canUseNotifications }
 
     private func refreshNotifications() {
         guard canUseNotifications else { notifications = .unavailable("Needs the installed app."); return }
@@ -130,8 +148,14 @@ final class Permissions {
     enum Pane: String {
         case accessibility = "Privacy_Accessibility"
         case calendars = "Privacy_Calendars"
+        case reminders = "Privacy_Reminders"
         case automation = "Privacy_Automation"
         case notifications = "notifications"
+        /// Opened from the System widget's settings only (no Allow row: its button there
+        /// is the only place the Bluetooth prompt can appear).
+        case bluetooth = "Privacy_Bluetooth"
+        /// Files and Folders (the downloads sub-feature), for the same reason.
+        case filesAndFolders = "Privacy_FilesAndFolders"
     }
 
     static func open(_ pane: Pane) {

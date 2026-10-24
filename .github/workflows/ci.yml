@@ -38,12 +38,34 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      # Pinned to the Xcode that `latest-stable` resolved to on this runner when Plan 3b
+      # shipped (26.3): a new image's Xcode can change what compiles (Swift 6 isolation
+      # checks, type-check time) under an unchanged commit. Move the pin on purpose, in its
+      # own commit, after checking a run with the new version.
       - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
-          xcode-version: latest-stable
+          xcode-version: '26.3'
       - name: swift test
         working-directory: apps/mac
         run: swift test
+      # An expression that is slow to type-check locally can time out on this runner's
+      # compiler and fail the build ("unable to type-check ... in reasonable time").
+      # Name the slow ones with a clear message before that happens.
+      - name: type-check time
+        working-directory: apps/mac
+        run: |
+          status=0
+          swift build --scratch-path .build-typecheck \
+            -Xswiftc -Xfrontend -Xswiftc -warn-long-expression-type-checking=300 > typecheck.log 2>&1 || status=$?
+          if [ "$status" -ne 0 ]; then
+            cat typecheck.log
+            exit "$status"
+          fi
+          if grep -q "expression took" typecheck.log; then
+            grep "expression took" typecheck.log | sort -u
+            echo "Break these expressions up: they type-check slowly and may time out on other compilers."
+            exit 1
+          fi
       - name: script tests
         run: |
           scripts/tests/version_test.sh

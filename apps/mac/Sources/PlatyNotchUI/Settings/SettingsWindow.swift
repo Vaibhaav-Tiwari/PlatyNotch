@@ -13,19 +13,21 @@ final class SettingsServices {
     let permissions: Permissions
     let agents: AgentsModel
     let updater: AppUpdater
+    let widgets: WidgetRegistry
     var showOnboarding: () -> Void = {}
     /// Debounced restart of the supervised core (the app's `scheduleCoreRestart`), for
     /// changes config.json does not see, such as a rotated Keychain key.
     var restartCore: () -> Void = {}
 
     init(config: ConfigFileStore, runner: CoreRunner, store: AppStore, capture: CaptureService?, calendar: CalendarService,
-         updater: AppUpdater) {
+         reminders: RemindersService, widgets: WidgetRegistry, updater: AppUpdater) {
         self.config = config
+        self.widgets = widgets
         self.updater = updater
         self.runner = runner
         self.store = store
         self.capture = capture
-        permissions = Permissions(calendar: calendar)
+        permissions = Permissions(calendar: calendar, reminders: reminders)
         agents = AgentsModel(runner: runner)
     }
 }
@@ -91,6 +93,7 @@ final class SettingsModel {
         ("policy", "Policy", "list.bullet.rectangle"),
         ("memory", "Memory", "brain"),
         ("permissions", "Permissions", "hand.raised"),
+        ("widgets", "Widgets", "square.grid.2x2"),
         ("appearance", "Appearance", "macwindow"),
         ("about", "About", "info.circle"),
     ]
@@ -142,7 +145,10 @@ final class SettingsWindowController {
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 540),
                          styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         w.title = "PlatyNotch Settings"
-        w.contentViewController = NSHostingController(rootView: root)
+        // The window, not the SwiftUI content's ideal size, decides the size (see onboarding).
+        let host = NSHostingController(rootView: root.frame(minWidth: 640, minHeight: 420))
+        host.sizingOptions = []
+        w.contentViewController = host
         w.setContentSize(NSSize(width: 760, height: 540))
         w.contentMinSize = NSSize(width: 640, height: 420)
         w.isReleasedWhenClosed = false
@@ -193,6 +199,7 @@ struct SettingsRootView: View {
         case "policy": PolicySection(config: services.config)
         case "memory": MemorySection(services: services)
         case "permissions": PermissionsSection(services: services)
+        case "widgets": WidgetsSection(widgets: services.widgets)
         case "appearance": AppearanceSection()
         case "about": AboutSection(updater: services.updater)
         default:

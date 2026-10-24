@@ -31,6 +31,36 @@ public enum CorePaths {
         home(env: env, userHome: userHome).appendingPathComponent("memory.db")
     }
 
+    /// The private folders' names. A `.noindex` suffix keeps Spotlight out of a folder
+    /// reliably (a `.metadata_never_index` file below the volume root is not honoured
+    /// everywhere); `PrivateFolder.migrateToNoIndex` moves folders made under the old
+    /// names (B4).
+    public static let shelfName = "shelf.noindex"
+    public static let clipboardName = "clipboard.noindex"
+    public static let faviconsName = "favicons.noindex"
+    /// Old name → new name, for the migration.
+    public static let noIndexRenames: [(old: String, new: String)] = [
+        ("shelf", shelfName), ("clipboard", clipboardName), ("favicons", faviconsName),
+    ]
+
+    /// The file shelf's directory (0700): its index and the copies it owns.
+    public static func shelf(env: [String: String] = ProcessInfo.processInfo.environment,
+                             userHome: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+        home(env: env, userHome: userHome).appendingPathComponent(shelfName, isDirectory: true)
+    }
+
+    /// Clipboard history's directory (0700): `history.json` (0600) and `images/` (C22).
+    public static func clipboard(env: [String: String] = ProcessInfo.processInfo.environment,
+                                 userHome: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+        home(env: env, userHome: userHome).appendingPathComponent(clipboardName, isDirectory: true)
+    }
+
+    /// Pinned sites' icons (0700), one file per https origin, kept 30 days (Task 11).
+    public static func favicons(env: [String: String] = ProcessInfo.processInfo.environment,
+                                userHome: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+        home(env: env, userHome: userHome).appendingPathComponent(faviconsName, isDirectory: true)
+    }
+
     /// The stable hook binary path written into agent configs (Go `paths.HookBinary`):
     /// a symlink the app keeps pointed at its bundled `notch` (see `HookBinaryLink`).
     public static func hookBinary(env: [String: String] = ProcessInfo.processInfo.environment,

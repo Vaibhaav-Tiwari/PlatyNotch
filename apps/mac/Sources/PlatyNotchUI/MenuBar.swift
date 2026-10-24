@@ -2,9 +2,10 @@ import AppKit
 import Observation
 import PlatyNotchKit
 
-/// The menu bar item: a template icon (placeholder until the Platy icon) with a dot
+/// The menu bar item: Platy's silhouette as a template icon (`PlatyMenuIcon`) with a dot
 /// while capture is running. Menu: Open PlatyNotch, Settings…, Check for Updates… (or the
-/// GitHub Releases page when updates are off), Pause/Resume capture, Quit.
+/// GitHub Releases page when updates are off), Pause/Resume capture, Pause/Resume
+/// clipboard history (only while that widget is on, C23), Quit.
 @MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
     private let item: NSStatusItem
@@ -14,12 +15,20 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private let updater: AppUpdater?
     private let updatesItem = NSMenuItem(title: "Check for Updates…", action: nil, keyEquivalent: "")
     private let pauseItem = NSMenuItem(title: "Pause capture for 1 hour", action: nil, keyEquivalent: "")
+    private let clipboardItem = NSMenuItem(title: "Pause clipboard history", action: nil, keyEquivalent: "")
+    private let clipboard: ClipboardMenuControl?
     private var observing = false
+    private let surfaces: PanelSurfaces?
+    /// "Stop <title>" items at the top while anything rings, then a separator.
+    private var stopMenuItems: [NSMenuItem] = []
 
-    init(capture: CaptureService?, updater: AppUpdater? = nil,
+    init(capture: CaptureService?, updater: AppUpdater? = nil, surfaces: PanelSurfaces? = nil,
+         clipboard: ClipboardMenuControl? = nil,
          onOpen: @escaping () -> Void, onSettings: @escaping () -> Void) {
         self.capture = capture
+        self.clipboard = clipboard
         self.updater = updater
+        self.surfaces = surfaces
         self.onOpen = onOpen
         self.onSettings = onSettings
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -27,6 +36,41 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         item.button?.setAccessibilityLabel("PlatyNotch")
         buildMenu()
         observeCapture()
+        observeRinging()
+    }
+
+    /// One "Stop <title>" item per ringing alarm or timer, oldest first.
+    static func stopItems(_ rings: [RingingItem]) -> [(title: String, id: String)] {
+        rings.map { ("Stop \($0.title)", $0.id) }
+    }
+
+    /// Keeps the Stop items in step with `PanelSurfaces.rings` (also while the menu is open).
+    private func observeRinging() {
+        guard let surfaces, let menu = item.menu else { return }
+        let rings = withObservationTracking {
+            surfaces.rings
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.observeRinging() }
+        }
+        for old in stopMenuItems { menu.removeItem(old) }
+        stopMenuItems = []
+        let items = Self.stopItems(rings)
+        guard !items.isEmpty else { return }
+        for (i, entry) in items.enumerated() {
+            let mi = NSMenuItem(title: entry.title, action: #selector(stopRinging(_:)), keyEquivalent: "")
+            mi.target = self
+            mi.representedObject = entry.id
+            menu.insertItem(mi, at: i)
+            stopMenuItems.append(mi)
+        }
+        let sep = NSMenuItem.separator()
+        menu.insertItem(sep, at: items.count)
+        stopMenuItems.append(sep)
+    }
+
+    @objc private func stopRinging(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        surfaces?.stopRinging(id: id)
     }
 
     /// Whether the icon currently shows the capture dot (for smoke checks).
@@ -54,6 +98,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
     }
 
+    /// The clipboard item: hidden while the clipboard widget is off (nothing to pause).
+    static func clipboardItemState(running: Bool, paused: Bool) -> (title: String, hidden: Bool) {
+        (paused ? "Resume clipboard history" : "Pause clipboard history", !running)
+    }
+
     /// The updates item: Sparkle's own check when updates are on (disabled while a check
     /// is already running), otherwise a link to GitHub Releases that always works.
     static func updatesItemState(isEnabled: Bool, canCheck: Bool) -> (title: String, enabled: Bool) {
@@ -75,6 +124,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         pauseItem.action = #selector(togglePause)
         pauseItem.target = self
         menu.addItem(pauseItem)
+        clipboardItem.action = #selector(toggleClipboardPause)
+        clipboardItem.target = self
+        clipboardItem.isHidden = true
+        menu.addItem(clipboardItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit PlatyNotch", action: #selector(quit), keyEquivalent: "q").target = self
         item.menu = menu
@@ -86,6 +139,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             updatesItem.title = state.title
             updatesItem.isEnabled = state.enabled
         }
+        let clip = Self.clipboardItemState(running: clipboard?.isRunning ?? false, paused: clipboard?.paused ?? false)
+        clipboardItem.title = clip.title
+        clipboardItem.isHidden = clip.hidden
+        clipboardItem.isEnabled = !clip.hidden
         guard let capture else { pauseItem.isHidden = true; return }
         let state = Self.pauseItemState(capture.status)
         pauseItem.title = state.title
@@ -96,6 +153,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     @objc private func settings() { onSettings() }
     @objc private func checkForUpdates() { updater?.checkForUpdates() }
     @objc private func quit() { NSApp.terminate(nil) }
+
+    @objc private func toggleClipboardPause() {
+        guard let clipboard, clipboard.isRunning else { return }
+        clipboard.setPaused(!clipboard.paused)
+    }
+
+    /// The menu as built (smoke checks and tests): item titles, hidden ones included.
+    var menuTitles: [String] { item.menu?.items.map(\.title) ?? [] }
+    var menuAutoenables: Bool { item.menu?.autoenablesItems ?? true }
 
     @objc private func togglePause() {
         guard let capture else { return }
@@ -119,24 +185,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         item.button?.toolTip = capturing ? "PlatyNotch — capturing on-screen text" : "PlatyNotch"
     }
 
-    /// Placeholder glyph (a notch outline) with an optional dot, as a template image.
+    /// Platy's monochrome silhouette with an optional dot, as a template image.
     static func icon(dot: Bool) -> NSImage {
-        let size = NSSize(width: 18, height: 18)
-        let image = NSImage(size: size, flipped: false) { rect in
-            NSColor.black.setStroke()
-            NSColor.black.setFill()
-            let body = NSBezierPath(roundedRect: rect.insetBy(dx: 1.5, dy: 4), xRadius: 3, yRadius: 3)
-            body.lineWidth = 1.5
-            body.stroke()
-            let notch = NSBezierPath(roundedRect: NSRect(x: 6, y: 10.5, width: 6, height: 3.5), xRadius: 1.2, yRadius: 1.2)
-            notch.fill()
-            if dot {
-                NSBezierPath(ovalIn: NSRect(x: 12.5, y: 0, width: 5.5, height: 5.5)).fill()
-            }
-            return true
-        }
-        image.isTemplate = true
-        image.accessibilityDescription = dot ? "PlatyNotch, capturing" : "PlatyNotch"
-        return image
+        PlatyMenuIcon.image(dot: dot)
     }
 }

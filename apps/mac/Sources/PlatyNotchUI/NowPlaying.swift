@@ -1,11 +1,15 @@
 import AppKit
+import ImageIO
 import Observation
 import PlatyNotchKit
+import SwiftUI
 import os
 
 /// What is playing system-wide. Reads mediaremote-adapter's `stream` (run with /usr/bin/perl,
 /// which may use MediaRemote on macOS 15.4+); if the adapter is missing or will not start,
-/// falls back to AppleScript polling of Spotify and Music every 2 s.
+/// falls back to AppleScript polling of Spotify and Music: every 2 s while the tile is on
+/// screen or music plays, else every 6 s and only for players whose Automation permission
+/// is already granted (so the pill sees music start without ever prompting at launch).
 ///
 /// The adapter (BSD-3-Clause) is not in the repo: `scripts/fetch-mediaremote-adapter.sh` builds
 /// it into `Contents/Resources/mediaremote-adapter/` (or set `PLATYNOTCH_MEDIAREMOTE_DIR`).
@@ -16,25 +20,54 @@ public final class NowPlaying {
     public private(set) var info: NowPlayingInfo?
     public private(set) var artwork: NSImage?
     public private(set) var source: Source = .none
+    /// The artwork's dominant colour (the tile's glow), worked out off the main thread once
+    /// per artwork; nil without artwork or until it is ready.
+    public private(set) var artworkTint: Color?
+    /// The playing app's icon and name (Safari for a web player), looked up once per app.
+    public private(set) var appIcon: NSImage?
+    public private(set) var appName: String?
+    /// The default output device's name, read while the tile is on screen.
+    public private(set) var outputDevice: String?
+    /// Music's favourite state after the user toggled it (nil: not known).
+    public private(set) var liked: Bool?
 
     public var title: String? { info?.title }
     public var artist: String? { info?.artist }
     public var isPlaying: Bool { info?.isPlaying ?? false }
+    /// Where playback is (nil when the player gives no times).
+    public var clock: PlaybackClock? { info.flatMap { PlaybackClock(info: $0, now: Date()) } }
+    /// Favourites work for Apple Music only (Spotify has no AppleScript for it).
+    public var canLike: Bool { info?.bundleIdentifier == AppleScriptPlayer.music.rawValue }
+    /// Called when `isPlaying` changes (the visualiser follows it).
+    @ObservationIgnored public var onPlayingChange: ((Bool) -> Void)?
 
-    @ObservationIgnored private static let log = Logger(subsystem: "dev.platynotch", category: "NowPlaying")
+    @ObservationIgnored private static let log = Logger(subsystem: "dev.platynotch.app", category: "NowPlaying")
     @ObservationIgnored private var adapter: AdapterStream?
     @ObservationIgnored private var adapterRestarts = 0
     @ObservationIgnored private var pollTask: Task<Void, Never>?
     @ObservationIgnored private var polling = false
     @ObservationIgnored private var viewers = 0
     @ObservationIgnored private var started = false
+    /// Fallback ticks since the last idle poll (idle polls run every `idlePollTicks`).
+    @ObservationIgnored private var idleTicks = 0
+    @ObservationIgnored private var artworkGeneration = 0
+    static let idlePollTicks = 3
+    /// Perf runs only (`LaunchOptions.fakeNowPlaying`): `start` reports a fake track as
+    /// playing and reads no player.
+    @ObservationIgnored public var fakePlaying = false
 
     public init() {}
 
-    /// Starts reading (idempotent). Called when the Today tab is first shown.
+    /// Starts reading (idempotent). Called by the music widget when it starts (at launch
+    /// when the widget is enabled).
     public func start() {
         guard !started else { return }
         started = true
+        if fakePlaying {
+            apply(NowPlayingInfo(bundleIdentifier: "dev.platynotch.fake", title: "Perf run", artist: "PlatyNotch",
+                                 isPlaying: true))
+            return
+        }
         if let files = AdapterFiles.locate() {
             startAdapter(files)
         } else {
@@ -50,17 +83,55 @@ public final class NowPlaying {
         pollTask?.cancel()
         pollTask = nil
         source = .none
+        apply(nil)   // a stopped reader shows nothing (and the pill drops the music bars)
     }
 
-    /// The Today tab reports when it is on screen; the AppleScript fallback polls only then
-    /// (or while music was playing at the last poll).
+    /// The music tile reports when it is on screen; the AppleScript fallback polls every 2 s
+    /// only then (or while music was playing at the last poll), else at the idle rate.
     public func setVisible(_ visible: Bool) {
         viewers = max(0, viewers + (visible ? 1 : -1))
+        if visible { refreshOutputDevice() }
     }
 
     public func playPause() { command(.togglePlayPause) }
     public func next() { command(.next) }
     public func previous() { command(.previous) }
+
+    /// Seeks to `seconds` into the track: the adapter's `seek` (microseconds), else
+    /// AppleScript `player position`. The scrubber moves at once; the player's next report
+    /// confirms it.
+    public func seek(to seconds: TimeInterval) {
+        guard var current = info, let clock else { return }
+        let target = clock.seeking(to: seconds, at: Date())
+        switch source {
+        case .adapter:
+            guard let files = AdapterFiles.locate() else { return }
+            AdapterStream.send(files: files, arguments: ["seek", String(Int64(target.elapsed * 1_000_000))])
+        case .appleScript:
+            guard let player = AppleScriptPlayer(rawValue: current.bundleIdentifier), player.isRunning else { return }
+            let position = target.elapsed
+            AppleScriptPlayer.queue.async { player.seek(to: position) }
+        case .none:
+            return
+        }
+        current.elapsed = target.elapsed
+        current.timestamp = target.at
+        apply(current)
+    }
+
+    /// Toggles the current track's favourite in Apple Music (asks for Automation the
+    /// first time, on this click).
+    public func toggleLike() {
+        guard canLike, AppleScriptPlayer.music.isRunning else { return }
+        let title = info?.title
+        AppleScriptPlayer.queue.async {
+            let result = AppleScriptPlayer.music.toggleFavourite()
+            Task { @MainActor [weak self] in
+                guard let self, self.info?.title == title else { return }
+                self.liked = result
+            }
+        }
+    }
 
     // MARK: - Adapter
 
@@ -99,12 +170,86 @@ public final class NowPlaying {
         }
     }
 
-    private func update(_ new: NowPlayingInfo?) {
+    /// Results from the adapter or a poll. Ignored once stopped: an adapter line or an
+    /// AppleScript poll still in flight at `stop` must not bring the music back.
+    func update(_ new: NowPlayingInfo?) {
+        guard started else { return }
+        apply(new)
+    }
+
+    private func apply(_ new: NowPlayingInfo?, now: Date = Date()) {
+        let new = Self.stamped(new, previous: info, now: now)
         guard new != info else { return }
+        let wasPlaying = isPlaying
         if new?.artwork != info?.artwork {
             artwork = new?.artwork.flatMap { NSImage(data: $0) }
+            tintArtwork(new?.artwork)
         }
+        if new?.appBundleIdentifier != info?.appBundleIdentifier { lookUpApp(new?.appBundleIdentifier) }
+        if new?.title != info?.title || new?.bundleIdentifier != info?.bundleIdentifier { liked = nil }
         info = new
+        if isPlaying != wasPlaying { onPlayingChange?(isPlaying) }
+        if viewers > 0 { refreshOutputDevice() }
+    }
+
+    /// A report with an elapsed time but no timestamp is stamped once, when it arrives (so
+    /// `clock` does not restart from `elapsed` on every read). An unchanged elapsed time
+    /// keeps the earlier stamp only for the same track in the same state (elapsed, playing,
+    /// title and player all equal): a diff about something else does not move the clock, but
+    /// a pause, resume or new track at the same elapsed time is stamped afresh (C6).
+    static func stamped(_ new: NowPlayingInfo?, previous: NowPlayingInfo?, now: Date) -> NowPlayingInfo? {
+        guard var new, new.elapsed != nil, new.timestamp == nil else { return new }
+        if let previous, sameClock(previous, new), let at = previous.timestamp {
+            new.timestamp = at
+        } else {
+            new.timestamp = now
+        }
+        return new
+    }
+
+    private static func sameClock(_ a: NowPlayingInfo, _ b: NowPlayingInfo) -> Bool {
+        a.elapsed == b.elapsed && a.isPlaying == b.isPlaying && a.title == b.title
+            && a.bundleIdentifier == b.bundleIdentifier
+    }
+
+    /// The glow colour, off the main thread; a newer artwork wins over a late result.
+    private func tintArtwork(_ data: Data?) {
+        artworkGeneration += 1
+        artworkTint = nil
+        guard let data else { return }
+        let generation = artworkGeneration
+        // The decode runs detached and never sees `self`; the result is applied back here
+        // on the main actor (older compilers reject sending `self` into the detached task).
+        Task { [weak self] in
+            let rgb = await Task.detached(priority: .utility) { NowPlaying.dominantColor(of: data) }.value
+            guard let self, let rgb, self.artworkGeneration == generation else { return }
+            self.artworkTint = Color(red: rgb.r, green: rgb.g, blue: rgb.b)
+        }
+    }
+
+    /// A small thumbnail (no full decode) through `DominantColor`.
+    nonisolated static func dominantColor(of data: Data) -> (r: Double, g: Double, b: Double)? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceThumbnailMaxPixelSize: 64,
+              ] as CFDictionary) else { return nil }
+        return DominantColor.of(cgImage: image)
+    }
+
+    private func lookUpApp(_ bundleID: String?) {
+        guard let bundleID, let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+            appIcon = nil
+            appName = nil
+            return
+        }
+        appIcon = NSWorkspace.shared.icon(forFile: url.path)
+        appName = FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: "")
+    }
+
+    private func refreshOutputDevice() {
+        let name = AudioOutput.defaultDeviceName()
+        if name != outputDevice { outputDevice = name }
     }
 
     // MARK: - AppleScript fallback
@@ -121,12 +266,22 @@ public final class NowPlaying {
     }
 
     private func pollIfWanted() {
-        guard source == .appleScript, !polling, viewers > 0 || isPlaying else { return }
+        guard source == .appleScript, !polling else { return }
+        let wanted = viewers > 0 || isPlaying
+        if !wanted {
+            idleTicks += 1
+            guard idleTicks >= Self.idlePollTicks else { return }
+        }
+        idleTicks = 0
         let running = AppleScriptPlayer.allCases.filter(\.isRunning)   // never launch a player
         guard !running.isEmpty else { update(nil); return }
         polling = true
         AppleScriptPlayer.queue.async {
-            let infos = running.compactMap { $0.read() }
+            // Idle polls never prompt: only players already allowed (checked without asking).
+            let readable = wanted ? running : running.filter {
+                Permissions.automationStatus(bundleID: $0.rawValue, ask: false) == .granted
+            }
+            let infos = readable.compactMap { $0.read() }
             let best = infos.first(where: \.isPlaying) ?? infos.first
             Task { @MainActor [weak self] in
                 self?.polling = false
@@ -144,7 +299,7 @@ public final class NowPlaying {
         case .adapter:
             guard let files = AdapterFiles.locate() else { return }
             let id = switch c { case .togglePlayPause: "2"; case .next: "4"; case .previous: "5" }
-            AdapterStream.send(files: files, command: id)
+            AdapterStream.send(files: files, arguments: ["send", id])
         case .appleScript:
             let player = info.flatMap { AppleScriptPlayer(rawValue: $0.bundleIdentifier) }
                 ?? AppleScriptPlayer.allCases.first(where: \.isRunning)
@@ -169,9 +324,13 @@ struct AdapterFiles: Sendable {
     let framework: URL
 
     /// `PLATYNOTCH_MEDIAREMOTE_DIR` (development), else the app's `Resources/mediaremote-adapter/`.
+    /// `PLATYNOTCH_NO_MEDIAREMOTE=1` finds none, so even a bundle uses the AppleScript
+    /// fallback (`scripts/perf-idle.sh --app --music-fallback`).
     static func locate() -> AdapterFiles? {
+        let env = ProcessInfo.processInfo.environment
+        if env["PLATYNOTCH_NO_MEDIAREMOTE"] == "1" { return nil }
         var dirs: [URL] = []
-        if let env = ProcessInfo.processInfo.environment["PLATYNOTCH_MEDIAREMOTE_DIR"], !env.isEmpty {
+        if let env = env["PLATYNOTCH_MEDIAREMOTE_DIR"], !env.isEmpty {
             dirs.append(URL(fileURLWithPath: env, isDirectory: true))
         }
         if let res = Bundle.main.resourceURL { dirs.append(res.appendingPathComponent(directoryName, isDirectory: true)) }
@@ -211,7 +370,8 @@ final class AdapterStream: @unchecked Sendable {
 
     func start() throws {
         process.executableURL = Self.perl
-        process.arguments = [files.script.path, files.framework.path, "stream", "--debounce=100"]
+        // --micros: exact elapsed / duration / timestamp (the plain timestamp is whole seconds).
+        process.arguments = [files.script.path, files.framework.path, "stream", "--micros", "--debounce=100"]
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
         process.standardInput = FileHandle.nullDevice
@@ -247,11 +407,11 @@ final class AdapterStream: @unchecked Sendable {
         }
     }
 
-    /// `send <id>`: 2 toggle play/pause, 4 next, 5 previous.
-    static func send(files: AdapterFiles, command: String) {
+    /// `send <id>` (2 toggle play/pause, 4 next, 5 previous) or `seek <microseconds>`.
+    static func send(files: AdapterFiles, arguments: [String]) {
         let p = Process()
         p.executableURL = perl
-        p.arguments = [files.script.path, files.framework.path, "send", command]
+        p.arguments = [files.script.path, files.framework.path] + arguments
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle.nullDevice
         p.standardInput = FileHandle.nullDevice
@@ -271,7 +431,16 @@ enum AppleScriptPlayer: String, CaseIterable, Sendable {
 
     var isRunning: Bool { !NSRunningApplication.runningApplications(withBundleIdentifier: rawValue).isEmpty }
 
-    /// Current track as `bundleID␟state␟title␟artist`; "" when stopped.
+    /// Track length in milliseconds: Spotify reports milliseconds, Music seconds.
+    private var durationMs: String {
+        switch self {
+        case .spotify: "(duration of t)"
+        case .music: "(round ((duration of t) * 1000) rounding down)"
+        }
+    }
+
+    /// Current track as `bundleID␟state␟title␟artist␟positionMs␟durationMs` (integers, so
+    /// no locale decimal comma); "" when stopped. A time it cannot read is "".
     private var readScript: String {
         """
         if application id "\(rawValue)" is not running then return ""
@@ -281,7 +450,15 @@ enum AppleScriptPlayer: String, CaseIterable, Sendable {
                 if playerState is not "playing" and playerState is not "paused" then return ""
                 set t to current track
                 set sep to character id 31
-                return "\(rawValue)" & sep & playerState & sep & (name of t as text) & sep & (artist of t as text)
+                set pos to ""
+                set len to ""
+                try
+                    set pos to ((round ((player position) * 1000) rounding down) as integer) as text
+                end try
+                try
+                    set len to (\(durationMs) as integer) as text
+                end try
+                return "\(rawValue)" & sep & playerState & sep & (name of t as text) & sep & (artist of t as text) & sep & pos & sep & len
             end tell
         end timeout
         """
@@ -289,7 +466,39 @@ enum AppleScriptPlayer: String, CaseIterable, Sendable {
 
     nonisolated func read() -> NowPlayingInfo? {
         guard let out = Self.execute(readScript) else { return nil }
-        return NowPlayingInfo.parseAppleScript(out)
+        return NowPlayingInfo.parseAppleScript(out, now: Date())
+    }
+
+    /// `set player position` (seconds, both players).
+    nonisolated func seek(to seconds: TimeInterval) {
+        let whole = max(0, Int(seconds))
+        _ = Self.execute("""
+        if application id "\(rawValue)" is not running then return ""
+        with timeout of 2 seconds
+            tell application id "\(rawValue)" to set player position to \(whole)
+        end timeout
+        return ""
+        """)
+    }
+
+    /// Music only: flips the current track's favourite (`favorited` on current Music,
+    /// `loved` before it) and returns the new state; nil when neither works.
+    nonisolated func toggleFavourite() -> Bool? {
+        guard self == .music else { return nil }
+        for property in ["favorited", "loved"] {
+            let out = Self.execute("""
+            if application id "\(rawValue)" is not running then return ""
+            with timeout of 2 seconds
+                tell application id "\(rawValue)"
+                    set v to not (\(property) of current track)
+                    set \(property) of current track to v
+                    return v as text
+                end tell
+            end timeout
+            """)
+            if let out, out == "true" || out == "false" { return out == "true" }
+        }
+        return nil
     }
 
     /// `verb` is one of our fixed commands (playpause, next track, previous track).

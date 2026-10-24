@@ -4,7 +4,7 @@ import XCTest
 @testable import PlatyNotchUI
 
 @MainActor
-final class MemoryModelsTests: XCTestCase {
+final class MemoryModelsTests: DefaultsTestCase {
     private func waitUntil(_ condition: @MainActor () -> Bool) async {
         for _ in 0..<400 where !condition() { try? await Task.sleep(for: .milliseconds(5)) }
     }
@@ -53,7 +53,7 @@ final class MemoryModelsTests: XCTestCase {
     }
 
     func testCaptureOffWhenMemoryDisabledAndPausePersists() {
-        let defaults = UserDefaults(suiteName: "platynotch.tests.\(UUID().uuidString)")!
+        let defaults = self.defaults()
         let capture = CaptureService(send: { _ in }, defaults: defaults)
         capture.apply(CaptureSettings(enabled: false))
         XCTAssertEqual(capture.status, .off)

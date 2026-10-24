@@ -10,11 +10,39 @@ public struct LaunchOptions: Equatable, Sendable {
     /// `PLATYNOTCH_EXTERNAL_CORE=1`: connect to an already running `notch serve`
     /// (e.g. `scripts/fake-events.sh`) instead of supervising one.
     public var externalCore: Bool
+    /// `PLATYNOTCH_RENDER_DIR`: `--smoke` also writes PNGs of themed views (HUD, approval
+    /// card, game boards, shelf) in the dark and light schemes into this directory.
+    public var renderDir: String?
+    /// `--render-icon <dir>` (hidden, C35): write `<dir>/AppIcon.iconset` (10 PNGs) and exit;
+    /// then `iconutil -c icns`. No core, no window.
+    public var renderIconDir: String?
+    /// `--platy-gallery <dir>` (hidden, C35): write Platy's art review PNGs and exit.
+    public var platyGalleryDir: String?
+    /// `PLATYNOTCH_FAKE_NOWPLAYING=1` together with `--perf-run` (scripts/perf-idle.sh
+    /// `--state music` passes both): now playing reports a fake track as playing instead of
+    /// reading any player, so the pill shows the music bars. Either one alone does nothing.
+    public var fakeNowPlaying: Bool
+    /// `--perf-run` (scripts/perf-idle.sh): the widget registry does not persist, so a
+    /// measurement never writes `widgets.layout` (C4).
+    public var perfRun: Bool
 
     public init(arguments: [String], env: [String: String]) {
         smoke = arguments.dropFirst().contains("--smoke")
         smokeSettings = arguments.dropFirst().contains("--smoke-settings")
         smokeDelay = env["PLATYNOTCH_SMOKE_DELAY"].flatMap(Double.init).flatMap { $0 > 0 ? $0 : nil } ?? 3
         externalCore = env["PLATYNOTCH_EXTERNAL_CORE"] == "1"
+        renderDir = env["PLATYNOTCH_RENDER_DIR"].flatMap { $0.isEmpty ? nil : $0 }
+        renderIconDir = Self.value(after: "--render-icon", in: arguments)
+        platyGalleryDir = Self.value(after: "--platy-gallery", in: arguments)
+        perfRun = arguments.dropFirst().contains("--perf-run")
+        fakeNowPlaying = env["PLATYNOTCH_FAKE_NOWPLAYING"] == "1" && perfRun
+    }
+
+    /// The argument after `flag`, if there is one that is not another flag.
+    static func value(after flag: String, in arguments: [String]) -> String? {
+        let args = Array(arguments.dropFirst())
+        guard let i = args.firstIndex(of: flag), i + 1 < args.count else { return nil }
+        let v = args[i + 1]
+        return v.isEmpty || v.hasPrefix("--") ? nil : v
     }
 }

@@ -23,6 +23,7 @@ struct ApprovalCard: View {
     var onExpand: (() -> Void)?
     let onDecide: (ApprovalBehavior) -> Void
     let onOpenTerminal: (Session) -> Void
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         let visible = VisibleApproval(approval)
@@ -34,7 +35,7 @@ struct ApprovalCard: View {
                 if visible.hadHidden {
                     Label("Contains hidden characters", systemImage: "exclamationmark.triangle.fill")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(Theme.color(.attention))
+                        .foregroundStyle(Theme.warning(scheme))
                 }
                 SummaryView(summary: visible.summary, maxLines: maxLines)
                 footer(status)
@@ -136,7 +137,7 @@ struct ApprovalCard: View {
                 Label { Text("Allow") } icon: { Text("⌘↩").foregroundStyle(.secondary) }
                     .labelStyle(TrailingIconLabelStyle())
             }
-            .tint(Theme.color(.active))
+            .tint(Theme.allow(scheme))
             .focusable(false)
             .keyboardShortcut(shortcuts ? KeyboardShortcut(.return, modifiers: .command) : nil)
             .accessibilityLabel("Allow")

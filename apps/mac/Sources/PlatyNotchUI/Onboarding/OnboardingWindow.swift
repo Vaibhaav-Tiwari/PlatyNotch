@@ -12,6 +12,8 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     @MainActor @Observable
     final class Model {
         var page = 0
+        /// The window is open: Platy animates only then (closed windows keep their views).
+        var visible = false
     }
 
     let model = Model()
@@ -30,6 +32,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
 
     func show(activate: Bool = true) {
         model.page = 0
+        model.visible = true
         let w = window ?? makeWindow()
         window = w
         if activate {
@@ -48,6 +51,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     }
 
     func close() {
+        model.visible = false
         window?.delegate = nil
         window?.close()
     }
@@ -59,6 +63,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         // Closing early counts as seen: the guide is reachable from Settings.
+        model.visible = false
         markDone()
     }
 
@@ -70,17 +75,35 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
     }
 
     private func makeWindow() -> NSWindow {
+        let model = self.model
         let root = OnboardingView(model: model, services: services, onFinish: { [weak self] in self?.finish() })
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 620, height: 520),
                          styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
         w.title = "Welcome to PlatyNotch"
         w.titlebarAppearsTransparent = true
-        w.contentViewController = NSHostingController(rootView: root)
+        // The window keeps this size. By default the hosting controller resizes the window
+        // to the SwiftUI content's ideal size, which for these pages is thousands of points
+        // tall: onboarding opened as a narrow strip the height of the screen.
+        let host = NSHostingController(rootView: OnboardingRoot(model: model, content: root))
+        host.sizingOptions = []
+        w.contentViewController = host
         w.setContentSize(NSSize(width: 620, height: 520))
         w.isReleasedWhenClosed = false
         w.delegate = self
         w.center()
         return w
+    }
+}
+
+/// Sizes the guide and stops Platy's frames while the window is closed.
+private struct OnboardingRoot: View {
+    let model: OnboardingWindowController.Model
+    let content: OnboardingView
+
+    var body: some View {
+        content
+            .frame(width: 620, height: 520)
+            .environment(\.panelTicking, model.visible)
     }
 }
 
@@ -147,8 +170,12 @@ private struct AgentsPage: View {
     var body: some View {
         let agents = services.agents
         VStack(alignment: .leading, spacing: 8) {
-            PageTitle(title: "Your coding agents",
-                      text: "PlatyNotch shows what your agents are doing and lets you answer their permission prompts from the notch. Install hooks for the agents you use; you can change this later in Settings.")
+            HStack(alignment: .top, spacing: 16) {
+                // Platy says hello (the mascot; a still frame with Reduce Motion).
+                PlatyView(mood: .working, size: 72)
+                PageTitle(title: "Your coding agents",
+                          text: "PlatyNotch shows what your agents are doing and lets you answer their permission prompts from the notch. Install hooks for the agents you use; you can change this later in Settings.")
+            }
             ScrollView {
                 AgentList(services: services, compact: true)
             }
@@ -176,8 +203,30 @@ private struct PermissionsPage: View {
         VStack(alignment: .leading, spacing: 8) {
             PageTitle(title: "Permissions",
                       text: "All optional. macOS asks only when you click Allow, and you can change your mind in System Settings.")
-            ScrollView { PermissionRows(permissions: services.permissions) }
+            ScrollView {
+                PermissionRows(permissions: services.permissions)
+                HUDOptIn(widgets: services.widgets).padding(.top, 14)
+            }
         }
+    }
+}
+
+/// Opt-in for the volume and brightness HUD (off by default; it needs Accessibility).
+private struct HUDOptIn: View {
+    let widgets: WidgetRegistry
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle("Replace the volume and brightness HUD", isOn: Binding(
+                get: { widgets.isEnabled(HUDWidget.widgetID) },
+                set: { widgets.setEnabled(HUDWidget.widgetID, $0) }))
+                .toggleStyle(.switch)
+            Text("Shows volume, brightness and keyboard backlight in the notch. Needs Accessibility (above); without it the system HUD shows as before.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

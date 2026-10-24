@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Platy, the PlatyNotch platypus. Master drawing, hand-written.
+  Apache-2.0, part of PlatyNotch. Original work: no traced or copied artwork.
+
+  A 100 x 100 box, y down. The numbers match PlatyShapes in
+  apps/mac/Sources/PlatyNotchUI/Mascot/PlatyArt.swift (the app draws the same
+  shapes in a SwiftUI Canvas); change both together. Idle pose, full detail.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="512" height="512">
+  <title>Platy</title>
+  <defs>
+    <linearGradient id="body" x1="0" y1="14" x2="0" y2="94" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4E8F80"/>
+      <stop offset="0.5" stop-color="#3F7D70"/>
+      <stop offset="1" stop-color="#336A5F"/>
+    </linearGradient>
+    <clipPath id="tail-clip">
+      <path id="tail-shape" d="M0 -5 C10 -7 20 -11 30 -9 C38 -7 38 7 30 9 C20 11 10 7 0 5 Z"/>
+    </clipPath>
+    <clipPath id="bill-clip">
+      <rect x="26" y="46" width="48" height="20" rx="10"/>
+    </clipPath>
+  </defs>
+
+  <!-- ground shadow -->
+  <ellipse cx="50" cy="96" rx="29" ry="3" fill="#000" fill-opacity="0.22"/>
+
+  <!-- tail: a flat beaver tail behind the body, base at (66, 84), turned -22 degrees -->
+  <g transform="translate(66 84) rotate(-22)">
+    <use href="#tail-shape" fill="#7E5739"/>
+    <g clip-path="url(#tail-clip)" stroke="#5E3F28" stroke-opacity="0.55" stroke-width="1">
+      <path d="M6 -12 L-2 12 M-2 -12 L6 12 M12 -12 L4 12 M4 -12 L12 12 M18 -12 L10 12 M10 -12 L18 12
+               M24 -12 L16 12 M16 -12 L24 12 M30 -12 L22 12 M22 -12 L30 12 M36 -12 L28 12 M28 -12 L36 12"/>
+    </g>
+    <use href="#tail-shape" fill="none" stroke="#5E3F28" stroke-width="1.6"/>
+  </g>
+
+  <!-- head and body: one shape (outline drawn under the fill so only the outer edge shows) -->
+  <g fill="none" stroke="#1F4640" stroke-width="3.2">
+    <ellipse cx="50" cy="42" rx="32" ry="28"/>
+    <ellipse cx="50" cy="70" rx="31" ry="24"/>
+  </g>
+  <g fill="url(#body)">
+    <ellipse cx="50" cy="42" rx="32" ry="28"/>
+    <ellipse cx="50" cy="70" rx="31" ry="24"/>
+  </g>
+  <ellipse cx="50" cy="76.5" rx="17" ry="13.5" fill="#9BCBB5" fill-opacity="0.6"/>
+
+  <!-- feet -->
+  <g fill="#EDCB97" stroke="#B78F5B" stroke-width="1">
+    <ellipse cx="34" cy="92" rx="11" ry="5"/>
+    <ellipse cx="66" cy="92" rx="11" ry="5"/>
+  </g>
+  <path d="M30.3 96 V93 M37.7 96 V93 M62.3 96 V93 M69.7 96 V93" stroke="#B78F5B" stroke-width="1.2"/>
+
+  <!-- webbed front paws (palm plus three toes) -->
+  <g fill="#EDCB97" stroke="#B78F5B" stroke-width="1">
+    <g transform="translate(27 71)">
+      <path d="M-6.5 0 A6.5 5 0 0 1 6.5 0 A2.3 2.3 0 0 1 4.2 5.1 A2.3 2.3 0 0 1 0 6.4
+               A2.3 2.3 0 0 1 -4.2 5.1 A2.3 2.3 0 0 1 -6.5 0 Z"/>
+      <path d="M-2.2 2 V4.4 M2.2 2 V4.4" fill="none" stroke-linecap="round"/>
+    </g>
+    <g transform="translate(73 71)">
+      <path d="M-6.5 0 A6.5 5 0 0 1 6.5 0 A2.3 2.3 0 0 1 4.2 5.1 A2.3 2.3 0 0 1 0 6.4
+               A2.3 2.3 0 0 1 -4.2 5.1 A2.3 2.3 0 0 1 -6.5 0 Z"/>
+      <path d="M-2.2 2 V4.4 M2.2 2 V4.4" fill="none" stroke-linecap="round"/>
+    </g>
+  </g>
+
+  <!-- cheeks -->
+  <g fill="#F29C94" fill-opacity="0.55">
+    <ellipse cx="26.5" cy="42" rx="4.5" ry="3"/>
+    <ellipse cx="73.5" cy="42" rx="4.5" ry="3"/>
+  </g>
+
+  <!-- eyes with glints -->
+  <g fill="#1A2124">
+    <circle cx="37" cy="36" r="5.4"/>
+    <circle cx="63" cy="36" r="5.4"/>
+  </g>
+  <g fill="#FFFFFF">
+    <circle cx="36.08" cy="34.81" r="2.05"/>
+    <circle cx="62.08" cy="34.81" r="2.05"/>
+  </g>
+
+  <!-- the cream duck bill: upper and lower bill, smile, nostrils -->
+  <rect x="26" y="46" width="48" height="20" rx="10" fill="#F6E7C6"/>
+  <g clip-path="url(#bill-clip)">
+    <path d="M20 56.5 Q50 64.5 80 56.5 L80 80 L20 80 Z" fill="#E6CFA2"/>
+    <path d="M33 57.5 Q50 63 67 57.5" fill="none" stroke="#B8966A" stroke-width="1.3" stroke-linecap="round"/>
+  </g>
+  <g fill="#8E7049">
+    <ellipse cx="43.7" cy="50.7" rx="1.5" ry="1.1"/>
+    <ellipse cx="56.3" cy="50.7" rx="1.5" ry="1.1"/>
+  </g>
+  <rect x="26" y="46" width="48" height="20" rx="10" fill="none" stroke="#B8966A" stroke-width="1.2"/>
+</svg>

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Builds build/PlatyNotch.app (arm64): the SwiftPM app, the Go core as
-# Contents/MacOS/notch, Sparkle.framework, mediaremote-adapter, licenses, Info.plist.
+# Contents/MacOS/notch, Sparkle.framework, mediaremote-adapter, the PlatyNotchUI resource
+# bundle (sounds), licenses, Info.plist.
 #
 # Signing, inside out (adapter, notch, Sparkle's XPC services and helpers, Sparkle, app):
 #   default            ad-hoc (`codesign -s -`), no hardened runtime. This is what v0.1
@@ -95,6 +96,33 @@ printf 'APPL????' >"$APP/Contents/PkgInfo"
 # App icon hook (Plan 3b): copied when present; CFBundleIconFile names it either way.
 [[ -f "$RES_SRC/AppIcon.icns" ]] && cp "$RES_SRC/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
+# SwiftPM resource bundle (sounds). SwiftPM writes a flat folder, which codesign cannot
+# sign ("bundle format unrecognized"), so it becomes a real bundle (Contents/Info.plist,
+# Contents/Resources). PlatyNotchUI's UIResources looks for it in Contents/Resources.
+RES_BUNDLE_NAME=PlatyNotch_PlatyNotchUI.bundle
+RES_BUNDLE="$APP/Contents/Resources/$RES_BUNDLE_NAME"
+[[ -d "$SWIFT_BIN/$RES_BUNDLE_NAME" ]] || { echo "missing $SWIFT_BIN/$RES_BUNDLE_NAME" >&2; exit 1; }
+if [[ -f "$SWIFT_BIN/$RES_BUNDLE_NAME/Contents/Info.plist" ]]; then
+  ditto "$SWIFT_BIN/$RES_BUNDLE_NAME" "$RES_BUNDLE"
+else
+  mkdir -p "$RES_BUNDLE/Contents/Resources"
+  ditto "$SWIFT_BIN/$RES_BUNDLE_NAME" "$RES_BUNDLE/Contents/Resources"
+  cat >"$RES_BUNDLE/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>dev.platynotch.app.resources.ui</string>
+  <key>CFBundleName</key><string>PlatyNotch_PlatyNotchUI</string>
+  <key>CFBundlePackageType</key><string>BNDL</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
+  <key>CFBundleVersion</key><string>$BUILD</string>
+</dict>
+</plist>
+PLIST
+fi
+
 cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$APP/Contents/Resources/"
 cp "$ROOT/third_party/mediaremote-adapter-LICENSE" "$APP/Contents/Resources/mediaremote-adapter-LICENSE"
 cp "$SPARKLE_ARTIFACT/LICENSE" "$APP/Contents/Resources/Sparkle-LICENSE"
@@ -121,6 +149,7 @@ done
 sign "$SPARKLE/Autoupdate"
 sign "$SPARKLE/Updater.app"
 sign "$APP/Contents/Frameworks/Sparkle.framework"
+sign "$RES_BUNDLE"
 
 if [[ -n "$IDENTITY" ]]; then
   sign --entitlements "$RES_SRC/PlatyNotch.entitlements" "$APP"
@@ -129,6 +158,10 @@ else
 fi
 
 # --- Check -------------------------------------------------------------------------------
-plutil -lint "$APP/Contents/Info.plist" >/dev/null
+plutil -lint "$APP/Contents/Info.plist" "$RES_BUNDLE/Contents/Info.plist" >/dev/null
+for snd in alarm chime; do   # scripts/make-sounds.py
+  [[ -f "$RES_BUNDLE/Contents/Resources/$snd.wav" ]] || { echo "missing sound $snd.wav in $RES_BUNDLE" >&2; exit 1; }
+done
+codesign --verify --strict "$RES_BUNDLE"
 codesign --verify --deep --strict "$APP"
 log "done: $APP ($VERSION, build $BUILD; updates $( [[ -n "${SPARKLE_ED_PUBLIC_KEY:-}" ]] && echo on || echo off ))"
