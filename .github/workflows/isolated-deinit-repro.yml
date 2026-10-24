@@ -1,0 +1,78 @@
+name: isolated-deinit repro (research)
+
+# Research only: a standalone repro of the `isolated deinit` abort on the macOS 15.x Swift
+# runtime (research/isolated-deinit). Runs only on pushes to this throwaway branch.
+on:
+  push:
+    branches: [research/isolated-deinit-repro]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-run:
+    name: ${{ matrix.os }} / Xcode ${{ matrix.xcode }} / deploy ${{ matrix.deploy }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-15, xcode: '26.3', deploy: '14.0' }   # PlatyNotch's toolchain; shim path
+          - { os: macos-15, xcode: '26.3', deploy: '15.4' }   # direct swift_task_deinitOnExecutor
+          - { os: macos-15, xcode: 'latest-stable', deploy: '14.0' }
+          - { os: macos-15, xcode: '16.4', deploy: '15.4' }   # Swift 6.1 (experimental flag)
+          - { os: macos-15, xcode: '16.4', deploy: '14.0' }
+          - { os: macos-15, xcode: '16.0', deploy: '15.4' }   # oldest Xcode on the image
+          - { os: macos-26, xcode: 'latest-stable', deploy: '14.0' } # newer OS runtime
+    env:
+      REPRO_DEPLOY: ${{ matrix.deploy }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          xcode-version: ${{ matrix.xcode }}
+      - name: run all variants
+        run: research/isolated-deinit/run.sh
+
+  # Build once with Xcode 26.3 (deploy 14), then run the same binaries on other OSes:
+  # macos-14 has no swift_task_deinitOnExecutor in its runtime, so the shim's own
+  # main-thread path runs.
+  build-for-other-os:
+    runs-on: macos-15
+    env:
+      REPRO_DEPLOY: '14.0'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          xcode-version: '26.3'
+      - name: build
+        working-directory: research/isolated-deinit
+        run: |
+          swift build --build-tests
+          BIN=$(swift build --show-bin-path)
+          mkdir -p ../../products && cp -R "$BIN/Repro" "$BIN"/*.xctest ../../products/
+          tar -C ../../products -czf ../../products.tgz .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: products
+          path: products.tgz
+
+  run-prebuilt:
+    name: prebuilt (Xcode 26.3, deploy 14) on ${{ matrix.os }}
+    needs: build-for-other-os
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15, macos-26]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: products
+      - name: run all variants (prebuilt)
+        run: |
+          mkdir -p "$RUNNER_TEMP/products" && tar -C "$RUNNER_TEMP/products" -xzf products.tgz
+          REPRO_BIN="$RUNNER_TEMP/products" research/isolated-deinit/run.sh
