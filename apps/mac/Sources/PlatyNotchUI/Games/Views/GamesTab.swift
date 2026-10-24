@@ -163,6 +163,7 @@ struct GameBoard: View {
         case .tetris: TetrisView(tetris: session.tetris)
         case .twenty48: Game2048View(game: session.game2048, animate: decorate)
         case .flappy: FlappyView(flappy: session.flappy, decorate: decorate)
+        case .chase: ChaseView(game: session.chase, decorate: decorate)
         }
     }
 

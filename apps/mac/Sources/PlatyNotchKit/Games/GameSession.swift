@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 
 public enum GameKind: String, CaseIterable, Identifiable, Sendable {
-    case snake, tetris, twenty48 = "2048", flappy
+    case snake, tetris, twenty48 = "2048", flappy, chase
 
     public var id: String { rawValue }
 
@@ -12,8 +12,12 @@ public enum GameKind: String, CaseIterable, Identifiable, Sendable {
         case .tetris: "Tetris"
         case .twenty48: "2048"
         case .flappy: "Flappy"
+        case .chase: "Platy Chase"
         }
     }
+
+    /// The Today tile's narrow buttons.
+    public var shortTitle: String { self == .chase ? "Chase" : title }
 
     /// Real-time games need the frame loop; 2048 is turn-based and draws only on a move.
     public var usesFrames: Bool { self != .twenty48 }
@@ -25,6 +29,7 @@ public enum GameKind: String, CaseIterable, Identifiable, Sendable {
         case .tetris: "←→ move · ↑ rotate · ↓ drop · Space slams"
         case .twenty48: "Arrows or WASD slide the tiles"
         case .flappy: "Space or ↑ flaps"
+        case .chase: "Arrows or WASD steer · turns wait for the next opening"
         }
     }
 }
@@ -142,18 +147,20 @@ public struct GameResult: Equatable, Sendable {
     }
 }
 
-/// The four games and what the player is doing with them: which one is shown, each one's
+/// The five games and what the player is doing with them: which one is shown, each one's
 /// phase, the high scores, and the frame clock. Pure and deterministic for a seed; the UI
 /// (`GameHost`) feeds it blockers, keys and frame times.
 ///
 /// Each game advances only through its engine (C30): Snake `step`, Tetris `tick` /
-/// `apply`, 2048 `move`, Flappy `step(dt:)`. A blocked game takes no frame; keys reach it
+/// `apply`, 2048 `move`, Flappy `step(dt:)`, Platy Chase `frame` / `turn`. A blocked game takes no frame; keys reach it
 /// only while it plays and nothing blocks it, and never while an approval is pending.
 public struct GameSession: Equatable, Sendable {
     /// Seconds per Snake step at the start (`Snake.stepInterval` shortens it as it grows).
     public static let snakeStep: Double = Snake.slowestStep
     /// Flappy's fixed physics step.
     public static let flappyStep: Double = 1.0 / 120.0
+    /// Platy Chase advances in arcade frames.
+    public static let chaseStep: Double = ChaseRules.frame
     /// The most time one frame may add (a hitch never teleports the game).
     public static let maxFrameGap: Double = 0.25
 
@@ -162,6 +169,7 @@ public struct GameSession: Equatable, Sendable {
     public var tetris: Tetris
     public var game2048: Game2048
     public var flappy: Flappy
+    public var chase: PlatyChase
     public private(set) var phases: [GameKind: GamePhase] = [:]
     /// Collapsed until a panel reports otherwise.
     public private(set) var blockers = GameBlockers(collapsed: true)
@@ -179,6 +187,7 @@ public struct GameSession: Equatable, Sendable {
         tetris = Tetris(seed: rng.next())
         game2048 = Game2048(seed: rng.next())
         flappy = Flappy(seed: rng.next())
+        chase = PlatyChase(seed: rng.next())
         self.scores = scores
         self.rng = rng
     }
@@ -195,6 +204,7 @@ public struct GameSession: Equatable, Sendable {
         case .tetris: tetris.score
         case .twenty48: game2048.score
         case .flappy: flappy.score
+        case .chase: chase.score
         }
     }
 
@@ -273,6 +283,11 @@ public struct GameSession: Equatable, Sendable {
                 flappy.step(dt: Self.flappyStep)
                 accumulator -= Self.flappyStep
             }
+        case .chase:
+            while accumulator >= Self.chaseStep, !chase.isOver {
+                chase.frame()
+                accumulator -= Self.chaseStep
+            }
         case .twenty48:
             break
         }
@@ -298,6 +313,8 @@ public struct GameSession: Equatable, Sendable {
             if let d = k.direction { game2048.move(d) }
         case .flappy:
             if k.kind == .space || k.kind == .up { flappy.flap() }
+        case .chase:
+            if let d = k.direction { chase.turn(d) }
         }
         finishIfOver()
     }
@@ -309,6 +326,7 @@ public struct GameSession: Equatable, Sendable {
         case .tetris: tetris = Tetris(seed: seed)
         case .twenty48: game2048 = Game2048(seed: seed)
         case .flappy: flappy = Flappy(seed: seed)
+        case .chase: chase = PlatyChase(seed: seed)
         }
         newBest = nil
         phases[kind] = .playing
@@ -321,6 +339,7 @@ public struct GameSession: Equatable, Sendable {
         case .tetris: tetris.isOver
         case .twenty48: game2048.isOver
         case .flappy: flappy.isOver
+        case .chase: chase.isOver
         }
     }
 
@@ -368,6 +387,10 @@ public enum GameLayout {
     public static let tileGap: CGFloat = 7
     /// Flappy world units (the original's pixels) to points.
     public static let flappyScale: CGFloat = 0.6
+    /// Platy Chase: 8.5 pt tiles, a 238 × 263.5 maze between two info columns.
+    public static let chaseTile: CGFloat = 8.5
+    public static let chaseSide: CGFloat = 104
+    public static let chaseGap: CGFloat = 14
 
     public static func boardSize(_ kind: GameKind) -> CGSize {
         switch kind {
@@ -380,6 +403,10 @@ public enum GameLayout {
         case .twenty48:
             let side: CGFloat = tile * 4 + tileGap * 5
             return CGSize(width: side, height: side)
+        case .chase:
+            let maze: CGFloat = chaseTile * CGFloat(ChaseMaze.width)
+            let sides: CGFloat = (chaseSide + chaseGap) * 2
+            return CGSize(width: maze + sides, height: chaseTile * CGFloat(ChaseMaze.height))
         case .flappy:
             let w: CGFloat = CGFloat(Flappy.width) * flappyScale
             let h: CGFloat = CGFloat(Flappy.height + Flappy.groundDepth) * flappyScale

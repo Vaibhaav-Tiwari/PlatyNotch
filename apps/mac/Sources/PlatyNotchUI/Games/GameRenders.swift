@@ -27,7 +27,7 @@ enum GameRenders {
     }
 
     private static func shots() -> [(String, AnyView)] {
-        flappyShots() + game2048Shots() + tetrisShots() + snakeShots()
+        flappyShots() + game2048Shots() + tetrisShots() + snakeShots() + chaseShots()
     }
 
     private static func card(_ title: String, _ detail: String) -> AnyView {
@@ -153,6 +153,94 @@ enum GameRenders {
             card("Game over · \(dead.score)", "Press Space to play again")
         })))
         return shots
+    }
+}
+
+extension GameRenders {
+    /// Plays with turns from a seeded generator until `frames` (or a lost life).
+    private static func played(seed: UInt64, frames: Int) -> PlatyChase {
+        var g = PlatyChase(seed: seed)
+        var rng = SeededRNG(seed: seed)
+        for i in 0..<frames where g.phase != .dying && !g.isOver {
+            if i % 24 == 0 { g.turn(Direction.allCases[rng.below(4)]) }
+            g.frame()
+        }
+        return g
+    }
+
+    static func chaseShots() -> [(String, AnyView)] {
+        func view(_ g: PlatyChase, _ overlay: AnyView? = nil) -> AnyView {
+            AnyView(ZStack { ChaseView(game: g, decorate: true); overlay })
+        }
+        let start = PlatyChase(seed: 2)
+        // The first seed whose random pilot is still alive after 12 s.
+        var mid = played(seed: 1, frames: 720)
+        for seed: UInt64 in 2...60 where mid.phase != .playing { mid = played(seed: seed, frames: 720) }
+        var fright = mid
+        fright.placePlayer(x: 26.5, y: 3.9, dir: .up)
+        for _ in 0..<40 { fright.frame() }
+        var flash = fright
+        while flash.frightFrames > 40, flash.phase == .playing || flash.phase == .chaserEaten { flash.frame() }
+        while !flash.flashWhite, flash.frightFrames > 1 { flash.frame() }
+        var eaten = fright
+        if let blue = eaten.chasers.first(where: { $0.frightened && $0.state == .active }) {
+            eaten.placePlayer(x: blue.x, y: blue.y, dir: eaten.playerDir, moving: false)
+            eaten.frame()
+            for _ in 0..<45 { eaten.frame() }
+        }
+        var eyes = eaten
+        for _ in 0..<40 { eyes.frame() }
+        var bonus = mid
+        while bonus.bonus == nil, bonus.dotsEaten < 70 { bonus.simulateDotEaten() }
+        var dying = mid
+        dying.setChaser(Chaser(kind: .chaser, x: dying.playerX, y: dying.playerY, dir: .left, state: .active))
+        dying.frame()
+        var dyingFrozen = dying
+        for _ in 0..<30 { dyingFrozen.frame() }
+        for _ in 0..<(60 + 55) { dying.frame() }
+        return [
+            ("chase-1-start", view(start, AnyView(GameOverlayCard(title: "Press Space", detail: GameKind.chase.help)))),
+            ("chase-2-ready", view(start)),
+            ("chase-3-mid-play", view(mid)),
+            ("chase-4-frightened", view(fright)),
+            ("chase-5-flashing", view(flash)),
+            ("chase-6-eaten-points", view(eaten)),
+            ("chase-6b-eyes-home", view(eyes)),
+            ("chase-7-bonus", view(bonus)),
+            ("chase-8-caught-freeze", view(dyingFrozen)),
+            ("chase-9-death", view(dying)),
+            ("chase-art-sheet", AnyView(ChaseArtSheet())),
+        ]
+    }
+}
+
+/// The creatures, Platy and the snacks, big: the art check.
+private struct ChaseArtSheet: View {
+    var body: some View {
+        Canvas { ctx, _ in
+            ctx.fill(Path(CGRect(x: 0, y: 0, width: 520, height: 250)), with: .color(ChaseArt.background))
+            var big = ctx
+            big.scaleBy(x: 26, y: 26)
+            for (i, k) in ChaserKind.allCases.enumerated() {
+                ChaseArt.drawCreature(k, in: big, at: CGPoint(x: 1.2 + Double(i) * 2.2, y: 1.6), dir: .right, wiggle: i % 2 == 0)
+            }
+            ChaseArt.drawPlaty(in: big, at: CGPoint(x: 10.4, y: 1.6), tile: 1, dir: .right, open: 0.9)
+            ChaseArt.drawPlaty(in: big, at: CGPoint(x: 12.6, y: 1.6), tile: 1, dir: .up, open: 0.1)
+            ChaseArt.drawPlaty(in: big, at: CGPoint(x: 14.8, y: 1.6), tile: 1, dir: .left, open: 0.5)
+            for (i, b) in ChaseBonus.allCases.enumerated() {
+                ChaseArt.drawBonus(b, in: big, at: CGPoint(x: 1.2 + Double(i) * 2.1, y: 4.3), tile: 1)
+            }
+            var real = ctx
+            real.scaleBy(x: GameLayout.chaseTile, y: GameLayout.chaseTile)
+            for (i, k) in ChaserKind.allCases.enumerated() {
+                ChaseArt.drawCreature(k, in: real, at: CGPoint(x: 3 + Double(i) * 3, y: 27), dir: .left, wiggle: false)
+            }
+            ChaseArt.drawPlaty(in: real, at: CGPoint(x: 16, y: 27), tile: 1, dir: .left, open: 0.6)
+            for (i, b) in ChaseBonus.allCases.enumerated() {
+                ChaseArt.drawBonus(b, in: real, at: CGPoint(x: 21 + Double(i) * 3, y: 27), tile: 1)
+            }
+        }
+        .frame(width: 520, height: 250)
     }
 }
 
