@@ -1177,3 +1177,37 @@ OCRs small files made by the tests (`FileActionsEngineTests`); these checks use 
   history is on, and opening it again leaves it open. In a picker a link opened, ↩ does
   nothing until you press ↑/↓ or move the mouse (a cursor that stays still where the
   picker appears, e.g. near the bottom of the screen, does not count).
+
+## Window snapping (v0.2)
+
+Turn on Settings › Widgets › Power features › Window snapping. It has no tile. The
+shortcuts are ⌃⌥ with ← → ↑ ↓ (halves), U I J K (quarters), D F G (thirds), E T (two
+thirds), ↩ (maximize) and C (center).
+
+- [ ] **224. Off by default, no work.** On a fresh home the feature is off; ⌃⌥← does
+  nothing in PlatyNotch (another app may use it). No Accessibility prompt appears at launch.
+- [ ] **225. Its own Allow.** With Accessibility not allowed, turning it on shows "Off:
+  needs Accessibility" with Allow Accessibility… and Open System Settings. Only Allow shows
+  the system prompt. After allowing in System Settings the row turns to "On" within a few
+  seconds without reopening Settings. After a rebuild (ad-hoc), the "PlatyNotch was
+  rebuilt" advice shows instead.
+- [ ] **226. Every target.** In TextEdit, each shortcut puts the window where its name says
+  on the display it is on (below the menu bar, above the Dock). Three thirds side by side
+  leave no overlap or hole; with Gap 8 pt the windows keep 8 pt from each other and the edges.
+- [ ] **227. Center.** ⌃⌥C moves the window to the middle without resizing it; a window
+  taller than the screen is shrunk to fit.
+- [ ] **228. Fixed-size window.** On a window that cannot be resized (System Settings,
+  Calculator), ⌃⌥← moves it into the left half, centered there, without resizing; pressing
+  again does nothing more; no flicker or repeated attempts.
+- [ ] **229. External displays.** With a display arranged above and to the left of the
+  built-in one, each shortcut on a window there snaps it on that display, never onto the
+  built-in one or off-screen. A window dragged mostly off a display snaps onto the display
+  it still overlaps most.
+- [ ] **230. Full screen and no window.** A full-screen window is left alone; with Finder in
+  front and no window open nothing happens and nothing hangs.
+- [ ] **231. Shortcut taken.** With another app holding ⌃⌥C (e.g. Rectangle running), turning
+  snapping on shows "Shortcut taken by another app: ⌃⌥C" and marks the row "shortcut taken";
+  the others work. Quit that app and click Try Again: the note goes away.
+- [ ] **232. Off releases everything.** Turn the feature off: ⌃⌥← no longer moves windows
+  and another app can take it. Revoking Accessibility while on shows the Allow row again and
+  the shortcuts stop. Activity Monitor shows PlatyNotch idle under 1% CPU either way.

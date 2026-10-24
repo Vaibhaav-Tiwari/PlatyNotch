@@ -117,13 +117,14 @@ final class WidgetCategoryRegistryTests: DefaultsTestCase {
 /// `--smoke-power` (Task 0): every power feature built inert.
 @MainActor
 final class PowerSmokeTests: DefaultsTestCase {
-    /// Task 2: File actions is the first power feature (off by default, no tile).
-    func testPowerFeatures() {
+    /// Every v0.2 power feature: off by default, inert in the smoke.
+    func testBuiltInPowerFeaturesAreInert() {
         let list = BuiltInWidgets.powerWidgets(persist: false)
-        XCTAssertEqual(list.map(\.id), [FileActionsWidget.widgetID])
-        XCTAssertEqual(list.map(\.defaultEnabled), [false])
-        XCTAssertEqual(list.map(\.hasTile), [false])
-        XCTAssertEqual(NotchApp.powerSmoke(list), .success(1))
+        XCTAssertTrue(list.contains { $0.id == FileActionsWidget.widgetID })
+        XCTAssertTrue(list.contains { $0.id == WindowSnapWidget.widgetID })
+        XCTAssertTrue(list.allSatisfy { !$0.defaultEnabled })
+        XCTAssertFalse(list.first { $0.id == FileActionsWidget.widgetID }?.hasTile ?? true)
+        XCTAssertEqual(NotchApp.powerSmoke(list), .success(list.count))
     }
 
     func testEveryListedWidgetMustBeAPowerFeature() {

@@ -151,7 +151,7 @@ widget is off.
 | Permission | Asked when | Used by |
 | --- | --- | --- |
 | Camera | Coming in v0.2 | Mirror (shows your camera only while it is open) |
-| Accessibility | Coming in v0.2 | Window snapping |
+| Accessibility | You click Allow Accessibility in Window snapping's settings | Window snapping: reads the focused window's position and size and sets them (never its content; nothing stored or sent). Its 15 ⌃⌥ shortcuts are held only while it is on and allowed |
 | Automation: Mail | Coming in v0.2 | Mail |
 | Files and Folders | Coming in v0.2 | The notes folder |
 

@@ -83,22 +83,14 @@ final class HUDWidget: NotchWidget {
 
     @ObservationIgnored private let makeTap: () -> MediaKeyTapping
     @ObservationIgnored private let makeControls: () -> HUDControls
-    @ObservationIgnored private let trust: AccessibilityTrust
     @ObservationIgnored private var context: WidgetContext?
     @ObservationIgnored private var controls: HUDControls?
     @ObservationIgnored private var tap: MediaKeyTapping?
     @ObservationIgnored private var router: MediaKeyRouter?
     @ObservationIgnored private var observers: [(NotificationCenter, NSObjectProtocol)] = []
-    @ObservationIgnored private var recheckTask: Task<Void, Never>?
-    @ObservationIgnored private var generation = 0
-    @ObservationIgnored private let identity: () -> String
-    /// Waits between trust reads while the Allow UI is on screen (tests inject their own).
-    @ObservationIgnored private let pollSleep: @MainActor () async -> Void
-    /// Waits between the reads that follow an Allow click (tests inject their own).
-    @ObservationIgnored private let allowSleep: @MainActor () async -> Void
-    /// "Allow Accessibility…" was clicked (this run), and since then the user went away and
-    /// came back (PlatyNotch resigned, then active again, or System Settings left).
-    @ObservationIgnored private var allowReturn = AllowReturn()
+    /// Accessibility trust, its observers, the Allow recheck and the rebuilt-app advice
+    /// (shared with window snapping). `pollSleep` / `allowSleep` are injected by tests.
+    @ObservationIgnored private let gate: AccessibilityGate
 
     static let pollInterval: Duration = .seconds(2)
 
@@ -110,10 +102,8 @@ final class HUDWidget: NotchWidget {
          allowSleep: @escaping @MainActor () async -> Void = { try? await Task.sleep(for: .seconds(1)) }) {
         self.makeTap = makeTap
         self.makeControls = makeControls
-        self.trust = trust
-        self.identity = identity
-        self.pollSleep = pollSleep
-        self.allowSleep = allowSleep
+        gate = AccessibilityGate(trust: trust, identity: identity, pollSleep: pollSleep, allowSleep: allowSleep)
+        gate.onChange = { [weak self] trusted, advice in self?.trustRead(trusted: trusted, advice: advice) }
     }
 
     /// Smoke runs: no tap, no prompt, controls that change nothing.
@@ -128,10 +118,10 @@ final class HUDWidget: NotchWidget {
     func start(context: WidgetContext) {
         guard self.context == nil else { return }
         self.context = context
-        generation += 1
         let controls = makeControls()
         self.controls = controls
         controls.volume.startObserving { [weak self] in self?.controlsChanged(.volume) }
+        gate.start(defaults: context.defaults)
         observeSystem()
         context.surfaces.onHUDReadinessChange(owner: self) { [weak self] _ in self?.pushGate() }
         refreshControls()
@@ -140,40 +130,36 @@ final class HUDWidget: NotchWidget {
 
     func stop() {
         guard context != nil else { return }
-        generation += 1
+        gate.stop()
         disconnectTap()
         controls?.volume.stopObserving()
         controls = nil
         context?.surfaces.onHUDReadinessChange(owner: self, nil)
         for (center, o) in observers { center.removeObserver(o) }
         observers = []
-        recheckTask?.cancel()
-        recheckTask = nil
         context = nil
         failedSets = []
         status = .stopped
         advice = .none
-        allowReturn.reset()
         available = []
         outputName = nil
     }
 
-    /// Creates the tap when Accessibility is allowed and drops it when not.
+    /// Reads Accessibility trust (`trustRead` does the rest).
     private func connect() {
-        guard let context else { return }
-        guard trust.isTrusted() else {
+        guard context != nil else { return }
+        gate.evaluate()
+    }
+
+    /// Creates the tap when Accessibility is allowed and drops it when not.
+    private func trustRead(trusted: Bool, advice next: PermissionAdvice.AccessibilityAdvice) {
+        guard context != nil else { return }
+        if advice != next { advice = next }
+        guard trusted else {
             disconnectTap()
             status = .needsAccessibility
-            let history = AccessibilityGrant.history(context.defaults, identity: identity())
-            let next = PermissionAdvice.accessibility(trusted: false, returnedAfterAllow: allowReturn.returned,
-                                                      history: history)
-            if advice != next { advice = next }
             return
         }
-        recheckTask?.cancel()
-        recheckTask = nil
-        AccessibilityGrant.note(context.defaults, identity: identity())
-        if advice != .none { advice = .none }
         if tap == nil {
             let t = makeTap()
             // The router hands taken keys to the main queue (never waited on).
@@ -199,21 +185,10 @@ final class HUDWidget: NotchWidget {
     // MARK: - Permission
 
     /// The "Allow" button: shows the system Accessibility prompt, then picks the grant up
-    /// (the distributed notification below, and a bounded recheck for a minute, only while
+    /// (the distributed notification, and a bounded recheck for a minute, only while
     /// `isOnScreen`: the window that shows Allow is visible and not covered).
     func requestAccess(isOnScreen: @escaping @MainActor () -> Bool = { true }) {
-        allowReturn.allowClicked()
-        trust.request()
-        recheckTask?.cancel()
-        recheckTask = Task { [weak self] in
-            for _ in 0..<60 {
-                await self?.allowSleep()
-                guard !Task.isCancelled, let self, self.isRunning else { return }
-                guard isOnScreen() else { continue }
-                self.connect()
-                if self.status != .needsAccessibility { return }
-            }
-        }
+        gate.requestAccess(isOnScreen: isOnScreen)
     }
 
     /// Re-reads trust now (and the advice that goes with it).
@@ -223,60 +198,19 @@ final class HUDWidget: NotchWidget {
     /// `pollInterval`, but only while `isOnScreen` (its window visible and not covered),
     /// until it is granted or the view goes away.
     func watchTrustWhileVisible(isOnScreen: @escaping @MainActor () -> Bool) async {
-        while !Task.isCancelled, isRunning, status == .needsAccessibility {
-            await pollSleep()
-            guard !Task.isCancelled else { return }
-            if isOnScreen() { connect() }
-        }
+        await gate.watchTrustWhileVisible(isOnScreen: isOnScreen)
     }
 
     /// Back in PlatyNotch, or out of System Settings: after Allow, a still-missing trust now
     /// gets the conditional advice.
-    func userReturned() {
-        allowReturn.appBecameActive()
-        trustMayHaveChanged()
-    }
+    func userReturned() { gate.userReturned() }
 
     /// Retry after macOS refused the tap.
     func retry() { connect() }
 
+    /// Trust observers live in `gate`; this one is the HUD's own.
     private func observeSystem() {
-        // Posted when any app's Accessibility entry changes (granted or revoked).
-        let dnc = DistributedNotificationCenter.default()
-        observers.append((dnc, dnc.addObserver(forName: Notification.Name("com.apple.accessibility.api"),
-                                              object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.trustMayHaveChanged() }
-        }))
         let nc = NotificationCenter.default
-        // Back in PlatyNotch, or out of System Settings: read trust again.
-        observers.append((nc, nc.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil,
-                                             queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.userReturned() }
-        }))
-        observers.append((nc, nc.addObserver(forName: NSApplication.didResignActiveNotification, object: nil,
-                                             queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.allowReturn.appResigned() }
-        }))
-        let ws = NSWorkspace.shared.notificationCenter
-        observers.append((ws, ws.addObserver(forName: NSWorkspace.didDeactivateApplicationNotification, object: nil,
-                                             queue: .main) { [weak self] note in
-            guard PermissionReturn.leftSystemSettings(note) else { return }
-            MainActor.assumeIsolated {
-                // The user was in System Settings, whatever the app-active notifications said.
-                self?.allowReturn.appResigned()
-                self?.userReturned()
-            }
-        }))
-        // The Settings or onboarding window closing (not panels, pickers or alerts).
-        observers.append((nc, nc.addObserver(forName: NSWindow.willCloseNotification, object: nil,
-                                             queue: .main) { [weak self] note in
-            // Delivered on the main queue: the window is only looked at there.
-            nonisolated(unsafe) let window = note.object as? NSWindow
-            MainActor.assumeIsolated {
-                guard AppWindowID.isSettingsLike(window) else { return }
-                self?.trustMayHaveChanged()
-            }
-        }))
         // Displays come and go (clamshell): brightness availability changes.
         observers.append((nc, nc.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                              object: nil, queue: .main) { [weak self] _ in
@@ -284,15 +218,8 @@ final class HUDWidget: NotchWidget {
         }))
     }
 
-    func trustMayHaveChanged() {
-        // The notification arrives before the new state can be read.
-        let gen = generation
-        Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(500))
-            guard let self, self.generation == gen else { return }
-            self.connect()
-        }
-    }
+    /// What the "com.apple.accessibility.api" notification calls.
+    func trustMayHaveChanged() { gate.trustMayHaveChanged() }
 
     // MARK: - Gate
 
