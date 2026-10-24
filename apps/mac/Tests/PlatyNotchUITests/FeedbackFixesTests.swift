@@ -32,7 +32,7 @@ final class FeedbackFixesTests: DefaultsTestCase {
         c.onOpenSettings = { opened += 1 }
         c.expand()
         XCTAssertEqual(c.mode, .expanded)
-        c.model.onOpenSettings()
+        c.panelModel.onOpenSettings()
         XCTAssertEqual(opened, 1)
         XCTAssertEqual(c.mode, .expanded)
     }

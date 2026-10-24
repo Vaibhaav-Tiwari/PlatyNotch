@@ -24,7 +24,7 @@ public final class NotchController {
     private let memory: MemoryServices
 
     private var machine: PanelStateMachine
-    let model: PanelViewModel = PanelViewModel()
+    private let model: PanelViewModel = PanelViewModel()
     private let tracker = HoverTracker()
     private var debouncer = HoverDebouncer()
     private var panel: NotchPanel?
@@ -69,6 +69,8 @@ public final class NotchController {
     var armingClock: () -> Date = { Date() }
     /// The open panel's gear (the menu bar icon may be hidden): the app shows Settings.
     var onOpenSettings: () -> Void = {}
+    /// What the panel's views read (tests press its buttons through it).
+    var panelModel: PanelViewModel { model }
     private var workspaceObservers: [NSObjectProtocol] = []
 
     /// `carryOver` restores the panel state of the controller this one replaces (display change).
