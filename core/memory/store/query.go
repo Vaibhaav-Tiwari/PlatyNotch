@@ -1,9 +1,7 @@
 package store
 
 import (
-	"database/sql"
 	"encoding/binary"
-	"errors"
 	"math"
 	"strings"
 	"time"
@@ -90,24 +88,6 @@ func (s *Store) RecentThreads(f Filter, limit int) ([]ChunkRow, error) {
 		SELECT `+chunkCols+`, ROW_NUMBER() OVER (PARTITION BY c.thread_id ORDER BY c.captured_at DESC, c.id) AS rn
 		FROM chunks c JOIN threads t ON t.id = c.thread_id WHERE 1=1`+w+`)
 		WHERE rn = 1 ORDER BY captured_at DESC, id DESC LIMIT ?`, args...)
-}
-
-// LatestVersionBefore returns the thread's newest version from an earlier hour
-// than hourBucket, or nil.
-func (s *Store) LatestVersionBefore(threadID string, hourBucket int64) (*Version, error) {
-	var v Version
-	var c int64
-	err := s.db.QueryRow(`SELECT id,thread_id,hour_bucket,content,content_hash,chars,created_at FROM versions
-		WHERE thread_id=? AND hour_bucket<? ORDER BY hour_bucket DESC LIMIT 1`, threadID, hourBucket).
-		Scan(&v.ID, &v.ThreadID, &v.HourBucket, &v.Content, &v.ContentHash, &v.Chars, &c)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	v.CreatedAt = fromMs(c)
-	return &v, nil
 }
 
 // ChunksByIDs loads chunk rows for the given ids (any order).

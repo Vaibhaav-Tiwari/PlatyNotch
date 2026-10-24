@@ -204,6 +204,63 @@ func (s *Store) PutVersion(v Version) (*Version, error) {
 	}
 }
 
+// SaveCapture stores one capture in a single transaction: it upserts v for
+// (thread, hour) like PutVersion and adds the chunks that chunk returns for
+// the text not yet chunked. base, passed to chunk, is the content of the
+// thread's newest version that has chunks (this hour's or an earlier one), so
+// a version left without chunks (an older ingest that failed half way) is
+// never the base and its text is chunked again. Text identical to base adds
+// nothing. Chunks attach to this hour's version; it returns how many were added.
+func (s *Store) SaveCapture(v Version, chunk func(base string) []string) (int, error) {
+	if v.ID == "" {
+		v.ID = newID()
+	}
+	if v.CreatedAt.IsZero() {
+		v.CreatedAt = time.Now()
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	// The base is read before this hour's row is updated with the new text.
+	var base, baseHash string
+	err = tx.QueryRow(`SELECT content, content_hash FROM versions WHERE thread_id=? AND hour_bucket<=?
+		AND EXISTS (SELECT 1 FROM chunks WHERE chunks.version_id = versions.id)
+		ORDER BY hour_bucket DESC LIMIT 1`, v.ThreadID, v.HourBucket).Scan(&base, &baseHash)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	versionID := v.ID
+	err = tx.QueryRow(`SELECT id FROM versions WHERE thread_id=? AND hour_bucket=?`, v.ThreadID, v.HourBucket).Scan(&versionID)
+	switch {
+	case err == nil:
+		_, err = tx.Exec(`UPDATE versions SET content=?,content_hash=?,chars=?,created_at=? WHERE id=?`,
+			v.Content, v.ContentHash, v.Chars, ms(v.CreatedAt), versionID)
+	case errors.Is(err, sql.ErrNoRows):
+		_, err = tx.Exec(`INSERT INTO versions(id,thread_id,hour_bucket,content,content_hash,chars,created_at) VALUES(?,?,?,?,?,?,?)`,
+			v.ID, v.ThreadID, v.HourBucket, v.Content, v.ContentHash, v.Chars, ms(v.CreatedAt))
+	}
+	if err != nil {
+		return 0, err
+	}
+	if baseHash == v.ContentHash {
+		return 0, tx.Commit()
+	}
+	pieces := chunk(base)
+	var idx int
+	if err := tx.QueryRow(`SELECT count(*) FROM chunks WHERE version_id=?`, versionID).Scan(&idx); err != nil {
+		return 0, err
+	}
+	for k, p := range pieces {
+		if _, err := tx.Exec(`INSERT INTO chunks(version_id,thread_id,idx,text,captured_at) VALUES(?,?,?,?,?)`,
+			versionID, v.ThreadID, idx+k, p, ms(v.CreatedAt)); err != nil {
+			return 0, err
+		}
+	}
+	return len(pieces), tx.Commit()
+}
+
 // AddChunks inserts chunks (status pending) and returns their ids.
 func (s *Store) AddChunks(cs []Chunk) ([]int64, error) {
 	tx, err := s.db.Begin()

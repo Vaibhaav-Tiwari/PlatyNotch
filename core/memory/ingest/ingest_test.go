@@ -1,6 +1,8 @@
 package ingest
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"math/rand"
 	"path/filepath"
@@ -472,4 +474,36 @@ func TestPasswordManagersAlwaysExcluded(t *testing.T) {
 	if n, err := i.Ingest(c); err != nil || n == 0 {
 		t.Fatalf("Notes should be kept: n=%d err=%v", n, err)
 	}
+}
+
+// A version stored without its chunks (an ingest that failed between the two
+// writes, as SQLITE_BUSY did) must not hide that text forever: later captures
+// of the same text, this hour or later hours, chunk it.
+func TestVersionWithoutChunksHeals(t *testing.T) {
+	for _, later := range []time.Duration{20 * time.Second, time.Hour, 3 * time.Hour} {
+		now := time.Unix(1_700_000_000, 0)
+		i, s := newIngester(t, &now)
+		c := capture(long)
+		th, err := s.UpsertThread(store.Thread{AppBundle: c.AppBundle, AppName: c.AppName, Key: ThreadKey(c), Title: c.WindowTitle})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.PutVersion(store.Version{ID: "partial", ThreadID: th.ID, HourBucket: now.Unix() / 3600,
+			Content: long, ContentHash: hashOf(long), Chars: len(long), CreatedAt: now}); err != nil {
+			t.Fatal(err)
+		}
+		now = now.Add(later)
+		if _, err := i.Ingest(capture(long)); err != nil {
+			t.Fatal(err)
+		}
+		hits, err := s.SearchFTS(`"quick"`, store.Filter{}, 10)
+		if err != nil || len(hits) == 0 {
+			t.Fatalf("after %v: hits=%d err=%v", later, len(hits), err)
+		}
+	}
+}
+
+func hashOf(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])
 }
