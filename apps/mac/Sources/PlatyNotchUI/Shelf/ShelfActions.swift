@@ -51,7 +51,7 @@ enum ShelfActions {
     }
 
     /// "Locate…" for a missing file: an open panel; the chosen file replaces the old one.
-    static func locate(_ item: ShelfItem, in shelf: ShelfWidget) {
+    static func locate(_ item: ShelfItem, in host: any ItemListHost) {
         let panel = NSOpenPanel()
         panel.message = "Locate “\(item.title)”"
         panel.prompt = "Locate"
@@ -64,10 +64,11 @@ enum ShelfActions {
         }
         // User-initiated (the card's Locate button or menu): the open panel needs the app
         // active to take keystrokes. Nothing else in the shelf activates PlatyNotch.
+        // The panel keeps `host` alive while it runs (the shelf widget, or a basket).
         NSApp.activate()
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
-            MainActor.assumeIsolated { shelf.relocate(item, to: url) }
+            MainActor.assumeIsolated { host.relocate(item, to: url) }
         }
     }
 }

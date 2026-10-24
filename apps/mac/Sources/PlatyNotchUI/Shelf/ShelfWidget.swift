@@ -29,7 +29,7 @@ import SwiftUI
 /// directory pass, no timers; see `NotchApp`). Bookmarks are resolved and images
 /// converted off the main thread.
 @MainActor @Observable
-final class ShelfWidget: NotchWidget, DragMonitorListener {
+final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost {
     static let widgetID = "shelf"
     /// Re-check expiry at least this often (sleep, clock changes).
     static let maxExpirySleep: TimeInterval = 6 * 60 * 60
@@ -73,7 +73,7 @@ final class ShelfWidget: NotchWidget, DragMonitorListener {
     /// The latest image conversion from a drop (tests await it).
     @ObservationIgnored private(set) var importTask: Task<Void, Never>?
     @ObservationIgnored private lazy var drop = ShelfDropTarget(shelf: self)
-    @ObservationIgnored private(set) lazy var dragSource = ShelfDragSource(shelf: self)
+    @ObservationIgnored private(set) lazy var dragSource: NSDraggingSource = ShelfDragSource(host: self)
     @ObservationIgnored private static let promiseQueue: OperationQueue = {
         let q = OperationQueue()
         q.name = "dev.platynotch.shelf.promises"
@@ -139,7 +139,7 @@ final class ShelfWidget: NotchWidget, DragMonitorListener {
                              accessibilityLabel: n == 1 ? "1 item on the shelf" : "\(n) items on the shelf")]
     }
 
-    func tileView() -> AnyView { AnyView(ShelfTile(shelf: self)) }
+    func tileView() -> AnyView { AnyView(ShelfTile(host: self)) }
     func dropZoneView() -> AnyView? { isRunning ? AnyView(ShelfDropZone(shelf: self)) : nil }
     func dropTarget() -> PanelDropTarget? { isRunning ? drop : nil }
     func settingsView() -> AnyView? { AnyView(ShelfSettings(shelf: self)) }

@@ -5,16 +5,16 @@ import SwiftUI
 
 /// The shelf's Today tile: a row of cards, newest first. Click selects (⌘-click adds),
 /// double-click opens, drag takes the selection out, right-click has the menu. A missing
-/// file shows a badge with Locate… and Remove.
+/// file shows a badge with Locate… and Remove. Works on any `ItemListHost` (the shelf).
 struct ShelfTile: View {
-    let shelf: ShelfWidget
+    let host: any ItemListHost
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             header
             items
         }
-        .onAppear { shelf.refreshMissing() }
+        .onAppear { host.refreshMissing() }
     }
 
     // Split out of `body`: one expression was slow for the type checker (25 ms probe).
@@ -22,8 +22,8 @@ struct ShelfTile: View {
         HStack {
             Label("Shelf", systemImage: "tray.full").font(.system(size: 12, weight: .semibold))
             Spacer()
-            if shelf.items.contains(where: { !$0.pinned }) {
-                Button("Clear") { shelf.clearUnpinned() }
+            if host.items.contains(where: { !$0.pinned }) {
+                Button("Clear") { host.clearUnpinned() }
                     .buttonStyle(.borderless)
                     .font(.system(size: 11))
                     .help("Remove every unpinned item")
@@ -32,7 +32,7 @@ struct ShelfTile: View {
     }
 
     @ViewBuilder private var items: some View {
-        if shelf.items.isEmpty {
+        if host.items.isEmpty {
             Text("Drag files, images, links or text to the notch to keep them here.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
@@ -40,9 +40,9 @@ struct ShelfTile: View {
         } else {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    ForEach(shelf.items) { item in
-                        ShelfCard(shelf: shelf, item: item, missing: shelf.missing.contains(item.id),
-                                  selected: shelf.selection.contains(item.id))
+                    ForEach(host.items) { item in
+                        ShelfCard(host: host, item: item, missing: host.missing.contains(item.id),
+                                  selected: host.selection.contains(item.id))
                     }
                 }
             }
@@ -53,7 +53,7 @@ struct ShelfTile: View {
 /// One item: thumbnail, name, pin and missing badges.
 struct ShelfCard: View {
     static let size = CGSize(width: 72, height: 78)
-    let shelf: ShelfWidget
+    let host: any ItemListHost
     let item: ShelfItem
     let missing: Bool
     let selected: Bool
@@ -73,10 +73,10 @@ struct ShelfCard: View {
             }
             if missing {
                 HStack(spacing: 6) {
-                    Button { ShelfActions.locate(item, in: shelf) } label: { Image(systemName: "magnifyingglass") }
+                    Button { ShelfActions.locate(item, in: host) } label: { Image(systemName: "magnifyingglass") }
                         .help("Locate “\(item.title)”…")
                         .accessibilityLabel("Locate \(item.title)")
-                    Button { shelf.remove([item.id]) } label: { Image(systemName: "xmark") }
+                    Button { host.remove([item.id]) } label: { Image(systemName: "xmark") }
                         .help("Remove from the shelf")
                         .accessibilityLabel("Remove \(item.title)")
                 }
@@ -96,13 +96,13 @@ struct ShelfCard: View {
         .overlay {
             if !missing {
                 // Clicks, drags out and the menu (AppKit: a real NSDraggingSource with file URLs).
-                ShelfItemHandle(shelf: shelf, item: item)
+                ShelfItemHandle(host: host, item: item)
             }
         }
         .contextMenu {
             if missing {
-                Button("Locate…") { ShelfActions.locate(item, in: shelf) }
-                Button("Remove") { shelf.remove([item.id]) }
+                Button("Locate…") { ShelfActions.locate(item, in: host) }
+                Button("Remove") { host.remove([item.id]) }
             }
         }
         .accessibilityElement(children: missing ? .contain : .combine)
@@ -173,11 +173,11 @@ enum ShelfThumbnails {
 /// The transparent AppKit layer over a card: click / ⌘-click select, double-click opens,
 /// a drag starts an `NSDraggingSession` of the selection, right-click shows the menu.
 struct ShelfItemHandle: NSViewRepresentable {
-    let shelf: ShelfWidget
+    let host: any ItemListHost
     let item: ShelfItem
 
     func makeNSView(context: Context) -> ShelfItemView {
-        ShelfItemView(shelf: shelf, item: item)
+        ShelfItemView(host: host, item: item)
     }
 
     func updateNSView(_ view: ShelfItemView, context: Context) {
@@ -186,12 +186,12 @@ struct ShelfItemHandle: NSViewRepresentable {
 }
 
 final class ShelfItemView: NSView {
-    private weak var shelf: ShelfWidget?
+    private weak var host: (any ItemListHost)?
     var item: ShelfItem
     private var mouseDownEvent: NSEvent?
 
-    init(shelf: ShelfWidget, item: ShelfItem) {
-        self.shelf = shelf
+    init(host: any ItemListHost, item: ShelfItem) {
+        self.host = host
         self.item = item
         super.init(frame: .zero)
     }
@@ -203,7 +203,7 @@ final class ShelfItemView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         mouseDownEvent = event
-        if event.clickCount == 2, let shelf, let url = urlIfFile(shelf) {
+        if event.clickCount == 2, let host, let url = urlIfFile(host) {
             ShelfActions.open([url])
             mouseDownEvent = nil
         } else if event.clickCount == 2, case .url(let u) = item.kind {
@@ -214,16 +214,16 @@ final class ShelfItemView: NSView {
 
     override func mouseUp(with event: NSEvent) {
         defer { mouseDownEvent = nil }
-        guard mouseDownEvent != nil, let shelf else { return }
-        shelf.select(item, extend: event.modifierFlags.contains(.command))
+        guard mouseDownEvent != nil, let host else { return }
+        host.select(item, extend: event.modifierFlags.contains(.command))
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let down = mouseDownEvent, let shelf else { return }
+        guard let down = mouseDownEvent, let host else { return }
         let a = down.locationInWindow, b = event.locationInWindow
         guard hypot(b.x - a.x, b.y - a.y) > 3 else { return }
         mouseDownEvent = nil
-        let writers = shelf.pasteboardWriters(for: shelf.dragSet(startingAt: item))
+        let writers = host.pasteboardWriters(for: host.dragSet(startingAt: item))
         guard !writers.isEmpty else {
             NSSound.beep()   // only missing files: refused, the card shows the badge
             return
@@ -237,14 +237,14 @@ final class ShelfItemView: NSView {
                                       contents: ShelfThumbnails.dragImage(shelfItem, url: url))
             return dragItem
         }
-        shelf.outgoingDragChanged(true)   // before the drag pasteboard changes
-        beginDraggingSession(with: items, event: event, source: shelf.dragSource)
+        host.outgoingDragChanged(true)   // before the drag pasteboard changes
+        beginDraggingSession(with: items, event: event, source: host.dragSource)
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
-        guard let shelf else { return nil }
-        let targets = shelf.dragSet(startingAt: item)
-        let writers = shelf.pasteboardWriters(for: targets)
+        guard let host else { return nil }
+        let targets = host.dragSet(startingAt: item)
+        let writers = host.pasteboardWriters(for: targets)
         let fileURLs = writers.compactMap { ($0.1 as? NSURL).flatMap { $0.isFileURL ? $0 as URL : nil } }
         let shareable: [Any] = writers.map { pair -> Any in
             if let u = pair.1 as? NSURL { return u as URL }
@@ -272,14 +272,14 @@ final class ShelfItemView: NSView {
         add("Copy Path", enabled: !fileURLs.isEmpty) { ShelfActions.copyPaths(fileURLs) }
         menu.addItem(.separator())
         let item = self.item
-        add(item.pinned ? "Unpin" : "Pin") { shelf.togglePin(item) }
-        add(ids.count > 1 ? "Remove \(ids.count) Items" : "Remove") { shelf.remove(ids) }
+        add(item.pinned ? "Unpin" : "Pin") { host.togglePin(item) }
+        add(ids.count > 1 ? "Remove \(ids.count) Items" : "Remove") { host.remove(ids) }
         return menu
     }
 
-    private func urlIfFile(_ shelf: ShelfWidget) -> URL? {
+    private func urlIfFile(_ host: any ItemListHost) -> URL? {
         guard item.fileRef != nil else { return nil }
-        guard let url = shelf.url(for: item) else {
+        guard let url = host.url(for: item) else {
             NSSound.beep()
             return nil
         }

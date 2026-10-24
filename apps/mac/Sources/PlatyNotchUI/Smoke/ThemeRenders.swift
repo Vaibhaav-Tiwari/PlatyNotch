@@ -68,7 +68,7 @@ enum ThemeRenders {
         let bar = HUDBar(state: HUDState(kind: .volume, level: 0.6, until: soon)).frame(width: 300)
         let hud = HUDView(kind: .volume, level: 0.4, output: "MacBook Pro Speakers").frame(width: 300)   // volume, as the app shows it: with the speaker name (A6)
         let line = HUDIndicator(state: HUDState(kind: .volume, level: 0.7, until: soon)).frame(width: 300, height: 8)
-        let shelf = ShelfTile(shelf: ShelfWidget.inert()).frame(width: 360)
+        let shelf = ShelfTile(host: ShelfWidget.inert()).frame(width: 360)
         var out: [(String, AnyView, Bool)] = []
         out.append(("hud-bar", AnyView(bar), false))
         out.append(("hud-view", AnyView(hud), false))
@@ -110,8 +110,8 @@ enum ThemeRenders {
         let text = ShelfItem(kind: .text("Meeting notes for Thursday"), addedAt: now)
         let link = ShelfItem(kind: .url(URL(string: "https://example.com/report")!), addedAt: now, pinned: true)
         let row = HStack(spacing: 6) {
-            ShelfCard(shelf: shelf, item: text, missing: false, selected: false)
-            ShelfCard(shelf: shelf, item: link, missing: false, selected: true)
+            ShelfCard(host: shelf, item: text, missing: false, selected: false)
+            ShelfCard(host: shelf, item: link, missing: false, selected: true)
         }
         return AnyView(row)
     }
