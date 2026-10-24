@@ -73,6 +73,19 @@ final class WidgetCategoryRegistryTests: DefaultsTestCase {
         XCTAssertEqual(registry.orderedWidgets.map(\.id), ["shelf", "music", "snap", "mirror"])
     }
 
+    /// Fix round 1: widgets on but none with a tile is not "no widgets are on".
+    func testTodayEmptyMessage() {
+        XCTAssertEqual(TodayTab.emptyMessage(enabledCount: 0).title, "No widgets are on.")
+        XCTAssertEqual(TodayTab.emptyMessage(enabledCount: 2).title, "No tiles to show.")
+        let registry = WidgetRegistry(defaults: defaults(), persist: false)
+        registry.register(CategoryWidget("snap", category: .power, hasTile: false))
+        XCTAssertTrue(registry.tileWidgets.isEmpty)
+        XCTAssertEqual(TodayTab.emptyMessage(enabledCount: registry.visibleWidgets.count).title, "No tiles to show.")
+        let view = NSHostingView(rootView: TodayTab(widgets: registry).frame(width: 360, height: 200))
+        view.layoutSubtreeIfNeeded()
+        XCTAssertGreaterThan(view.fittingSize.width, 0)
+    }
+
     /// No power widget yet: no "Power features" group.
     func testNoPowerGroupWithoutPowerWidgets() {
         let registry = WidgetRegistry(defaults: defaults(), persist: false)

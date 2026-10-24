@@ -12,7 +12,8 @@ struct WidgetsSection: View {
     static let rowHeight: CGFloat = 34
 
     var body: some View {
-        let ordered = widgets.orderedWidgets
+        // In the order the groups show (everyday, then power features).
+        let ordered = WidgetCategory.allCases.flatMap { widgets.orderedWidgets(in: $0) }
         SettingsPage("Widgets", subtitle: "Tiles in the Today tab, top to bottom. Widgets that are off do nothing.") {
             ForEach(WidgetCategory.allCases, id: \.self) { category in
                 group(category)

@@ -12,13 +12,25 @@ public struct KeyCombo: Codable, Hashable, Sendable {
     public static let allModifiers: UInt32 = command | shift | option | control
 
     /// `kVK_*` (the physical key, ANSI layout).
-    public var keyCode: UInt32
-    /// An OR of `command`, `shift`, `option`, `control`.
-    public var modifiers: UInt32
+    public let keyCode: UInt32
+    /// An OR of `command`, `shift`, `option`, `control` (nothing else, however it was made).
+    public let modifiers: UInt32
+
+    private enum CodingKeys: String, CodingKey {
+        case keyCode, modifiers
+    }
 
     public init(keyCode: UInt32, modifiers: UInt32) {
         self.keyCode = keyCode
         self.modifiers = modifiers & Self.allModifiers
+    }
+
+    /// Decoded values go through the same masking as `init(keyCode:modifiers:)`, so a
+    /// saved combo with stray bits never carries them.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(keyCode: try c.decode(UInt32.self, forKey: .keyCode),
+                  modifiers: try c.decode(UInt32.self, forKey: .modifiers))
     }
 
     /// The clipboard picker's preset as a combo.

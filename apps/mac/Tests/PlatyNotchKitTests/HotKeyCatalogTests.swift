@@ -21,6 +21,10 @@ final class HotKeyCatalogTests: DefaultsTestCase {
         let data = try JSONEncoder().encode(controlOptionSpace)
         XCTAssertEqual(try JSONDecoder().decode(KeyCombo.self, from: data), controlOptionSpace)
         XCTAssertEqual(KeyCombo(keyCode: 9, modifiers: 0xFFFF_FFFF).modifiers, KeyCombo.allModifiers)
+        // A saved combo with stray bits is masked on decode too (fix round 1).
+        let stray = Data(#"{"keyCode":49,"modifiers":4294967295}"#.utf8)
+        XCTAssertEqual(try JSONDecoder().decode(KeyCombo.self, from: stray),
+                       KeyCombo(keyCode: 49, modifiers: KeyCombo.allModifiers))
     }
 
     func testValidity() {

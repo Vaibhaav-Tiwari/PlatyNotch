@@ -37,15 +37,16 @@ struct TodayTab: View {
     var body: some View {
         let shown = widgets.tileWidgets
         if shown.isEmpty {
+            let message = Self.emptyMessage(enabledCount: widgets.visibleWidgets.count)
             VStack(spacing: 6) {
                 if let platyMood {
                     PlatyView(mood: platyMood, size: 56)
                 } else {
                     Image(systemName: "square.grid.2x2").font(.system(size: 20)).foregroundStyle(.tertiary)
                 }
-                Text("No widgets are on.")
+                Text(message.title)
                     .font(.system(size: 12, weight: .semibold))
-                Text("Turn them on in Settings › Widgets.")
+                Text(message.detail)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
@@ -61,5 +62,13 @@ struct TodayTab: View {
             }
             .scrollIndicators(.automatic)
         }
+    }
+
+    /// What the tab says when it has no tile: no widget is on, or the ones that are on
+    /// have no tile (headless power features).
+    static func emptyMessage(enabledCount: Int) -> (title: String, detail: String) {
+        enabledCount == 0
+            ? ("No widgets are on.", "Turn them on in Settings › Widgets.")
+            : ("No tiles to show.", "The widgets that are on work without a tile. Add more in Settings › Widgets.")
     }
 }
