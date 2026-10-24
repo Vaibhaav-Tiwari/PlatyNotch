@@ -3,14 +3,14 @@ import Foundation
 
 /// How Platy, the platypus mascot, feels: what the pill (and the empty states) draw.
 public enum PlatyMood: String, CaseIterable, Sendable {
-    case idle, working, thinking, waiting, done, dancing, focused, sleepy, celebrating
+    case idle, working, workingToMusic, thinking, waiting, done, dancing, focused, sleepy, celebrating
 
     /// Seconds per animation loop (`PlatyPoseValues.at` repeats every `period`). Static
     /// moods have a period too (1), but their pose never changes.
     public var period: TimeInterval {
         switch self {
         case .idle, .focused: 1
-        case .working: 0.8
+        case .working, .workingToMusic: 0.8
         case .thinking: 3
         case .waiting: 1.2
         case .done: 1.6
@@ -68,6 +68,7 @@ public enum PlatyMood: String, CaseIterable, Sendable {
         switch self {
         case .idle: "Platy is resting"
         case .working: "Platy is paddling along with your agents"
+        case .workingToMusic: "Platy is paddling along with your agents, headphones on"
         case .thinking: "Platy is thinking"
         case .waiting: "Platy is waiting for you"
         case .done: "Platy says an agent finished"
@@ -86,7 +87,8 @@ public enum PlatyMoodResolver {
 
     /// Priority: an approval pending or any session blocked / waiting for input → waiting;
     /// a game's new best → celebrating; a session just finished → done; a focus session →
-    /// focused; any session active → working; music playing → dancing; night → sleepy;
+    /// focused; any session active → working (with headphones while music plays,
+    /// `.workingToMusic`); music playing → dancing; night → sleepy;
     /// else idle. `.thinking` is reserved for the voice assistant.
     ///
     /// `sessions` are the store's session states as they are (AgentsLive, which kept only
@@ -98,7 +100,7 @@ public enum PlatyMoodResolver {
         if celebrating { return .celebrating }
         if justFinished { return .done }
         if focusActive { return .focused }
-        if sessions.contains(.active) { return .working }
+        if sessions.contains(.active) { return musicPlaying ? .workingToMusic : .working }
         if musicPlaying { return .dancing }
         if isNight(hour: hour) { return .sleepy }
         return .idle

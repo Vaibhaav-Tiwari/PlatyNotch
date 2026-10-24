@@ -25,7 +25,9 @@ final class PlatyMoodTests: XCTestCase {
 
     func testMusicDances() {
         XCTAssertEqual(mood(music: true), .dancing)
-        XCTAssertEqual(mood([.active], music: true), .working, "agents at work beat music")
+        XCTAssertEqual(mood([.active], music: true), .workingToMusic, "agents at work with music: working, headphones on")
+        XCTAssertEqual(mood([.active], music: true, finished: true), .done)
+        XCTAssertEqual(mood([.active, .blocked], music: true), .waiting)
         XCTAssertEqual(mood(music: true, hour: 2), .dancing, "music beats night")
     }
 
@@ -216,11 +218,14 @@ final class PlatyMoodTests: XCTestCase {
         for t in stride(from: 0.0, through: 2.0, by: 0.1) {
             XCTAssertTrue(PlatyPoseValues.at(.working, time: t).water)
         }
-        for m in PlatyMood.allCases where m != .working {
+        for m in PlatyMood.allCases where m != .working && m != .workingToMusic {
             XCTAssertFalse(PlatyPoseValues.rest(m).water, "\(m)")
         }
         XCTAssertEqual(PlatyPoseValues.rest(.waiting).tint, .amber)
         XCTAssertTrue(PlatyPoseValues.rest(.dancing).headphones)
+        XCTAssertTrue(PlatyPoseValues.rest(.workingToMusic).headphones)
+        XCTAssertTrue(PlatyPoseValues.rest(.workingToMusic).water)
+        XCTAssertFalse(PlatyPoseValues.rest(.working).headphones)
         XCTAssertEqual(PlatyPoseValues.rest(.sleepy).eyesOpen, 0)
         XCTAssertTrue(PlatyPoseValues.rest(.sleepy).zzz)
         XCTAssertTrue(PlatyPoseValues.rest(.done).check)
@@ -236,6 +241,8 @@ final class PlatyMoodTests: XCTestCase {
         for t in stride(from: 0.0, through: 4.0, by: 0.25) {
             XCTAssertEqual(PlatyPoseValues.at(.waiting, time: t).tint, .amber)
             XCTAssertTrue(PlatyPoseValues.at(.dancing, time: t).headphones)
+            XCTAssertTrue(PlatyPoseValues.at(.workingToMusic, time: t).headphones)
+            XCTAssertTrue(PlatyPoseValues.at(.workingToMusic, time: t).water)
             XCTAssertEqual(PlatyPoseValues.at(.sleepy, time: t).eyesOpen, 0)
             XCTAssertTrue(PlatyPoseValues.at(.done, time: t).check)
         }

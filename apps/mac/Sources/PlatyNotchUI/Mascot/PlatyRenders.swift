@@ -211,7 +211,7 @@ struct PlatyLiveStrip: View {
 struct PlatyPillPreview: View {
     var body: some View {
         VStack(spacing: 8) {
-            ForEach([PlatyMood.idle, .working, .waiting, .dancing, .sleepy, .done], id: \.self) { mood in
+            ForEach([PlatyMood.idle, .working, .workingToMusic, .waiting, .dancing, .sleepy, .done], id: \.self) { mood in
                 HStack(spacing: 0) {
                     HStack(spacing: PlatyEarFit.spacing) {
                         PlatyCanvas(pose: .rest(mood), size: PlatyEarFit.platy)
