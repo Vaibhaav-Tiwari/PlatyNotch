@@ -12,8 +12,14 @@ import SwiftUI
 /// panel is really shown and Reduce Motion is off). When bars stop showing or music
 /// pauses the tap is destroyed after `stopGrace`, so a pill ↔ panel switch (one bars view
 /// disappearing just before the next appears) keeps the same tap; turning the toggle off
-/// or the widget off (also at quit) destroys it at once. The one exception is turning the toggle on: the tap starts for
-/// `primeDuration` so macOS asks for System Audio Recording then, never on a later play.
+/// or the widget off (also at quit) destroys it at once.
+///
+/// The one exception is turning the toggle on: the tap starts for `primeDuration` so
+/// macOS asks for System Audio Recording then, never on a later play. The toggle is saved
+/// with this build's `CodeIdentity` stamp (`stampKey`); at launch a missing or different
+/// stamp (an update, an ad-hoc rebuild, a toggle saved before stamps) turns it off and
+/// Settings shows "Turn on again" (`needsReenable`), so a build macOS has not granted
+/// never starts a tap on play.
 ///
 /// Privacy: samples go from the tap into `SpectrumAnalyser` (one FFT window, in memory,
 /// overwritten) and leave it only as band levels; nothing is written or sent.
@@ -24,6 +30,8 @@ import SwiftUI
 @MainActor @Observable
 public final class MusicVisualiser {
     public static let enabledKey = "music.visualiser"
+    /// The `CodeIdentity` that turned the toggle on (and so got the permission prompt).
+    public static let stampKey = "music.visualiser.stamp"
     public static let bandCount = 12
     public static let frameRate = 30.0
     public static let quietRate = 4.0
@@ -42,9 +50,12 @@ public final class MusicVisualiser {
     public private(set) var isRunning = false
     /// The user's toggle (persisted).
     public private(set) var enabled: Bool
+    /// Turned off at launch because this build is not the one that was granted.
+    public private(set) var needsReenable = false
 
     @ObservationIgnored private static let log = Logger(subsystem: "dev.platynotch.app", category: "Visualiser")
     @ObservationIgnored private let defaults: UserDefaults
+    @ObservationIgnored private let identity: String
     @ObservationIgnored private let makeTap: @MainActor () -> AudioTapping
     @ObservationIgnored private let primeDuration: TimeInterval
     @ObservationIgnored private var tap: AudioTapping?
@@ -61,15 +72,33 @@ public final class MusicVisualiser {
     @ObservationIgnored private var pendingStop: Task<Void, Never>?
     @ObservationIgnored private var stopGeneration = 0
 
-    /// `sleep` waits out `stopGrace` (tests inject one they release by hand).
-    public init(defaults: UserDefaults = .standard, primeDuration: TimeInterval = 2,
-                sleep: @escaping @MainActor (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) },
-                makeTap: @escaping @MainActor () -> AudioTapping = { SystemAudioTap() }) {
+    /// `sleep` waits out `stopGrace` (tests inject one they release by hand); `identity`
+    /// is this build's `CodeIdentity` (tests pass their own).
+    public convenience init(defaults: UserDefaults = .standard, primeDuration: TimeInterval = 2,
+                            sleep: @escaping @MainActor (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) },
+                            makeTap: @escaping @MainActor () -> AudioTapping = { SystemAudioTap() }) {
+        self.init(defaults: defaults, identity: CodeIdentity.current, primeDuration: primeDuration,
+                  sleep: sleep, makeTap: makeTap)
+    }
+
+    init(defaults: UserDefaults, identity: String, primeDuration: TimeInterval = 2,
+         sleep: @escaping @MainActor (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) },
+         makeTap: @escaping @MainActor () -> AudioTapping) {
         self.defaults = defaults
+        self.identity = identity
         self.primeDuration = primeDuration
         self.sleep = sleep
         self.makeTap = makeTap
-        enabled = defaults.bool(forKey: Self.enabledKey)
+        let saved = defaults.bool(forKey: Self.enabledKey)
+        let stamp = defaults.string(forKey: Self.stampKey)
+        if saved, !CodeIdentity.grantHolds(stamp, current: identity) {
+            defaults.set(false, forKey: Self.enabledKey)
+            defaults.removeObject(forKey: Self.stampKey)
+            enabled = false
+            needsReenable = true
+        } else {
+            enabled = saved
+        }
     }
 
     /// The tap would run now (exposed for tests).
@@ -84,7 +113,9 @@ public final class MusicVisualiser {
     public func setEnabled(_ on: Bool) {
         guard on != enabled else { return }
         enabled = on
+        needsReenable = false
         defaults.set(on, forKey: Self.enabledKey)
+        if on { defaults.set(identity, forKey: Self.stampKey) } else { defaults.removeObject(forKey: Self.stampKey) }
         primeTask?.cancel()
         primeTask = nil
         priming = false

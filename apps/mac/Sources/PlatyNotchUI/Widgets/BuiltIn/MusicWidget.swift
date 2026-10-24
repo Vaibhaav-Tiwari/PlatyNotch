@@ -63,6 +63,14 @@ struct MusicSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Toggle("Live visualiser", isOn: Binding(get: { visualiser.enabled }, set: { visualiser.setEnabled($0) }))
+            if visualiser.needsReenable {
+                HStack {
+                    Text("Turned off: PlatyNotch was updated or reinstalled, so macOS may need to ask once more.")
+                        .foregroundStyle(Theme.color(.attention))
+                    Button("Turn On Again") { visualiser.setEnabled(true) }
+                }
+                .font(.system(size: 11))
+            }
             Text("""
             The music bars follow what your Mac is playing. macOS asks for System Audio \
             Recording when you turn this on. PlatyNotch listens only while music plays and the \

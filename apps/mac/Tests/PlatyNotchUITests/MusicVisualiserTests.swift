@@ -58,6 +58,7 @@ final class ManualSleeper {
 
 @MainActor
 final class MusicVisualiserTests: XCTestCase {
+    static let build = "dr:test-build"
     private var sleeper = ManualSleeper()
 
     private func defaults() -> UserDefaults {
@@ -69,9 +70,11 @@ final class MusicVisualiserTests: XCTestCase {
     private func make(enabled: Bool = false, prime: TimeInterval = 0.05) -> (MusicVisualiser, () -> [FakeTap], UserDefaults) {
         let d = defaults()
         d.set(enabled, forKey: MusicVisualiser.enabledKey)
+        if enabled { d.set(Self.build, forKey: MusicVisualiser.stampKey) }   // granted to this build
         var taps: [FakeTap] = []
         let sleeper = self.sleeper
-        let v = MusicVisualiser(defaults: d, primeDuration: prime, sleep: { await sleeper.sleep($0) }, makeTap: {
+        let v = MusicVisualiser(defaults: d, identity: Self.build, primeDuration: prime,
+                                sleep: { await sleeper.sleep($0) }, makeTap: {
             let t = FakeTap()
             taps.append(t)
             return t
@@ -194,6 +197,58 @@ final class MusicVisualiserTests: XCTestCase {
         XCTAssertEqual(sleeper.pending, 0, "no grace")
     }
 
+    /// Final review B2: the toggle is saved with this build's identity; a build that was
+    /// not granted (an update, a rebuild, a toggle saved before stamps) starts with it off,
+    /// shows "Turn on again", and never taps on play.
+    func testToggleOnSavesTheGrantStamp() {
+        let (v, _, d) = make()
+        v.setWidgetRunning(true)
+        v.setEnabled(true)
+        XCTAssertEqual(d.string(forKey: MusicVisualiser.stampKey), Self.build)
+        v.setEnabled(false)
+        XCTAssertNil(d.string(forKey: MusicVisualiser.stampKey), "off forgets the grant")
+    }
+
+    func testOtherBuildOrMissingStampTurnsOffAtLaunch() {
+        for stamp in [nil, "dr:an-older-build", ""] as [String?] {
+            let d = defaults()
+            d.set(true, forKey: MusicVisualiser.enabledKey)
+            if let stamp { d.set(stamp, forKey: MusicVisualiser.stampKey) }
+            var made = 0
+            let v = MusicVisualiser(defaults: d, identity: Self.build, makeTap: { made += 1; return FakeTap() })
+            XCTAssertFalse(v.enabled, "\(String(describing: stamp))")
+            XCTAssertTrue(v.needsReenable)
+            XCTAssertFalse(d.bool(forKey: MusicVisualiser.enabledKey), "saved off")
+            v.setWidgetRunning(true)
+            v.setPlaying(true)
+            v.setViewer(UUID(), visible: true)
+            XCTAssertEqual(made, 0, "no tap (no prompt) on play after an update")
+
+            v.setEnabled(true)   // "Turn On Again": the prompt belongs to this action
+            XCTAssertFalse(v.needsReenable)
+            XCTAssertEqual(made, 1)
+            XCTAssertEqual(d.string(forKey: MusicVisualiser.stampKey), Self.build)
+            v.setWidgetRunning(false)
+        }
+    }
+
+    func testSameBuildKeepsTheToggle() {
+        let (v, taps, _) = make(enabled: true)
+        XCTAssertTrue(v.enabled)
+        XCTAssertFalse(v.needsReenable)
+        v.setWidgetRunning(true)
+        v.setPlaying(true)
+        v.setViewer(UUID(), visible: true)
+        XCTAssertEqual(taps().count, 1)
+    }
+
+    func testGrantHolds() {
+        XCTAssertTrue(CodeIdentity.grantHolds("dr:x", current: "dr:x"))
+        XCTAssertFalse(CodeIdentity.grantHolds("dr:x", current: "dr:y"))
+        XCTAssertFalse(CodeIdentity.grantHolds(nil, current: "dr:x"))
+        XCTAssertFalse(CodeIdentity.grantHolds("", current: ""))
+    }
+
     func testNoPrimeWhileWidgetOff() {
         let (v, taps, _) = make()
         v.setEnabled(true)   // only reachable from Settings while the widget runs; still safe
@@ -203,7 +258,9 @@ final class MusicVisualiserTests: XCTestCase {
     func testFailedTapStaysSynthetic() {
         let d = defaults()
         d.set(true, forKey: MusicVisualiser.enabledKey)
-        let v = MusicVisualiser(defaults: d, makeTap: { let t = FakeTap(); t.fail = true; return t })
+        d.set(Self.build, forKey: MusicVisualiser.stampKey)
+        let v = MusicVisualiser(defaults: d, identity: Self.build,
+                                makeTap: { let t = FakeTap(); t.fail = true; return t })
         v.setWidgetRunning(true)
         v.setPlaying(true)
         v.setViewer(UUID(), visible: true)

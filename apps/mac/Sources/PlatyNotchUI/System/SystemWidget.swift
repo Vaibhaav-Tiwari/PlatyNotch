@@ -448,7 +448,7 @@ final class SystemWidget: NotchWidget {
     /// a reinstall, an ad-hoc rebuild, a missing stamp) turns the sub-feature off with no
     /// file-system access, until its button is pressed again.
     private func resumeDownloads() {
-        guard let stamp = options.downloadsStamp, stamp == downloads.identity() else {
+        guard CodeIdentity.grantHolds(options.downloadsStamp, current: downloads.identity()) else {
             updateOptions {
                 $0.downloads = false
                 $0.downloadsStamp = nil

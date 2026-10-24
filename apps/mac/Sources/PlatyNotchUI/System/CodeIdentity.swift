@@ -1,10 +1,11 @@
 import Foundation
 import Security
 
-/// This build's code identity, the stamp saved with a Downloads-folder grant. macOS ties
-/// privacy grants to the code signature's designated requirement, so a different one may
-/// have lost the grant; the downloads sub-feature then stays off until its button is
-/// pressed again, and nothing is stat'ed at launch.
+/// This build's code identity, the stamp saved with a privacy grant (the System widget's
+/// Downloads folder, the music visualiser's System Audio Recording). macOS ties privacy
+/// grants to the code signature's designated requirement, so a different one may have
+/// lost the grant; the feature then stays off until its button or toggle is used again,
+/// and nothing that could prompt runs at launch (`grantHolds`).
 ///
 /// In order:
 /// - `dr:<requirement>`: the designated requirement, which is what TCC records. A
@@ -20,6 +21,13 @@ enum CodeIdentity {
 
     /// Computed once per launch.
     static let current: String = stamp(requirement: designatedRequirement(), cdhash: cdhash())
+
+    /// A grant saved with `saved` still belongs to this build (`current`): only then may a
+    /// feature that needs it run without the user turning it on again.
+    static func grantHolds(_ saved: String?, current: String) -> Bool {
+        guard let saved, !saved.isEmpty else { return false }
+        return saved == current
+    }
 
     /// The stamp from what the signature gives; pure.
     static func stamp(requirement: String?, cdhash: Data?) -> String {
