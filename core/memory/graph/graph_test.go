@@ -295,6 +295,59 @@ func TestAppLabelIsTheNewestThreadsName(t *testing.T) {
 	}
 }
 
+// TestLoopAppNameSharedByTwoBundles: one app name on two bundles (two builds
+// of an app) links a loop by that name to the bundle with the newest thread,
+// in every fresh database.
+func TestLoopAppNameSharedByTwoBundles(t *testing.T) {
+	for i := range 6 {
+		s := newStore(t)
+		older, newer := "com.x.chat", "com.x.chat.beta"
+		if i%2 == 1 {
+			older, newer = newer, older
+		}
+		seed(t, s, []seedThread{{older, "Chat", "k1", "First", "", []time.Duration{h(2)}}})
+		time.Sleep(3 * time.Millisecond) // a later updated_at
+		seed(t, s, []seedThread{{newer, "Chat", "k2", "Second", "", []time.Duration{h(1)}}})
+		addLoop(t, s, "Loop", "chat", "gone", now.Add(-h(1)))
+		g, err := Build(s, protocol.MemoryGraphQuery{Hours: 24}, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var to []string
+		for _, e := range g.Edges {
+			if e.Kind == protocol.EdgeFromApp {
+				to = append(to, e.To)
+			}
+		}
+		if len(to) != 1 || to[0] != "app:"+newer {
+			t.Fatalf("db %d: loop linked to %v, want [app:%s]", i, to, newer)
+		}
+	}
+}
+
+// TestAppLabelSkipsAnEmptyName: when the newest thread of a bundle has no app
+// name, the label is the newest non-empty one, not the bundle id.
+func TestAppLabelSkipsAnEmptyName(t *testing.T) {
+	s := newStore(t)
+	seed(t, s, []seedThread{{"com.x.app", "Oldest", "k1", "A", "", []time.Duration{h(3)}}})
+	time.Sleep(3 * time.Millisecond)
+	seed(t, s, []seedThread{{"com.x.app", "Named", "k2", "B", "", []time.Duration{h(2)}}})
+	time.Sleep(3 * time.Millisecond)
+	seed(t, s, []seedThread{{"com.x.app", "", "k3", "C", "", []time.Duration{h(1)}}})
+	seed(t, s, []seedThread{{"com.y.nameless", "", "k4", "D", "", []time.Duration{h(1)}}})
+	g, err := Build(s, protocol.MemoryGraphQuery{Hours: 24}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	labels := map[string]string{}
+	for _, n := range g.Nodes {
+		labels[n.ID] = n.Label
+	}
+	if labels["app:com.x.app"] != "Named" || labels["app:com.y.nameless"] != "com.y.nameless" {
+		t.Fatalf("labels = %v", labels)
+	}
+}
+
 // TestCapNeverOrphansALoop: under any cap, every kept loop has an edge
 // whenever its app is kept, and no loop outranks its own thread.
 func TestCapNeverOrphansALoop(t *testing.T) {

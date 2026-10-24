@@ -54,7 +54,7 @@ func Window(q protocol.MemoryGraphQuery, now time.Time) time.Time {
 // (together). Only the MaxNodes heaviest nodes are kept (ties: kind, then id)
 // with the edges between them. A loop whose source_thread is gone, outside
 // the window or cut links to its app instead, when the app is kept. An app's
-// label is the name on its most recently updated thread.
+// label is the newest non-empty name among its threads (else its bundle id).
 func Build(s *store.Store, q protocol.MemoryGraphQuery, now time.Time) (protocol.MemoryGraph, error) {
 	since := Window(q, now)
 	f := store.Filter{Since: since, App: q.App}
@@ -81,13 +81,17 @@ func Build(s *store.Store, q protocol.MemoryGraphQuery, now time.Time) (protocol
 		prev = v
 	}
 	// Threads come newest first: the first name seen for a bundle (and the
-	// first bundle seen for a name) wins.
+	// first bundle seen for a name, so a loop's app is the newest bundle with
+	// that name) wins.
 	apps := map[string]string{} // lower-cased app name and bundle → app node id
 	for _, t := range threads {
 		w := hours[t.ID]
 		g.add(t.ID, protocol.GraphThread, t.Title, w)
 		app := "app:" + t.AppBundle
 		g.add(app, protocol.GraphApp, cmp.Or(t.AppName, t.AppBundle), w)
+		if n := g.nodes[app]; n.Label == t.AppBundle && t.AppName != "" {
+			n.Label = t.AppName // the newest non-empty name beats the bundle id
+		}
 		g.edge(app, t.ID, protocol.EdgeIn, w)
 		for _, k := range []string{t.AppBundle, t.AppName} {
 			if k := strings.ToLower(k); k != "" && apps[k] == "" {
