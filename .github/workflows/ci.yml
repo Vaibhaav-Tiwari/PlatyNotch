@@ -45,6 +45,16 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: '26.3'
+      # `isolated deinit` aborts the process on macOS 15.4-15.x (the OS Swift runtime's
+      # swift_task_deinitOnExecutor frees an unallocated pointer), and the app targets
+      # macOS 15. Tests only catch it where a test releases the object.
+      - name: no isolated deinit
+        working-directory: apps/mac
+        run: |
+          if grep -rnE "^[[:space:]]*(@[A-Za-z]+[[:space:]]+)*isolated[[:space:]]+deinit" Sources Tests; then
+            echo "Use a plain deinit (see DragSubscription): isolated deinit crashes on macOS 15."
+            exit 1
+          fi
       - name: swift test
         working-directory: apps/mac
         run: swift test
