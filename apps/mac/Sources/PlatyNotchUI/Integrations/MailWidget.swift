@@ -10,7 +10,8 @@ import SwiftUI
 /// and no link is opened unless `NSWorkspace` says Mail is running (and the script itself
 /// returns at once if Mail has quit meanwhile). The Automation prompt appears only from the
 /// tile's Allow button: every read first checks the status without asking and runs the
-/// script only when it is already granted. What is read stays in memory while the widget
+/// script only when it is already granted. The script addresses the Mail process by the
+/// pid `NSWorkspace` reported, so a Mail that quit meanwhile is never relaunched. What is read stays in memory while the widget
 /// runs and Mail is open; it is dropped when Mail quits or the widget stops, and never
 /// saved, logged or sent. Only sender, subject, date and Message-ID (for the link) are read.
 ///
@@ -53,6 +54,7 @@ final class MailWidget: NotchWidget {
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var inFlight: Task<Void, Never>?
+    @ObservationIgnored private var readSerial = 0
     @ObservationIgnored private var lastRead: Date?
     /// Bumped on every stop and Mail quit: a read that finishes after it is dropped.
     @ObservationIgnored private var generation = 0
@@ -92,7 +94,7 @@ final class MailWidget: NotchWidget {
     /// Mail launched or quit (and at start).
     private func mailChanged() {
         guard running else { return }
-        if system.isMailRunning() {
+        if system.mailPID() != nil {
             guard loop == nil else { return }
             let sleep = system.sleep
             loop = Task { [weak self] in
@@ -120,7 +122,7 @@ final class MailWidget: NotchWidget {
     /// The tile appeared: read again unless it was read in the last 30 s.
     func tileAppeared() {
         guard running else { return }
-        guard system.isMailRunning() else { mailChanged(); return }
+        guard system.mailPID() != nil else { mailChanged(); return }
         guard MailRefresh.dueOnOpen(last: lastRead, now: clock()) else { return }
         Task { await read() }
     }
@@ -128,9 +130,12 @@ final class MailWidget: NotchWidget {
     /// The tile's Allow button: the only place the Automation prompt can appear.
     func allow() async {
         guard running else { return }
-        guard system.isMailRunning() else { mailChanged(); return }
+        guard system.mailPID() != nil else { mailChanged(); return }
         let state = await system.automation(true)
         if state == .granted { grants.noteAccepted(MailSystem.mailID) }
+        // A read that began before the answer saw "not asked": let it finish, then read
+        // again with the new answer.
+        if let inFlight { await inFlight.value }
         lastRead = nil
         await read()
     }
@@ -139,7 +144,7 @@ final class MailWidget: NotchWidget {
     /// runs: a link would launch it otherwise.
     func open(_ message: MailMessage) {
         guard running else { return }
-        guard system.isMailRunning() else { mailChanged(); return }
+        guard system.mailPID() != nil else { mailChanged(); return }
         if let url = message.openURL { system.open(url) } else { system.activateMail() }
     }
 
@@ -150,15 +155,20 @@ final class MailWidget: NotchWidget {
     /// One read: Mail running → status without asking → the script only when granted.
     func read() async {
         if let inFlight { await inFlight.value; return }
-        let task = Task { [weak self] () -> Void in await self?.readOnce() }
+        readSerial += 1
+        let serial = readSerial
+        // The task clears itself, so whoever resumes first after it sees no stale read.
+        let task = Task { [weak self] () -> Void in
+            await self?.readOnce()
+            if let self, self.readSerial == serial { self.inFlight = nil }
+        }
         inFlight = task
         await task.value
-        if inFlight == task { inFlight = nil }
     }
 
     private func readOnce() async {
         let gen = generation
-        guard running, system.isMailRunning() else { if running { phase = .notOpen }; return }
+        guard running, system.mailPID() != nil else { if running { phase = .notOpen }; return }
         lastRead = clock()
         if inbox == nil { phase = .loading }
         let status = await system.automation(false)
@@ -169,15 +179,15 @@ final class MailWidget: NotchWidget {
         case .denied: phase = .denied(grants.history(MailSystem.mailID)); return
         case .unavailable:
             // procNotFound: Mail quit between the check and the status.
-            phase = system.isMailRunning() ? .failed("Mail did not answer.") : .notOpen
+            phase = system.mailPID() != nil ? .failed("Mail did not answer.") : .notOpen
             return
         }
         // Mail may have quit while the status was read: never run the script then.
-        guard system.isMailRunning() else { phase = .notOpen; return }
-        let result = await system.osascript(MailScript.arguments)
+        guard let pid = system.mailPID() else { phase = .notOpen; return }
+        let result = await system.osascript(MailScript.arguments(pid: pid))
         guard gen == generation, running, !Task.isCancelled else { return }
         switch MailScriptOutcome.classify(status: result.status, stdout: result.stdout, stderr: result.stderr,
-                                          timedOut: result.timedOut) {
+                                          timedOut: result.timedOut, truncated: result.truncated) {
         case .inbox(let i):
             grants.noteAccepted(MailSystem.mailID)
             phase = .inbox(i)

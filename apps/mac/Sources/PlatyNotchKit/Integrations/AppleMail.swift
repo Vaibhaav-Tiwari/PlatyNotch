@@ -70,11 +70,21 @@ public enum MailSender {
 enum MailText {
     static let maxLength = 200
 
+    /// A Message-ID as given, trimmed; "" (no link) when it has control characters or is
+    /// longer than `MailScript.idLimit`.
+    static func messageID(_ raw: String) -> String {
+        let id = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard id.count <= MailScript.idLimit,
+              !id.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { return "" }
+        return id
+    }
+
     /// Control characters and line breaks become spaces, runs of spaces collapse, and the
     /// text is cut at `maxLength` characters.
     static func oneLine(_ s: String) -> String {
         var scalars = String.UnicodeScalarView()
-        for u in s.unicodeScalars {
+        // Only the head can show: never walk a huge field.
+        for u in s.prefix(maxLength * 4).unicodeScalars {
             let breaks = CharacterSet.controlCharacters.contains(u) || CharacterSet.newlines.contains(u)
             scalars.append(breaks ? " " : u)
         }
@@ -85,39 +95,58 @@ enum MailText {
 }
 
 /// The one script the Mail widget runs, through `/usr/bin/osascript` (JavaScript for
-/// Automation, so the answer is JSON). Constant: nothing is spliced in. It first asks
-/// whether Mail is running (`running()` never launches it) and returns at once when it is
-/// not, so even a script that races Mail quitting cannot open it. It reads the unread
-/// count, the received dates of the unread messages, and then sender, subject and
-/// Message-ID of only the newest `MailInbox.shownCount`. It never activates, opens,
-/// changes or marks anything.
+/// Automation, so the answer is JSON). The source is constant; its one argument is the
+/// pid of the Mail process `NSWorkspace` reported, and the script addresses that process,
+/// never the app by name: a Mail that quit meanwhile is gone (-600) and is never launched
+/// again. It also asks `running()` first and returns at once when Mail is not.
+///
+/// It reads, in one bulk request each, the received date, Message-ID, sender and subject
+/// of the unread messages (so a row never mixes two messages; if the lists differ in
+/// length the inbox changed under it and the answer says so), keeps the newest
+/// `MailInbox.shownCount`, and cuts sender and subject to `fieldLimit` and the id to
+/// `idLimit` characters so one huge message cannot overflow the answer. It never
+/// activates, opens, changes or marks anything.
 public enum MailScript {
     public static let executable = "/usr/bin/osascript"
     /// The caller stops waiting (and the runner kills osascript) after this.
     public static let timeout: Double = 5
+    public static let fieldLimit = 400
+    /// RFC 5322's line limit; longer ids are refused (`MailText.messageID`).
+    public static let idLimit = 998
 
     public static let source = """
-    function run() {
-      var mail = Application('com.apple.mail');
+    function run(argv) {
+      var pid = Number(argv[0]);
+      if (!(pid > 0)) { return JSON.stringify({running: false}); }
+      var mail = Application(pid);
       if (!mail.running()) { return JSON.stringify({running: false}); }
       var inbox = mail.inbox;
       var unread = inbox.unreadCount();
       var msgs = inbox.messages.whose({readStatus: false});
       var dates = msgs.dateReceived();
+      var ids = msgs.messageId();
+      var senders = msgs.sender();
+      var subjects = msgs.subject();
+      var n = dates.length;
+      if (ids.length !== n || senders.length !== n || subjects.length !== n) {
+        return JSON.stringify({running: true, changed: true});
+      }
+      function cut(v, limit) { return (v === null || v === undefined) ? '' : String(v).slice(0, limit); }
       var order = [];
-      for (var i = 0; i < dates.length; i++) { order.push([dates[i] ? dates[i].getTime() : 0, i]); }
+      for (var i = 0; i < n; i++) { order.push([dates[i] ? dates[i].getTime() : 0, i]); }
       order.sort(function (a, b) { return b[0] - a[0]; });
       var latest = [];
       for (var k = 0; k < order.length && k < \(MailInbox.shownCount); k++) {
-        var m = msgs[order[k][1]];
-        latest.push({id: m.messageId(), sender: m.sender(), subject: m.subject(), received: order[k][0] / 1000});
+        var j = order[k][1];
+        latest.push({id: cut(ids[j], \(idLimit)), sender: cut(senders[j], \(fieldLimit)),
+                     subject: cut(subjects[j], \(fieldLimit)), received: order[k][0] / 1000});
       }
       return JSON.stringify({running: true, unread: unread, latest: latest});
     }
     """
 
-    /// osascript's argv (never a shell).
-    public static var arguments: [String] { ["-l", "JavaScript", "-e", source] }
+    /// osascript's argv (never a shell): the constant source, then Mail's pid.
+    public static func arguments(pid: Int32) -> [String] { ["-l", "JavaScript", "-e", source, String(pid)] }
 }
 
 /// What one run of `MailScript` came to.
@@ -138,16 +167,22 @@ public enum MailScriptOutcome: Equatable, Sendable {
             var received: Double?
         }
         var running: Bool
+        var changed: Bool?
         var unread: Int?
         var latest: [Message]?
     }
 
-    public static func classify(status: Int32, stdout: String, stderr: String, timedOut: Bool) -> MailScriptOutcome {
+    /// `truncated`: the runner cut the output (`ProcessRunner.Result.truncated`), so the
+    /// JSON is incomplete.
+    public static func classify(status: Int32, stdout: String, stderr: String, timedOut: Bool,
+                                truncated: Bool = false) -> MailScriptOutcome {
         if timedOut { return .timedOut }
+        if truncated { return .failed("Mail's answer was too long to read.") }
         guard status == 0 else {
             switch errorCode(stderr) {
             case -1743, -1744: return .denied
-            case -600, -609: return .notRunning
+            // -600/-609: the process is gone; -2700: osascript could not reach it.
+            case -600, -609, -2700: return .notRunning
             case -1712: return .timedOut
             case let code?: return .failed("Mail did not answer (\(code)).")
             case nil: return .failed("Mail did not answer.")
@@ -158,8 +193,9 @@ public enum MailScriptOutcome: Equatable, Sendable {
             return .failed("Mail gave an answer PlatyNotch could not read.")
         }
         guard payload.running else { return .notRunning }
+        if payload.changed == true { return .failed("Mail's inbox changed while it was read.") }
         let messages = (payload.latest ?? []).map { m in
-            MailMessage(messageID: MailText.oneLine(m.id ?? ""), sender: MailSender.displayName(m.sender ?? ""),
+            MailMessage(messageID: MailText.messageID(m.id ?? ""), sender: MailSender.displayName(m.sender ?? ""),
                         subject: MailText.oneLine(m.subject ?? ""),
                         received: m.received.flatMap { $0 > 0 ? Date(timeIntervalSince1970: $0) : nil })
         }

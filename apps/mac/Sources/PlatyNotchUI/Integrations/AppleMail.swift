@@ -8,9 +8,9 @@ import PlatyNotchKit
 struct MailSystem {
     nonisolated static let mailID = "com.apple.mail"
 
-    /// Whether Mail is running now (`NSWorkspace`). Nothing else is ever done to Mail when
-    /// this is false.
-    var isMailRunning: @MainActor () -> Bool
+    /// The running Mail's pid (`NSWorkspace`), nil when Mail is not running. Nothing else
+    /// is ever done to Mail while this is nil, and the script addresses this pid only.
+    var mailPID: @MainActor () -> pid_t?
     /// Automation status for Mail; `ask: true` may show the macOS prompt (only from the
     /// widget's Allow button). Off the main thread.
     var automation: @Sendable (_ ask: Bool) async -> Permissions.State
@@ -28,7 +28,10 @@ struct MailSystem {
     var sleep: @Sendable (TimeInterval) async -> Void
 
     static let system = MailSystem(
-        isMailRunning: { NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier == mailID } },
+        mailPID: {
+            NSWorkspace.shared.runningApplications
+                .first { $0.bundleIdentifier == mailID && !$0.isTerminated }?.processIdentifier
+        },
         automation: { ask in
             await Task.detached { Permissions.automationStatus(bundleID: mailID, ask: ask) }.value
         },
@@ -58,7 +61,7 @@ struct MailSystem {
 
     /// Mail is never running, nothing is run (smoke runs).
     static let inert = MailSystem(
-        isMailRunning: { false }, automation: { _ in .unavailable("Inert.") },
+        mailPID: { nil }, automation: { _ in .unavailable("Inert.") },
         osascript: { _ in ProcessRunner.Result(status: 1, stdout: "", stderr: "inert") },
         open: { _ in }, activateMail: {}, watchMail: { _ in [] }, unwatch: { _ in },
         sleep: { _ in })

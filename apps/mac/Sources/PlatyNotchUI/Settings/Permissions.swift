@@ -29,6 +29,19 @@ final class Permissions {
         SupportedBrowser(rawValue: bundleID) == nil && bundleID != MailSystem.mailID
     }
 
+    /// Whether Settings › Permissions lists `bundleID`'s Automation row: Mail only while
+    /// the Mail widget is on.
+    static func listsAutomation(_ bundleID: String, mailWidgetOn: Bool) -> Bool {
+        bundleID != MailSystem.mailID || mailWidgetOn
+    }
+
+    /// The status a row shows. Rows without an Allow button never say "allow": an app
+    /// that is not running reads as such.
+    static func shownState(_ state: State, bundleID: String, name: String) -> State {
+        guard !asksFromSettings(bundleID), case .unavailable = state else { return state }
+        return .unavailable("Shown when \(name) is open")
+    }
+
     /// Where an app without an Allow button in Settings is asked from.
     static func askedFrom(_ bundleID: String) -> String {
         bundleID == MailSystem.mailID ? "Asked from the Mail widget's Allow button" : "Asked when you click Add current tab"

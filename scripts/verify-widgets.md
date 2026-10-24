@@ -1152,7 +1152,9 @@ Settings › Widgets › Power features › Mail, on an installed build.
   shows nothing.
 - [ ] **461. Allow only from the tile.** On a Mac where PlatyNotch never asked for Mail, open
   Mail, then the panel: the tile shows Allow and no prompt appears. Settings › Permissions ›
-  Automation lists Mail with "Asked from the Mail widget's Allow button" and no Allow button.
+  Automation lists Mail (only while the Mail widget is on) with "Asked from the Mail
+  widget's Allow button" and no Allow button; with Mail closed it says "Shown when Mail is
+  open".
   Click Allow in the tile: macOS asks once; OK shows the unread count and up to 5 messages.
 - [ ] **462. What it shows.** The count matches Mail's Inbox badge; the 5 rows are the newest
   unread, newest first, each with the sender's name and the subject on one line.
@@ -1160,7 +1162,9 @@ Settings › Widgets › Power features › Mail, on an installed build.
 - [ ] **464. Refresh.** Mark a message read in Mail: it leaves the tile within 5 minutes, or
   at once when you reopen the panel after 30 seconds.
 - [ ] **465. Mail quits.** With messages shown, quit Mail: the tile says "Mail is not open"
-  and the messages are gone. Open Mail again: they come back without a click.
+  and the messages are gone. Open Mail again: they come back without a click. Quit Mail
+  just as the panel opens, a few times: Mail never comes back by itself (the script
+  addresses the old process, which is gone).
 - [ ] **466. Refused.** Turn Mail off for PlatyNotch in System Settings › Privacy & Security ›
   Automation: the tile explains how to turn it back on, with Open Settings; it never asks
   by itself.

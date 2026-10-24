@@ -25,7 +25,11 @@ final class MailWidgetTests: DefaultsTestCase {
         var watching = false
         /// Released by the test to let the 5-minute loop go round once.
         var sleeps = 0
+        var sleepArgs: [TimeInterval] = []
         var gate: CheckedContinuation<Void, Never>?
+        var truncated = false
+        /// Called while the status is read without asking (e.g. the user answers meanwhile).
+        var duringStatus: (@Sendable () async -> Void)?
         /// Called while a script "runs" (e.g. Mail quits under it).
         var duringScript: (@Sendable () async -> Void)?
 
@@ -34,9 +38,18 @@ final class MailWidgetTests: DefaultsTestCase {
 
     private func system(_ f: Fake) -> MailSystem {
         MailSystem(
-            isMailRunning: { f.with { f.mailRunning } },
+            mailPID: { f.with { f.mailRunning ? 4242 : nil } },
             automation: { ask in
-                f.with {
+                if !ask, let during = f.with({ f.duringStatus }) {
+                    // The answer this check read before it was held up.
+                    let seen = f.with { () -> Permissions.State in
+                        f.statusReads += 1
+                        return f.status
+                    }
+                    await during()
+                    return seen
+                }
+                return f.with {
                     f.statusReads += 1
                     if ask {
                         f.asks += 1
@@ -48,7 +61,9 @@ final class MailWidgetTests: DefaultsTestCase {
             osascript: { args in
                 f.with { f.scripts.append(args) }
                 if let during = f.duringScript { await during() }
-                return f.with { ProcessRunner.Result(status: f.exitStatus, stdout: f.stdout, stderr: f.stderr) }
+                return f.with {
+                    ProcessRunner.Result(status: f.exitStatus, stdout: f.stdout, stderr: f.stderr, truncated: f.truncated)
+                }
             },
             open: { url in f.with { f.opened.append(url) } },
             activateMail: { f.with { f.activations += 1 } },
@@ -61,10 +76,11 @@ final class MailWidgetTests: DefaultsTestCase {
                 f.onChange = nil
                 f.watching = false
             },
-            sleep: { _ in
+            sleep: { seconds in
                 await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
                     f.with {
                         f.sleeps += 1
+                        f.sleepArgs.append(seconds)
                         f.gate = c
                     }
                 }
@@ -141,7 +157,7 @@ final class MailWidgetTests: DefaultsTestCase {
         XCTAssertTrue(shown)
         XCTAssertEqual(w.inbox?.unread, 3)
         XCTAssertEqual(w.inbox?.latest.map(\.sender), ["Ann", "Bob"])
-        XCTAssertEqual(f.scripts.first, MailScript.arguments)
+        XCTAssertEqual(f.scripts.first, MailScript.arguments(pid: 4242), "addressed by Mail's pid")
         XCTAssertEqual(f.asks, 0, "a granted read never prompts")
         w.stop()
     }
@@ -173,7 +189,7 @@ final class MailWidgetTests: DefaultsTestCase {
         f.mailRunning = true
         // The status check finds Mail gone (procNotFound).
         let sys = system(f)
-        let racing = MailSystem(isMailRunning: sys.isMailRunning, automation: { _ in
+        let racing = MailSystem(mailPID: sys.mailPID, automation: { _ in
             f.with { f.mailRunning = false }
             return .unavailable("Open the app first, then allow.")
         }, osascript: sys.osascript, open: sys.open, activateMail: sys.activateMail, watchMail: sys.watchMail,
@@ -193,6 +209,7 @@ final class MailWidgetTests: DefaultsTestCase {
         w.start(context: context())
         _ = await eventually { f.with { f.sleeps } == 1 }
         XCTAssertEqual(f.scripts.count, 1)
+        XCTAssertEqual(f.with { f.sleepArgs }, [MailRefresh.interval])
         release(f)
         let second = await eventually { f.with { f.scripts.count } == 2 }
         XCTAssertTrue(second)
@@ -268,6 +285,69 @@ final class MailWidgetTests: DefaultsTestCase {
         XCTAssertTrue(Permissions.automationTargets.contains { $0.id == MailSystem.mailID })
         XCTAssertEqual(Permissions.askedFrom(MailSystem.mailID), "Asked from the Mail widget's Allow button")
         XCTAssertTrue(Permissions.asksFromSettings("com.apple.Music"))
+        XCTAssertFalse(Permissions.listsAutomation(MailSystem.mailID, mailWidgetOn: false), "hidden while the widget is off")
+        XCTAssertTrue(Permissions.listsAutomation(MailSystem.mailID, mailWidgetOn: true))
+        XCTAssertTrue(Permissions.listsAutomation("com.apple.Music", mailWidgetOn: false))
+        XCTAssertEqual(Permissions.shownState(.unavailable("Open the app first, then allow."), bundleID: MailSystem.mailID,
+                                              name: "Mail"),
+                       .unavailable("Shown when Mail is open"), "no Allow button, so no \"allow\"")
+        XCTAssertEqual(Permissions.shownState(.unavailable("x"), bundleID: "com.apple.Music", name: "Music"), .unavailable("x"))
+        XCTAssertEqual(Permissions.shownState(.denied, bundleID: MailSystem.mailID, name: "Mail"), .denied)
+    }
+
+    func testRegisteredAsAPowerFeature() {
+        XCTAssertTrue(BuiltInWidgets.powerWidgets(persist: false).map(\.id).contains(MailWidget.widgetID))
+        let registry = WidgetRegistry(defaults: defaults())
+        BuiltInWidgets.register(in: registry, store: AppStore(), today: TodayServices(client: CoreClient(socketPath: "/nonexistent")),
+                                persist: false)
+        XCTAssertTrue(registry.orderedWidgets(in: .power).map(\.id).contains(MailWidget.widgetID))
+        XCTAssertFalse(registry.isEnabled(MailWidget.widgetID))
+    }
+
+    /// Allow while a read that saw "not asked" is still going: that read finishes, then a
+    /// new one runs with the answer.
+    func testAllowReadsAgainAfterTheInFlightRead() async {
+        let f = Fake()
+        f.mailRunning = true
+        f.status = .notAsked
+        final class Gate: @unchecked Sendable {
+            var waiting: CheckedContinuation<Void, Never>?
+            var entered = false
+        }
+        let gate = Gate()
+        f.duringStatus = {
+            await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                f.with {
+                    gate.entered = true
+                    gate.waiting = c
+                }
+            }
+        }
+        let w = widget(f)
+        w.start(context: context())
+        _ = await eventually { f.with { gate.entered } }
+        // The first read waits in its status check; the user clicks Allow meanwhile.
+        f.with { f.duringStatus = nil }
+        let allowing = Task { await w.allow() }
+        _ = await eventually { f.with { f.asks } == 1 }
+        let c: CheckedContinuation<Void, Never>? = f.with { gate.waiting }
+        c?.resume()
+        await allowing.value
+        XCTAssertNotNil(w.inbox, "read again after Allow")
+        XCTAssertEqual(f.scripts.count, 1)
+        w.stop()
+    }
+
+    func testCutOffAnswerFails() async {
+        let f = Fake()
+        f.mailRunning = true
+        f.truncated = true
+        f.stdout = String(repeating: "x", count: 2 << 20)
+        let w = widget(f)
+        w.start(context: context())
+        let failed = await eventually { w.phase == .failed("Mail's answer was too long to read.") }
+        XCTAssertTrue(failed)
+        w.stop()
     }
 
     // MARK: - Opening and persistence
