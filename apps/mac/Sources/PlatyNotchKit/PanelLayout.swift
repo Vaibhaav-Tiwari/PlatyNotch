@@ -59,6 +59,9 @@ public struct PanelLayout: Equatable, Sendable {
     public static let headerStripExtra: CGFloat = headerStrip - 10
     /// The ringing chip (bell + Stop).
     public static let chipSize = CGSize(width: 84, height: 20)
+    /// Narrower than this the chip is not drawn (a very wide notch): the menu bar's
+    /// "Stop <alarm>" item still stops it (A5).
+    public static let minChipWidth: CGFloat = 48
     /// How near the notch (or pill) a drag must come to open the drop zone.
     public static let dragReach: CGFloat = 60
     /// Height of the top-edge strip that reveals a hidden panel on screens without a notch.
@@ -154,6 +157,7 @@ public struct PanelLayout: Equatable, Sendable {
 
     /// The ringing chip under an approval peek or the open panel: the right ear beside the
     /// camera on a notch, else the right of the header strip. Never inside `approvalSlot`.
+    /// Nil when the ear beside a very wide notch is narrower than `minChipWidth`.
     public func ringingChipRect(for mode: PanelMode) -> CGRect? {
         switch mode {
         case .peek(.approval), .expanded, .peek(.drop): break
@@ -163,7 +167,8 @@ public struct PanelLayout: Equatable, Sendable {
         let size = Self.chipSize
         if hasNotch {
             let left = anchor.maxX + 6, right = c.maxX - 10
-            let w = min(size.width, right - left)
+            let w = max(0, min(size.width, right - left))
+            guard w >= Self.minChipWidth else { return nil }
             return CGRect(x: right - w, y: anchor.midY - size.height / 2, width: w, height: size.height)
         }
         return CGRect(x: c.maxX - 10 - size.width, y: c.maxY - 3 - size.height, width: size.width, height: size.height)

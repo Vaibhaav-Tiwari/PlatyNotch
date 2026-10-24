@@ -613,7 +613,9 @@ extension NotchController: PanelSurfaceSink {
             if !layout.windowFrame.contains(layout.contentRect(for: step.mode)) {
                 return "\(step.mode) does not fit the window"
             }
-            if chip != nil, layout.ringingChipRect(for: step.mode) == nil { return "no chip place in \(step.mode)" }
+            // A notch too wide for the chip has none (the menu's Stop item remains).
+            let roomy = !layout.hasNotch || layout.contentRect(for: step.mode).maxX - layout.anchor.maxX >= 64
+            if chip != nil, roomy, layout.ringingChipRect(for: step.mode) == nil { return "no chip place in \(step.mode)" }
         }
         return nil
     }

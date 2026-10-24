@@ -215,8 +215,10 @@ struct PlatyPillPreview: View {
                 HStack(spacing: 0) {
                     HStack(spacing: PlatyEarFit.spacing) {
                         PlatyCanvas(pose: .rest(mood), size: PlatyEarFit.platy)
-                        AgentDot(tone: .active)
-                        AgentDot(tone: .attention)
+                        // Plain circles: ImageRenderer draws an NSViewRepresentable (AgentDot's
+                        // layer) as a placeholder square (A3).
+                        Circle().fill(Color(nsColor: Theme.nsColor(.active))).frame(width: 7, height: 7)
+                        Circle().fill(Color(nsColor: Theme.nsColor(.attention))).frame(width: 7, height: 7)
                     }
                     .frame(width: 64)
                     Color.black.frame(width: 180)

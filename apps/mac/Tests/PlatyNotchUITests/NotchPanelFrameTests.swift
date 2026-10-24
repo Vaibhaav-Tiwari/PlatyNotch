@@ -25,4 +25,23 @@ final class NotchPanelFrameTests: XCTestCase {
         XCTAssertEqual(panel.level, .statusBar)
         XCTAssertTrue(panel.isFloatingPanel)
     }
+
+    /// Final review A4: the panel becomes key only after a click in it, never because
+    /// another of PlatyNotch's windows closed; losing key needs a new click.
+    func testKeyOnlyAfterAClickInThePanel() {
+        let panel = NotchPanel(frame: .zero)
+        panel.allowsKey = true
+        XCTAssertFalse(panel.canBecomeKey, "no click yet: Settings closing must not hand it key")
+        panel.noteMouseDown()
+        XCTAssertTrue(panel.canBecomeKey)
+        panel.allowsKey = false
+        XCTAssertFalse(panel.canBecomeKey, "the mode still decides")
+        panel.allowsKey = true
+        panel.resignKey()
+        XCTAssertFalse(panel.canBecomeKey, "after losing key a new click is needed")
+        XCTAssertTrue(NotchPanel.isPress(.leftMouseDown))
+        XCTAssertTrue(NotchPanel.isPress(.rightMouseDown))
+        XCTAssertFalse(NotchPanel.isPress(.mouseMoved))
+        XCTAssertFalse(NotchPanel.isPress(.keyDown))
+    }
 }

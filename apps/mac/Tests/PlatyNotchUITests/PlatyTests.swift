@@ -92,6 +92,17 @@ final class PlatyTests: DefaultsTestCase {
         XCTAssertFalse(dot.isPulsing)
     }
 
+    /// Final review A2: the ringing card's pulse is a Core Animation layer, on only when asked
+    /// (the card passes `panelTicking && !reduceMotion`).
+    func testRingPulseIsCoreAnimationOnlyWhenAsked() {
+        let ring = RingPulseNSView(frame: NSRect(x: 0, y: 0, width: 46, height: 46))
+        XCTAssertFalse(ring.isPulsing)
+        ring.configure(color: .systemOrange, pulses: true)
+        XCTAssertTrue(ring.isPulsing)
+        ring.configure(color: .systemOrange, pulses: false)
+        XCTAssertFalse(ring.isPulsing)
+    }
+
     /// The frame loop runs only while the panel ticks, without Reduce Motion, for a moving mood.
     func testFrameLoopOnlyWhenVisibleAndMoving() {
         XCTAssertNotNil(PlatyView.frameInterval(mood: .working, ticking: true, reduceMotion: false))

@@ -66,7 +66,7 @@ enum ThemeRenders {
     private static func views() -> [(String, AnyView, Bool)] {
         let soon = Date().addingTimeInterval(30)
         let bar = HUDBar(state: HUDState(kind: .volume, level: 0.6, until: soon)).frame(width: 300)
-        let hud = HUDView(kind: .brightness, level: 0.4, output: "MacBook Pro Speakers").frame(width: 300)
+        let hud = HUDView(kind: .volume, level: 0.4, output: "MacBook Pro Speakers").frame(width: 300)   // volume, as the app shows it: with the speaker name (A6)
         let line = HUDIndicator(state: HUDState(kind: .volume, level: 0.7, until: soon)).frame(width: 300, height: 8)
         let shelf = ShelfTile(shelf: ShelfWidget.inert()).frame(width: 360)
         var out: [(String, AnyView, Bool)] = []

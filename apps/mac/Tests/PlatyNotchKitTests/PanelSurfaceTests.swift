@@ -582,6 +582,32 @@ final class PanelSurfaceLayoutTests: XCTestCase {
         XCTAssertNil(mbp.approvalSlot(for: .peek(.notice)))
     }
 
+    /// Final review A5: beside a very wide notch the chip never gets a negative width; below
+    /// `minChipWidth` it is not drawn at all.
+    func testRingingChipClampedBesideWideNotch() {
+        for notch in stride(from: CGFloat(180), through: 900, by: 40) {
+            let side = (1512 - notch) / 2
+            let l = PanelLayout(screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),
+                                visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 950),
+                                auxLeft: CGRect(x: 0, y: 950, width: side, height: 32),
+                                auxRight: CGRect(x: side + notch, y: 950, width: side, height: 32))
+            for mode in [PanelMode.peek(.approval), .expanded, .peek(.drop)] {
+                if let chip = l.ringingChipRect(for: mode) {
+                    XCTAssertGreaterThanOrEqual(chip.width, PanelLayout.minChipWidth, "notch \(notch) \(mode)")
+                    XCTAssertFalse(chip.intersects(l.anchor), "notch \(notch) \(mode)")
+                } else {
+                    let room = l.contentRect(for: mode).maxX - 10 - (l.anchor.maxX + 6)
+                    XCTAssertLessThan(room, PanelLayout.minChipWidth, "notch \(notch) \(mode): hidden only when narrow")
+                }
+            }
+        }
+        let huge = PanelLayout(screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),
+                               visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 950),
+                               auxLeft: CGRect(x: 0, y: 950, width: 300, height: 32),
+                               auxRight: CGRect(x: 1212, y: 950, width: 300, height: 32))
+        XCTAssertNil(huge.ringingChipRect(for: .expanded), "a 912 pt notch leaves no room")
+    }
+
     func testHUDIsClickThroughBeyondThePill() {
         let l = mbp
         XCTAssertEqual(l.hitRect(for: .peek(.hud(.volume))), l.contentRect(for: .compact))
