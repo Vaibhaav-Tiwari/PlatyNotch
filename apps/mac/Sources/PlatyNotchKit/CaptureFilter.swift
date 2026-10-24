@@ -2,8 +2,9 @@ import Foundation
 
 /// Decides whether an on-screen text capture is sent to the core.
 public struct CaptureFilter: Sendable {
-    /// Shorter captures (after trimming) carry nothing worth remembering.
-    public static let minChars = 20
+    /// Shorter captures (after trimming) carry nothing worth remembering. The core's
+    /// minimum (`ingest.minChars`): shorter text was sent, dropped there, and looked captured.
+    public static let minChars = 40
     /// Password managers: never captured, even if `exclude_apps` drops them.
     public static let passwordManagers: Set<String> = [
         "com.1password.1password", "com.agilebits.onepassword7",

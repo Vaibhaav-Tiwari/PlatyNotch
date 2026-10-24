@@ -12,6 +12,8 @@ import PlatyNotchKit
 @MainActor @Observable
 public final class CaptureService {
     public static let pausedUntilKey = "capture.pausedUntil"
+    static let todayCountKey = "capture.todayCount"
+    static let todayDayKey = "capture.todayDay"
 
     public private(set) var status: CaptureStatus = .off {
         didSet { if status != oldValue { Self.log.info("capture \(String(describing: self.status), privacy: .public)") } }
@@ -20,6 +22,8 @@ public final class CaptureService {
     /// Drives the menu bar capture dot.
     public var isCapturing: Bool { status.isCapturing }
     public private(set) var settings = CaptureSettings()
+    /// The last capture, today's count and the last skipped window, for the Memory tab.
+    public private(set) var activity: CaptureActivity
 
     @ObservationIgnored private let send: @Sendable (Envelope) async throws -> Void
     @ObservationIgnored private let defaults: UserDefaults
@@ -30,10 +34,15 @@ public final class CaptureService {
     @ObservationIgnored private var lastHashes: [String: Int] = [:]
     @ObservationIgnored private var interval: Duration = .seconds(CaptureSettings.defaultIntervalSeconds)
     @ObservationIgnored private var watcher: ConfigFileWatcher?
+    /// Processes already asked to build their accessibility tree (Chromium, Electron).
+    @ObservationIgnored private var manualAXPids: Set<pid_t> = []
 
     init(send: @escaping @Sendable (Envelope) async throws -> Void, defaults: UserDefaults = .standard) {
         self.send = send
         self.defaults = defaults
+        let day = defaults.double(forKey: Self.todayDayKey)
+        activity = CaptureActivity(count: defaults.integer(forKey: Self.todayCountKey),
+                                   countDay: day > 0 ? Date(timeIntervalSince1970: day) : nil)
     }
 
     public convenience init(client: CoreClient) {
@@ -117,45 +126,66 @@ public final class CaptureService {
 
     private func tick() {
         refreshStatus()
-        guard status == .capturing, !walking, !IsSecureEventInputEnabled(), Self.sessionIsActive(),
+        guard status == .capturing, !walking, Self.sessionIsActive(),
               let app = NSWorkspace.shared.frontmostApplication,
               app.processIdentifier != getpid() else { return }
-        let filter = currentFilter()
-        let bundleID = app.bundleIdentifier
-        guard !filter.isExcluded(bundleID), let bundleID else { return }
-        let appName = app.localizedName ?? bundleID
+        let appName = app.localizedName ?? app.bundleIdentifier ?? "Unknown app"
+        guard let bundleID = app.bundleIdentifier, !currentFilter().isExcluded(bundleID) else {
+            activity.skipped(.excludedApp, app: appName, at: Date())
+            return
+        }
+        if IsSecureEventInputEnabled() {
+            activity.skipped(.passwordField, app: appName, at: Date())
+            return
+        }
         let pid = app.processIdentifier
+        if manualAXPids.count > 256 { manualAXPids = [] }
+        let enableManual = manualAXPids.insert(pid).inserted
         walking = true
         walkQueue.async { [weak self] in
-            let result = AXTextReader.focusedWindowText(pid: pid)
+            if enableManual { AXTextReader.enableManualAccessibility(pid: pid) }
+            let outcome = AXTextReader.focusedWindowText(pid: pid)
             Task { @MainActor [weak self] in
-                self?.finish(result, bundleID: bundleID, appName: appName, pid: pid)
+                self?.finish(outcome, bundleID: bundleID, appName: appName, pid: pid)
             }
         }
     }
 
-    private func finish(_ result: AXTextReader.Result?, bundleID: String, appName: String, pid: pid_t) {
+    private func finish(_ outcome: AXReadOutcome, bundleID: String, appName: String, pid: pid_t) {
         walking = false
         // Settings may have changed during the walk (an app newly excluded, memory off).
-        let filter = currentFilter()
-        guard status == .capturing, let result, Self.sessionIsActive(),
-              NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
-              !CaptureFilter.isSensitiveWindow(bundleID: bundleID, title: result.title),
-              !CaptureFilter.isPrivateWindow(bundleID: bundleID, title: result.title,
-                                             details: [result.document, result.windowDescription])
-        else { return }
-        let key = bundleID + "\u{1F}" + (result.title ?? "")
-        guard filter.shouldCapture(bundleID: bundleID, secureInput: IsSecureEventInputEnabled(),
-                                   text: result.text, lastHash: lastHashes[key]) else { return }
-        if lastHashes.count > 256 { lastHashes = [:] }
-        lastHashes[key] = CaptureFilter.hash(result.text)
-        guard let env = try? CaptureFilter.envelope(appBundle: bundleID, appName: appName, windowTitle: result.title,
-                                                    url: result.url, text: result.text, at: Date()) else { return }
-        let send = self.send
-        Self.log.debug("capture.text \(bundleID, privacy: .public) \(result.text.count) chars")
-        Task { [weak self] in
-            do { try await send(env) } catch { self?.lastHashes[key] = nil }   // resend when reconnected
+        guard status == .capturing, Self.sessionIsActive(),
+              NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return }
+        var title: String?
+        if case .text(let w) = outcome { title = w.title }
+        let key = bundleID + "\u{1F}" + (title ?? "")
+        let decision = currentFilter().decide(bundleID: bundleID, secureInput: IsSecureEventInputEnabled(),
+                                              outcome: outcome, lastHash: lastHashes[key])
+        guard case .send(let window) = decision else {
+            if case .skip(let reason) = decision { activity.skipped(reason, app: appName, at: Date()) }
+            return
         }
+        if lastHashes.count > 256 { lastHashes = [:] }
+        lastHashes[key] = CaptureFilter.hash(window.text)
+        let at = Date()
+        guard let env = try? CaptureFilter.envelope(appBundle: bundleID, appName: appName, windowTitle: window.title,
+                                                    url: window.url, text: window.text, at: at) else { return }
+        let send = self.send
+        Self.log.debug("capture.text \(bundleID, privacy: .public) \(window.text.count) chars")
+        Task { [weak self] in
+            do {
+                try await send(env)
+                self?.recordCapture(app: appName, at: at)
+            } catch {
+                self?.lastHashes[key] = nil   // resend when reconnected
+            }
+        }
+    }
+
+    private func recordCapture(app: String, at: Date) {
+        activity.captured(app: app, at: at)
+        defaults.set(activity.count, forKey: Self.todayCountKey)
+        defaults.set(activity.countDay?.timeIntervalSince1970 ?? 0, forKey: Self.todayDayKey)
     }
 }
 
