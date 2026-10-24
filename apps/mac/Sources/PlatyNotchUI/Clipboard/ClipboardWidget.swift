@@ -504,7 +504,7 @@ struct ClipboardSettings: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("PlatyNotch keeps what you copy so you can paste it again: press \(widget.hotKeyChoice.display) anywhere to search history, ↩ to paste, ⌘1–9 for the first nine, ⌘P to pin, ⌫ to delete.")
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Never recorded: anything copied in a password manager (1Password, Bitwarden, LastPass, Keychain Access, Passwords) or in an app on Memory's excluded list, and anything an app marks as a password or as temporary. The app is the one in front when the copy happens, a best guess, since macOS does not say which app copied.")
+            Text("Never recorded: anything copied in a password manager (1Password, Bitwarden, LastPass, KeePassXC, MacPass, Strongbox, Enpass, Proton Pass, NordPass, Keychain Access, Passwords and others) or in an app on Memory's excluded list, and anything an app marks as a password or as temporary. The app is the one in front when the copy happens, a best guess, since macOS does not say which app copied.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Text("Passwords, keys and card numbers are never saved: copied text that looks like an API key, token, private key or card number is skipped.")

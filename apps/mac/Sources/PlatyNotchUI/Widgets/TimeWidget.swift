@@ -280,7 +280,8 @@ final class TimeWidget: NotchWidget {
         authTask = Task { @MainActor [weak self] in
             let granted = await notify.requestAuthorization()
             guard granted, !Task.isCancelled, let self, self.context != nil else { return }
-            self.scheduled = [:]
+            // Adds refused before the answer were never recorded in `scheduled`, so the
+            // diff schedules them now; recorded ones stay tracked (none orphaned, B7).
             self.syncBackups()
         }
     }

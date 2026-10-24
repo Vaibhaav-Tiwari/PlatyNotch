@@ -235,7 +235,7 @@ final class ShelfWidget: NotchWidget {
                     if failed {
                         Self.log.error("file promise failed")
                     } else {
-                        self.promiseArrived(url, folderID: folderID)
+                        self.promiseArrived(url, folderID: folderID, folder: folder)
                     }
                     remaining -= 1
                     if remaining == 0 { self.promiseFinished(folderID) }
@@ -245,9 +245,10 @@ final class ShelfWidget: NotchWidget {
         return started
     }
 
-    private func promiseArrived(_ url: URL, folderID: UUID) {
+    private func promiseArrived(_ url: URL, folderID: UUID, folder reserved: URL) {
         guard let store else { return }
         if store.addOwnedFile(url, id: folderID) == nil,
+           Self.isInside(url, folder: reserved),   // never move a file the promise put elsewhere (B6)
            let (id, folder) = store.reserveOwnedFolder() {
             // A second file of the same promise: its own item and folder.
             let dest = folder.appendingPathComponent(url.lastPathComponent)
@@ -258,6 +259,12 @@ final class ShelfWidget: NotchWidget {
             }
         }
         afterChange()
+    }
+
+    /// `url`, symlinks resolved, lies inside `folder` (also resolved).
+    nonisolated static func isInside(_ url: URL, folder: URL) -> Bool {
+        let base = folder.standardizedFileURL.resolvingSymlinksInPath().path + "/"
+        return url.standardizedFileURL.resolvingSymlinksInPath().path.hasPrefix(base)
     }
 
     private func promiseFinished(_ folderID: UUID) {

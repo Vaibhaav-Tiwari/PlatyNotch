@@ -578,6 +578,23 @@ final class ShelfWidgetTests: DefaultsTestCase {
         XCTAssertNil(rig().shelf.keptCopies, "a fresh shelf shows no notice")
     }
 
+    /// Final review B6: a second promised file is moved into its own folder only when it
+    /// was written inside the reserved folder; a path elsewhere is never moved.
+    func testPromiseMoveOnlyFromTheReservedFolder() throws {
+        let root = tempDir()
+        let folder = root.appendingPathComponent("shelf/AAAA")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        XCTAssertTrue(ShelfWidget.isInside(folder.appendingPathComponent("a.png"), folder: folder))
+        XCTAssertTrue(ShelfWidget.isInside(folder.appendingPathComponent("sub/b.png"), folder: folder))
+        XCTAssertFalse(ShelfWidget.isInside(root.appendingPathComponent("shelf/AAAA-other/a.png"), folder: folder))
+        XCTAssertFalse(ShelfWidget.isInside(root.appendingPathComponent("Desktop/a.png"), folder: folder))
+        XCTAssertFalse(ShelfWidget.isInside(folder.appendingPathComponent("../escape.png"), folder: folder))
+        XCTAssertFalse(ShelfWidget.isInside(folder, folder: folder), "the folder itself is not a file in it")
+        let link = root.appendingPathComponent("link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: root.appendingPathComponent("Desktop"))
+        XCTAssertFalse(ShelfWidget.isInside(link.appendingPathComponent("a.png"), folder: folder))
+    }
+
     /// Fix round 1 (5): a file renamed in Finder shows its new name after a refresh.
     func testRefreshSavesRenamedPath() async throws {
         let r = rig()
