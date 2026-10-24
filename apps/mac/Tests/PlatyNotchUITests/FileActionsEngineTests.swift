@@ -523,7 +523,12 @@ enum Fixtures {
             adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: 10))
         }
         input.markAsFinished()
-        await writer.finishWriting()
+        // Not `await writer.finishWriting()`: built with Xcode 26, that compiler-imported async
+        // form crashes on macOS 15 (EXC_BAD_ACCESS in swift_continuation_resume, called from
+        // the writer's NSOperation completion). An explicit continuation is safe there.
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            writer.finishWriting { done.resume() }
+        }
         guard writer.status == .completed else { throw writer.error ?? FileActionError.unsupported }
         return url
     }
