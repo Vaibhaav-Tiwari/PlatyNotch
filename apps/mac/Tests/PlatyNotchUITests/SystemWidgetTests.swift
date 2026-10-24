@@ -147,7 +147,7 @@ private final class Disk {
     var allow = true
     /// The prompt stays up (the probe waits) until cancelled.
     var hold = false
-    var identity = "cdhash:test-build"
+    var identity = "dr:identifier test-build"
     var shelf: [URL]? = nil   // nil: the shelf is off
 }
 
@@ -567,14 +567,14 @@ final class SystemWidgetTests: XCTestCase {
     }
 
     func testDownloadsAtLaunchWatchWithoutAsking() {
-        let on = SystemWidget.Options(downloads: true, extraFolder: "/Users/me/Incoming", downloadsStamp: "cdhash:test-build")
+        let on = SystemWidget.Options(downloads: true, extraFolder: "/Users/me/Incoming", downloadsStamp: "dr:identifier test-build")
         let r = rig(defaults: savedOptions(on))
         XCTAssertTrue(r.disk.probes.isEmpty, "no folder listing at launch")
         XCTAssertEqual(r.watches.live?.folders, [folder, "/Users/me/Incoming"], "plus the chosen folder")
     }
 
     func testStampMismatchStartsNothing() {
-        let d = savedOptions(.init(downloads: true, downloadsStamp: "cdhash:old-build"))
+        let d = savedOptions(.init(downloads: true, downloadsStamp: "dr:identifier old-build"))
         let r = rig(defaults: d)
         XCTAssertTrue(r.watches.made.isEmpty, "another build was granted: no stream, no stat")
         XCTAssertTrue(r.disk.probes.isEmpty)
@@ -608,7 +608,7 @@ final class SystemWidgetTests: XCTestCase {
         let d = defaults()
         let r = rig(defaults: d)
         await turnOnDownloads(r)
-        XCTAssertEqual(SystemWidget.Options.load(d).downloadsStamp, "cdhash:test-build")
+        XCTAssertEqual(SystemWidget.Options.load(d).downloadsStamp, "dr:identifier test-build")
         r.widget.setDownloads(false)
         XCTAssertNil(SystemWidget.Options.load(d).downloadsStamp, "turning off forgets the grant")
     }
@@ -626,7 +626,7 @@ final class SystemWidgetTests: XCTestCase {
 
         // Saved by an older build: dropped at launch, with the reason, before any stat.
         let old = SystemWidget.Options(downloads: true, extraFolder: "/Users/me/Documents/DL",
-                                       downloadsStamp: "cdhash:test-build")
+                                       downloadsStamp: "dr:identifier test-build")
         let relaunched = rig(defaults: savedOptions(old))
         XCTAssertEqual(relaunched.watches.live?.folders, [folder])
         XCTAssertNil(relaunched.widget.options.extraFolder)
@@ -706,9 +706,30 @@ final class SystemWidgetTests: XCTestCase {
         XCTAssertEqual(r.watches.live?.folders, [folder])
     }
 
+    func testStampFromARequirementIgnoresTheCdhash() {
+        let developerID = "identifier \"dev.platynotch.app\" and anchor apple generic and "
+            + "certificate leaf[subject.OU] = \"TEAM123456\""
+        let v1 = CodeIdentity.stamp(requirement: developerID, cdhash: Data([0x01, 0x02, 0x03]))
+        let v2 = CodeIdentity.stamp(requirement: developerID, cdhash: Data([0xaa, 0xbb, 0xcc]))
+        XCTAssertEqual(v1, v2, "an update (new cdhash, same requirement) keeps the grant")
+        XCTAssertTrue(v1.hasPrefix("dr:"))
+        XCTAssertEqual(CodeIdentity.stamp(requirement: nil, cdhash: Data([0xab, 0x01])), "cdhash:ab01")
+        XCTAssertEqual(CodeIdentity.stamp(requirement: "", cdhash: nil), CodeIdentity.unsigned)
+        // Ad hoc: the requirement is the cdhash itself, so a rebuild differs.
+        XCTAssertNotEqual(CodeIdentity.stamp(requirement: "cdhash H\"0102\"", cdhash: Data([1, 2])),
+                          CodeIdentity.stamp(requirement: "cdhash H\"aabb\"", cdhash: Data([0xaa, 0xbb])))
+    }
+
+    func testOldCdhashStampAsksOnceAgain() {
+        let old = savedOptions(.init(downloads: true, downloadsStamp: "cdhash:0123abcd"))
+        let r = rig(defaults: old)
+        XCTAssertTrue(r.watches.made.isEmpty, "a stamp saved before the requirement order: no stream, no stat")
+        XCTAssertTrue(r.widget.options.downloadsNeedReenable, "\"Turn on again\"")
+    }
+
     func testCodeIdentityIsStableWithinALaunch() {
         let id = CodeIdentity.current
-        XCTAssertTrue(id.hasPrefix("cdhash:") || id.hasPrefix("dr:") || id == CodeIdentity.unsigned, id)
+        XCTAssertTrue(id.hasPrefix("dr:") || id.hasPrefix("cdhash:") || id == CodeIdentity.unsigned, id)
         XCTAssertEqual(id, CodeIdentity.current)
         print("CodeIdentity under swift test: \(id.prefix(20))…")
     }
