@@ -3,13 +3,15 @@ import Foundation
 /// Reads a ZIP archive's directory and every entry's local header (no extraction) to learn
 /// what unzipping would write (R9's size cap), and whether it is safe to unzip at all.
 ///
-/// `ditto` extracts from the local headers, not the central directory, so an archive whose
-/// two copies disagree could declare 9 bytes and write gigabytes: such an archive is
-/// refused (`problem`). Zip64 sizes are read. Even honest declared sizes do not bound what
+/// `ditto` streams the local headers in file order, not the central directory, so an
+/// archive whose two copies disagree, or that hides entries the directory does not list,
+/// could declare 9 bytes and write gigabytes: such an archive is refused (`problem`). The
+/// local entries must tile the file from offset 0 up to the directory exactly, one per
+/// central record and in the same order. Zip64 sizes are read. Even honest declared sizes do not bound what
 /// a compressed stream inflates to, so the unzip also watches what is really written.
 public enum ZipInspector {
     /// Why an archive is never unzipped.
-    public enum Problem: String, Equatable, Sendable {
+    public enum Problem: String, Error, Equatable, Sendable {
         /// An entry's name is absolute or climbs out with `..` (a "zip slip").
         case unsafeName
         /// An entry's local header disagrees with its central record (name, method or sizes),
@@ -19,6 +21,9 @@ public enum ZipInspector {
         case unknownSizes
         /// A symbolic link whose target is absolute, climbs out with `..`, or cannot be read.
         case unsafeLink
+        /// Bytes before the directory that no listed entry accounts for: a hidden entry, a
+        /// gap, entries out of order, or anything prepended.
+        case unlistedData
     }
 
     public struct Summary: Equatable, Sendable {
@@ -46,7 +51,7 @@ public enum ZipInspector {
         var compressed: UInt64
         var uncompressed: UInt64
         var localOffset: UInt64
-        /// The Unix mode, when the archive was made on Unix (macOS).
+        /// The Unix mode (the high 16 bits of the external attributes), when set.
         var mode: UInt32?
     }
 
@@ -79,12 +84,20 @@ public enum ZipInspector {
               let entries = parseDirectory(dir, count: count) else { return nil }
         var total: UInt64 = 0
         var problem: Problem?
+        var expected: UInt64 = 0   // where the next local entry must start
         for e in entries {
             let (sum, overflow) = total.addingReportingOverflow(e.uncompressed)
             guard !overflow else { return nil }
             total = sum
-            if problem == nil { problem = check(e, handle: handle, fileSize: size) }
+            guard problem == nil else { continue }
+            switch check(e, handle: handle, fileSize: size) {
+            case .failure(let p): problem = p
+            case .success(let end):
+                if e.localOffset != expected { problem = .unlistedData }
+                expected = end
+            }
         }
+        if problem == nil, expected != dirOffset { problem = .unlistedData }
         return Summary(entries: entries.count, uncompressedBytes: total, problem: problem)
     }
 
@@ -93,7 +106,6 @@ public enum ZipInspector {
         var out: [Entry] = []
         while UInt64(out.count) < count {
             guard at <= dir.count - 46, dir.u32(at) == 0x0201_4B50 else { return nil }
-            let madeOn = dir[dir.startIndex + at + 5]
             var e = Entry(name: Data(), flags: dir.u16(at + 8), method: dir.u16(at + 10),
                           compressed: UInt64(dir.u32(at + 20)), uncompressed: UInt64(dir.u32(at + 24)),
                           localOffset: UInt64(dir.u32(at + 42)), mode: nil)
@@ -102,7 +114,10 @@ public enum ZipInspector {
             let nameStart = at + 46, extraStart = nameStart + nameLength
             guard extraStart + extraLength + commentLength <= dir.count else { return nil }
             e.name = Data(dir[(dir.startIndex + nameStart)..<(dir.startIndex + extraStart)])
-            if madeOn == 3 { e.mode = dir.u32(at + 38) >> 16 }
+            // The Unix mode is the high 16 bits of the external attributes, whatever the
+            // made-by byte says (ditto makes links for made-by 0 and 19 too).
+            let mode = dir.u32(at + 38) >> 16
+            if mode != 0 { e.mode = mode }
             guard readZip64(dir, from: extraStart, length: extraLength, into: &e, local: false) else { return nil }
             out.append(e)
             at = extraStart + extraLength + commentLength
@@ -137,54 +152,61 @@ public enum ZipInspector {
         return false
     }
 
-    /// The entry's local header (what ditto reads) against its central record.
-    private static func check(_ e: Entry, handle: FileHandle, fileSize: UInt64) -> Problem? {
-        if isUnsafe(String(decoding: e.name, as: UTF8.self)) { return .unsafeName }
+    /// The entry's local header (what ditto reads) against its central record: where the
+    /// entry (header, data and any descriptor) ends, or why it is refused.
+    private static func check(_ e: Entry, handle: FileHandle, fileSize: UInt64) -> Result<UInt64, Problem> {
+        if isUnsafe(String(decoding: e.name, as: UTF8.self)) { return .failure(.unsafeName) }
         guard e.localOffset <= fileSize, fileSize - e.localOffset >= 30,
               let header = read(handle, at: e.localOffset, count: 30), header.u32(0) == 0x0403_4B50 else {
-            return .mismatchedHeaders
+            return .failure(.mismatchedHeaders)
         }
         let nameLength = UInt64(header.u16(26)), extraLength = UInt64(header.u16(28))
         let variable = nameLength + extraLength
         guard fileSize - e.localOffset - 30 >= variable,
-              let rest = read(handle, at: e.localOffset + 30, count: Int(variable)) else { return .mismatchedHeaders }
+              let rest = read(handle, at: e.localOffset + 30, count: Int(variable)) else { return .failure(.mismatchedHeaders) }
         var local = Entry(name: Data(rest.prefix(Int(nameLength))), flags: header.u16(6), method: header.u16(8),
                           compressed: UInt64(header.u32(18)), uncompressed: UInt64(header.u32(22)),
                           localOffset: e.localOffset, mode: nil)
         guard local.name == e.name, local.method == e.method,
               readZip64(rest, from: Int(nameLength), length: Int(extraLength), into: &local, local: true) else {
-            return .mismatchedHeaders
+            return .failure(.mismatchedHeaders)
         }
         let dataStart = e.localOffset + 30 + variable
-        guard dataStart <= fileSize, e.compressed <= fileSize - dataStart else { return .mismatchedHeaders }
+        guard dataStart <= fileSize, e.compressed <= fileSize - dataStart else { return .failure(.mismatchedHeaders) }
+        var end = dataStart + e.compressed
         if local.flags & 0x08 != 0 {
             // Sizes follow the data, in a data descriptor: they must be there and agree.
-            guard descriptorMatches(e, at: dataStart + e.compressed, handle: handle, fileSize: fileSize) else {
-                return .unknownSizes
+            guard let length = descriptorLength(e, at: end, handle: handle, fileSize: fileSize) else {
+                return .failure(.unknownSizes)
             }
+            end += length
         } else if local.compressed != e.compressed || local.uncompressed != e.uncompressed {
-            return .mismatchedHeaders
+            return .failure(.mismatchedHeaders)
         }
         if let mode = e.mode, mode & 0o170000 == 0o120000 {
             // A symbolic link: its target is the entry's (stored) data.
             guard e.method == 0, e.compressed <= UInt64(maxLinkTarget),
-                  let target = read(handle, at: dataStart, count: Int(e.compressed)) else { return .unsafeLink }
+                  let target = read(handle, at: dataStart, count: Int(e.compressed)) else { return .failure(.unsafeLink) }
             let path = String(decoding: target, as: UTF8.self)
-            if path.isEmpty || path.hasPrefix("/") || isUnsafe(path) { return .unsafeLink }
+            if path.isEmpty || path.hasPrefix("/") || isUnsafe(path) { return .failure(.unsafeLink) }
         }
-        return nil
+        return .success(end)
     }
 
-    /// [signature] crc, compressed, uncompressed: 4-byte sizes, or 8-byte for zip64.
-    private static func descriptorMatches(_ e: Entry, at offset: UInt64, handle: FileHandle, fileSize: UInt64) -> Bool {
-        guard offset <= fileSize else { return false }
+    /// [signature] crc, compressed, uncompressed: 4-byte sizes, or 8-byte for zip64. Its
+    /// length when it is there and agrees with the directory, else nil.
+    private static func descriptorLength(_ e: Entry, at offset: UInt64, handle: FileHandle, fileSize: UInt64) -> UInt64? {
+        guard offset <= fileSize else { return nil }
         let available = min(fileSize - offset, 24)
-        guard let d = read(handle, at: offset, count: Int(available)) else { return false }
+        guard let d = read(handle, at: offset, count: Int(available)) else { return nil }
         let start = d.count >= 4 && d.u32(0) == 0x0807_4B50 ? 4 : 0
         if d.count >= start + 12, UInt64(d.u32(start + 4)) == e.compressed, UInt64(d.u32(start + 8)) == e.uncompressed {
-            return true
+            return UInt64(start + 12)
         }
-        return d.count >= start + 20 && d.u64(start + 4) == e.compressed && d.u64(start + 12) == e.uncompressed
+        if d.count >= start + 20, d.u64(start + 4) == e.compressed, d.u64(start + 12) == e.uncompressed {
+            return UInt64(start + 20)
+        }
+        return nil
     }
 
     /// An entry name (or link target) that would land outside the folder it is unzipped into.

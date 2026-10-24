@@ -28,8 +28,10 @@ struct ZipFixture {
         /// Sizes in zip64 extra fields (both headers).
         var zip64 = false
         var descriptor = Descriptor.none
-        /// A Unix mode (made on Unix): e.g. 0o120755 for a symbolic link.
+        /// A Unix mode (the external attributes' high 16 bits): e.g. 0o120755 for a link.
         var mode: UInt32?
+        /// The made-by host byte (3 Unix, 0 DOS, 19 OS X); default 3 with a mode, else 0.
+        var host: UInt16?
 
         init(_ name: String, _ data: Data = Data("x".utf8)) {
             self.name = name
@@ -37,10 +39,14 @@ struct ZipFixture {
         }
     }
 
-    static func build(_ entries: [Entry]) -> Data {
+    /// `listed`: which entries the central directory lists (default all); the others are
+    /// hidden local entries that only a reader of local headers (ditto) sees.
+    static func build(_ entries: [Entry], listed: Set<Int>? = nil, prepend: Data = Data()) -> Data {
         var file = Bytes()
+        file.raw(prepend)
         var central = Bytes()
-        for e in entries {
+        var listedCount = 0
+        for (index, e) in entries.enumerated() {
             let offset = UInt32(file.count)
             let size = UInt64(e.data.count)
             let declared = e.centralSize ?? size
@@ -72,7 +78,9 @@ struct ZipFixture {
                 u = 0xFFFF_FFFF
                 extra.u16(1); extra.u16(16); extra.u64(declared); extra.u64(size)
             }
-            let made: UInt16 = e.mode == nil ? 20 : (3 << 8 | 20)
+            guard listed?.contains(index) ?? true else { continue }
+            listedCount += 1
+            let made: UInt16 = (e.host ?? (e.mode == nil ? 0 : 3)) << 8 | 20
             central.u32(0x0201_4B50); central.u16(made); central.u16(20); central.u16(flags); central.u16(0); central.u32(0)
             central.u32(0); central.u32(c); central.u32(u); central.u16(UInt16(name.count)); central.u16(UInt16(extra.count))
             central.u16(0); central.u16(0); central.u16(0); central.u32((e.mode ?? 0) << 16); central.u32(offset)
@@ -80,7 +88,7 @@ struct ZipFixture {
         }
         let dirOffset = UInt32(file.count)
         file.raw(central.data)
-        file.u32(0x0605_4B50); file.u16(0); file.u16(0); file.u16(UInt16(entries.count)); file.u16(UInt16(entries.count))
+        file.u32(0x0605_4B50); file.u16(0); file.u16(0); file.u16(UInt16(listedCount)); file.u16(UInt16(listedCount))
         file.u32(UInt32(central.count)); file.u32(dirOffset); file.u16(0)
         return file.data
     }

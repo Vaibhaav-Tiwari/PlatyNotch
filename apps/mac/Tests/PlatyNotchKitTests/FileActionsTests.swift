@@ -243,6 +243,59 @@ final class FileActionsTests: DefaultsTestCase {
         XCTAssertNil(try inspect([file])?.problem, "a file's contents are not a link target")
     }
 
+    /// Fix round 2: links are read from the mode bits whatever the made-by host (ditto
+    /// makes links for made-by 0 and 19 too).
+    func testZipLinksForEveryHost() throws {
+        for host: UInt16 in [0, 3, 19] {
+            var abs = ZipFixture.Entry("lnk", Data("/Users/victim".utf8))
+            abs.mode = 0o120755
+            abs.host = host
+            XCTAssertEqual(try inspect([abs, ZipFixture.Entry("lnk/pwned.txt")])?.problem, .unsafeLink, "host \(host)")
+            var up = abs
+            up.data = Data("../..".utf8)
+            XCTAssertEqual(try inspect([up])?.problem, .unsafeLink, "host \(host)")
+            var ok = abs
+            ok.data = Data("sibling".utf8)
+            XCTAssertNil(try inspect([ok])?.problem, "host \(host)")
+        }
+    }
+
+    /// Fix round 2: ditto streams local headers; every byte before the directory must
+    /// belong to a listed entry, in order.
+    func testZipHiddenLocalEntriesAreRefused() throws {
+        let hidden = ZipFixture.Entry("hidden.bin", Data(repeating: 0, count: 64))
+        let shown = ZipFixture.Entry("a.txt")
+        func check(_ data: Data) throws -> ZipInspector.Problem? {
+            let url = root.appendingPathComponent("\(UUID().uuidString).zip")
+            try data.write(to: url)
+            return try XCTUnwrap(ZipInspector.summary(of: url)).problem
+        }
+        XCTAssertEqual(try check(ZipFixture.build([hidden, shown], listed: [1])), .unlistedData, "hidden first")
+        XCTAssertEqual(try check(ZipFixture.build([shown, hidden], listed: [0])), .unlistedData, "hidden last")
+        XCTAssertEqual(try check(ZipFixture.build([shown, hidden, ZipFixture.Entry("b.txt")], listed: [0, 2])),
+                       .unlistedData, "hidden between")
+        XCTAssertEqual(try check(ZipFixture.build([shown], prepend: Data("MZ-stub".utf8))), .unlistedData, "prepended")
+        XCTAssertNil(try check(ZipFixture.build([shown, hidden])), "both listed: fine")
+        var streamed = shown
+        streamed.descriptor = .matching
+        XCTAssertNil(try check(ZipFixture.build([streamed, ZipFixture.Entry("b.txt")])), "descriptors are part of the tiling")
+    }
+
+    /// The reviewer's crafted archives (Tests/PlatyNotchKitTests/Fixtures/zips).
+    func testCraftedArchives() throws {
+        let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures/zips")
+        let expected: [(String, ZipInspector.Problem?)] = [
+            ("B3_hidden_slip.zip", .unlistedData), ("B4_hidden_abs.zip", .unlistedData),
+            ("E_symlink_dos_abs.zip", .unsafeLink), ("E2_symlink_unix_abs.zip", .unsafeLink),
+            ("E3_dos_link_writethrough.zip", .unsafeLink), ("E4_osx_madeon19_link.zip", .unsafeLink),
+            ("G_bit3_legit.zip", nil),
+        ]
+        for (name, problem) in expected {
+            let summary = try XCTUnwrap(ZipInspector.summary(of: dir.appendingPathComponent(name)), name)
+            XCTAssertEqual(summary.problem, problem, name)
+        }
+    }
+
     /// A real archive with a relative link (as ditto stores it) passes.
     func testDittoArchiveWithALinkPasses() throws {
         let src = root.appendingPathComponent("linked")
@@ -343,6 +396,22 @@ final class FileActionsTests: DefaultsTestCase {
         XCTAssertNil(ShelfAddPolicy.lexical(Array(repeating: "/a", count: 21), home: home))
     }
 
+    /// Fix round 2: the string step never stats. `standardizedFileURL` would turn an
+    /// existing `/private/var/tmp` into `/var/tmp`, and a plain file URL would look up
+    /// whether a path is a folder; here both stay exactly as typed, folded by hand.
+    func testLexicalNeverTouchesTheDisk() throws {
+        let home = URL(filePath: "/nonexistent-pn-home", directoryHint: .isDirectory)
+        let out = try XCTUnwrap(ShelfAddPolicy.lexical(["/private/var/tmp", "/private/nonexistent-pn/./x//y/../z.txt",
+                                                        "/../etc", "/a/b/../../.."], home: home))
+        XCTAssertEqual(out.map(\.path), ["/private/var/tmp", "/private/nonexistent-pn/x/z.txt"],
+                       "a .. above / is refused, as is /")
+        XCTAssertFalse(out[0].hasDirectoryPath, "no folder lookup for an existing folder")
+        XCTAssertEqual(ShelfAddPolicy.normalize("//a///b/./c/.."), "/a/b")
+        XCTAssertNil(ShelfAddPolicy.normalize("a/b"))
+        XCTAssertEqual(ShelfAddPolicy.lexical(["/nonexistent-pn-home/../nonexistent-pn-home/x"], home: home), [],
+                       "under the home after folding")
+    }
+
     func testRenamePolicy() {
         let user = URL(fileURLWithPath: "/Users/me"), app = URL(fileURLWithPath: "/Users/me/Library/Application Support/PlatyNotch")
         func p(_ s: String) -> Bool { RenamePolicy.isProtected(URL(fileURLWithPath: s), userHome: user, appHome: app) }
@@ -354,6 +423,25 @@ final class FileActionsTests: DefaultsTestCase {
         for path in ["/Users/me/Desktop/a.png", "/Users/me/Downloads/trip", "/Users/me/Projects", "/Volumes/USB/a.txt"] {
             XCTAssertFalse(p(path), path)
         }
+        XCTAssertTrue(p("/users/ME/desktop"), "case variants")
+        XCTAssertTrue(p("/Users/me/LIBRARY/application support/platynotch/x"))
+    }
+
+    /// Fix round 2: a path through a linked parent is resolved before checking.
+    func testRenamePolicyFollowsLinks() throws {
+        let home = root.appendingPathComponent("home")
+        let app = home.appendingPathComponent("Library/Application Support/PlatyNotch")
+        try fm.createDirectory(at: app.appendingPathComponent("shelf.noindex"), withIntermediateDirectories: true)
+        try fm.createDirectory(at: home.appendingPathComponent("Desktop"), withIntermediateDirectories: true)
+        let alias = root.appendingPathComponent("alias")
+        try fm.createSymbolicLink(at: alias, withDestinationURL: app)
+        XCTAssertTrue(RenamePolicy.isProtected(alias.appendingPathComponent("shelf.noindex"), userHome: home, appHome: app))
+        let deskLink = root.appendingPathComponent("desk")
+        try fm.createSymbolicLink(at: deskLink, withDestinationURL: home.appendingPathComponent("Desktop"))
+        XCTAssertTrue(RenamePolicy.isProtected(deskLink, userHome: home, appHome: app), "a link to Desktop is Desktop")
+        let file = home.appendingPathComponent("Desktop/a.txt")
+        try Data("a".utf8).write(to: file)
+        XCTAssertFalse(RenamePolicy.isProtected(file, userHome: home, appHome: app))
     }
 
     func testPromptTexts() {

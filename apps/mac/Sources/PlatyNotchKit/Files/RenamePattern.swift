@@ -114,24 +114,37 @@ public struct RenamePlan: Equatable, Sendable {
 /// What Batch rename never renames: PlatyNotch's own folder and anything in it, the
 /// disk's top-level folders, your home folder itself, its standard folders (Desktop,
 /// Documents, Downloads, Library, …) and its hidden entries (`~/.ssh`, `~/.zshrc`).
-/// Paths are compared as strings, standardised.
+/// Paths are resolved (symbolic links followed, with `realpath` when they exist) and
+/// compared without case, so a case variant or a path through a linked parent is caught.
 public enum RenamePolicy {
     public static let homeFolders: Set<String> = [
-        "Applications", "Desktop", "Documents", "Downloads", "Library", "Movies", "Music", "Pictures", "Public",
+        "applications", "desktop", "documents", "downloads", "library", "movies", "music", "pictures", "public",
     ]
 
     public static func isProtected(_ url: URL, userHome: URL, appHome: URL) -> Bool {
-        let path = url.standardizedFileURL.path
-        let app = appHome.standardizedFileURL.path
+        let path = canonical(url)
+        let app = canonical(appHome)
         if path == app || path.hasPrefix(app + "/") { return true }
-        let parts = url.standardizedFileURL.pathComponents   // ["/", "Users", …]
-        if parts.count <= 2 { return true }   // "/" and its children
-        let home = userHome.standardizedFileURL.path
+        let parts = path.split(separator: "/")
+        if parts.count <= 1 { return true }   // "/" and its children
+        let home = canonical(userHome)
         if path == home { return true }
-        if url.standardizedFileURL.deletingLastPathComponent().path == home {
-            let name = url.lastPathComponent
-            return homeFolders.contains(name) || name.hasPrefix(".")
+        let parent = parts.dropLast().joined(separator: "/")
+        if "/" + parent == home, let name = parts.last {
+            return homeFolders.contains(String(name)) || name.hasPrefix(".")
         }
         return false
+    }
+
+    /// Lowercased, symbolic links resolved (`realpath` when the path exists, else by
+    /// standardising and resolving what can be).
+    static func canonical(_ url: URL) -> String {
+        let std = url.standardizedFileURL
+        var resolved = std.resolvingSymlinksInPath().path
+        if let real = realpath(std.path, nil) {
+            resolved = String(cString: real)
+            free(real)
+        }
+        return resolved.lowercased()
     }
 }

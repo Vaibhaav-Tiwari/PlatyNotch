@@ -118,6 +118,8 @@ struct SystemFileActions: FileActionPerforming {
 
     var unzipCap: UInt64 = defaultUnzipCap
     var ditto = ProcessRunner(executableURL: URL(fileURLWithPath: "/usr/bin/ditto"), stopsOnCancel: true)
+    /// Free bytes on the volume of a folder (a seam for tests).
+    var freeSpaceAt: @Sendable (URL) -> UInt64? = { SystemFileActions.freeSpace(at: $0) }
 
     func perform(_ action: FileAction, sources: [URL], into folder: URL?) async throws -> FileActionOutput {
         guard let first = sources.first else { throw FileActionError.unreadable }
@@ -343,7 +345,7 @@ struct SystemFileActions: FileActionPerforming {
         let cap = unzipCap
         guard summary.uncompressedBytes <= cap else { throw FileActionError.tooLarge(cap) }
         let needed = summary.uncompressedBytes.addingReportingOverflow(Self.freeSpaceMargin)
-        if let free = Self.freeSpace(at: folder), needed.overflow || free < needed.partialValue {
+        if let free = freeSpaceAt(folder), needed.overflow || free < needed.partialValue {
             throw FileActionError.notEnoughSpace
         }
         let limit = Self.watchLimit(declared: summary.uncompressedBytes, entries: summary.entries)

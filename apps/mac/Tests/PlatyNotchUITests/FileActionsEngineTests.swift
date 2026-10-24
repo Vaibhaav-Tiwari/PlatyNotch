@@ -262,6 +262,64 @@ final class FileActionsEngineTests: DefaultsTestCase {
         XCTAssertFalse(fm.fileExists(atPath: out.deletingLastPathComponent().appendingPathComponent("evil.txt").path))
     }
 
+    /// Fix round 2: an entry the directory does not list (ditto would extract it) is
+    /// refused before ditto runs. The reviewer's B3 archive (Kit fixtures).
+    func testUnzipRefusesAHiddenEntry() async throws {
+        let b3 = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("PlatyNotchKitTests/Fixtures/zips/B3_hidden_slip.zip")
+        var never = SystemFileActions()
+        never.ditto = ProcessRunner(executableURL: URL(fileURLWithPath: "/nonexistent/ditto"), stopsOnCancel: true)
+        let out = try folder()
+        do {
+            _ = try await never.perform(.unzip, sources: [b3], into: out)
+            XCTFail("unzipped a hidden entry")
+        } catch {
+            XCTAssertEqual(error as? FileActionError, .unsafeArchive)
+        }
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: out.path), [])
+    }
+
+    /// Fix round 2: an archive whose honest headers inflate past what they declare is
+    /// stopped by the live watch and deleted. A stand-in ditto writes 4 MB for 9 bytes.
+    func testUnzipStopsWhatWritesMoreThanDeclared() async throws {
+        let fake = root.appendingPathComponent("greedy-ditto")
+        try "#!/bin/sh\nfor a; do last=$a; done\n/bin/dd if=/dev/zero of=\"$last/big\" bs=1048576 count=4 2>/dev/null\nexec /bin/sleep 30\n"
+            .write(to: fake, atomically: true, encoding: .utf8)
+        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fake.path)
+        var greedy = SystemFileActions()
+        greedy.ditto = ProcessRunner(executableURL: fake, stopsOnCancel: true)
+        let zip = try Fixtures.storedZip(at: root.appendingPathComponent("small.zip"), name: "a.txt", contents: Data("123456789".utf8))
+        let out = try folder()
+        let started = Date()
+        do {
+            _ = try await greedy.perform(.unzip, sources: [zip], into: out)
+            XCTFail("kept what it wrote")
+        } catch {
+            XCTAssertEqual(error as? FileActionError, .overDeclared)
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5, "stopped by the watch, not the 30 s sleep")
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: out.path), [], "what it wrote is deleted")
+    }
+
+    /// Fix round 2: not enough free space: refused before anything is written.
+    func testUnzipNeedsFreeSpace() async throws {
+        let src = root.appendingPathComponent("f.txt")
+        try Data("x".utf8).write(to: src)
+        guard case .file(let zip) = try await engine.perform(.zip, sources: [src], into: try folder("z")) else {
+            return XCTFail("no zip")
+        }
+        var full = SystemFileActions()
+        full.freeSpaceAt = { _ in 1_000 }
+        let out = try folder("u")
+        do {
+            _ = try await full.perform(.unzip, sources: [zip], into: out)
+            XCTFail("unzipped onto a full disk")
+        } catch {
+            XCTAssertEqual(error as? FileActionError, .notEnoughSpace)
+        }
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: out.path), [])
+    }
+
     /// R9: a cancelled zip stops ditto and deletes the partial archive.
     func testCancelledZipDeletesThePartial() async throws {
         // Stands in for ditto: writes the partial (its last argument), then waits.

@@ -194,22 +194,38 @@ public enum AppURL: Equatable, Sendable {
 public enum ShelfAddPolicy {
     public static let maxPaths = 20
 
-    /// String checks only: absolute, no `..` left after standardising, not under `home`
-    /// by its path, in order without repeats. Nil when more than `maxPaths` were given.
+    /// String checks only, so nothing on disk is looked at (no stat, no symlinks): an
+    /// absolute path, `.`, `..` and repeated `/` folded by hand (a `..` above `/` is
+    /// refused), not under `home` by its path, in order without repeats. Nil when more than
+    /// `maxPaths` were given.
     public static func lexical(_ paths: [String], home: URL) -> [URL]? {
         guard paths.count <= maxPaths else { return nil }
-        let root = home.standardizedFileURL.path
+        let root = normalize(home.path) ?? home.path
         var seen = Set<String>()
         var out: [URL] = []
         for raw in paths {
-            guard raw.hasPrefix("/"), !raw.contains("\0") else { continue }
-            let url = URL(fileURLWithPath: raw).standardizedFileURL
-            let path = url.path
-            guard path != "/", !url.pathComponents.contains(".."), path != root, !path.hasPrefix(root + "/"),
-                  seen.insert(path).inserted else { continue }
-            out.append(url)
+            guard !raw.contains("\0"), let path = normalize(raw), path != "/", path != root,
+                  !path.hasPrefix(root + "/"), seen.insert(path).inserted else { continue }
+            out.append(URL(filePath: path, directoryHint: .notDirectory))
         }
         return out
+    }
+
+    /// `raw` with `.`, `..` and empty components folded, by string alone; nil when it is
+    /// not absolute or a `..` would climb above `/`.
+    public static func normalize(_ raw: String) -> String? {
+        guard raw.hasPrefix("/") else { return nil }
+        var parts: [Substring] = []
+        for part in raw.split(separator: "/", omittingEmptySubsequences: true) {
+            if part == "." { continue }
+            if part == ".." {
+                guard !parts.isEmpty else { return nil }
+                parts.removeLast()
+                continue
+            }
+            parts.append(part)
+        }
+        return "/" + parts.joined(separator: "/")
     }
 
     /// After the click: `lexical`, then with symlinks resolved (a link into the home is
