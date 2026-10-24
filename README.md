@@ -133,7 +133,7 @@ features, and asks for its permission only from its own button.
 | Camera | Coming in v0.2 | Mirror (shows your camera only while it is open) |
 | Accessibility | Coming in v0.2 | Window snapping |
 | Automation: Mail | Coming in v0.2 | Mail |
-| Files and Folders | Coming in v0.2 | The notes folder |
+| Files and Folders (Documents, Desktop or iCloud Drive) | You choose a vault there with Choose Vault… in Notes & Tasks' settings (once; again after an update with Turn On Again…) | Notes & Tasks: open tasks from notes edited in the last 30 days, ticking a task (only its checkbox), quick notes added to today's daily note |
 
 Network: nothing is sent anywhere unless you turn on something that is network by
 nature.
