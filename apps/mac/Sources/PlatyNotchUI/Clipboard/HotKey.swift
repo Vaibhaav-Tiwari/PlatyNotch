@@ -59,7 +59,9 @@ final class HotKey: HotKeyRegistration {
     private static var nextID: UInt32 = 1
     private static var eventHandler: EventHandlerRef?
 
-    private var ref: EventHotKeyRef?
+    /// Written only on the main actor; `deinit` (nonisolated, nothing else holds self by
+    /// then) is the one other reader.
+    nonisolated(unsafe) private var ref: EventHotKeyRef?
     private let hotKeyID: UInt32
 
     /// Nil when Carbon refused it (the combination is taken). `onRelease` runs when the
@@ -93,7 +95,20 @@ final class HotKey: HotKeyRegistration {
         Self.handlers.remove(hotKeyID)
     }
 
-    isolated deinit { unregister() }
+    // Not `isolated deinit`: it aborts on macOS 15.4-15.x (see `DragSubscription`'s deinit).
+    deinit {
+        guard let ref else { return }
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { unregister() }
+        } else {
+            nonisolated(unsafe) let ref = ref
+            let id = hotKeyID
+            Task { @MainActor in
+                UnregisterEventHotKey(ref)
+                HotKey.handlers.remove(id)
+            }
+        }
+    }
 
     /// One application-target handler for every hot key, pressed and released (Carbon
     /// delivers them on the main thread).
