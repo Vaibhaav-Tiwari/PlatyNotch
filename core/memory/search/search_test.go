@@ -300,3 +300,21 @@ func TestEmptyQueryListsEveryRecentThread(t *testing.T) {
 		t.Fatalf("snippet = %q", hits[0].Snippet)
 	}
 }
+
+func TestEmptyQueryRecentHonoursFilters(t *testing.T) {
+	s := openStore(t)
+	now := time.Now()
+	add(t, s, "com.apple.mail", "Mail", "mail text", now.Add(-2*time.Hour), "", nil)
+	add(t, s, "com.apple.Notes", "Notes", "notes text", now.Add(-time.Hour), "", nil)
+	add(t, s, "com.apple.Notes", "Notes", "newer notes", now, "", nil)
+	hits, _ := Search(context.Background(), s, nil, protocol.MemorySearch{App: "mail"})
+	if len(hits) != 1 || hits[0].Snippet != "mail text" {
+		t.Fatalf("app: %+v", hits)
+	}
+	since := now.Add(-90 * time.Minute)
+	until := now.Add(-30 * time.Minute)
+	hits, _ = Search(context.Background(), s, nil, protocol.MemorySearch{Since: &since, Until: &until})
+	if len(hits) != 1 || hits[0].Snippet != "notes text" {
+		t.Fatalf("window: %+v", hits)
+	}
+}

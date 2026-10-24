@@ -80,14 +80,40 @@ func (s *Store) SearchFTS(match string, f Filter, limit int) ([]ChunkRow, error)
 
 // RecentThreads returns one chunk per thread for the limit threads captured
 // most recently (matching f): the first chunk of each thread's newest capture.
-// Listing recent chunks instead let one busy thread fill the whole list.
+// Listing recent chunks instead let one busy thread fill the whole list. The
+// per-thread maximum comes from the chunks_thread_recent index.
 func (s *Store) RecentThreads(f Filter, limit int) ([]ChunkRow, error) {
-	w, args := f.where()
+	w, args := f.chunkWhere()
 	args = append(args, limit)
-	return s.scanRows(`SELECT id, thread_id, title, app_bundle, app_name, text, captured_at FROM (
-		SELECT `+chunkCols+`, ROW_NUMBER() OVER (PARTITION BY c.thread_id ORDER BY c.captured_at DESC, c.id) AS rn
-		FROM chunks c JOIN threads t ON t.id = c.thread_id WHERE 1=1`+w+`)
-		WHERE rn = 1 ORDER BY captured_at DESC, id DESC LIMIT ?`, args...)
+	return s.scanRows(`SELECT `+chunkCols+` FROM (
+		SELECT c.thread_id AS tid, MAX(c.captured_at) AS at FROM chunks c
+		WHERE 1=1`+w+` GROUP BY c.thread_id ORDER BY at DESC LIMIT ?) m
+		JOIN chunks c ON c.id = (SELECT id FROM chunks WHERE thread_id = m.tid AND captured_at = m.at ORDER BY id LIMIT 1)
+		JOIN threads t ON t.id = c.thread_id
+		ORDER BY c.captured_at DESC, c.id DESC`, args...)
+}
+
+// chunkWhere is where() over chunks alone (the app through a threads subquery),
+// so a scan can stay on a covering chunks index.
+func (f Filter) chunkWhere() (string, []any) {
+	var cl []string
+	var args []any
+	if !f.Since.IsZero() {
+		cl = append(cl, "c.captured_at >= ?")
+		args = append(args, ms(f.Since))
+	}
+	if !f.Until.IsZero() {
+		cl = append(cl, "c.captured_at <= ?")
+		args = append(args, ms(f.Until))
+	}
+	if f.App != "" {
+		cl = append(cl, "c.thread_id IN (SELECT id FROM threads WHERE LOWER(app_bundle) = LOWER(?) OR LOWER(app_name) = LOWER(?))")
+		args = append(args, f.App, f.App)
+	}
+	if len(cl) == 0 {
+		return "", nil
+	}
+	return " AND " + strings.Join(cl, " AND "), args
 }
 
 // ChunksByIDs loads chunk rows for the given ids (any order).
