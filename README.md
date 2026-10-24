@@ -123,6 +123,18 @@ and show **Turn On Again** instead of prompting by themselves.
 Files you put on the shelf from Downloads, Desktop or Documents may make macOS ask
 for access when the shelf tile shows them; nothing is checked at launch.
 
+#### Power features (v0.2)
+
+Coming in v0.2. Each is off until you turn it on under Settings › Widgets › Power
+features, and asks for its permission only from its own button.
+
+| Permission | Asked when | Used by |
+| --- | --- | --- |
+| Camera | Coming in v0.2 | Mirror (shows your camera only while it is open) |
+| Accessibility | Coming in v0.2 | Window snapping |
+| Automation: Mail | Coming in v0.2 | Mail |
+| Files and Folders | Coming in v0.2 | The notes folder |
+
 Network: nothing is sent anywhere unless you turn on something that is network by
 nature.
 
