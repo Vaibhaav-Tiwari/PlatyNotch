@@ -38,3 +38,36 @@ func TestConcurrentWritersNeverBusy(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// A write that waits on another in-process write longer than busy_timeout
+// must still succeed. SQLite's busy handler polls with sleeps and gives up
+// after busy_timeout, with no queue, so on a loaded machine a writer could be
+// starved past it by the others and the capture was lost (CI: SQLITE_BUSY
+// after 8s under -race). In-process writers queue in Go instead.
+func TestWriterOutlastsBusyTimeout(t *testing.T) {
+	old := busyTimeoutMs
+	busyTimeoutMs = 50
+	t.Cleanup(func() { busyTimeoutMs = old })
+	s, _ := open(t)
+	th, ids := seed(t, s, "seed text", time.Unix(1_700_000_000, 0))
+
+	hold := 8 * time.Duration(busyTimeoutMs) * time.Millisecond // well past busy_timeout
+	inTx := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		_, err := s.SaveCapture(Version{ThreadID: th.ID, HourBucket: 7, Content: "new text", ContentHash: "n"},
+			func(string) []string {
+				close(inTx) // the write transaction is open and holds the lock
+				time.Sleep(hold)
+				return []string{"new text"}
+			})
+		done <- err
+	}()
+	<-inTx
+	if err := s.SetVector(ids[0], "m", []float32{1, 2}); err != nil {
+		t.Fatalf("SetVector while another write is open: %v", err)
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("SaveCapture: %v", err)
+	}
+}

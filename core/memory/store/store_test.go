@@ -226,8 +226,8 @@ func TestPurgeRetryQueueAndCascadeCount(t *testing.T) {
 	if _, err := s.AddChunks([]Chunk{{VersionID: "v1", ThreadID: th.ID, Idx: 1, Text: "recent", CapturedAt: time.Now()}}); err != nil {
 		t.Fatal(err)
 	}
-	s.db.Exec(`INSERT INTO retry_queue(kind,chunk_id,next_at) VALUES('embed',?,0)`, ids[0])
-	s.db.Exec(`INSERT INTO retry_queue(kind,chunk_id,next_at) VALUES('embed',?,0)`, ids[0]+1)
+	s.w.Exec(`INSERT INTO retry_queue(kind,chunk_id,next_at) VALUES('embed',?,0)`, ids[0])
+	s.w.Exec(`INSERT INTO retry_queue(kind,chunk_id,next_at) VALUES('embed',?,0)`, ids[0]+1)
 	n, err := s.PurgeBefore(time.Now().Add(-24 * time.Hour))
 	if err != nil || n != 2 {
 		t.Fatalf("n=%d err=%v", n, err)

@@ -18,8 +18,16 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+// Store reads through db and writes through w. w has a single connection, so
+// in-process writers queue in database/sql (no timeout) instead of racing for
+// SQLite's write lock: SQLite's busy handler only polls with sleeps and gives
+// up after busy_timeout, so with several pooled writers a loaded machine could
+// starve one past it and lose a capture to SQLITE_BUSY. db is query_only, so
+// a write sent to it fails loudly instead of contending again. In a read-only
+// Store, w is db.
 type Store struct {
 	db   *sql.DB
+	w    *sql.DB
 	path string
 }
 
@@ -57,45 +65,67 @@ func newID() string {
 	return hex.EncodeToString(b[:])
 }
 
+// busyTimeoutMs is how long a connection waits for a lock held by another
+// connection (in practice another process, or a WAL checkpoint) before SQLite
+// returns SQLITE_BUSY. A variable so tests can shorten it.
+var busyTimeoutMs = 5000
+
 // Open opens (creating with mode 0600 if needed) the database at path. When
 // readOnly is false it enables WAL and runs migrations.
 func Open(path string, readOnly bool) (*Store, error) {
-	q := "_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=secure_delete(1)"
-	if !readOnly {
-		f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	// busy_timeout is a per-connection pragma; the driver runs it first on
+	// every connection either pool opens.
+	q := fmt.Sprintf("_pragma=busy_timeout(%d)&_pragma=foreign_keys(1)&_pragma=secure_delete(1)", busyTimeoutMs)
+	if readOnly {
+		db, err := openDB(path, "mode=ro&"+q)
 		if err != nil {
 			return nil, err
 		}
-		f.Close()
-		if err := os.Chmod(path, 0o600); err != nil {
-			return nil, err
-		}
-		// BEGIN IMMEDIATE: a transaction that reads then writes (PutVersion)
-		// while another connection writes (the worker) would otherwise fail at
-		// once with SQLITE_BUSY, since busy_timeout cannot retry a deferred
-		// transaction's read-to-write upgrade. The capture was then lost.
-		q += "&_pragma=journal_mode(WAL)&_txlock=immediate"
-	} else {
-		q = "mode=ro&" + q
+		return &Store{db: db, w: db, path: path}, nil
 	}
-	u := url.URL{Scheme: "file", Path: path, RawQuery: q}
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	f.Close()
+	if err := os.Chmod(path, 0o600); err != nil {
+		return nil, err
+	}
+	// BEGIN IMMEDIATE: a transaction that reads then writes (PutVersion)
+	// would otherwise take the write lock by upgrading its read lock, and that
+	// upgrade fails at once with SQLITE_BUSY, without busy_timeout, when
+	// another process has written in between.
+	w, err := openDB(path, q+"&_pragma=journal_mode(WAL)&_txlock=immediate")
+	if err != nil {
+		return nil, err
+	}
+	w.SetMaxOpenConns(1)
+	s := &Store{w: w, path: path}
+	if err := s.migrate(); err != nil {
+		w.Close()
+		return nil, err
+	}
+	// Readers use deferred transactions (BEGIN IMMEDIATE would take the write
+	// lock) and run concurrently with the writer under WAL.
+	if s.db, err = openDB(path, q+"&_pragma=query_only(1)"); err != nil {
+		w.Close()
+		return nil, err
+	}
+	s.chmod()
+	return s, nil
+}
+
+func openDB(path, query string) (*sql.DB, error) {
+	u := url.URL{Scheme: "file", Path: path, RawQuery: query}
 	db, err := sql.Open("sqlite", u.String())
 	if err != nil {
 		return nil, err
 	}
-	s := &Store{db: db, path: path}
 	if err := db.Ping(); err != nil {
 		db.Close()
 		return nil, err
 	}
-	if !readOnly {
-		if err := s.migrate(); err != nil {
-			db.Close()
-			return nil, err
-		}
-		s.chmod()
-	}
-	return s, nil
+	return db, nil
 }
 
 // chmod tightens the WAL/SHM sidecars regardless of umask (best effort).
@@ -107,23 +137,27 @@ func (s *Store) chmod() {
 
 func (s *Store) Close() error {
 	s.chmod()
-	return s.db.Close()
+	err := s.db.Close()
+	if s.w != s.db {
+		err = errors.Join(err, s.w.Close())
+	}
+	return err
 }
 
 func (s *Store) migrate() error {
-	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations(id INTEGER PRIMARY KEY)`); err != nil {
+	if _, err := s.w.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations(id INTEGER PRIMARY KEY)`); err != nil {
 		return err
 	}
 	for i, m := range migrations {
 		id := i + 1
 		var n int
-		if err := s.db.QueryRow(`SELECT count(*) FROM schema_migrations WHERE id=?`, id).Scan(&n); err != nil {
+		if err := s.w.QueryRow(`SELECT count(*) FROM schema_migrations WHERE id=?`, id).Scan(&n); err != nil {
 			return err
 		}
 		if n > 0 {
 			continue
 		}
-		tx, err := s.db.Begin()
+		tx, err := s.w.Begin()
 		if err != nil {
 			return err
 		}
@@ -145,7 +179,7 @@ func (s *Store) migrate() error {
 // UpsertThread inserts or updates by (app_bundle, key) and returns the row.
 func (s *Store) UpsertThread(t Thread) (Thread, error) {
 	now := time.Now()
-	_, err := s.db.Exec(`INSERT INTO threads(id,app_bundle,app_name,key,title,url,created_at,updated_at)
+	_, err := s.w.Exec(`INSERT INTO threads(id,app_bundle,app_name,key,title,url,created_at,updated_at)
 		VALUES(?,?,?,?,?,?,?,?)
 		ON CONFLICT(app_bundle,key) DO UPDATE SET
 		  app_name=excluded.app_name, title=excluded.title, url=excluded.url, updated_at=excluded.updated_at`,
@@ -155,7 +189,7 @@ func (s *Store) UpsertThread(t Thread) (Thread, error) {
 	}
 	var out Thread
 	var c, u int64
-	err = s.db.QueryRow(`SELECT id,app_bundle,app_name,key,title,url,created_at,updated_at FROM threads WHERE app_bundle=? AND key=?`,
+	err = s.w.QueryRow(`SELECT id,app_bundle,app_name,key,title,url,created_at,updated_at FROM threads WHERE app_bundle=? AND key=?`,
 		t.AppBundle, t.Key).Scan(&out.ID, &out.AppBundle, &out.AppName, &out.Key, &out.Title, &out.URL, &c, &u)
 	out.CreatedAt, out.UpdatedAt = fromMs(c), fromMs(u)
 	return out, err
@@ -176,7 +210,7 @@ func (s *Store) PutVersion(v Version) (*Version, error) {
 	if v.CreatedAt.IsZero() {
 		v.CreatedAt = time.Now()
 	}
-	tx, err := s.db.Begin()
+	tx, err := s.w.Begin()
 	if err != nil {
 		return nil, err
 	}
@@ -218,7 +252,7 @@ func (s *Store) SaveCapture(v Version, chunk func(base string) []string) (int, e
 	if v.CreatedAt.IsZero() {
 		v.CreatedAt = time.Now()
 	}
-	tx, err := s.db.Begin()
+	tx, err := s.w.Begin()
 	if err != nil {
 		return 0, err
 	}
@@ -263,7 +297,7 @@ func (s *Store) SaveCapture(v Version, chunk func(base string) []string) (int, e
 
 // AddChunks inserts chunks (status pending) and returns their ids.
 func (s *Store) AddChunks(cs []Chunk) ([]int64, error) {
-	tx, err := s.db.Begin()
+	tx, err := s.w.Begin()
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +325,7 @@ func (s *Store) SetVector(chunkID int64, model string, vec []float32) error {
 	for i, f := range vec {
 		binary.LittleEndian.PutUint32(b[4*i:], math.Float32bits(f))
 	}
-	tx, err := s.db.Begin()
+	tx, err := s.w.Begin()
 	if err != nil {
 		return err
 	}
@@ -359,7 +393,7 @@ func (s *Store) Counts() (threads, versions, chunks, pending int, err error) {
 // is overwritten (secure_delete, FTS5 secure-delete) and the WAL is
 // checkpointed and truncated afterwards.
 func (s *Store) PurgeBefore(t time.Time) (int, error) {
-	tx, err := s.db.Begin()
+	tx, err := s.w.Begin()
 	if err != nil {
 		return 0, err
 	}
@@ -387,7 +421,7 @@ func (s *Store) PurgeBefore(t time.Time) (int, error) {
 	// Copy the scrubbed pages into the main file and truncate the WAL so the
 	// purged text does not linger in old WAL frames (best effort: a reader
 	// holding a snapshot can make the checkpoint partial).
-	_, _ = s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
+	_, _ = s.w.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)
 	return n, nil
 }
 

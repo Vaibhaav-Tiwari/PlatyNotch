@@ -38,7 +38,7 @@ func nullMs(t *time.Time) any {
 // dismissed loops are left alone. changed is true when any row was inserted or
 // updated.
 func (s *Store) ApplyLoops(add []Loop, res []LoopResolution, now time.Time) (changed bool, err error) {
-	tx, err := s.db.Begin()
+	tx, err := s.w.Begin()
 	if err != nil {
 		return false, err
 	}
@@ -128,7 +128,7 @@ func (s *Store) SetLoopStatus(id, status, evidence string, now time.Time) error 
 		resolvedAt = ms(now)
 		q += ` AND status='open'`
 	}
-	r, err := s.db.Exec(q, status, resolvedAt, evidence, evidence, id)
+	r, err := s.w.Exec(q, status, resolvedAt, evidence, evidence, id)
 	if err != nil {
 		return err
 	}
@@ -147,7 +147,7 @@ func (s *Store) SetLoopStatus(id, status, evidence string, now time.Time) error 
 
 // ArchiveLoops marks open loops detected before t as "stale".
 func (s *Store) ArchiveLoops(before time.Time) (int, error) {
-	r, err := s.db.Exec(`UPDATE loops SET status='stale' WHERE status='open' AND detected_at < ?`, ms(before))
+	r, err := s.w.Exec(`UPDATE loops SET status='stale' WHERE status='open' AND detected_at < ?`, ms(before))
 	if err != nil {
 		return 0, err
 	}
