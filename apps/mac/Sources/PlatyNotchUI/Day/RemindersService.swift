@@ -30,6 +30,9 @@ public final class RemindersService {
     @ObservationIgnored private var storage: EKEventStore?
     @ObservationIgnored private var changeObserver: NSObjectProtocol?
     @ObservationIgnored private var requesting = false
+    /// Activates PlatyNotch around the prompt (the notch panel never does; `PromptFocus`).
+    @ObservationIgnored private let focus: PromptFocus
+    @ObservationIgnored private let seam: AccessSeam?
     @ObservationIgnored public private(set) var watching = false
     /// Increments per fetch so an older fetch's answer never overwrites a newer one.
     @ObservationIgnored private var generation = 0
@@ -38,7 +41,19 @@ public final class RemindersService {
     public init(eventKit: Bool = true, defaults: UserDefaults = .standard) {
         self.eventKit = eventKit
         self.defaults = defaults
+        focus = .system
+        seam = nil
         access = eventKit ? Self.currentAccess() : .unavailable
+        defaultListID = defaults.string(forKey: Self.defaultListKey)
+    }
+
+    /// Tests: `seam` stands in for EventKit's status and request.
+    init(seam: AccessSeam, focus: PromptFocus, defaults: UserDefaults) {
+        eventKit = true
+        self.defaults = defaults
+        self.focus = focus
+        self.seam = seam
+        access = seam.status()
         defaultListID = defaults.string(forKey: Self.defaultListKey)
     }
 
@@ -63,19 +78,24 @@ public final class RemindersService {
         refreshAccess()
         guard eventKit, access == .notAsked, !requesting else { return }
         requesting = true
-        let granted = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
-            store.requestFullAccessToReminders { @Sendable granted, _ in cont.resume(returning: granted) }
-        }
+        let granted = await focus.around { await self.requestFromSystem() }
         requesting = false
         if granted { storage?.reset() }
         refreshAccess()
+    }
+
+    private func requestFromSystem() async -> Bool {
+        if let seam { return await seam.request() }
+        return await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            store.requestFullAccessToReminders { @Sendable granted, _ in cont.resume(returning: granted) }
+        }
     }
 
     /// Re-reads the authorization status (never prompts).
     public func refreshAccess() {
         guard eventKit else { return }
         let was = access
-        access = Self.currentAccess()
+        access = seam?.status() ?? Self.currentAccess()
         guard access != was else { return }
         if access == .granted, watching {
             observeChanges()

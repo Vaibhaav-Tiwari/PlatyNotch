@@ -4,7 +4,7 @@ import PlatyNotchKit
 import XCTest
 @testable import PlatyNotchUI
 
-/// User feedback round 1: Settings from inside the notch (11).
+/// User feedback round 1: Settings from inside the notch (11), Calendar from the notch (8).
 @MainActor
 final class FeedbackFixesTests: DefaultsTestCase {
     private var mbpLayout: PanelLayout {
@@ -39,5 +39,59 @@ final class FeedbackFixesTests: DefaultsTestCase {
     func testSettingsURLRoutes() {
         XCTAssertEqual(AppURL.route(URL(string: "platynotch://settings")!), .settings(section: nil))
         XCTAssertEqual(AppURL.route(URL(string: "platynotch://settings/widgets")!), .settings(section: "widgets"))
+    }
+
+    // MARK: - 8. Calendar / Reminders access from the notch
+
+    /// What a prompt request did, in order.
+    private final class FocusLog {
+        var steps: [String] = []
+        var active = false
+        var front: pid_t? = 4242
+    }
+
+    private func focus(_ log: FocusLog) -> PromptFocus {
+        PromptFocus(isActive: { log.active },
+                    frontmost: { log.front },
+                    activate: { log.steps.append("activate"); log.active = true },
+                    restore: { log.steps.append("restore \($0)") })
+    }
+
+    /// The notch panel never activates the app, and EventKit shows its prompt only for the
+    /// active app: the request from the tile activates PlatyNotch first and gives the
+    /// keyboard back to the app that had it once answered.
+    func testCalendarRequestFromTheNotchActivatesTheAppFirst() async {
+        let log = FocusLog()
+        var status = CalendarService.Access.notAsked
+        let calendar = CalendarService(seam: .init(status: { status }, request: {
+            log.steps.append("request active=\(log.active)")
+            status = .granted
+            return true
+        }), focus: focus(log))
+        await calendar.requestAccess()
+        XCTAssertEqual(log.steps, ["activate", "request active=true", "restore 4242"])
+        XCTAssertEqual(calendar.access, .granted)
+    }
+
+    func testRemindersRequestFromTheNotchActivatesTheAppFirst() async {
+        let log = FocusLog()
+        var status = RemindersService.Access.notAsked
+        let reminders = RemindersService(seam: .init(status: { status }, request: {
+            log.steps.append("request active=\(log.active)")
+            status = .denied
+            return false
+        }), focus: focus(log), defaults: defaults())
+        await reminders.requestAccess()
+        XCTAssertEqual(log.steps, ["activate", "request active=true", "restore 4242"])
+        XCTAssertEqual(reminders.access, .denied)
+    }
+
+    /// Already active (the Settings window): nothing is activated or handed back.
+    func testRequestWhileActiveLeavesFocusAlone() async {
+        let log = FocusLog()
+        log.active = true
+        let calendar = CalendarService(seam: .init(status: { .notAsked }, request: { true }), focus: focus(log))
+        await calendar.requestAccess()
+        XCTAssertEqual(log.steps, [])
     }
 }

@@ -36,6 +36,9 @@ public final class CalendarService {
     @ObservationIgnored private var storage: EKEventStore?
     @ObservationIgnored private var changeObserver: NSObjectProtocol?
     @ObservationIgnored private var requesting = false
+    /// Activates PlatyNotch around the prompt (the notch panel never does; `PromptFocus`).
+    @ObservationIgnored private let focus: PromptFocus
+    @ObservationIgnored private let seam: AccessSeam?
     /// Join links per occurrence (eventIdentifier + start, the meeting id), redone when the
     /// event's `lastModifiedDate` changes. Events without one are never cached.
     @ObservationIgnored private var joinCache: [String: (modified: Date, url: URL?)] = [:]
@@ -45,7 +48,17 @@ public final class CalendarService {
     /// `eventKit: false` never touches EventKit (smoke runs and tests): access is `.unavailable`.
     public init(eventKit: Bool = true) {
         self.eventKit = eventKit
+        focus = .system
+        seam = nil
         access = eventKit ? Self.currentAccess() : .unavailable
+    }
+
+    /// Tests: `seam` stands in for EventKit's status and request.
+    init(seam: AccessSeam, focus: PromptFocus) {
+        eventKit = true
+        self.focus = focus
+        self.seam = seam
+        access = seam.status()
     }
 
     private var store: EKEventStore {
@@ -58,7 +71,11 @@ public final class CalendarService {
     /// The authorization status right now, without storing it or prompting (safe to read
     /// while a view is drawn).
     public var accessNow: Access {
-        eventKit ? Self.currentAccess() : access
+        eventKit ? readAccess() : access
+    }
+
+    private func readAccess() -> Access {
+        seam?.status() ?? Self.currentAccess()
     }
 
     private static func currentAccess() -> Access {
@@ -75,9 +92,7 @@ public final class CalendarService {
         refreshAccess()
         guard eventKit, access == .notAsked, !requesting else { return }
         requesting = true
-        let granted = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
-            store.requestFullAccessToEvents { @Sendable granted, _ in cont.resume(returning: granted) }
-        }
+        let granted = await focus.around { await self.requestFromSystem() }
         requesting = false
         if granted { storage?.reset() }
         refreshAccess()
@@ -85,10 +100,17 @@ public final class CalendarService {
 
     /// Re-reads the authorization status (never prompts). A grant made in System Settings
     /// starts the reads when watching; a revoke clears what was read.
+    private func requestFromSystem() async -> Bool {
+        if let seam { return await seam.request() }
+        return await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            store.requestFullAccessToEvents { @Sendable granted, _ in cont.resume(returning: granted) }
+        }
+    }
+
     public func refreshAccess() {
         guard eventKit else { return }
         let was = access
-        access = Self.currentAccess()
+        access = readAccess()
         guard access != was else { return }
         if access == .granted, watching {
             observeChanges()
