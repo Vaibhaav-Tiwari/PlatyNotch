@@ -100,12 +100,14 @@ enum MailText {
 /// never the app by name: a Mail that quit meanwhile is gone (-600) and is never launched
 /// again. It also asks `running()` first and returns at once when Mail is not.
 ///
-/// It reads, in one bulk request each, the received date, Message-ID, sender and subject
-/// of the unread messages (so a row never mixes two messages; if the lists differ in
-/// length the inbox changed under it and the answer says so), keeps the newest
-/// `MailInbox.shownCount`, and cuts sender and subject to `fieldLimit` and the id to
-/// `idLimit` characters so one huge message cannot overflow the answer. It never
-/// activates, opens, changes or marks anything.
+/// It reads two bulk lists of the unread messages, received date and Mail's numeric id
+/// (equal lengths, else the inbox changed under it and the answer says so), picks the
+/// newest `MailInbox.shownCount` from those, and then reads Message-ID, sender, subject
+/// and date of each of those few by its id (`byId`), so a row never mixes two messages and
+/// a large unread inbox costs two bulk requests, not one per field. A message gone
+/// meanwhile is skipped (at most `MailInbox.shownCount` more are tried). Sender and
+/// subject are cut to `fieldLimit` and the id to `idLimit` characters so one huge message
+/// cannot overflow the answer. It never activates, opens, changes or marks anything.
 public enum MailScript {
     public static let executable = "/usr/bin/osascript"
     /// The caller stops waiting (and the runner kills osascript) after this.
@@ -124,22 +126,21 @@ public enum MailScript {
       var unread = inbox.unreadCount();
       var msgs = inbox.messages.whose({readStatus: false});
       var dates = msgs.dateReceived();
-      var ids = msgs.messageId();
-      var senders = msgs.sender();
-      var subjects = msgs.subject();
+      var keys = msgs.id();
       var n = dates.length;
-      if (ids.length !== n || senders.length !== n || subjects.length !== n) {
-        return JSON.stringify({running: true, changed: true});
-      }
+      if (keys.length !== n) { return JSON.stringify({running: true, changed: true}); }
       function cut(v, limit) { return (v === null || v === undefined) ? '' : String(v).slice(0, limit); }
       var order = [];
       for (var i = 0; i < n; i++) { order.push([dates[i] ? dates[i].getTime() : 0, i]); }
       order.sort(function (a, b) { return b[0] - a[0]; });
       var latest = [];
-      for (var k = 0; k < order.length && k < \(MailInbox.shownCount); k++) {
-        var j = order[k][1];
-        latest.push({id: cut(ids[j], \(idLimit)), sender: cut(senders[j], \(fieldLimit)),
-                     subject: cut(subjects[j], \(fieldLimit)), received: order[k][0] / 1000});
+      for (var k = 0; k < order.length && k < \(MailInbox.shownCount * 2) && latest.length < \(MailInbox.shownCount); k++) {
+        try {
+          var m = inbox.messages.byId(keys[order[k][1]]);
+          var d = m.dateReceived();
+          latest.push({id: cut(m.messageId(), \(idLimit)), sender: cut(m.sender(), \(fieldLimit)),
+                       subject: cut(m.subject(), \(fieldLimit)), received: d ? d.getTime() / 1000 : 0});
+        } catch (e) {}
       }
       return JSON.stringify({running: true, unread: unread, latest: latest});
     }
