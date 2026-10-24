@@ -317,6 +317,43 @@ final class ShelfTests: XCTestCase {
         for f in folders { XCTAssertFalse(FileManager.default.fileExists(atPath: f.path)) }
     }
 
+    /// Final review C2: what a damaged index kept is counted for Settings and deleted only
+    /// by the user's "Delete Kept Copies" (indexes and unlisted folders, any age; listed
+    /// items and promises in flight stay).
+    func testKeptFilesCountedAndDeletedOnRequest() throws {
+        let s = store()
+        let lost = try XCTUnwrap(s.addOwnedData(Data("a".utf8), filename: "a.png"))
+        let lostFolder = lost.fileRef!.url.deletingLastPathComponent()
+        try Data("{ not json".utf8).write(to: shelfDir.appendingPathComponent(ShelfStore.indexName))
+
+        let after = store()   // the index is damaged: moved aside, the shelf starts empty
+        XCTAssertTrue(after.hasKeptFiles)
+        XCTAssertEqual(after.keptFolderCount(), 1)
+        let listed = try XCTUnwrap(after.addOwnedData(Data("b".utf8), filename: "b.png"))
+        let inFlight = try XCTUnwrap(after.reserveOwnedFolder())
+        XCTAssertEqual(after.keptFolderCount(keeping: [inFlight.id]), 1, "only folders no item lists")
+        try FileManager.default.createDirectory(at: shelfDir.appendingPathComponent("not-a-uuid"),
+                                                withIntermediateDirectories: false)
+
+        after.deleteKeptFiles(keeping: [inFlight.id])
+        XCTAssertFalse(after.hasKeptFiles)
+        XCTAssertEqual(after.keptFolderCount(keeping: [inFlight.id]), 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: lostFolder.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: listed.fileRef!.url.path), "a listed copy stays")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: inFlight.folder.path), "a promise in flight stays")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: shelfDir.appendingPathComponent("not-a-uuid").path))
+        XCTAssertNil(after.quarantinedIndex, "expiry and the sweep work again")
+        XCTAssertEqual(after.expireOwned(olderThan: 0, now: t0.addingTimeInterval(1)), [listed.id])
+    }
+
+    func testNoKeptFilesWithAHealthyIndex() throws {
+        let s = store()
+        _ = try XCTUnwrap(s.addOwnedData(Data("a".utf8), filename: "a.png"))
+        XCTAssertFalse(s.hasKeptFiles)
+        XCTAssertEqual(s.keptFolderCount(), 0)
+        XCTAssertFalse(ShelfStore(directory: shelfDir, persist: false).hasKeptFiles)
+    }
+
     /// Fix round 2 (2): locating an owned item deletes only its own old folder, never a
     /// promise still being written.
     func testRelocateLeavesOtherFolders() throws {

@@ -50,6 +50,9 @@ final class ShelfWidget: NotchWidget {
     private(set) var dropTargeted = false
     /// Our own drag out of the tile is in progress (the detector's `.began` is ignored).
     private(set) var outgoingDrag = false
+    /// A damaged index was set aside: how many copy folders no item lists were kept with
+    /// it (Settings: "N kept · Show in Finder · Delete Kept Copies"); nil when none (C2).
+    private(set) var keptCopies: Int?
 
     @ObservationIgnored let directory: URL
     @ObservationIgnored private let persist: Bool
@@ -104,6 +107,7 @@ final class ShelfWidget: NotchWidget {
         store.markPrivate()
         store.expireOwned(olderThan: ShelfStore.ownedLifetime, now: clock())
         store.sweepOrphans(keeping: receiving)
+        refreshKept()
         sync()
         // No `refreshMissing` here: resolving bookmarks and checking paths of files in
         // Downloads, Desktop or Documents can make macOS ask for access, so it happens
@@ -388,6 +392,20 @@ final class ShelfWidget: NotchWidget {
         } else {
             selection = selection == [item.id] ? [] : [item.id]
         }
+    }
+
+    /// Settings › "Delete Kept Copies": the set-aside index and every copy no item lists.
+    func deleteKeptFiles() {
+        store?.deleteKeptFiles(keeping: receiving)
+        refreshKept()
+        scheduleExpiry()
+    }
+
+    /// Our own folder only (no file of the user's is touched).
+    private func refreshKept() {
+        guard let store else { return }
+        let kept: Int? = store.hasKeptFiles ? store.keptFolderCount(keeping: receiving) : nil
+        if kept != keptCopies { keptCopies = kept }
     }
 
     private func afterChange() {

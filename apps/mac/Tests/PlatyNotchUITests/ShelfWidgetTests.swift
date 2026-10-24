@@ -553,6 +553,31 @@ final class ShelfWidgetTests: DefaultsTestCase {
         XCTAssertEqual(relaunch.missing.count, 1)
     }
 
+    /// Final review C2: a damaged index shows in Settings as "N kept" until the user
+    /// deletes the kept copies; with a healthy index nothing shows.
+    func testDamagedIndexNoticeAndDeleteKeptCopies() throws {
+        let root = tempDir()
+        let dir = root.appendingPathComponent("home/shelf")
+        let seed = ShelfStore(directory: dir)
+        let lost = try XCTUnwrap(seed.addOwnedData(Data("x".utf8), filename: "x.png"))
+        try Data("{ damaged".utf8).write(to: dir.appendingPathComponent(ShelfStore.indexName))
+
+        let shelf = ShelfWidget(directory: dir, makeSignals: { FakeDragSignals() })
+        let registry = WidgetRegistry(defaults: defaults(), persist: false)
+        registry.register(shelf)
+        registry.start(context: WidgetContext(store: AppStore(), client: CoreClient(socketPath: "/nonexistent"),
+                                              config: ConfigFileStore(url: root.appendingPathComponent("config.json")),
+                                              events: CoreEventHub(), defaults: defaults(), notify: NoopNotifier(),
+                                              surfaces: PanelSurfaces(registry: registry), openPanel: { _ in }))
+        XCTAssertEqual(shelf.keptCopies, 1)
+        _ = ShelfSettings(shelf: shelf).body   // builds with the notice
+        shelf.deleteKeptFiles()
+        XCTAssertNil(shelf.keptCopies)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: lost.fileRef!.url.deletingLastPathComponent().path))
+
+        XCTAssertNil(rig().shelf.keptCopies, "a fresh shelf shows no notice")
+    }
+
     /// Fix round 1 (5): a file renamed in Finder shows its new name after a refresh.
     func testRefreshSavesRenamedPath() async throws {
         let r = rig()

@@ -424,6 +424,45 @@ public final class ShelfStore {
         }
     }
 
+    // MARK: - Kept after a damaged index (C2)
+
+    /// A damaged index was moved aside (`items.json.corrupt-*`) and is still in the
+    /// directory: the sweep is off, and Settings offers to show or delete what it kept.
+    public var hasKeptFiles: Bool {
+        guard persist, let names = try? fileManager.contentsOfDirectory(atPath: directory.path) else { return false }
+        return names.contains { $0.hasPrefix(Self.corruptPrefix) }
+    }
+
+    /// Owned-copy folders (`<uuid>/`) that no item lists, except `keeping` (promises being
+    /// received): what a damaged index may have listed, kept until the user decides.
+    public func keptFolderCount(keeping: Set<UUID> = []) -> Int {
+        unlistedFolders(keeping: keeping).count
+    }
+
+    /// The user's "Delete Kept Copies": removes the moved-aside indexes and every owned
+    /// folder no item lists (whatever its age), except `keeping`. Sweeping and expiry
+    /// work again afterwards. Nothing happens on a read-only shelf.
+    public func deleteKeptFiles(keeping: Set<UUID> = []) {
+        guard persist, !readOnly else { return }
+        let names = (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? []
+        for name in names where name.hasPrefix(Self.corruptPrefix) {
+            try? fileManager.removeItem(at: directory.appendingPathComponent(name))
+        }
+        for id in unlistedFolders(keeping: keeping) { try? fileManager.removeItem(at: ownedFolder(id)) }
+        quarantinedIndex = nil
+    }
+
+    private func unlistedFolders(keeping: Set<UUID>) -> [UUID] {
+        guard persist, let names = try? fileManager.contentsOfDirectory(atPath: directory.path) else { return [] }
+        let listed = Set(items.filter(\.ownsFile).map(\.id)).union(keeping)
+        return names.compactMap { name in
+            guard let id = UUID(uuidString: name), !listed.contains(id) else { return nil }
+            var isDir: ObjCBool = false
+            let exists = fileManager.fileExists(atPath: ownedFolder(id).path, isDirectory: &isDir)
+            return exists && isDir.boolValue ? id : nil
+        }
+    }
+
     /// Re-applies the backup and Spotlight exclusion to an existing folder (each start).
     public func markPrivate() {
         guard persist else { return }

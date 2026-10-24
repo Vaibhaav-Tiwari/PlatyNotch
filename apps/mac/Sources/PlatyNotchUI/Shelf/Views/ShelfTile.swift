@@ -359,6 +359,17 @@ struct ShelfSettings: View {
                 Button("Show Shelf Folder") { NSWorkspace.shared.open(shelf.directory) }
                     .disabled(!FileManager.default.fileExists(atPath: shelf.directory.path))
             }
+            if let kept = shelf.keptCopies {
+                Text("A damaged shelf index was set aside, with the copies it may have listed, so nothing was deleted. Kept copies are not removed after 7 days.")
+                    .foregroundStyle(Theme.color(.attention))
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack {
+                    Text(kept == 1 ? "1 kept" : "\(kept) kept").foregroundStyle(.secondary)
+                    Button("Show in Finder") { NSWorkspace.shared.open(shelf.directory) }
+                    Button("Delete Kept Copies") { shelf.deleteKeptFiles() }
+                        .help("Deletes the set-aside index and every copy no shelf item lists")
+                }
+            }
         }
         .font(.system(size: 12))
     }
