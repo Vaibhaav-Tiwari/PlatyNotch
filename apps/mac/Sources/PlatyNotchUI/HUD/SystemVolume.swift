@@ -14,6 +14,8 @@ protocol VolumeControl: AnyObject {
     /// The default output's name ("MacBook Pro Speakers", "AirPods Pro").
     var outputName: String? { get }
     func state() -> VolumeChange.State?
+    /// True when the volume applied; a failed mute write alone is logged, not a failure
+    /// (read `state()` back for what the device now has).
     @discardableResult func set(_ state: VolumeChange.State) -> Bool
     /// Follows default-output changes until `stopObserving`.
     func startObserving(_ onChange: @escaping @MainActor () -> Void)
@@ -88,8 +90,9 @@ final class SystemVolume: VolumeControl {
             okMute = AudioObjectSetPropertyData(device, &muteAddress, 0, nil,
                                                 UInt32(MemoryLayout<UInt32>.size), &muted) == noErr
         }
-        if !(okVolume && okMute) { Self.log.error("setting the output volume failed") }
-        return okVolume && okMute
+        if !okVolume { Self.log.error("setting the output volume failed") }
+        if !okMute { Self.log.error("setting the output mute failed") }
+        return okVolume
     }
 
     func startObserving(_ onChange: @escaping @MainActor () -> Void) {

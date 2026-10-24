@@ -205,11 +205,14 @@ private func mediaKeyTapCallback(proxy: CGEventTapProxy, type: CGEventType, even
     // like leave here.
     let subtype = MediaKeyEvent.systemDefinedSubtype
     guard subtypeFields.contains(where: { event.getIntegerValueField($0) == Int64(subtype) }) else { return pass }
-    guard let ns = NSEvent(cgEvent: event),
-          let key = MediaKeyEvent.decode(subtype: Int(ns.subtype.rawValue), data1: ns.data1),
-          key.kind != .other else { return pass }
-    let display = MediaKeyDisplay.at(event.location)
-    let swallow = box.router.route(key, modifiers: MediaKeyModifiers(flags: event.flags.rawValue), display: display)
+    // The tap thread's run loop never drains a pool of its own; NSEvent autoreleases.
+    let swallow: Bool = autoreleasepool {
+        guard let ns = NSEvent(cgEvent: event),
+              let key = MediaKeyEvent.decode(subtype: Int(ns.subtype.rawValue), data1: ns.data1),
+              key.kind != .other else { return false }
+        let display = MediaKeyDisplay.at(event.location)
+        return box.router.route(key, modifiers: MediaKeyModifiers(flags: event.flags.rawValue), display: display)
+    }
     return swallow ? nil : pass
 }
 

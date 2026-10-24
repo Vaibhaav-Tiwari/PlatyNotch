@@ -45,10 +45,13 @@ private final class FakeOutputVolume: VolumeControl {
     var canSetVolume: Bool { settable }
     var canMute: Bool { mutable }
     func state() -> VolumeChange.State? { current }
+    var muteWriteFails = false
+    /// Like `SystemVolume.set`: false only when the volume did not apply.
     func set(_ state: VolumeChange.State) -> Bool {
         guard !failSet else { return false }
         var s = state
         if let q = quantum { s.volume = (s.volume / q).rounded(.down) * q }
+        if muteWriteFails { s.muted = current.muted }
         current = s
         return true
     }
@@ -243,15 +246,49 @@ final class HUDWidgetTests: XCTestCase {
         XCTAssertNotEqual(r.volume.current.volume, 0.5625)
     }
 
-    func testFailedSetShowsNoHUDAndRefreshes() async {
+    func testFailedSetShowsNoHUDAndHandsTheKeyBack() async {
         let r = rig()
         r.registry.setEnabled(HUDWidget.widgetID, true)
-        r.brightness.failSet = true
-        r.brightness.isAvailable = false   // the display went away after the tap decided
+        r.brightness.failSet = true   // reads still work: only the set fails
         XCTAssertTrue(r.tap.press(.brightnessUp), "the gate had not heard yet")
         await drain()
         XCTAssertEqual(r.controllers[0].mode, .compact, "nothing changed: no HUD claiming it did")
-        XCTAssertFalse(r.tap.press(.brightnessUp), "the failure refreshed the gate: the system gets the next press")
+        XCTAssertFalse(r.tap.press(.brightnessUp), "the system gets every later press, though the level still reads")
+        XCTAssertTrue(r.tap.press(.volumeUp), "other controls are unaffected")
+        await drain()
+        r.brightness.failSet = false
+        XCTAssertFalse(r.tap.press(.brightnessUp), "still the system's until the displays change")
+        NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        XCTAssertTrue(r.tap.press(.brightnessUp), "a screen change gives it another chance")
+    }
+
+    func testFailedVolumeSetWaitsForADeviceChange() async {
+        let r = rig()
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        r.volume.failSet = true
+        XCTAssertTrue(r.tap.press(.volumeDown))
+        await drain()
+        XCTAssertFalse(r.tap.press(.volumeDown))
+        XCTAssertFalse(r.tap.press(.mute))
+        r.volume.failSet = false
+        r.volume.onChange?()   // a new default output
+        XCTAssertTrue(r.tap.press(.volumeDown))
+        r.registry.setEnabled(HUDWidget.widgetID, false)
+        r.volume.failSet = true
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        XCTAssertTrue(r.tap.press(.volumeDown), "a restart starts clean")
+    }
+
+    func testFailedMuteWriteStillShowsTheReadBackState() async {
+        let r = rig()
+        r.volume.muteWriteFails = true
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        XCTAssertTrue(r.tap.press(.mute))
+        await drain()
+        XCTAssertFalse(r.volume.current.muted, "the device refused the mute")
+        XCTAssertEqual(r.controllers[0].mode, .peek(.hud(.volume)))
+        XCTAssertEqual(r.controllers[0].hud?.level ?? -1, 0.5, accuracy: 1e-6, "shows what the device has: not muted")
+        XCTAssertTrue(r.tap.press(.volumeUp), "the volume still works, so the keys stay ours")
     }
 
     func testUnavailableControlsPassThrough() {

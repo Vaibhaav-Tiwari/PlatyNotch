@@ -75,6 +75,8 @@ final class HUDWidget: NotchWidget {
     private(set) var outputName: String?
     /// The display whose brightness we set (the built-in one), if any.
     @ObservationIgnored private var brightnessDisplay: CGDirectDisplayID?
+    /// Controls whose set failed (cleared on a device / screen change and on stop).
+    @ObservationIgnored private var failedSets: Set<HUDKind> = []
 
     @ObservationIgnored private let makeTap: () -> MediaKeyTapping
     @ObservationIgnored private let makeControls: () -> HUDControls
@@ -110,7 +112,7 @@ final class HUDWidget: NotchWidget {
         generation += 1
         let controls = makeControls()
         self.controls = controls
-        controls.volume.startObserving { [weak self] in self?.refreshControls() }
+        controls.volume.startObserving { [weak self] in self?.controlsChanged(.volume) }
         observeSystem()
         context.surfaces.onHUDReadinessChange(owner: self) { [weak self] _ in self?.pushGate() }
         refreshControls()
@@ -129,6 +131,7 @@ final class HUDWidget: NotchWidget {
         recheckTask?.cancel()
         recheckTask = nil
         context = nil
+        failedSets = []
         status = .stopped
         available = []
         outputName = nil
@@ -197,7 +200,7 @@ final class HUDWidget: NotchWidget {
         let nc = NotificationCenter.default
         observers.append((nc, nc.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                              object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refreshControls() }
+            MainActor.assumeIsolated { self?.controlsChanged(.brightness) }
         }))
     }
 
@@ -213,6 +216,14 @@ final class HUDWidget: NotchWidget {
 
     // MARK: - Gate
 
+    /// The output device or the displays changed: a control whose set failed gets
+    /// another chance (the keyboard backlight too, on a screen change).
+    private func controlsChanged(_ kind: HUDKind) {
+        failedSets.remove(kind)
+        if kind == .brightness { failedSets.remove(.keyboardBacklight) }
+        refreshControls()
+    }
+
     private func refreshControls() {
         guard let controls else { return }
         // A key is ours only if it can change something and we can read the result back.
@@ -227,6 +238,9 @@ final class HUDWidget: NotchWidget {
         if controls.backlight.isAvailable, controls.backlight.level() != nil {
             keys.formUnion([.backlightUp, .backlightDown])
         }
+        // A control whose set failed stays with the system until the device or the
+        // displays change, or the widget restarts: never swallow presses that do nothing.
+        for kind in failedSets { keys.subtract(MediaKeyKind.handled.filter { $0.hud == kind }) }
         if keys != available { available = keys }
         brightnessDisplay = controls.brightness.controlledDisplay
         let name = controls.volume.outputName
@@ -252,22 +266,37 @@ final class HUDWidget: NotchWidget {
 
     // MARK: - Keys
 
+    private enum StepOutcome {
+        /// The level read back after the set.
+        case level(Float)
+        case readFailed, setFailed
+    }
+
     /// A key the tap took: change the level, read it back and show that in our HUD on
-    /// `display`. A failed set or read is logged and the gate refreshed, so the next
-    /// press goes to the system.
+    /// `display`. A failed read refreshes the gate; a failed set also takes that control
+    /// off the gate until the device or displays change, so the next press goes to the system.
     func perform(_ action: MediaKeyAction, display: CGDirectDisplayID) {
         guard let controls, let context, let hud = action.kind.hud else { return }
-        let level: Float?
+        let outcome: StepOutcome
         switch hud {
         case .volume:
-            level = stepVolume(controls.volume, action)
+            outcome = stepVolume(controls.volume, action)
         case .brightness:
-            level = step(controls.brightness, action)
+            outcome = step(controls.brightness, action)
         case .keyboardBacklight:
-            level = step(controls.backlight, action)
+            outcome = step(controls.backlight, action)
         }
-        guard let level else {
-            Self.log.error("\(hud.rawValue, privacy: .public) key taken but setting or reading the level failed")
+        let level: Float
+        switch outcome {
+        case .level(let l):
+            level = l
+        case .readFailed:
+            Self.log.error("\(hud.rawValue, privacy: .public) key taken but reading the level failed")
+            refreshControls()
+            return
+        case .setFailed:
+            Self.log.error("\(hud.rawValue, privacy: .public) key taken but setting the level failed; leaving it to the system")
+            failedSets.insert(hud)
             refreshControls()
             return
         }
@@ -277,19 +306,23 @@ final class HUDWidget: NotchWidget {
         }
     }
 
-    /// The level shown: read back after the set (nil when either fails).
-    private func stepVolume(_ volume: VolumeControl, _ action: MediaKeyAction) -> Float? {
-        guard let now = volume.state() else { return nil }
+    /// `set` fails only when the volume itself did not apply; a failed mute write still
+    /// shows the HUD, with the state read back (so it never claims a mute change that
+    /// did not happen).
+    private func stepVolume(_ volume: VolumeControl, _ action: MediaKeyAction) -> StepOutcome {
+        guard let now = volume.state() else { return .readFailed }
         let next = VolumeChange.apply(action.kind, fine: action.fine, to: now)
-        guard volume.set(next), let after = volume.state() else { return nil }
-        return after.shownLevel
+        guard volume.set(next) else { return .setFailed }
+        guard let after = volume.state() else { return .readFailed }
+        return .level(after.shownLevel)
     }
 
-    private func step(_ control: LevelControl, _ action: MediaKeyAction) -> Float? {
-        guard let now = control.level() else { return nil }
+    private func step(_ control: LevelControl, _ action: MediaKeyAction) -> StepOutcome {
+        guard let now = control.level() else { return .readFailed }
         let next = LevelStep.next(now, up: action.kind.isUp, fine: action.fine)
-        guard control.setLevel(next) else { return nil }
-        return control.level()
+        guard control.setLevel(next) else { return .setFailed }
+        guard let after = control.level() else { return .readFailed }
+        return .level(after)
     }
 
     // MARK: - Views
