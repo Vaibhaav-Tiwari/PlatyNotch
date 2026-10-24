@@ -150,9 +150,9 @@ widget is off.
 
 | Permission | Asked when | Used by |
 | --- | --- | --- |
-| Camera | Coming in v0.2 | Mirror (shows your camera only while it is open) |
+| Camera | You click Show Mirror in the Mirror tile | Mirror: the camera runs only while it shows; hiding it, closing the panel, locking the screen or display sleep turns it off. Nothing is recorded |
 | Accessibility | You click Allow Accessibility in Window snapping's settings | Window snapping: reads the focused window's position and size and sets them (never its content; nothing stored or sent). Its 15 ⌃⌥ shortcuts are held only while it is on and allowed |
-| Automation: Mail | Coming in v0.2 | Mail |
+| Automation: Mail | You click Allow in the Mail tile (never from Settings) | Mail: unread count and the newest senders and subjects, read every 5 minutes only while Mail is open. PlatyNotch never opens Mail and keeps nothing |
 | Files and Folders | Coming in v0.2 | The notes folder |
 
 Network: nothing is sent anywhere unless you turn on something that is network by

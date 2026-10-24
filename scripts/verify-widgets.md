@@ -1211,3 +1211,61 @@ thirds), ↩ (maximize) and C (center).
 - [ ] **232. Off releases everything.** Turn the feature off: ⌃⌥← no longer moves windows
   and another app can take it. Revoking Accessibility while on shows the Allow row again and
   the shortcuts stop. Activity Monitor shows PlatyNotch idle under 1% CPU either way.
+
+## Camera mirror (v0.2)
+
+Automated: `MirrorWidgetTests` (the camera starts only after a click and stops on each stop
+event, through fakes) and `MirrorStateTests`. Turn on Settings › Widgets › Power features ›
+Mirror, on an installed build.
+
+- [ ] **233. Nothing at rest.** With the mirror on and the panel open on Today, the camera
+  light stays off until you click Show Mirror. Activity Monitor shows no extra CPU.
+- [ ] **234. First click asks.** On a Mac that never allowed the camera, Show Mirror shows the
+  macOS camera prompt (and nothing else does: launch, Settings and opening the panel never
+  do). Allow: the mirror shows at once. Don't Allow: no light; the tile says the camera is
+  off with Open Settings.
+- [ ] **235. A mirror.** Raise your right hand: it shows on the right of the preview. The
+  preview fills its frame without stretching.
+- [ ] **236. Stops on collapse.** Show the mirror, then move away so the panel closes: the
+  camera light goes out within a second. Reopen the panel: the tile shows Show Mirror again
+  (it never restarts by itself). Same after choosing another tab, and after Hide.
+- [ ] **237. Stops on lock and sleep.** Show the mirror, press ⌃⌘Q (lock): unlock, the light
+  is off and the tile shows Show Mirror. Same after the display sleeps (hot corner or
+  `pmset displaysleepnow`), after the Mac sleeps, and after switching to another user.
+- [ ] **238. Stops when turned off.** Show the mirror, then turn Mirror off in Settings: the
+  light goes out at once.
+- [ ] **239. Rebuilt app.** After `scripts/build-app.sh` makes a new ad-hoc build, the tile
+  says Turn On Again (when macOS forgot the grant); clicking it asks once more.
+- [ ] **240. No camera.** With the lid closed on an external display and no camera, Show
+  Mirror says no camera was found; nothing keeps trying.
+
+## Apple Mail (v0.2)
+
+Automated: `MailWidgetTests` (through a fake system: no script, status check or link while
+Mail is closed, the prompt only from Allow, nothing saved, a stop kills the script) and
+`IntegrationsTests` (the script's answer, links, and that the script only reads). Turn on
+Settings › Widgets › Power features › Mail, on an installed build.
+
+- [ ] **241. Mail closed.** Quit Mail, open the panel: the tile says "Mail is not open". Wait
+  10 minutes with the panel open and closed: Mail never opens, and `ps ax | grep osascript`
+  shows nothing.
+- [ ] **242. Allow only from the tile.** On a Mac where PlatyNotch never asked for Mail, open
+  Mail, then the panel: the tile shows Allow and no prompt appears. Settings › Permissions ›
+  Automation lists Mail (only while the Mail widget is on) with "Asked from the Mail
+  widget's Allow button" and no Allow button; with Mail closed it says "Shown when Mail is
+  open".
+  Click Allow in the tile: macOS asks once; OK shows the unread count and up to 5 messages.
+- [ ] **243. What it shows.** The count matches Mail's Inbox badge; the 5 rows are the newest
+  unread, newest first, each with the sender's name and the subject on one line.
+- [ ] **244. Open a message.** Click a row: Mail comes forward with that message open.
+- [ ] **245. Refresh.** Mark a message read in Mail: it leaves the tile within 5 minutes, or
+  at once when you reopen the panel after 30 seconds.
+- [ ] **246. Mail quits.** With messages shown, quit Mail: the tile says "Mail is not open"
+  and the messages are gone. Open Mail again: they come back without a click. Quit Mail
+  just as the panel opens, a few times: Mail never comes back by itself (the script
+  addresses the old process, which is gone).
+- [ ] **247. Refused.** Turn Mail off for PlatyNotch in System Settings › Privacy & Security ›
+  Automation: the tile explains how to turn it back on, with Open Settings; it never asks
+  by itself.
+- [ ] **248. Nothing kept.** Turn Mail off and on: the tile reads again (nothing was saved).
+  `defaults read dev.platynotch.app | grep -i mail` shows only `automationGrant.com.apple.mail`.
