@@ -96,6 +96,8 @@ final class NotesWidget: NotchWidget {
     @ObservationIgnored private var queued = VaultRescan()
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var periodicTask: Task<Void, Never>?
+    /// The tile is on screen (the periodic walk runs only then).
+    @ObservationIgnored private(set) var tileVisible = false
     /// Rescans done (incremental or full), for tests.
     @ObservationIgnored private(set) var rescans = 0
     /// A folder the user chose that macOS refused (Try Again asks for it; never saved).
@@ -150,18 +152,11 @@ final class NotesWidget: NotchWidget {
 
     // MARK: - Vault (settings buttons only)
 
-    /// "Choose Vault…": `url` from `NSOpenPanel`. Lists it once (the macOS prompt shows
-    /// here); the bookmark is made and saved only when that works.
+    /// "Choose Vault…" / "Change…": `url` from `NSOpenPanel`. Lists it once (the macOS
+    /// prompt shows here). Only when that works is the bookmark made and the old vault's
+    /// bookmark and stamp replaced; a refused folder leaves a working vault as it was.
     func chooseVault(_ url: URL) {
         guard isRunning, !asking else { return }
-        stopVault()
-        stamp.clear()
-        updateOptions {
-            $0.vaultBookmark = nil
-            $0.vaultPath = url.path
-            $0.vaultOn = false
-            $0.vaultNeedReenable = false
-        }
         requestAccess(url, choosing: true)
     }
 
@@ -213,10 +208,19 @@ final class NotesWidget: NotchWidget {
                 bookmark = self.services.bookmarks.make(url)
                 if bookmark == nil { granted = false }
             }
+            if !granted, choosing, self.vault != nil {
+                // "Change…" refused: the vault in use stays, with its bookmark and stamp.
+                self.status = "macOS did not allow PlatyNotch to see \(url.lastPathComponent), so the vault is unchanged."
+                return
+            }
+            if granted { self.stopVault() }
             if granted { self.stamp.note() } else { self.stamp.clear() }
             self.deniedURL = granted ? nil : url
             self.updateOptions {
-                if choosing { $0.vaultBookmark = granted ? bookmark : nil }
+                if choosing {
+                    $0.vaultBookmark = granted ? bookmark : nil
+                    $0.vaultPath = url.path
+                }
                 $0.vaultOn = granted
                 $0.vaultDenied = !granted
                 $0.vaultNeedReenable = false
@@ -247,7 +251,12 @@ final class NotesWidget: NotchWidget {
             self?.received(events, root: root)
         }
         rescan(VaultRescan(full: true))
+        // The tile was already showing (a vault turned on from Settings): its walk starts now.
+        if tileVisible { tileShown() }
     }
+
+    /// The periodic walk is set up (tests).
+    var periodicWalkRunning: Bool { periodicTask != nil }
 
     private func stopVault() {
         watch?.stop()
@@ -337,6 +346,7 @@ final class NotesWidget: NotchWidget {
     /// The tile appeared: a full walk every `periodicRescan` while it shows (new notes the
     /// events missed, the 30-day window moving on). Nothing while it is hidden.
     func tileShown() {
+        tileVisible = true
         guard vault != nil, periodicTask == nil else { return }
         let every = services.periodicRescan
         periodicTask = Task { @MainActor [weak self] in
@@ -349,6 +359,7 @@ final class NotesWidget: NotchWidget {
     }
 
     func tileHidden() {
+        tileVisible = false
         periodicTask?.cancel()
         periodicTask = nil
     }

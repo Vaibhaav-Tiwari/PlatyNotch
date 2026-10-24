@@ -422,6 +422,49 @@ final class NotesWidgetTests: DefaultsTestCase {
         w.stop()
     }
 
+    func testChangeKeepsTheOldVaultUntilTheNewOneIsGranted() async {
+        let rec = Recorder()
+        let bookmarks = PathBookmarks()
+        let w = make(rec, bookmarks: bookmarks)
+        w.start(context: context())
+        w.chooseVault(vaultDir)
+        await settle(w)
+        let oldBookmark = w.options.vaultBookmark
+        let other = vaultDir.deletingLastPathComponent().appendingPathComponent("Other", isDirectory: true)
+        try? FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
+        rec.granted = false
+        w.chooseVault(other)
+        await settle(w)
+        XCTAssertEqual(w.options.vaultBookmark, oldBookmark)
+        XCTAssertEqual(w.options.vaultPath, vaultDir.path)
+        XCTAssertTrue(w.options.vaultOn)
+        XCTAssertEqual(defaults().string(forKey: "notes.vault.grant"), "build-A")
+        XCTAssertEqual(w.vault?.path, vaultDir.path)
+        XCTAssertNotNil(rec.live)
+        rec.granted = true
+        w.chooseVault(other)
+        await settle(w)
+        XCTAssertEqual(w.options.vaultPath, other.path)
+        XCTAssertEqual(w.vault?.path, VaultAccess.canonical(other.path))
+        XCTAssertEqual(rec.live?.root, VaultAccess.canonical(other.path))
+        XCTAssertEqual(rec.watches.filter { !$0.stopped }.count, 1)
+        w.stop()
+    }
+
+    func testPeriodicWalkStartsWhenTheVaultTurnsOnUnderAShownTile() async {
+        let rec = Recorder()
+        let w = make(rec)
+        w.start(context: context())
+        w.tileShown()
+        XCTAssertFalse(w.periodicWalkRunning, "no vault, no walk")
+        w.chooseVault(vaultDir)
+        await settle(w)
+        XCTAssertTrue(w.periodicWalkRunning)
+        w.tileHidden()
+        XCTAssertFalse(w.periodicWalkRunning)
+        w.stop()
+    }
+
     func testForgetStopsAndClears() async {
         let rec = Recorder()
         let w = await started(rec)

@@ -1293,7 +1293,10 @@ block containing `- [ ] in code`.
 - [ ] **273. Tick.** Tick a task: only that line's `[ ]` becomes `[x]` (check with
   `git diff` in the vault or `cmp -l` against a copy: exactly one byte differs). A CRLF
   note keeps CRLF, permissions (`ls -l`) and extended attributes (`xattr -l`) are
-  unchanged, and no other file in the vault appears or changes.
+  unchanged, and no other file in the vault appears or changes. With the vault on another
+  volume (an external or FAT32 drive), macOS's own `.TemporaryItems` folder may appear at
+  that volume's root (where the change is staged before the swap): expected, outside the
+  vault, and Finder hides it. On FAT32 the tick still lands and the tile reports no error.
 - [ ] **274. Changed since it was read.** With the panel open, add a line above a task in
   Obsidian, then (before the list refreshes) tick that task: nothing is written; the tile
   asks "… changed since it was read. Tick “…” on line N?". Tick It writes that line;
