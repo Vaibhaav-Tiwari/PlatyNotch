@@ -94,10 +94,11 @@ final class HUDWidget: NotchWidget {
     @ObservationIgnored private let identity: () -> String
     /// Waits between trust reads while the Allow UI is on screen (tests inject their own).
     @ObservationIgnored private let pollSleep: @MainActor () async -> Void
-    /// "Allow Accessibility…" was clicked (this run), and since then the user came back
-    /// (PlatyNotch active again, or System Settings left).
-    @ObservationIgnored private var allowClicked = false
-    @ObservationIgnored private var returnedAfterAllow = false
+    /// Waits between the reads that follow an Allow click (tests inject their own).
+    @ObservationIgnored private let allowSleep: @MainActor () async -> Void
+    /// "Allow Accessibility…" was clicked (this run), and since then the user went away and
+    /// came back (PlatyNotch resigned, then active again, or System Settings left).
+    @ObservationIgnored private var allowReturn = AllowReturn()
 
     static let pollInterval: Duration = .seconds(2)
 
@@ -105,12 +106,14 @@ final class HUDWidget: NotchWidget {
          makeControls: @escaping () -> HUDControls = { HUDControls.system() },
          trust: AccessibilityTrust = .system,
          identity: @escaping () -> String = { CodeIdentity.current },
-         pollSleep: @escaping @MainActor () async -> Void = { try? await Task.sleep(for: HUDWidget.pollInterval) }) {
+         pollSleep: @escaping @MainActor () async -> Void = { try? await Task.sleep(for: HUDWidget.pollInterval) },
+         allowSleep: @escaping @MainActor () async -> Void = { try? await Task.sleep(for: .seconds(1)) }) {
         self.makeTap = makeTap
         self.makeControls = makeControls
         self.trust = trust
         self.identity = identity
         self.pollSleep = pollSleep
+        self.allowSleep = allowSleep
     }
 
     /// Smoke runs: no tap, no prompt, controls that change nothing.
@@ -150,8 +153,7 @@ final class HUDWidget: NotchWidget {
         failedSets = []
         status = .stopped
         advice = .none
-        allowClicked = false
-        returnedAfterAllow = false
+        allowReturn.reset()
         available = []
         outputName = nil
     }
@@ -163,11 +165,13 @@ final class HUDWidget: NotchWidget {
             disconnectTap()
             status = .needsAccessibility
             let history = AccessibilityGrant.history(context.defaults, identity: identity())
-            let next = PermissionAdvice.accessibility(trusted: false, returnedAfterAllow: returnedAfterAllow,
+            let next = PermissionAdvice.accessibility(trusted: false, returnedAfterAllow: allowReturn.returned,
                                                       history: history)
             if advice != next { advice = next }
             return
         }
+        recheckTask?.cancel()
+        recheckTask = nil
         AccessibilityGrant.note(context.defaults, identity: identity())
         if advice != .none { advice = .none }
         if tap == nil {
@@ -195,16 +199,17 @@ final class HUDWidget: NotchWidget {
     // MARK: - Permission
 
     /// The "Allow" button: shows the system Accessibility prompt, then picks the grant up
-    /// (the distributed notification below, and a bounded recheck for a minute).
-    func requestAccess() {
-        allowClicked = true
-        returnedAfterAllow = false
+    /// (the distributed notification below, and a bounded recheck for a minute, only while
+    /// `isOnScreen`: the window that shows Allow is visible and not covered).
+    func requestAccess(isOnScreen: @escaping @MainActor () -> Bool = { true }) {
+        allowReturn.allowClicked()
         trust.request()
         recheckTask?.cancel()
         recheckTask = Task { [weak self] in
             for _ in 0..<60 {
-                try? await Task.sleep(for: .seconds(1))
+                await self?.allowSleep()
                 guard !Task.isCancelled, let self, self.isRunning else { return }
+                guard isOnScreen() else { continue }
                 self.connect()
                 if self.status != .needsAccessibility { return }
             }
@@ -228,7 +233,7 @@ final class HUDWidget: NotchWidget {
     /// Back in PlatyNotch, or out of System Settings: after Allow, a still-missing trust now
     /// gets the conditional advice.
     func userReturned() {
-        if allowClicked { returnedAfterAllow = true }
+        allowReturn.appBecameActive()
         trustMayHaveChanged()
     }
 
@@ -248,11 +253,19 @@ final class HUDWidget: NotchWidget {
                                              queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.userReturned() }
         }))
+        observers.append((nc, nc.addObserver(forName: NSApplication.didResignActiveNotification, object: nil,
+                                             queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.allowReturn.appResigned() }
+        }))
         let ws = NSWorkspace.shared.notificationCenter
         observers.append((ws, ws.addObserver(forName: NSWorkspace.didDeactivateApplicationNotification, object: nil,
                                              queue: .main) { [weak self] note in
             guard PermissionReturn.leftSystemSettings(note) else { return }
-            MainActor.assumeIsolated { self?.userReturned() }
+            MainActor.assumeIsolated {
+                // The user was in System Settings, whatever the app-active notifications said.
+                self?.allowReturn.appResigned()
+                self?.userReturned()
+            }
         }))
         // The Settings or onboarding window closing (not panels, pickers or alerts).
         observers.append((nc, nc.addObserver(forName: NSWindow.willCloseNotification, object: nil,

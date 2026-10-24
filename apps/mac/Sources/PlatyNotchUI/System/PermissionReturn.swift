@@ -24,6 +24,35 @@ enum PermissionReturn {
     }
 }
 
+/// "Allow" clicked, and the user really went away and came back. Dismissing the system
+/// prompt can reactivate PlatyNotch without the user having visited System Settings, so a
+/// reactivation counts only after PlatyNotch resigned (System Settings or another app in
+/// front) since the click.
+struct AllowReturn {
+    private(set) var clicked = false
+    private(set) var resigned = false
+    private(set) var returned = false
+
+    /// "Allow" was clicked: start over.
+    mutating func allowClicked() {
+        clicked = true
+        resigned = false
+        returned = false
+    }
+
+    /// `NSApplication.didResignActiveNotification`.
+    mutating func appResigned() {
+        if clicked { resigned = true }
+    }
+
+    /// `NSApplication.didBecomeActiveNotification`.
+    mutating func appBecameActive() {
+        if clicked, resigned { returned = true }
+    }
+
+    mutating func reset() { self = AllowReturn() }
+}
+
 /// The window a SwiftUI view is in, for "is it really on screen" checks (`WindowReader`).
 @MainActor
 final class WindowProbe {

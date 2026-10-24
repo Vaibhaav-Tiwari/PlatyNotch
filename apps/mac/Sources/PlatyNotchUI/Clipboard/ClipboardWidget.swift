@@ -501,8 +501,7 @@ struct ClipboardSettings: View {
     @State private var trusted = false
     /// "Allow Accessibility…" clicked (this window), and the user came back since: if trust
     /// is still off, say what to try (feedback 7).
-    @State private var allowClicked = false
-    @State private var returnedAfterAllow = false
+    @State private var allowReturn = AllowReturn()
     @State private var advice: PermissionAdvice.AccessibilityAdvice = .none
     @State private var probe = WindowProbe()
 
@@ -570,8 +569,7 @@ struct ClipboardSettings: View {
                 }
                 HStack {
                     Button("Allow Accessibility…") {
-                        allowClicked = true
-                        returnedAfterAllow = false
+                        allowReturn.allowClicked()
                         widget.trust.request()
                         recheck()
                     }
@@ -583,8 +581,11 @@ struct ClipboardSettings: View {
         .font(.system(size: 12))
         .background(WindowReader(probe: probe))
         .onAppear { recheck() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            allowReturn.appResigned()
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            if allowClicked { returnedAfterAllow = true }
+            allowReturn.appBecameActive()
             recheck()
         }
         .task(id: trusted) { await pollWhileUntrusted() }
@@ -598,7 +599,7 @@ struct ClipboardSettings: View {
         let identity = CodeIdentity.current
         if now { AccessibilityGrant.note(defaults, identity: identity) }
         let history = AccessibilityGrant.history(defaults, identity: identity)
-        advice = PermissionAdvice.accessibility(trusted: now, returnedAfterAllow: returnedAfterAllow, history: history)
+        advice = PermissionAdvice.accessibility(trusted: now, returnedAfterAllow: allowReturn.returned, history: history)
         if trusted != now { trusted = now }
     }
 

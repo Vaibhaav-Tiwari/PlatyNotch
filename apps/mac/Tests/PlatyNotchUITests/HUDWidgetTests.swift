@@ -95,6 +95,7 @@ final class HUDWidgetTests: DefaultsTestCase {
         var widget: HUDWidget!
         var controllers: [NotchController] = []
         var sleeps = 0
+        var reads = 0
     }
 
     /// A registry with the HUD widget and one panel per display in `displays`.
@@ -108,9 +109,10 @@ final class HUDWidgetTests: DefaultsTestCase {
         r.widget = HUDWidget(
             makeTap: { [unowned r] in r.taps += 1; return r.tap },
             makeControls: { [unowned r] in HUDControls(volume: r.volume, brightness: r.brightness, backlight: r.backlight) },
-            trust: AccessibilityTrust(isTrusted: { [unowned r] in r.trusted }, request: { [unowned r] in r.prompts += 1 }),
+            trust: AccessibilityTrust(isTrusted: { [unowned r] in r.reads += 1; return r.trusted }, request: { [unowned r] in r.prompts += 1 }),
             identity: { identity },
-            pollSleep: { [unowned r] in r.sleeps += 1; await Task.yield() })
+            pollSleep: { [unowned r] in r.sleeps += 1; await Task.yield() },
+            allowSleep: { await Task.yield() })
         r.registry.register(r.widget)
         let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("pnhud\(UUID().uuidString)")
         r.registry.start(context: WidgetContext(store: AppStore(), client: client,
@@ -398,6 +400,7 @@ final class HUDWidgetTests: DefaultsTestCase {
         r.widget.requestAccess()
         for _ in 0..<5 { r.widget.recheckTrust() }
         XCTAssertEqual(r.widget.advice, .none, "still finding the switch: no advice, however long")
+        NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: NSApp)
         NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: NSApp)
         let shown = await eventually { r.widget.advice == .maybeStale }
         XCTAssertTrue(shown)
@@ -405,6 +408,54 @@ final class HUDWidgetTests: DefaultsTestCase {
         XCTAssertTrue(text.contains(PermissionAdvice.accessibilityMaybeStale), text)
         XCTAssertFalse(text.contains("rebuilt"), text)
         r.registry.setEnabled(HUDWidget.widgetID, false)
+    }
+
+    /// The system prompt going away can reactivate PlatyNotch before the user has been to
+    /// System Settings: no advice yet. Leaving System Settings counts as the visit.
+    func testReactivationWithoutLeavingAddsNothingUntilSettingsWasVisited() async {
+        let r = rig(trusted: false)
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        r.widget.requestAccess()
+        r.widget.userReturned()
+        r.widget.recheckTrust()
+        XCTAssertEqual(r.widget.advice, .none, "no deactivation since the click: only the prompt went away")
+        NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: NSApp)
+        r.widget.userReturned()
+        r.widget.recheckTrust()
+        XCTAssertEqual(r.widget.advice, .maybeStale)
+        r.registry.setEnabled(HUDWidget.widgetID, false)
+    }
+
+    /// The reads after Allow happen only while the Allow window is on screen, and stop
+    /// once trust is granted.
+    func testReadsAfterAllowWaitForTheWindowToBeOnScreen() async {
+        let r = rig(trusted: false)
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        var onScreen = false
+        r.widget.requestAccess(isOnScreen: { onScreen })
+        r.trusted = true
+        let before = r.reads
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(r.reads, before, "off screen: no trust reads")
+        XCTAssertEqual(r.widget.status, .needsAccessibility)
+        onScreen = true
+        let on = await eventually { r.widget.status == .on }
+        XCTAssertTrue(on)
+        let after = r.reads
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(r.reads, after, "granted: the loop is gone")
+        r.registry.setEnabled(HUDWidget.widgetID, false)
+    }
+
+    /// Turning the widget off ends the reads after Allow.
+    func testStopEndsTheReadsAfterAllow() async {
+        let r = rig(trusted: false)
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        r.widget.requestAccess()
+        r.registry.setEnabled(HUDWidget.widgetID, false)
+        let before = r.reads
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(r.reads, before)
     }
 
     /// Coming back without having clicked Allow adds nothing.
@@ -424,6 +475,7 @@ final class HUDWidgetTests: DefaultsTestCase {
         r.registry.setEnabled(HUDWidget.widgetID, true)
         XCTAssertEqual(r.widget.advice, .none)
         r.widget.requestAccess()
+        NotificationCenter.default.post(name: NSApplication.didResignActiveNotification, object: NSApp)
         r.widget.userReturned()
         r.widget.recheckTrust()
         XCTAssertEqual(r.widget.advice, .maybeStale)

@@ -91,6 +91,9 @@ struct PermissionRows: View {
         }
         .background(WindowReader(probe: probe))
         .onAppear { permissions.refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            permissions.userLeft()
+        }
         // Back from System Settings: show what was just allowed.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             permissions.userReturned()

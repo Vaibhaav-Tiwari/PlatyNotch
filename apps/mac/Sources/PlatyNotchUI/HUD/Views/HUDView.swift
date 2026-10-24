@@ -61,7 +61,7 @@ struct HUDTile: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    HUDAccessButtons(widget: widget)
+                    HUDAccessButtons(widget: widget, probe: probe)
                 } else if let output = widget.outputName {
                     Text(verbatim: "Output: \(output)").font(.system(size: 11)).foregroundStyle(.secondary)
                 }
@@ -84,7 +84,7 @@ struct HUDSettingsView: View {
             if let why = widget.explanation {
                 Label { Text(verbatim: why).fixedSize(horizontal: false, vertical: true) }
                     icon: { Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange) }
-                HUDAccessButtons(widget: widget)
+                HUDAccessButtons(widget: widget, probe: probe)
             } else if widget.status == .on {
                 Label("On: volume, brightness and keyboard-backlight keys show this HUD instead of the system's.",
                       systemImage: "checkmark.circle.fill")
@@ -111,12 +111,13 @@ struct HUDSettingsView: View {
 /// "Open System Settings" and, after a refused tap, "Retry".
 struct HUDAccessButtons: View {
     let widget: HUDWidget
+    let probe: WindowProbe
 
     var body: some View {
         HStack(spacing: 8) {
             switch widget.status {
             case .needsAccessibility:
-                Button("Allow Accessibility…") { widget.requestAccess() }
+                Button("Allow Accessibility…") { widget.requestAccess(isOnScreen: { [probe] in probe.isOnScreen }) }
                 Button("Open System Settings") { Permissions.open(.accessibility) }
             case .tapRefused:
                 Button("Retry") { widget.retry() }

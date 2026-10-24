@@ -30,16 +30,19 @@ final class Permissions {
     /// What to add while Accessibility is off: definite after a grant to another build,
     /// conditional after Allow and coming back (feedback 7).
     private(set) var accessibilityAdvice: PermissionAdvice.AccessibilityAdvice = .none
-    @ObservationIgnored private var allowClicked = false
-    @ObservationIgnored private var returnedAfterAllow = false
+    @ObservationIgnored private var allowReturn = AllowReturn()
+    @ObservationIgnored private let trust: AccessibilityTrust
+    /// The bounded recheck after Allow (a new click replaces it).
+    @ObservationIgnored private(set) var accessibilityPoll: Task<Void, Never>?
     private(set) var notifications: State = .notAsked
     private(set) var automation: [String: State] = [:]
     let calendar: CalendarService
     let reminders: RemindersService
 
-    init(calendar: CalendarService, reminders: RemindersService) {
+    init(calendar: CalendarService, reminders: RemindersService, trust: AccessibilityTrust = .system) {
         self.calendar = calendar
         self.reminders = reminders
+        self.trust = trust
     }
 
     /// Re-reads every status without prompting.
@@ -67,15 +70,15 @@ final class Permissions {
     /// `isOnScreen`: the Settings / onboarding window is visible and not covered; the
     /// follow-up reads happen only then.
     func requestAccessibility(isOnScreen: @escaping @MainActor () -> Bool = { true }) {
-        allowClicked = true
-        returnedAfterAllow = false
-        let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
-        accessibility = AXIsProcessTrustedWithOptions(options)
+        allowReturn.allowClicked()
+        trust.request()
+        accessibility = trust.isTrusted()
         // The grant happens in System Settings; poll briefly so the row updates.
-        Task { [weak self] in
+        accessibilityPoll?.cancel()
+        accessibilityPoll = Task { [weak self] in
             for _ in 0..<60 {
                 try? await Task.sleep(for: .seconds(1))
-                guard let self else { return }
+                guard !Task.isCancelled, let self else { return }
                 guard isOnScreen() else { continue }
                 self.readAccessibility()
                 if self.accessibility { return }
@@ -83,20 +86,24 @@ final class Permissions {
         }
     }
 
-    /// Back in PlatyNotch after Allow: a still-missing trust gets the conditional advice.
+    /// PlatyNotch went to the background (System Settings or another app in front).
+    func userLeft() { allowReturn.appResigned() }
+
+    /// Back in PlatyNotch after Allow and a visit elsewhere: a still-missing trust gets the
+    /// conditional advice.
     func userReturned() {
-        if allowClicked { returnedAfterAllow = true }
+        allowReturn.appBecameActive()
         refresh()
     }
 
     /// Reads trust (never prompts), stamps a working grant with this build, and decides
     /// whether the "remove and allow again" advice applies.
     private func readAccessibility() {
-        let trusted = AXIsProcessTrusted()
+        let trusted = trust.isTrusted()
         let defaults = UserDefaults.standard
         if trusted { AccessibilityGrant.note(defaults, identity: CodeIdentity.current) }
         let history = AccessibilityGrant.history(defaults, identity: CodeIdentity.current)
-        let advice = PermissionAdvice.accessibility(trusted: trusted, returnedAfterAllow: returnedAfterAllow,
+        let advice = PermissionAdvice.accessibility(trusted: trusted, returnedAfterAllow: allowReturn.returned,
                                                     history: history)
         if accessibility != trusted { accessibility = trusted }
         if accessibilityAdvice != advice { accessibilityAdvice = advice }

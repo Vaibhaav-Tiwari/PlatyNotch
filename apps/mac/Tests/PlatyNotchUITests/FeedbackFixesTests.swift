@@ -305,3 +305,38 @@ final class FeedbackFixesTests: DefaultsTestCase {
         for _ in 0..<5 { await Task.yield() }
     }
 }
+
+/// Fix round 2: Allow follow-ups.
+@MainActor
+final class AllowFollowUpTests: XCTestCase {
+    /// Allow, away and back: the return counts only after PlatyNotch resigned.
+    func testReturnCountsOnlyAfterResigning() {
+        var a = AllowReturn()
+        a.appResigned()
+        a.appBecameActive()
+        XCTAssertFalse(a.returned, "before Allow nothing counts")
+        a.allowClicked()
+        a.appBecameActive()
+        XCTAssertFalse(a.returned, "the prompt going away reactivates the app: not a visit")
+        a.appResigned()
+        a.appBecameActive()
+        XCTAssertTrue(a.returned)
+        a.allowClicked()
+        XCTAssertFalse(a.returned, "a new click starts over")
+    }
+
+    /// A second Allow click replaces the first follow-up poll instead of stacking another.
+    func testSecondAllowClickCancelsTheFirstPoll() {
+        let trust = AccessibilityTrust(isTrusted: { false }, request: {})
+        let p = Permissions(calendar: CalendarService(eventKit: false), reminders: RemindersService(eventKit: false),
+                            trust: trust)
+        p.requestAccessibility()
+        let first = p.accessibilityPoll
+        XCTAssertNotNil(first)
+        XCTAssertEqual(first?.isCancelled, false)
+        p.requestAccessibility()
+        XCTAssertEqual(first?.isCancelled, true)
+        XCTAssertEqual(p.accessibilityPoll?.isCancelled, false)
+        p.accessibilityPoll?.cancel()
+    }
+}
