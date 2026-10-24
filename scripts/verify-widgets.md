@@ -1037,8 +1037,10 @@ OCRs small files made by the tests (`FileActionsEngineTests`); these checks use 
   (e.g. a zip of a large sparse disk image) is refused with "it would unpack to more than 2 GB".
   An archive that is damaged or hostile (entries outside its folder, headers that disagree,
   entries its list does not show, a link to an absolute path or with `..`, whatever system
-  made it) says "the archive is damaged or unsafe"; one that unpacks to
-  more than it declares is stopped within a quarter second and deleted. With less free
+  made it) says "the archive is damaged or unsafe"; one whose contents don't
+  match what it declares (size, checksum) says "the archive is damaged" and leaves
+  nothing. Unzip is PlatyNotch's own extractor (no ditto process appears in Activity
+  Monitor while it runs; Zip still uses ditto); an encrypted archive says "it is encrypted". With less free
   disk space than the archive holds, it says "there is not enough free disk space".
 - [ ] **205. Batch rename.** Select three files in a Downloads subfolder (⌘-click), Actions
   › Batch Rename…, pattern `{date:yyyy-MM-dd} trip {n:2}`: the preview lists every new name;
