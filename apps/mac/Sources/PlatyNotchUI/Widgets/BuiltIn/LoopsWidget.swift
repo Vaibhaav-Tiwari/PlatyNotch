@@ -38,6 +38,15 @@ private struct LoopsTile: View {
 /// touches EventKit and Weather never touches the network.
 @MainActor
 enum BuiltInWidgets {
+    /// "In a meeting" for the wellbeing nudges: the meeting widget's state, only while it
+    /// runs (`MeetingWidget.inMeeting` holds only with calendar access). Never asks for access.
+    static func meetingSignal(registry: WidgetRegistry, meeting: MeetingWidget) -> () -> Bool {
+        { [weak registry, weak meeting] in
+            guard let registry, let meeting, registry.running.contains(MeetingWidget.widgetID) else { return false }
+            return meeting.inMeeting
+        }
+    }
+
     /// `clipboard`: the app keeps its instance for the menu bar's pause item (C23).
     static func register(in registry: WidgetRegistry, store: AppStore, today: TodayServices, persist: Bool = true,
                          clipboard: ClipboardWidget? = nil) {
@@ -54,7 +63,7 @@ enum BuiltInWidgets {
         registry.register(persist ? WeatherWidget() : WeatherWidget.inert())
         // Off by default. "In a meeting" only from the meeting widget while it runs with
         // calendar access; wellbeing never asks for calendar access itself.
-        registry.register(persist ? WellbeingWidget(inMeeting: WellbeingWidget.meetingSignal(registry: registry, meeting: meeting))
+        registry.register(persist ? WellbeingWidget(inMeeting: meetingSignal(registry: registry, meeting: meeting))
                                   : WellbeingWidget.inert())
     }
 }

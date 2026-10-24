@@ -553,9 +553,9 @@ these checks in Settings › Widgets › Wellbeing (step 5 min); reset its state
   with a 20 s ring counting down; it stays the 20 s. Keep typing in another app while it
   shows: your keystrokes stay in that app (the card never takes focus). Click Done once:
   it closes on that first click.
-- [ ] **105. Looked away vs ignored.** Let an eyes card run out without touching anything:
-  the next one comes a full interval later (counted as done). Let one run out while you
-  keep typing: it comes back about 10 minutes later (counted as a snooze).
+- [ ] **105. Ignored cards.** Let a card run out without answering (whether or not you
+  keep typing): that nudge comes back a full interval later, never sooner (counted as
+  dismissed). Ignoring every card for an hour brings no more cards than answering them.
 - [ ] **106. Water card.** Water 5 min: "Time for some water", "N / 8 glasses today".
   "+1 glass" closes it and the tile's count goes up; the count survives a relaunch and
   resets at midnight. Snooze 10 min: it returns about 10 minutes later, not sooner.
@@ -569,11 +569,11 @@ these checks in Settings › Widgets › Wellbeing (step 5 min); reset its state
 - [ ] **110. Focus and meetings.** Start a focus session: no cards until it ends. With
   the Meetings widget on and Calendar allowed, during an event in progress: no cards.
   With Meetings off (or Calendar not allowed) Wellbeing never asks for Calendar access.
-- [ ] **111. Idle is a break.** Leave the Mac untouched (screen on) from 6 minutes before
-  a due time until a few minutes after it: no card meanwhile; on return, eyes and stand
-  count from within a minute of your return (no card at once), water does not. (Idle is
-  read only at a due time and then every minute while away, so a pause that starts and
-  ends between two due times is not seen; sleep and lock always are.)
+- [ ] **111. Idle is a break.** Eyes 20 min: 5 minutes after Done, leave the Mac untouched
+  (screen on) for 10 minutes, then come back: no card for 2 minutes after sitting down,
+  and the next eyes card comes about 20 minutes after your return, not 15 minutes after
+  Done. Water still counts from its last glass. While you work, `sample PlatyNotch` shows
+  the wellbeing wake at most every minute (normally every 5).
 - [ ] **112. Sleep and lock.** Lock the screen (⌃⌘Q) for 10 minutes across a due time:
   nothing shows while locked; after unlocking no card for 2 minutes and then at most one.
   The same after closing the lid for 10 minutes and waking.
@@ -582,3 +582,12 @@ these checks in Settings › Widgets › Wellbeing (step 5 min); reset its state
   again from then (no burst at the hour). Same start and end turns quiet hours off.
 - [ ] **114. Turning it off.** Turn Wellbeing off while a card shows: the card closes at
   once; nothing further appears; turning it on again keeps today's glass count.
+- [ ] **115. Clock and time zone.** With a nudge due in ~10 min, set the clock back two
+  hours (System Settings › General › Date & Time, automatic off): the nudge still comes
+  within its interval, not hours later. Change the time zone: the tile's times and quiet
+  hours follow at once. Restore automatic time.
+- [ ] **116. Spacing across a relaunch.** Right after a card, quit and relaunch with more
+  nudges due: no card for at least 5 minutes after the previous one.
+- [ ] **117. Midnight.** With the panel open on Today across midnight, the glass count
+  goes back to 0 / goal at 00:00 without reopening the panel.
+

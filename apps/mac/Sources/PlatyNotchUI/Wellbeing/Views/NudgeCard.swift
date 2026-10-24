@@ -105,13 +105,26 @@ struct EyeBreakRing: View {
     }
 }
 
-/// The Today tile: each nudge's interval and next time, and today's water.
+/// The Today tile: each nudge's interval and next time, and today's water. While on
+/// screen it redraws once at the next midnight (the count starts again).
 struct WellbeingTile: View {
     let widget: WellbeingWidget
 
     var body: some View {
+        TimelineView(.explicit([nextMidnight()])) { _ in
+            content
+        }
+    }
+
+    private func nextMidnight() -> Date {
+        let cal = widget.calendar
+        let today = cal.startOfDay(for: widget.now())
+        return cal.date(byAdding: .day, value: 1, to: today) ?? today.addingTimeInterval(86_400)
+    }
+
+    private var content: some View {
         let s = widget.settings
-        VStack(alignment: .leading, spacing: 6) {
+        return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Image(systemName: NudgeText.symbol(.water)).foregroundStyle(Theme.tint(.accent)).frame(width: 18)
                     .accessibilityHidden(true)
@@ -147,7 +160,7 @@ struct WellbeingTile: View {
 
     private func quietNote() -> String? {
         let s = widget.settings
-        let now = Date()
+        let now = widget.now()
         guard NudgeScheduler.isQuiet(s, at: now, calendar: widget.calendar),
               let end = NudgeScheduler.quietEnd(after: now, s, calendar: widget.calendar) else { return nil }
         return "Quiet hours until " + end.formatted(date: .omitted, time: .shortened)

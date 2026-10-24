@@ -25,21 +25,25 @@ public final class SystemIdleClock: IdleClock {
     }
 }
 
+
 /// Water, stand and 20-20-20 eye-break nudges (`NudgeScheduler`): a card peeks below the
 /// notch for 10 s (the eyes card for its 20 s ring) with Done / Snooze 10 min, or
 /// "+1 glass" for water with today's count against the goal.
 ///
-/// Off by default. Needs no permission. While enabled it sleeps until the next nudge is
-/// due (one wake, at least a minute apart; a minute while the user is away so the break
-/// ends when they return), reads the idle time once per wake, and pauses while the Mac
-/// sleeps, the screen is locked or the session is switched away. After a wake or unlock
-/// the first card waits `resumeGrace`, and cards are `spacing` apart, so several due
-/// nudges never come as a burst. Time asleep or locked ≥ 5 min counts as a break, like idle.
+/// Off by default. Needs no permission. While enabled it samples the idle time adaptively
+/// (`NudgeScheduler.nextSample`: when a pause going on now would reach 5 minutes, never
+/// sooner than a minute), so a break of 5 minutes or more is seen wherever it falls; it
+/// also wakes when a nudge falls due. During quiet hours it sleeps until they end, during
+/// a focus session until the session ends. It pauses while the Mac sleeps, the screen is
+/// locked or the session is switched away. After a wake, an unlock or a return from a
+/// break the first card waits `resumeGrace`, and cards are `spacing` apart (also across a
+/// relaunch), so several due nudges never come as a burst. Time asleep or locked ≥ 5 min
+/// counts as a break, like idle. Clock and time-zone changes clamp saved times to now.
 ///
-/// Nudges wait during a PlatyNotch focus session, a meeting (only the meeting widget's
-/// state, when it runs with calendar access: this widget never asks for calendar access),
-/// full screen (`WidgetContext.panel`), quiet hours and idle. A card nobody answers counts
-/// as a snooze, except the eyes card when there was no input during its ring (looked away).
+/// Nudges wait during a PlatyNotch focus session, a meeting (the `inMeeting` closure: the
+/// app passes the meeting widget's state), full screen (`WidgetContext.panel`), quiet
+/// hours and idle. A card nobody answers counts as dismissed for its interval (like Done);
+/// only an explicit "Snooze 10 min" brings it back sooner.
 ///
 /// Turned off, it does nothing: no timer, no observers, no idle reads. `disabled()` keeps
 /// the water log.
@@ -47,8 +51,8 @@ public final class SystemIdleClock: IdleClock {
 final class WellbeingWidget: NotchWidget {
     static let widgetID = "wellbeing"
     static let peekID = "wellbeing.nudge"
-    /// The eyes card counts as done when there was no input for this long at its end.
-    static let lookedAway = NudgeScheduler.eyesBreak - 5
+    /// Timer slack for samples and due wakes (lets macOS coalesce wake-ups).
+    static let tolerance: Duration = .seconds(10)
 
     /// The card on show (or held under an approval / the open panel until `until`).
     struct Nudge: Equatable {
@@ -86,11 +90,18 @@ final class WellbeingWidget: NotchWidget {
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var observers: [(NotificationCenter, NSObjectProtocol)] = []
     @ObservationIgnored private var pausedAt: Date?
-    @ObservationIgnored private var lastCardAt: Date?
+    /// No card before this (after a start, wake, unlock or a return from a break).
+    @ObservationIgnored private(set) var resumeAt: Date?
+    /// The last sample saw a break (idle ≥ `idleBreak`).
+    @ObservationIgnored private var wasAway = false
     /// Idle reads so far (tests: a disabled widget reads none).
     @ObservationIgnored private(set) var idleReads = 0
+    /// Progress writes so far (tests: only on change).
+    @ObservationIgnored private(set) var saves = 0
 
-    /// `watchSystem: false` (tests, smoke) skips the sleep / lock observers.
+    /// `watchSystem: false` (tests, smoke) skips the sleep / lock / clock observers.
+    /// `inMeeting`: whether the user is in a meeting now (the app passes the meeting
+    /// widget's state; this widget never asks for calendar access).
     init(defaults: UserDefaults = .standard, persist: Bool = true, idle: IdleClock = SystemIdleClock(),
          clock: @escaping () -> Date = Date.init, calendar: Calendar = .autoupdatingCurrent,
          inMeeting: @escaping () -> Bool = { false }, watchSystem: Bool = true) {
@@ -112,14 +123,11 @@ final class WellbeingWidget: NotchWidget {
                         persist: false, idle: ZeroIdleClock(), watchSystem: false)
     }
 
-    /// The meeting widget's "in a meeting", only while it runs (it then has calendar access
-    /// when `inMeeting` is true; `MeetingWidget.current` requires it). Never asks for access.
-    static func meetingSignal(registry: WidgetRegistry, meeting: MeetingWidget) -> () -> Bool {
-        { [weak registry, weak meeting] in
-            guard let registry, let meeting, registry.running.contains(MeetingWidget.widgetID) else { return false }
-            return meeting.inMeeting
-        }
-    }
+    /// The widget's clock (the tile's quiet-hours note and day).
+    func now() -> Date { clock() }
+
+    /// Observers held while running (tests).
+    var observerCount: Int { observers.count }
 
     // MARK: - Lifecycle
 
@@ -128,11 +136,16 @@ final class WellbeingWidget: NotchWidget {
         running = true
         self.context = context
         let now = clock()
-        seed(now: now)
-        water.prune(now: now)
-        save()
-        if watchSystem { watchSleepAndLock() }
-        schedule(now: now, notBefore: now.addingTimeInterval(NudgeScheduler.resumeGrace))
+        var p = progress.clamped(now: now)
+        for kind in NudgeKind.allCases where p.lastDone[kind] == nil { p.lastDone[kind] = now }
+        commit(p)
+        var w = water
+        w.prune(now: now)
+        if w != water { water = w; saveWater() }
+        resumeAt = now.addingTimeInterval(NudgeScheduler.resumeGrace)
+        wasAway = false
+        if watchSystem { watchSystemEvents() }
+        reschedule(now: now)
     }
 
     func stop() {
@@ -144,51 +157,88 @@ final class WellbeingWidget: NotchWidget {
         observers = []
         pauseReasons = []
         pausedAt = nil
+        resumeAt = nil
+        wasAway = false
         endCard()
         context = nil
     }
 
-    /// Turned off: forget snoozes and when things were last done (turning it on again starts
-    /// every interval afresh). The water log stays.
+    /// Turned off: forget snoozes, the last card and when things were last done (turning
+    /// it on again starts every interval afresh). The water log stays.
     func disabled() {
-        progress = NudgeProgress()
-        lastCardAt = nil
-        save()
+        commit(NudgeProgress())
     }
 
-    // MARK: - Checks
+    // MARK: - Samples
 
-    /// One wake-up: resolve a card that has run out, record breaks, show what is due,
-    /// sleep until the next one.
-    func check() {
+    /// One wake-up: resolve a card that has run out, read the idle time and record breaks,
+    /// show what is due, and sleep until the next sample or due time.
+    func sample() {
         guard running, !paused, let context else { return }
         let now = clock()
+        var p = progress
         if let n = nudge {
             if n.until > now {
-                schedule(at: n.until.addingTimeInterval(0.5))
+                schedule(at: n.until.addingTimeInterval(0.5), tolerance: .milliseconds(100))
                 return
             }
-            unanswered(n, now: now)
+            // Nobody answered: dismissed for its interval (a looked-away eye break is done).
+            nudge = nil
+            p.lastDone[n.kind] = now
+            p.snoozedUntil[n.kind] = nil
         }
         guard settings.anyOn else {
-            schedule(now: now)
+            commit(p)
+            cancelTimer()
+            return
+        }
+        if NudgeScheduler.isQuiet(settings, at: now, calendar: calendar) {
+            // Nothing shows and intervals restart at the end: sleep until then.
+            wasAway = false
+            commit(p)
+            schedule(at: NudgeScheduler.nextWake(settings, lastDone: p.lastDone, snoozedUntil: p.snoozedUntil,
+                                                 now: now, calendar: calendar))
             return
         }
         idleReads += 1
         let idleSeconds = idle.secondsSinceLastInput()
-        progress.lastDone = NudgeScheduler.recordingBreaks(progress.lastDone, settings: settings, now: now,
-                                                           idleSeconds: idleSeconds, calendar: calendar)
-        let c = NudgeContext(now: now, lastDone: progress.lastDone, inFocusSession: focusSessionActive(now),
+        p.lastDone = NudgeScheduler.recordingBreaks(p.lastDone, settings: settings, now: now,
+                                                    idleSeconds: idleSeconds, calendar: calendar)
+        let away = idleSeconds >= NudgeScheduler.idleBreak
+        if wasAway, !away { resumeAt = now.addingTimeInterval(NudgeScheduler.resumeGrace) }   // just sat down
+        wasAway = away
+        let focusEnd = focusSessionEnd(now)
+        let c = NudgeContext(now: now, lastDone: p.lastDone, inFocusSession: focusEnd != nil,
                              inMeeting: inMeeting(), fullScreen: context.panel.fullScreen,
-                             idleSeconds: idleSeconds, snoozedUntil: progress.snoozedUntil)
-        let spaced = lastCardAt.map { now >= $0.addingTimeInterval(NudgeScheduler.spacing) } ?? true
-        if spaced, let kind = NudgeScheduler.due(settings, c, calendar: calendar) {
-            save()
+                             idleSeconds: idleSeconds, snoozedUntil: p.snoozedUntil)
+        let floor = cardFloor(p)
+        if floor.map({ now >= $0 }) ?? true, let kind = NudgeScheduler.due(settings, c, calendar: calendar) {
+            p.lastCard = now
+            commit(p)
             show(kind, now: now)
             return
         }
-        save()
-        schedule(now: now, away: idleSeconds >= NudgeScheduler.idleBreak)
+        commit(p)
+        if let focusEnd {
+            schedule(at: max(focusEnd, now.addingTimeInterval(NudgeScheduler.minimumWake)))
+            return
+        }
+        let blocked = c.inMeeting || c.fullScreen || away
+        var wake = blocked ? nil : NudgeScheduler.nextWake(settings, lastDone: p.lastDone, snoozedUntil: p.snoozedUntil,
+                                                           now: now, notBefore: floor, calendar: calendar)
+        if blocked || samplesBreaks {
+            let s = NudgeScheduler.nextSample(now: now, idleSeconds: idleSeconds)
+            wake = min(wake ?? s, s)
+        }
+        schedule(at: wake)
+    }
+
+    /// Whether idle breaks matter (they reset only stand and eyes).
+    private var samplesBreaks: Bool { settings.interval(.stand) != nil || settings.interval(.eyes) != nil }
+
+    /// No card before the spacing after the last one, or a resume grace.
+    private func cardFloor(_ p: NudgeProgress) -> Date? {
+        [p.lastCard.map { $0.addingTimeInterval(NudgeScheduler.spacing) }, resumeAt].compactMap { $0 }.max()
     }
 
     private func show(_ kind: NudgeKind, now: Date) {
@@ -196,61 +246,44 @@ final class WellbeingWidget: NotchWidget {
         let length = kind == .eyes ? NudgeScheduler.eyesBreak : NudgeScheduler.peekDuration
         let n = Nudge(kind: kind, shownAt: now, until: now.addingTimeInterval(length))
         nudge = n
-        lastCardAt = now
         guard context.peek(id: Self.peekID, until: n.until) else {
             nudge = nil
-            schedule(now: now)
+            reschedule(now: now)
             return
         }
-        schedule(at: n.until.addingTimeInterval(0.5))
-    }
-
-    /// Nobody answered: a snooze, except an eyes break taken (no input during the ring).
-    private func unanswered(_ n: Nudge, now: Date) {
-        nudge = nil
-        if n.kind == .eyes {
-            idleReads += 1
-            if idle.secondsSinceLastInput() >= Self.lookedAway {
-                markDone(.eyes, at: now)
-                return
-            }
-        }
-        progress.snoozedUntil[n.kind] = now.addingTimeInterval(NudgeScheduler.snooze)
-        save()
+        schedule(at: n.until.addingTimeInterval(0.5), tolerance: .milliseconds(100))
     }
 
     // MARK: - Actions (card buttons, tile)
 
     func done(_ kind: NudgeKind) {
-        markDone(kind, at: clock())
+        var p = progress
+        p.lastDone[kind] = clock()
+        p.snoozedUntil[kind] = nil
+        commit(p)
         finishCard(kind)
     }
 
+    /// The only way a nudge comes back sooner than its interval.
     func snooze(_ kind: NudgeKind) {
-        progress.snoozedUntil[kind] = clock().addingTimeInterval(NudgeScheduler.snooze)
-        save()
+        var p = progress
+        p.snoozedUntil[kind] = clock().addingTimeInterval(NudgeScheduler.snooze)
+        commit(p)
         finishCard(kind)
     }
 
     /// "+1 glass" (the water card or the tile): logs it and counts as the water nudge done.
     func addGlass() {
-        let now = clock()
-        water.add(at: now)
-        markDone(.water, at: now)
-        finishCard(.water)
+        water.add(at: clock())
+        saveWater()
+        done(.water)
     }
 
     func glassesToday() -> Int { water.count(on: clock(), calendar: calendar) }
 
-    private func markDone(_ kind: NudgeKind, at now: Date) {
-        progress.lastDone[kind] = now
-        progress.snoozedUntil[kind] = nil
-        save()
-    }
-
     private func finishCard(_ kind: NudgeKind) {
         if nudge?.kind == kind { endCard() }
-        if running, !paused { schedule(now: clock()) }
+        if running, !paused, nudge == nil { reschedule(now: clock()) }
     }
 
     private func endCard() {
@@ -268,54 +301,54 @@ final class WellbeingWidget: NotchWidget {
         if persist, let data = try? JSONEncoder().encode(next) { defaults.set(data, forKey: NudgeSettings.key) }
         // A nudge just turned on (or with a new interval) counts from now.
         let now = clock()
+        var p = progress
         for kind in NudgeKind.allCases where next.interval(kind) != nil && before.minutes(kind) != next.minutes(kind) {
-            progress.lastDone[kind] = now
-            progress.snoozedUntil[kind] = nil
+            p.lastDone[kind] = now
+            p.snoozedUntil[kind] = nil
         }
-        save()
-        if running, !paused { schedule(now: now) }
+        commit(p)
+        if running, !paused, nudge == nil { reschedule(now: now) }
     }
 
     // MARK: - Scheduling
 
-    private func seed(now: Date) {
-        for kind in NudgeKind.allCases where progress.lastDone[kind] == nil { progress.lastDone[kind] = now }
-    }
-
-    /// Sleeps until `NudgeScheduler.nextWake` (none when every nudge is off). While the
-    /// user is away, a minute at most, so the break follows their return.
-    private func schedule(now: Date, notBefore: Date? = nil, away: Bool = false) {
-        let spaced = lastCardAt.map { $0.addingTimeInterval(NudgeScheduler.spacing) }
-        let floor = [notBefore, spaced].compactMap { $0 }.max()
-        var wake = NudgeScheduler.nextWake(settings, lastDone: progress.lastDone, snoozedUntil: progress.snoozedUntil,
-                                           now: now, notBefore: floor, calendar: calendar)
-        if away, let w = wake { wake = min(w, now.addingTimeInterval(NudgeScheduler.minimumWake)) }
-        guard let wake else {
-            task?.cancel()
-            task = nil
-            nextWake = nil
+    /// After a change (start, a button, settings, a clock change), without reading the idle
+    /// time: the next due time, or the next sample assuming the user is active now.
+    private func reschedule(now: Date) {
+        guard settings.anyOn else {
+            cancelTimer()
             return
+        }
+        var wake = NudgeScheduler.nextWake(settings, lastDone: progress.lastDone, snoozedUntil: progress.snoozedUntil,
+                                           now: now, notBefore: cardFloor(progress), calendar: calendar)
+        if samplesBreaks, !NudgeScheduler.isQuiet(settings, at: now, calendar: calendar) {
+            let s = NudgeScheduler.nextSample(now: now, idleSeconds: 0)
+            wake = min(wake ?? s, s)
         }
         schedule(at: wake)
     }
 
-    private func schedule(at wake: Date) {
+    private func schedule(at wake: Date?, tolerance: Duration = WellbeingWidget.tolerance) {
         task?.cancel()
+        task = nil
         nextWake = wake
+        guard let wake else { return }
         let delay = max(0, wake.timeIntervalSince(clock()))
         task = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
+            try? await Task.sleep(for: .seconds(delay), tolerance: tolerance)
             guard !Task.isCancelled else { return }
-            self?.check()
+            self?.sample()
         }
     }
 
-    /// `FocusModel` publishes the end of a running focus session under `untilKey`.
-    private func focusSessionActive(_ now: Date) -> Bool {
-        (defaults.object(forKey: FocusModel.untilKey) as? Date).map { $0 > now } ?? false
+    private func cancelTimer() { schedule(at: nil) }
+
+    /// When the running PlatyNotch focus session ends (`FocusModel.untilKey`); nil when none.
+    private func focusSessionEnd(_ now: Date) -> Date? {
+        (defaults.object(forKey: FocusModel.untilKey) as? Date).flatMap { $0 > now ? $0 : nil }
     }
 
-    // MARK: - Sleep, lock, session
+    // MARK: - Sleep, lock, session, clock
 
     func setPaused(_ reason: PauseReason, _ on: Bool) {
         guard running, pauseReasons.contains(reason) != on else { return }
@@ -324,30 +357,43 @@ final class WellbeingWidget: NotchWidget {
         let now = clock()
         if !wasPaused, paused {
             pausedAt = now
-            task?.cancel()
-            task = nil
-            nextWake = nil
+            cancelTimer()
             endCard()   // never answered, never counted
         } else if wasPaused, !paused {
             let away = pausedAt.map { now.timeIntervalSince($0) } ?? 0
             pausedAt = nil
-            progress.lastDone = NudgeScheduler.recordingBreaks(progress.lastDone, settings: settings, now: now,
-                                                               idleSeconds: away, calendar: calendar)
-            save()
-            schedule(now: now, notBefore: now.addingTimeInterval(NudgeScheduler.resumeGrace))
+            var p = progress.clamped(now: now)
+            p.lastDone = NudgeScheduler.recordingBreaks(p.lastDone, settings: settings, now: now,
+                                                        idleSeconds: away, calendar: calendar)
+            commit(p)
+            resumeAt = now.addingTimeInterval(NudgeScheduler.resumeGrace)
+            wasAway = false
+            reschedule(now: now)
         }
     }
 
-    private func watchSleepAndLock() {
+    /// The system clock or time zone changed: nothing saved may lie in the future.
+    func clockChanged() {
+        guard running else { return }
+        let now = clock()
+        commit(progress.clamped(now: now))
+        if let r = resumeAt, r > now.addingTimeInterval(NudgeScheduler.resumeGrace) {
+            resumeAt = now.addingTimeInterval(NudgeScheduler.resumeGrace)
+        }
+        if !paused, nudge == nil { reschedule(now: now) }
+    }
+
+    private func watchSystemEvents() {
         guard observers.isEmpty else { return }
         let ws = NSWorkspace.shared.notificationCenter
+        let dn = DistributedNotificationCenter.default()
         let pairs: [(NotificationCenter, Notification.Name, PauseReason, Bool)] = [
             (ws, NSWorkspace.willSleepNotification, .sleep, true),
             (ws, NSWorkspace.didWakeNotification, .sleep, false),
             (ws, NSWorkspace.sessionDidResignActiveNotification, .session, true),
             (ws, NSWorkspace.sessionDidBecomeActiveNotification, .session, false),
-            (DistributedNotificationCenter.default(), Notification.Name("com.apple.screenIsLocked"), .locked, true),
-            (DistributedNotificationCenter.default(), Notification.Name("com.apple.screenIsUnlocked"), .locked, false),
+            (dn, Notification.Name("com.apple.screenIsLocked"), .locked, true),
+            (dn, Notification.Name("com.apple.screenIsUnlocked"), .locked, false),
         ]
         for (center, name, reason, on) in pairs {
             let o = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
@@ -355,15 +401,28 @@ final class WellbeingWidget: NotchWidget {
             }
             observers.append((center, o))
         }
+        for name in [Notification.Name.NSSystemClockDidChange, .NSSystemTimeZoneDidChange] {
+            let o = NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.clockChanged() }
+            }
+            observers.append((NotificationCenter.default, o))
+        }
     }
 
     // MARK: - Persistence
 
-    private func save() {
-        guard persist else { return }
-        let enc = JSONEncoder()
-        if let data = try? enc.encode(progress) { defaults.set(data, forKey: NudgeProgress.key) }
-        if let data = try? enc.encode(water) { defaults.set(data, forKey: WaterLog.key) }
+    /// Takes `next` and saves it, only when it differs.
+    private func commit(_ next: NudgeProgress) {
+        guard next != progress else { return }
+        progress = next
+        guard persist, let data = try? JSONEncoder().encode(next) else { return }
+        defaults.set(data, forKey: NudgeProgress.key)
+        saves += 1
+    }
+
+    private func saveWater() {
+        guard persist, let data = try? JSONEncoder().encode(water) else { return }
+        defaults.set(data, forKey: WaterLog.key)
     }
 
     private static func load<T: Decodable>(_ type: T.Type, _ key: String, _ defaults: UserDefaults) -> T? {

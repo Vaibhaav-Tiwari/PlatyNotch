@@ -255,6 +255,48 @@ final class WellbeingTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(NudgeSettings.self, from: data), s)
     }
 
+    // MARK: - Fix round 1: adaptive idle sampling, clock changes, spacing across relaunch
+
+    func testNextSampleAdapts() {
+        let now = at(2026, 10, 21, 14)
+        // Active: the next sample is when a pause starting now would reach 5 minutes.
+        XCTAssertEqual(NudgeScheduler.nextSample(now: now, idleSeconds: 0), now.addingTimeInterval(300))
+        XCTAssertEqual(NudgeScheduler.nextSample(now: now, idleSeconds: 100), now.addingTimeInterval(200))
+        // Never sooner than a minute (nearly idle, or away).
+        XCTAssertEqual(NudgeScheduler.nextSample(now: now, idleSeconds: 280), now.addingTimeInterval(60))
+        XCTAssertEqual(NudgeScheduler.nextSample(now: now, idleSeconds: 3600), now.addingTimeInterval(60))
+        // A pause of 10 minutes anywhere between two samples is always seen: whatever the
+        // idle time at a sample, the next one comes before that pause reaches 5 minutes + 1 min.
+        for idle in stride(from: 0.0, through: 299, by: 1) {
+            let next = NudgeScheduler.nextSample(now: now, idleSeconds: idle)
+            XCTAssertLessThanOrEqual(next.timeIntervalSince(now) + idle, NudgeScheduler.idleBreak + NudgeScheduler.minimumWake)
+        }
+    }
+
+    func testProgressClampedAfterAClockChange() {
+        let now = at(2026, 10, 21, 14)
+        let future = now.addingTimeInterval(3 * 3600)   // the clock was set back three hours
+        let p = NudgeProgress(lastDone: [.eyes: future, .water: now.addingTimeInterval(-600)],
+                              snoozedUntil: [.stand: future], lastCard: future)
+        let c = p.clamped(now: now)
+        XCTAssertEqual(c.lastDone[.eyes], now)
+        XCTAssertEqual(c.lastDone[.water], now.addingTimeInterval(-600), "past times stay")
+        XCTAssertEqual(c.snoozedUntil[.stand], now.addingTimeInterval(NudgeScheduler.snooze))
+        XCTAssertEqual(c.lastCard, now)
+        XCTAssertEqual(c.clamped(now: now), c)
+        let fine = NudgeProgress(lastDone: [.eyes: now], snoozedUntil: [.stand: now.addingTimeInterval(60)])
+        XCTAssertEqual(fine.clamped(now: now), fine)
+    }
+
+    func testProgressKeepsTheLastCard() throws {
+        let now = at(2026, 10, 21, 14)
+        let p = NudgeProgress(lastDone: [.eyes: now], lastCard: now)
+        XCTAssertEqual(try JSONDecoder().decode(NudgeProgress.self, from: JSONEncoder().encode(p)).lastCard, now)
+        // Saved before it had `lastCard`.
+        let old = try JSONDecoder().decode(NudgeProgress.self, from: Data(#"{"lastDone": {}, "snoozedUntil": {}}"#.utf8))
+        XCTAssertNil(old.lastCard)
+    }
+
     func testProgressRoundTrips() throws {
         let now = at(2026, 10, 21, 14)
         let p = NudgeProgress(lastDone: done(3, before: now), snoozedUntil: [.water: now])

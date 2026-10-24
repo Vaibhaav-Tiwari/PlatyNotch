@@ -395,7 +395,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                AnyView(ClipPickerView(model: ClipPickerModel(widget: clipboard), onChoose: { _ in },
                                       trusted: { false }, imageURL: { _ in nil })),
                AnyView(RingingOverlay(title: "Alarm", subtitle: "Alarm · 7:00", isAlarm: true, onSnooze: {}, onStop: {}))]
-            + Self.dayViews() + Self.wellbeingViews()
+            + Self.dayViews() + Self.wellbeingViews() + Self.systemViews()
         for v in views {
             NSHostingView(rootView: v.frame(width: 380).environment(\.colorScheme, .dark)).layoutSubtreeIfNeeded()
         }
@@ -425,6 +425,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let now = Date()
         let cards = NudgeKind.allCases.map { AnyView(NudgeCard(widget: w, nudge: .init(kind: $0, shownAt: now, until: now))) }
         return [w.tileView(), w.settingsView()].compactMap { $0 } + cards
+    }
+
+    /// Task 9's views with an inert widget (no IOKit, no assertion, nothing saved): the
+    /// tile and settings, a battery row and the plug-in / unplug peeks with sample states.
+    private static func systemViews() -> [AnyView] {
+        let w = SystemWidget.inert()
+        let charging = BatteryState(percent: 72, charging: true, pluggedIn: true, minutesRemaining: 48)
+        let low = BatteryState(percent: 8, charging: false, pluggedIn: false, minutesRemaining: 12)
+        return [w.tileView(), w.settingsView(), AnyView(BatteryRow(state: low)),
+                AnyView(PowerPeekView(peek: .init(change: .pluggedIn, state: charging))),
+                AnyView(PowerPeekView(peek: .init(change: .unplugged, state: low)))].compactMap { $0 }
     }
 
     /// `--smoke-settings`: builds the Settings window (every section) and the onboarding

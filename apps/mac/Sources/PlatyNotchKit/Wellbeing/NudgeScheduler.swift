@@ -193,6 +193,13 @@ public enum NudgeScheduler {
         return out
     }
 
+    /// The next idle sample while the widget is on: when a pause going on since the last
+    /// input would reach `idleBreak`, never sooner than `minimumWake`. So any pause of
+    /// `idleBreak + minimumWake` or more is seen, wherever it falls between due times.
+    public static func nextSample(now: Date, idleSeconds: TimeInterval) -> Date {
+        now.addingTimeInterval(max(minimumWake, idleBreak - max(0, idleSeconds)))
+    }
+
     /// The single wake-up for the next check: the earliest due time of the nudges that are
     /// on (moved to the end of quiet hours when it falls inside them), never before
     /// `notBefore` and never sooner than `minimumWake` from `now`. Nil when every nudge is
@@ -209,15 +216,27 @@ public enum NudgeScheduler {
     }
 }
 
-/// When each nudge was last done and how long it is snoozed (UserDefaults, JSON).
+/// When each nudge was last done, how long it is snoozed, and when the last card showed
+/// (the spacing between cards survives a relaunch). UserDefaults, JSON.
 public struct NudgeProgress: Codable, Equatable, Sendable {
     public static let key = "wellbeing.progress"
 
     public var lastDone: [NudgeKind: Date]
     public var snoozedUntil: [NudgeKind: Date]
+    public var lastCard: Date?
 
-    public init(lastDone: [NudgeKind: Date] = [:], snoozedUntil: [NudgeKind: Date] = [:]) {
+    public init(lastDone: [NudgeKind: Date] = [:], snoozedUntil: [NudgeKind: Date] = [:], lastCard: Date? = nil) {
         self.lastDone = lastDone
         self.snoozedUntil = snoozedUntil
+        self.lastCard = lastCard
+    }
+
+    /// After the clock was set back: nothing done (or shown) later than `now`, and no
+    /// snooze longer than one from now.
+    public func clamped(now: Date) -> NudgeProgress {
+        let limit = now.addingTimeInterval(NudgeScheduler.snooze)
+        return NudgeProgress(lastDone: lastDone.mapValues { min($0, now) },
+                             snoozedUntil: snoozedUntil.mapValues { min($0, limit) },
+                             lastCard: lastCard.map { min($0, now) })
     }
 }

@@ -93,6 +93,8 @@ public enum LivePriority {
     /// Battery at or below 10%.
     public static let batteryLow = 20
     public static let shelfItems = 10
+    /// Charging (ambient, C9: shows only when nothing else is live, never keeps Minimal up).
+    public static let batteryCharging = 5
     /// At or below this an activity is ambient (shelf, battery above 10%, weather).
     public static let ambient = 10
 
