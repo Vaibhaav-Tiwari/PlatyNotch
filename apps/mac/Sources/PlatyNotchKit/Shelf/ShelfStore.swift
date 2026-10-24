@@ -138,14 +138,18 @@ public final class ShelfStore {
     private let fileManager: FileManager
     private let now: () -> Date
     private let renameFolder: FolderRename
+    private let writeIndex: IndexWrite
 
     /// `persist: false` (smoke runs) never touches the disk: nothing is read or written,
     /// and owned copies cannot be made.
     /// `renameFolder`: how `transfer` moves an owned folder out of this store (tests inject failures).
+    /// `writeIndex`: how the index is written (tests inject failures).
     public init(directory: URL, persist: Bool = true, bookmarks: ShelfBookmarks = FileBookmarks(),
                 fileManager: FileManager = .default, now: @escaping () -> Date = Date.init,
-                renameFolder: @escaping FolderRename = ShelfStore.renameExclusive) {
+                renameFolder: @escaping FolderRename = ShelfStore.renameExclusive,
+                writeIndex: @escaping IndexWrite = ShelfStore.writeIndexFile) {
         self.renameFolder = renameFolder
+        self.writeIndex = writeIndex
         self.directory = directory
         self.persist = persist
         self.bookmarks = bookmarks
@@ -314,6 +318,17 @@ public final class ShelfStore {
         return rc
     }
 
+    /// Writes the encoded index to `url` (0600); throws when it was not written in full.
+    /// A seam for tests: a writer may also fail after writing (as a failed permission
+    /// change would), which is why a rolled-back `transfer` writes the target again.
+    public typealias IndexWrite = @Sendable (_ data: Data, _ url: URL) throws -> Void
+
+    /// An atomic write, then 0600.
+    public static let writeIndexFile: IndexWrite = { data, url in
+        try data.write(to: url, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
     /// Moves item `id` to `other` (another store, e.g. a basket's), keeping its id, pin
     /// and added date (so an owned copy still expires 7 days after it was first added).
     /// An owned file's folder moves with one atomic rename (`renameFolder`, by default
@@ -323,7 +338,8 @@ public final class ShelfStore {
     /// Nothing is ever deleted: on any failure (no such item, `other` already lists the
     /// id, either store not persisting or read-only, `other`'s index not written, the
     /// rename failing for any reason, `EXDEV` and `EEXIST` included) the item stays here,
-    /// unchanged, `other` is put back, and nil is returned. The order of writes keeps a
+    /// unchanged, `other` is put back (in memory, then its index is written again, so a
+    /// write that failed part way leaves no record of the item there), and nil is returned. The order of writes keeps a
     /// crash safe too: `other`'s index is written (and checked) before the folder moves,
     /// and this index drops the item only after, so no index ever lacks an owned folder
     /// the other has (a sweep could otherwise remove it, since a rename keeps the old
@@ -347,12 +363,11 @@ public final class ShelfStore {
             moved.kind = .file(ref)
             other.items.insert(moved, at: 0)
             guard other.save() else {
-                other.items = before   // its index was not written: nothing moves
+                other.rollBack(to: before)   // its index was not written: nothing moves
                 return nil
             }
             guard renameFolder(from, to) == 0 else {
-                other.items = before   // only the record; no file is touched
-                other.save()
+                other.rollBack(to: before)   // only the record; no file is touched
                 return nil
             }
             if let bookmark = other.bookmarks.make(ref.url), let j = other.items.firstIndex(where: { $0.id == id }) {
@@ -372,13 +387,22 @@ public final class ShelfStore {
                 other.items.insert(moved, at: 0)
             }
             guard other.save() else {
-                other.items = before
+                other.rollBack(to: before)
                 return nil
             }
         }
         items.removeAll { $0.id == id }   // the record only: its folder (if any) has moved
         save()
         return moved
+    }
+
+    /// A failed `transfer` puts this (target) store's items back and writes its index
+    /// again, so the file matches memory. If that write fails too, the index on disk may
+    /// still list the item; it never owns a folder there (no rename happened), so nothing
+    /// can be deleted on its account: an owned record without its folder is only missing.
+    private func rollBack(to before: [ShelfItem]) {
+        items = before
+        if !save() { Self.log.error("shelf transfer rolled back, but the target index could not be written again") }
     }
 
     // MARK: - Files on disk
@@ -673,8 +697,7 @@ public final class ShelfStore {
     private func save() -> Bool {
         guard persist, !readOnly, ensureDirectory(), let data = try? JSONEncoder().encode(items) else { return false }
         do {
-            try data.write(to: indexURL, options: .atomic)
-            try fileManager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: indexURL.path)
+            try writeIndex(data, indexURL)
             return true
         } catch {
             return false
