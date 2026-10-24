@@ -58,7 +58,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         options.smoke || options.smokeSettings ? NoAudioTap() as AudioTapping : SystemAudioTap()
     }))
     /// Built-in and plugin widgets. Smoke runs read the saved layout but never write it.
-    private lazy var widgets = WidgetRegistry(persist: !options.smoke && !options.smokeSettings)
+    /// Smoke and perf runs never save the layout (perf-idle forces it through the argument domain).
+    private lazy var widgets = WidgetRegistry(persist: !options.smoke && !options.smokeSettings && !options.perfRun)
     /// Clipboard history (off by default). Smoke runs get an inert one: no pasteboard, no
     /// hot key, no events, nothing on disk.
     private lazy var clipboard = options.smoke || options.smokeSettings ? ClipboardWidget.inert() : ClipboardWidget()

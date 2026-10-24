@@ -22,6 +22,9 @@ public struct LaunchOptions: Equatable, Sendable {
     /// `--state music` passes both): now playing reports a fake track as playing instead of
     /// reading any player, so the pill shows the music bars. Either one alone does nothing.
     public var fakeNowPlaying: Bool
+    /// `--perf-run` (scripts/perf-idle.sh): the widget registry does not persist, so a
+    /// measurement never writes `widgets.layout` (C4).
+    public var perfRun: Bool
 
     public init(arguments: [String], env: [String: String]) {
         smoke = arguments.dropFirst().contains("--smoke")
@@ -31,7 +34,8 @@ public struct LaunchOptions: Equatable, Sendable {
         renderDir = env["PLATYNOTCH_RENDER_DIR"].flatMap { $0.isEmpty ? nil : $0 }
         renderIconDir = Self.value(after: "--render-icon", in: arguments)
         platyGalleryDir = Self.value(after: "--platy-gallery", in: arguments)
-        fakeNowPlaying = env["PLATYNOTCH_FAKE_NOWPLAYING"] == "1" && arguments.dropFirst().contains("--perf-run")
+        perfRun = arguments.dropFirst().contains("--perf-run")
+        fakeNowPlaying = env["PLATYNOTCH_FAKE_NOWPLAYING"] == "1" && perfRun
     }
 
     /// The argument after `flag`, if there is one that is not another flag.

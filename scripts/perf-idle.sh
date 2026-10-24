@@ -46,13 +46,19 @@
 # build/mediaremote-adapter when build-app.sh has built it there, else the fallback.
 #
 # Settings: the release executable's UserDefaults domain is "PlatyNotch", the bundle
-# copy's dev.platynotch.perf (never the installed app's dev.platynotch.app). Widget layout and Appearance are forced to their
-# defaults for this run through the volatile argument domain; nothing is written.
+# copy's dev.platynotch.perf (never the installed app's dev.platynotch.app). Widget layout and
+# Appearance are forced to their defaults for this run through the volatile argument domain, and
+# with --perf-run the app's widget registry does not persist, so widgets.layout is never written.
 # Nothing touches ~/Library/Application Support/PlatyNotch.
+#
+# CPU: the mean is the app's own (top). The now-playing adapter runs as the app's child process
+# (/usr/bin/perl); its CPU over the same window is summed from `ps` (pgrep -P) and reported,
+# and the run also fails when the app and its children together are above the limit.
 set -euo pipefail
 
 usage() {
-  sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//'
+  # The whole header comment, through Environment and Settings.
+  awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
   echo "usage: scripts/perf-idle.sh [--app [PlatyNotch.app]] [--music-fallback] [--state working|waiting|approval|music]"
 }
 
@@ -224,15 +230,34 @@ if [[ -n "$STATE" && "$STATE" != music ]]; then
 fi
 kill -0 "$APP_PID" 2>/dev/null || { echo "the app exited:"; cat "$WORK/app.log"; exit 1; }
 
+# children_cpu_seconds <pid>: CPU time used so far by the direct children (the adapter).
+children_cpu_seconds() {
+  local total=0 c
+  for c in $(pgrep -P "$1" 2>/dev/null || true); do
+    total="$(awk -v a="$total" -v b="$(cpu_seconds "$c")" 'BEGIN { printf "%.2f", a + b }')"
+  done
+  echo "$total"
+}
+
 log "sampling: top -l $SAMPLES -s 1 -pid $APP_PID -stats cpu"
 PLAYING_BEFORE="$(playing_now)"
+CHILDREN_START="$(pgrep -P "$APP_PID" 2>/dev/null | tr '\n' ' ' || true)"
 CPU_BEFORE="$(cpu_seconds "$APP_PID")"
+KIDS_BEFORE="$(children_cpu_seconds "$APP_PID")"
 START="$(date +%s)"
 VALUES="$(top -l "$SAMPLES" -s 1 -pid "$APP_PID" -stats cpu | awk '/^%CPU/ { getline; print $1 }')"
 kill -0 "$APP_PID" 2>/dev/null || { echo "the app exited while sampled:"; cat "$WORK/app.log"; exit 1; }
 CPU_AFTER="$(cpu_seconds "$APP_PID")"
+KIDS_AFTER="$(children_cpu_seconds "$APP_PID")"
+CHILDREN_END="$(pgrep -P "$APP_PID" 2>/dev/null | tr '\n' ' ' || true)"
 PLAYING_AFTER="$(playing_now)"
 ELAPSED=$(( $(date +%s) - START ))
+# A child that started or exited during the window makes the difference approximate.
+KIDS="$(awk -v a="$KIDS_BEFORE" -v b="$KIDS_AFTER" -v t="$ELAPSED" \
+  'BEGIN { d = b - a; if (d < 0) d = 0; printf "%.2f %.3f", d, (t > 0 ? 100 * d / t : 0) }')"
+read -r KIDS_S KIDS_PCT <<<"$KIDS"
+TOTAL_PCT="$(awk -v a="$CPU_BEFORE" -v b="$CPU_AFTER" -v k="$KIDS_S" -v t="$ELAPSED" \
+  'BEGIN { printf "%.3f", (t > 0 ? 100 * (b - a + k) / t : 0) }')"
 # Cross-check from the process's own CPU time over the whole sampling window.
 CROSS="$(awk -v a="$CPU_BEFORE" -v b="$CPU_AFTER" -v t="$ELAPSED" \
   'BEGIN { printf "%.2f s of CPU in %d s (%.3f%%)", b - a, t, (t > 0 ? 100 * (b - a) / t : 0) }')"
@@ -254,11 +279,16 @@ read -r N MEAN MIN MAX <<<"$STATS"
 echo
 echo "samples: $N (first dropped)  mean: ${MEAN}%  min: ${MIN}%  max: ${MAX}%  limit: ${LIMIT}%"
 echo "cross-check (ps): $CROSS"
+echo "children (adapter; pids ${CHILDREN_START:-none}→ ${CHILDREN_END:-none}): ${KIDS_S} s (${KIDS_PCT}%)  app + children: ${TOTAL_PCT}%"
 echo "music: $MUSIC; players running: $RUNNING"
 echo "state: ${STATE:-rest}"
 echo "a real player playing (adapter): before ${PLAYING_BEFORE}, after ${PLAYING_AFTER}"
 if awk -v m="$MEAN" -v l="$LIMIT" 'BEGIN { exit !(m > l) }'; then
   echo "FAIL: idle CPU mean ${MEAN}% is above ${LIMIT}%"
+  exit 1
+fi
+if awk -v m="$TOTAL_PCT" -v l="$LIMIT" 'BEGIN { exit !(m > l) }'; then
+  echo "FAIL: the app and its children used ${TOTAL_PCT}%, above ${LIMIT}%"
   exit 1
 fi
 echo "PASS: idle CPU mean ${MEAN}% is within ${LIMIT}%"

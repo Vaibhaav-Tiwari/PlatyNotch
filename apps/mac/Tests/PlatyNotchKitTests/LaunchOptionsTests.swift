@@ -60,4 +60,11 @@ extension LaunchOptionsTests {
         XCTAssertFalse(LaunchOptions(arguments: ["PlatyNotch", "--perf-run"], env: ["PLATYNOTCH_FAKE_NOWPLAYING": "0"]).fakeNowPlaying)
         XCTAssertTrue(LaunchOptions(arguments: ["PlatyNotch", "--perf-run"], env: ["PLATYNOTCH_FAKE_NOWPLAYING": "1"]).fakeNowPlaying)
     }
+
+    /// Final review C4: the perf run's flag (the registry then never writes the layout).
+    func testPerfRunFlag() {
+        XCTAssertTrue(LaunchOptions(arguments: ["PlatyNotch", "--perf-run"], env: [:]).perfRun)
+        XCTAssertFalse(LaunchOptions(arguments: ["PlatyNotch"], env: [:]).perfRun)
+        XCTAssertFalse(LaunchOptions(arguments: ["--perf-run"], env: [:]).perfRun, "argv[0] is the program")
+    }
 }
