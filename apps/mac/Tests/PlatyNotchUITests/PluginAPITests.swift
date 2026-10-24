@@ -25,20 +25,9 @@ private final class RecordingPlugin: NotchPlugin {
 }
 
 @MainActor
-final class PluginAPITests: XCTestCase {
-    nonisolated(unsafe) private var suites: [String] = []
+final class PluginAPITests: DefaultsTestCase {
 
-    override func tearDown() {
-        for name in suites { UserDefaults.standard.removePersistentDomain(forName: name) }
-        suites = []
-        super.tearDown()
-    }
 
-    private func defaults() -> UserDefaults {
-        let name = "PluginAPITests-\(UUID().uuidString)"
-        suites.append(name)
-        return UserDefaults(suiteName: name)!
-    }
 
     private func script(_ body: String) throws -> URL {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("pnplug\(UInt32.random(in: 0..<UInt32.max))")

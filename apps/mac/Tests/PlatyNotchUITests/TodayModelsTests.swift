@@ -4,7 +4,7 @@ import XCTest
 @testable import PlatyNotchUI
 
 @MainActor
-final class TodayModelsTests: XCTestCase {
+final class TodayModelsTests: DefaultsTestCase {
     private func waitUntil(_ condition: @MainActor () -> Bool) async {
         for _ in 0..<200 where !condition() { try? await Task.sleep(for: .milliseconds(5)) }
     }
@@ -54,9 +54,7 @@ final class TodayModelsTests: XCTestCase {
     }
 
     func testFocusPersistsAndHoldsWhileRunning() {
-        let suite = "FocusModelTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { UserDefaults.standard.removePersistentDomain(forName: suite) }
+        let defaults = self.defaults()
         let now = Date()
         let focus = FocusModel(defaults: defaults)
         XCTAssertFalse(focus.focusActive)
@@ -76,9 +74,7 @@ final class TodayModelsTests: XCTestCase {
     }
 
     func testFinishedFocusIsNotActive() {
-        let suite = "FocusModelTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        addTeardownBlock { UserDefaults.standard.removePersistentDomain(forName: suite) }
+        let defaults = self.defaults()
         var finished = 0
         let focus = FocusModel(defaults: defaults, onFinish: { finished += 1 })
         focus.start(minutes: 25, now: Date().addingTimeInterval(-26 * 60))   // already over

@@ -3,20 +3,9 @@ import Foundation
 import XCTest
 @testable import PlatyNotchKit
 
-final class AppearanceTests: XCTestCase {
-    private var suites: [String] = []
+final class AppearanceTests: DefaultsTestCase {
 
-    override func tearDown() {
-        for name in suites { UserDefaults.standard.removePersistentDomain(forName: name) }
-        suites = []
-        super.tearDown()
-    }
 
-    private func defaults() -> UserDefaults {
-        let name = "AppearanceTests-\(UUID().uuidString)"
-        suites.append(name)
-        return UserDefaults(suiteName: name)!
-    }
 
     // MARK: - Settings
 

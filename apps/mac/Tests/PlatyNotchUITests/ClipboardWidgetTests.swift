@@ -124,14 +124,11 @@ private final class FakeTarget: PasteTarget {
 }
 
 @MainActor
-final class ClipboardWidgetTests: XCTestCase {
-    nonisolated(unsafe) private var suites: [String] = []
+final class ClipboardWidgetTests: DefaultsTestCase {
     nonisolated(unsafe) private var dirs: [URL] = []
 
     override func tearDown() {
-        for name in suites { UserDefaults.standard.removePersistentDomain(forName: name) }
         for d in dirs { try? FileManager.default.removeItem(at: d) }
-        suites = []
         dirs = []
         super.tearDown()
     }
@@ -172,9 +169,7 @@ final class ClipboardWidgetTests: XCTestCase {
             let json = try JSONSerialization.data(withJSONObject: ["memory": ["exclude_apps": excludeApps]])
             try json.write(to: configURL)
         }
-        let suite = "ClipboardWidgetTests-\(UUID().uuidString)"
-        suites.append(suite)
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = self.defaults()
         let pb = FakePasteboard(), front = FakeFrontmost(), timer = FakeTimer(), keys = FakeHotKeys()
         let poster = FakePoster()
         let box = TrustBox()

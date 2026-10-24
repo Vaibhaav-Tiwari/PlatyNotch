@@ -8,20 +8,9 @@ import XCTest
 /// pinned cursor), above all the Plan 3 ruling that full-screen hiding never hides a
 /// pending approval or a ringing alarm (C32).
 @MainActor
-final class AppearanceControllerTests: XCTestCase {
-    nonisolated(unsafe) private var suites: [String] = []
+final class AppearanceControllerTests: DefaultsTestCase {
 
-    override func tearDown() {
-        for name in suites { UserDefaults.standard.removePersistentDomain(forName: name) }
-        suites = []
-        super.tearDown()
-    }
 
-    private func defaults() -> UserDefaults {
-        let name = "AppearanceControllerTests-\(UUID().uuidString)"
-        suites.append(name)
-        return UserDefaults(suiteName: name)!
-    }
 
     private var mbpLayout: PanelLayout {
         PanelLayout(screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),

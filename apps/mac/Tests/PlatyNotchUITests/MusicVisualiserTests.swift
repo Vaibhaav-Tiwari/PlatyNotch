@@ -57,15 +57,9 @@ final class ManualSleeper {
 }
 
 @MainActor
-final class MusicVisualiserTests: XCTestCase {
+final class MusicVisualiserTests: DefaultsTestCase {
     static let build = "dr:test-build"
     private var sleeper = ManualSleeper()
-
-    private func defaults() -> UserDefaults {
-        let suite = "dev.platynotch.tests.visualiser.\(UUID().uuidString)"
-        addTeardownBlock { UserDefaults.standard.removePersistentDomain(forName: suite) }
-        return UserDefaults(suiteName: suite)!
-    }
 
     private func make(enabled: Bool = false, prime: TimeInterval = 0.05) -> (MusicVisualiser, () -> [FakeTap], UserDefaults) {
         let d = defaults()

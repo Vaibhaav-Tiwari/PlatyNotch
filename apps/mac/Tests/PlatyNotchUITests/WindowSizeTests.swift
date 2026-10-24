@@ -7,11 +7,11 @@ import XCTest
 /// controller must not shrink or stretch them to the content's ideal size (a user saw
 /// onboarding open as a narrow strip the height of the screen).
 @MainActor
-final class WindowSizeTests: XCTestCase {
+final class WindowSizeTests: DefaultsTestCase {
     private func services() -> SettingsServices {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
-        let defaults = UserDefaults(suiteName: "platynotch.tests.\(UUID().uuidString)")!
+        let defaults = self.defaults()
         return SettingsServices(config: ConfigFileStore(url: dir.appendingPathComponent("config.json")),
                                 runner: CoreRunner(binaryURL: dir.appendingPathComponent("notch")),
                                 store: AppStore(), capture: nil,

@@ -405,7 +405,7 @@ final class FlappyTests: XCTestCase {
     }
 }
 
-final class HighScoresTests: XCTestCase {
+final class HighScoresTests: DefaultsTestCase {
     func testHighScoreRecord() {
         var h = HighScores()
         XCTAssertEqual(h.best("snake"), 0)
@@ -420,9 +420,7 @@ final class HighScoresTests: XCTestCase {
     }
 
     func testRoundTripsThroughDefaults() throws {
-        let name = "HighScoresTests-\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: name))
-        defer { defaults.removePersistentDomain(forName: name) }
+        let defaults = self.defaults()
         XCTAssertEqual(HighScores.load(from: defaults), HighScores())
         var h = HighScores()
         _ = h.record(game: "2048", score: 1200)

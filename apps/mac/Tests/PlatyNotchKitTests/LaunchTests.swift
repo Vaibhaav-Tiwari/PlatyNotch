@@ -4,7 +4,7 @@ import XCTest
 
 /// Pinned sites, favicon URLs and policy, browser scripts and the Shortcuts CLI (Task 11).
 /// Imports Kit without `@testable`: everything the UI uses must be public (C6).
-final class LaunchTests: XCTestCase {
+final class LaunchTests: DefaultsTestCase {
     private func url(_ s: String) -> URL { URL(string: s)! }
 
     // MARK: - Favicon URLs
@@ -155,9 +155,7 @@ final class LaunchTests: XCTestCase {
     }
 
     func testLoadDropsUnsafeAndOverLimit() throws {
-        let name = "LaunchTests-\(UUID().uuidString)"
-        let d = try XCTUnwrap(UserDefaults(suiteName: name))
-        defer { d.removePersistentDomain(forName: name) }
+        let d = defaults()
         XCTAssertEqual(LaunchPins.load(from: d), LaunchPins(), "nothing saved")
         var sites = [PinnedSite(title: "bad", url: url("javascript:alert(1)"))]
         sites += (0..<20).map { PinnedSite(title: "s\($0)", url: url("https://s\($0).com")) }

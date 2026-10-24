@@ -20,20 +20,9 @@ private final class FakeFetcher: WeatherFetching, @unchecked Sendable {
 }
 
 @MainActor
-final class DayWidgetsTests: XCTestCase {
-    nonisolated(unsafe) private var suites: [String] = []
+final class DayWidgetsTests: DefaultsTestCase {
 
-    override func tearDown() {
-        for name in suites { UserDefaults.standard.removePersistentDomain(forName: name) }
-        suites = []
-        super.tearDown()
-    }
 
-    private func defaults() -> UserDefaults {
-        let name = "DayWidgetsTests-\(UUID().uuidString)"
-        suites.append(name)
-        return UserDefaults(suiteName: name)!
-    }
 
     private func waitUntil(_ condition: @MainActor () -> Bool) async {
         for _ in 0..<400 where !condition() { try? await Task.sleep(for: .milliseconds(5)) }

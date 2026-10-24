@@ -62,22 +62,11 @@ private final class Clock {
 }
 
 @MainActor
-final class TimeWidgetTests: XCTestCase {
-    nonisolated(unsafe) private var suites: [String] = []
+final class TimeWidgetTests: DefaultsTestCase {
     // 2026-10-20 06:00 New York, a Tuesday.
     private let t0 = FakeNotifier.calendar.date(from: DateComponents(year: 2026, month: 10, day: 20, hour: 6))!
 
-    override func tearDown() {
-        for name in suites { UserDefaults.standard.removePersistentDomain(forName: name) }
-        suites = []
-        super.tearDown()
-    }
 
-    private func defaults() -> UserDefaults {
-        let name = "TimeWidgetTests-\(UUID().uuidString)"
-        suites.append(name)
-        return UserDefaults(suiteName: name)!
-    }
 
     private struct Rig {
         let widget: TimeWidget

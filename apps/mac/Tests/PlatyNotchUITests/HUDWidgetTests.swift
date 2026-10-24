@@ -78,20 +78,9 @@ private final class FakeLevelControl: LevelControl {
 }
 
 @MainActor
-final class HUDWidgetTests: XCTestCase {
-    nonisolated(unsafe) private var suites: [String] = []
+final class HUDWidgetTests: DefaultsTestCase {
 
-    override func tearDown() {
-        for name in suites { UserDefaults.standard.removePersistentDomain(forName: name) }
-        suites = []
-        super.tearDown()
-    }
 
-    private func defaults() -> UserDefaults {
-        let name = "HUDWidgetTests-\(UUID().uuidString)"
-        suites.append(name)
-        return UserDefaults(suiteName: name)!
-    }
 
     @MainActor private final class Rig {
         let tap = FakeKeyTap()

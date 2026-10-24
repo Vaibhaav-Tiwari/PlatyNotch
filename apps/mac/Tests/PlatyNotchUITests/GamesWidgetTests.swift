@@ -8,20 +8,9 @@ import XCTest
 /// The games controller against the real pause signals: approvals in an `AppStore`, rings
 /// in `PanelSurfaces`, a panel tab's state. No window, no frames from a display.
 @MainActor
-final class GamesWidgetTests: XCTestCase {
-    nonisolated(unsafe) private var suites: [String] = []
+final class GamesWidgetTests: DefaultsTestCase {
 
-    override func tearDown() {
-        for name in suites { UserDefaults.standard.removePersistentDomain(forName: name) }
-        suites = []
-        super.tearDown()
-    }
 
-    private func defaults() -> UserDefaults {
-        let name = "GamesWidgetTests-\(UUID().uuidString)"
-        suites.append(name)
-        return UserDefaults(suiteName: name)!
-    }
 
     @MainActor private struct Rig {
         let store: AppStore

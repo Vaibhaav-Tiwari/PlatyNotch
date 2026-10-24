@@ -5,7 +5,7 @@ import XCTest
 @testable import PlatyNotchUI
 
 @MainActor
-final class PlatyTests: XCTestCase {
+final class PlatyTests: DefaultsTestCase {
     private func session(_ key: String, _ state: SessionState) -> Session {
         let t = Date(timeIntervalSince1970: 0)
         return Session(key: key, agent: "claude-code", agentName: "Claude Code", sessionID: key, state: state,
@@ -28,9 +28,7 @@ final class PlatyTests: XCTestCase {
 
     /// The built-in games widget is wired to the shared Platy model.
     func testGamesNewBestCelebrates() throws {
-        let suite = "PlatyTests-\(UUID().uuidString)"
-        defer { UserDefaults.standard.removePersistentDomain(forName: suite) }
-        let registry = WidgetRegistry(defaults: try XCTUnwrap(UserDefaults(suiteName: suite)))
+        let registry = WidgetRegistry(defaults: defaults())
         let today = TodayServices(client: CoreClient(socketPath: "/nonexistent"))
         BuiltInWidgets.register(in: registry, store: AppStore(), today: today, persist: false)
         let games = try XCTUnwrap(registry.widget(GamesWidget.widgetID) as? GamesWidget)

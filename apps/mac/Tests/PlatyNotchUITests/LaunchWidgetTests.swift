@@ -8,14 +8,11 @@ import XCTest
 /// AppleScript or Shortcuts. Favicons go to a temp directory, never the real
 /// ~/Library/Application Support/PlatyNotch.
 @MainActor
-final class LaunchWidgetTests: XCTestCase {
-    nonisolated(unsafe) private var suites: [String] = []
+final class LaunchWidgetTests: DefaultsTestCase {
     nonisolated(unsafe) private var dirs: [URL] = []
 
     override func tearDown() {
-        for name in suites { UserDefaults.standard.removePersistentDomain(forName: name) }
         for d in dirs { try? FileManager.default.removeItem(at: d) }
-        suites = []
         dirs = []
         super.tearDown()
     }
@@ -105,11 +102,6 @@ final class LaunchWidgetTests: XCTestCase {
         var opened: () -> [URL]
     }
 
-    private func defaults() -> UserDefaults {
-        let name = "LaunchWidgetTests-\(UUID().uuidString)"
-        suites.append(name)
-        return UserDefaults(suiteName: name)!
-    }
 
     private func tempDir() -> URL {
         let d = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("pnlaunch\(UUID().uuidString)")

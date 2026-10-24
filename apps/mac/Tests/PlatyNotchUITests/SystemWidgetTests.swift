@@ -169,25 +169,17 @@ private let airPods = HeadphonesInfo(id: "aa-bb", name: "AirPods Pro",
 /// The System widget through the real registry, `PanelSurfaces` and a `NotchController`
 /// (no window; the cursor is pinned). Every system service is a fake.
 @MainActor
-final class SystemWidgetTests: XCTestCase {
-    nonisolated(unsafe) private var suites: [String] = []
+final class SystemWidgetTests: DefaultsTestCase {
     nonisolated(unsafe) private var registries: [WidgetRegistry] = []
 
     override func tearDown() async throws {
         await MainActor.run {
             for r in registries { r.stopAll() }   // no task or assertion outlives its test
             registries = []
-            for name in suites { UserDefaults.standard.removePersistentDomain(forName: name) }
-            suites = []
         }
         try await super.tearDown()
     }
 
-    private func defaults() -> UserDefaults {
-        let name = "SystemWidgetTests-\(UUID().uuidString)"
-        suites.append(name)
-        return UserDefaults(suiteName: name)!
-    }
 
     @MainActor private struct Rig {
         let widget: SystemWidget

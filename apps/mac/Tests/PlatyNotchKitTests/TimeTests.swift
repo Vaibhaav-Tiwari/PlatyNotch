@@ -2,20 +2,9 @@ import Foundation
 import PlatyNotchKit   // not @testable: the Time widget uses these through their public API
 import XCTest
 
-final class TimeTests: XCTestCase {
-    private var suites: [String] = []
+final class TimeTests: DefaultsTestCase {
 
-    override func tearDown() {
-        for name in suites { UserDefaults.standard.removePersistentDomain(forName: name) }
-        suites = []
-        super.tearDown()
-    }
 
-    private func defaults() -> UserDefaults {
-        let name = "TimeTests-\(UUID().uuidString)"
-        suites.append(name)
-        return UserDefaults(suiteName: name)!
-    }
 
     private func calendar(_ tz: String = "America/New_York") -> Calendar {
         var cal = Calendar(identifier: .gregorian)

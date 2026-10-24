@@ -26,25 +26,17 @@ private final class Clock {
 /// The wellbeing widget through the real registry, `PanelSurfaces` and a `NotchController`
 /// (no window; the cursor is pinned).
 @MainActor
-final class WellbeingWidgetTests: XCTestCase {
-    nonisolated(unsafe) private var suites: [String] = []
+final class WellbeingWidgetTests: DefaultsTestCase {
     nonisolated(unsafe) private var registries: [WidgetRegistry] = []
 
     override func tearDown() async throws {
         await MainActor.run {
             for r in registries { r.stopAll() }   // no task outlives its test
             registries = []
-            for name in suites { UserDefaults.standard.removePersistentDomain(forName: name) }
-            suites = []
         }
         try await super.tearDown()
     }
 
-    private func defaults() -> UserDefaults {
-        let name = "WellbeingWidgetTests-\(UUID().uuidString)"
-        suites.append(name)
-        return UserDefaults(suiteName: name)!
-    }
 
     private var calendar: Calendar {
         var cal = Calendar(identifier: .gregorian)

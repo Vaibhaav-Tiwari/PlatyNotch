@@ -66,23 +66,15 @@ private final class FakeDraggingInfo: NSObject, NSDraggingInfo {
 }
 
 @MainActor
-final class ShelfWidgetTests: XCTestCase {
-    nonisolated(unsafe) private var suites: [String] = []
+final class ShelfWidgetTests: DefaultsTestCase {
     nonisolated(unsafe) private var dirs: [URL] = []
 
     override func tearDown() {
-        for name in suites { UserDefaults.standard.removePersistentDomain(forName: name) }
         for d in dirs { try? FileManager.default.removeItem(at: d) }
-        suites = []
         dirs = []
         super.tearDown()
     }
 
-    private func defaults() -> UserDefaults {
-        let name = "ShelfWidgetTests-\(UUID().uuidString)"
-        suites.append(name)
-        return UserDefaults(suiteName: name)!
-    }
 
     private func tempDir() -> URL {
         let d = FileManager.default.temporaryDirectory.appendingPathComponent("ShelfWidgetTests-\(UUID().uuidString)")

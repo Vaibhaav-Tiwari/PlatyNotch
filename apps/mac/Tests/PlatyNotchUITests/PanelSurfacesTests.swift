@@ -28,20 +28,9 @@ private final class SurfaceWidget: NotchWidget {
 /// Drives each transient surface through `WidgetContext` → `PanelSurfaces` → `NotchController`
 /// without a window (no `attach`), and builds every surface view off screen.
 @MainActor
-final class PanelSurfacesTests: XCTestCase {
-    nonisolated(unsafe) private var suites: [String] = []
+final class PanelSurfacesTests: DefaultsTestCase {
 
-    override func tearDown() {
-        for name in suites { UserDefaults.standard.removePersistentDomain(forName: name) }
-        suites = []
-        super.tearDown()
-    }
 
-    private func defaults() -> UserDefaults {
-        let name = "PanelSurfacesTests-\(UUID().uuidString)"
-        suites.append(name)
-        return UserDefaults(suiteName: name)!
-    }
 
     @MainActor private struct Rig {
         let surfaces: PanelSurfaces
