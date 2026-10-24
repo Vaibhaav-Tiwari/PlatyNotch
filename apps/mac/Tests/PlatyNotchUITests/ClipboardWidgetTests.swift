@@ -589,6 +589,25 @@ final class ClipboardWidgetTests: DefaultsTestCase {
         XCTAssertNil(m.perform(.swallow))
     }
 
+    /// Task 2 fix round 1: a picker a link opened does not paste on ↩ (or ⌘1–9) until an
+    /// arrow key or the mouse shows the user is there.
+    func testPickerOpenedByALinkHoldsPasteBack() throws {
+        let r = try rig()
+        for t in ["alpha", "beta"] { r.pb.copyText(t); r.timer.tick() }
+        let m = ClipPickerModel(widget: r.widget)
+        m.reset(armed: false)
+        XCTAssertNil(m.perform(.paste))
+        XCTAssertNil(m.perform(.quickPick(1)))
+        XCTAssertNil(m.perform(.down))
+        XCTAssertTrue(m.pasteArmed)
+        XCTAssertEqual(m.perform(.paste), .choose(m.results[1]))
+        m.reset(armed: false)
+        m.arm()   // the mouse moved over it
+        XCTAssertEqual(m.perform(.quickPick(1)), .choose(m.results[0]))
+        m.reset()
+        XCTAssertTrue(m.pasteArmed, "the hot key opens it armed")
+    }
+
     func testPickerWindowSitsBelowTheNotchPanelAndDoesNotActivate() {
         let picker = ClipPickerWindow()
         let notch = NotchPanel(frame: CGRect(x: 0, y: 0, width: 10, height: 10))

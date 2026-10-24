@@ -299,7 +299,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         r.clipboardPicker = { [weak widgets] in
             guard let widgets, widgets.running.contains(ClipboardWidget.widgetID),
                   let clip = widgets.widget(ClipboardWidget.widgetID) as? ClipboardWidget else { return nil }
-            return { clip.openPicker() }
+            return { clip.openPickerFromLink() }
         }
         r.peek = { [weak surfaces] id, until in surfaces?.peek(id: id, until: until) ?? false }
         r.endPeek = { [weak surfaces] id in surfaces?.endPeek(id: id) }

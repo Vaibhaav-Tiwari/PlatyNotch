@@ -14,6 +14,10 @@ final class ClipPickerModel {
 
     private(set) var picker = ClipPicker()
     private(set) var results: [ClipItem] = []
+    /// False after a link opened the picker (`platynotch://clipboard/open`): ↩ and ⌘1–9 do
+    /// nothing until the user presses an arrow key or moves the mouse over it, so a page
+    /// cannot open the picker and have a stray ↩ paste into the app behind it.
+    private(set) var pasteArmed = true
     @ObservationIgnored private unowned let widget: ClipboardWidget
 
     init(widget: ClipboardWidget) {
@@ -33,9 +37,15 @@ final class ClipPickerModel {
         picker.clamp(count: results.count)
     }
 
-    func reset() {
+    func reset(armed: Bool = true) {
         picker = ClipPicker()
+        pasteArmed = armed
         refresh()
+    }
+
+    /// An arrow key or the mouse moving over the picker: the user is here.
+    func arm() {
+        if !pasteArmed { pasteArmed = true }
     }
 
     func select(_ index: Int) { picker.select(index, count: results.count) }
@@ -43,12 +53,14 @@ final class ClipPickerModel {
     /// Applies a key's action; returns what the window should do.
     func perform(_ action: ClipPickerAction) -> Effect? {
         switch action {
-        case .up: picker.move(-1, count: results.count)
-        case .down: picker.move(1, count: results.count)
+        case .up: arm(); picker.move(-1, count: results.count)
+        case .down: arm(); picker.move(1, count: results.count)
         case .close: return .close
         case .paste:
+            guard pasteArmed else { return nil }
             return picker.selected(in: results).map(Effect.choose)
         case .quickPick(let n):
+            guard pasteArmed else { return nil }
             return ClipPicker.quickPick(n, in: results).map(Effect.choose)
         case .togglePin:
             if let item = picker.selected(in: results) { widget.togglePin(item) }
@@ -119,11 +131,12 @@ final class ClipPickerPanel {
         if isOpen { model.refresh() }
     }
 
-    func open() {
+    /// `armed: false` when a link opened it (see `ClipPickerModel.pasteArmed`).
+    func open(armed: Bool = true) {
         guard !isOpen else { return }
         previousApp = NSWorkspace.shared.frontmostApplication
         previousKeyWindow = NSApp.keyWindow
-        model.reset()
+        model.reset(armed: armed)
         let window = self.window ?? makeWindow()
         self.window = window
         window.setFrame(Self.frame(near: NSEvent.mouseLocation, size: ClipPickerWindow.size), display: false)
@@ -272,6 +285,9 @@ struct ClipPickerView: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
         .onAppear { searchFocused = true }
+        .onContinuousHover { phase in
+            if case .active = phase { model.arm() }
+        }
     }
 
     private func row(_ item: ClipItem, index: Int) -> some View {
