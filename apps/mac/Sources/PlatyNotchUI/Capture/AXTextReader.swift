@@ -165,6 +165,12 @@ struct LiveManualAccessibilityAX: ManualAccessibilityAX {
         return AXUIElementIsAttributeSettable(app, Self.attribute as CFString, &settable) == .success && settable.boolValue
     }
 
+    func isOn(pid: pid_t) -> Bool {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(Self.app(pid), Self.attribute as CFString, &value) == .success else { return false }
+        return (value as? Bool) ?? false
+    }
+
     func set(_ on: Bool, pid: pid_t) {
         _ = AXUIElementSetAttributeValue(Self.app(pid), Self.attribute as CFString, on ? kCFBooleanTrue : kCFBooleanFalse)
     }

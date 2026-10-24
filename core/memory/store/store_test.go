@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -364,5 +365,64 @@ func TestRequeueFailedAndOtherModel(t *testing.T) {
 	}
 	if _, err := s.RequeueFailed("bogus"); err == nil {
 		t.Fatal("want error")
+	}
+}
+
+// Two threads captured in the same millisecond list newest chunk id first, and the
+// limit cuts the same one every time.
+func TestRecentThreadsTieBreak(t *testing.T) {
+	s, _ := open(t)
+	at := time.UnixMilli(1_700_000_000_000)
+	var chunk [3]int64
+	for i, key := range []string{"a", "b", "c"} {
+		th, err := s.UpsertThread(Thread{AppBundle: "x", Key: key})
+		if err != nil {
+			t.Fatal(err)
+		}
+		vid := "v" + key
+		if _, err := s.PutVersion(Version{ID: vid, ThreadID: th.ID, HourBucket: 1, Content: key, CreatedAt: at}); err != nil {
+			t.Fatal(err)
+		}
+		ids, err := s.AddChunks([]Chunk{{VersionID: vid, ThreadID: th.ID, Idx: 0, Text: key, CapturedAt: at}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		chunk[i] = ids[0]
+	}
+	for i := 0; i < 5; i++ {
+		rows, err := s.RecentThreads(Filter{}, 2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rows) != 2 || rows[0].ChunkID != chunk[2] || rows[1].ChunkID != chunk[1] {
+			t.Fatalf("run %d: got %+v, want chunks %d then %d", i, rows, chunk[2], chunk[1])
+		}
+	}
+}
+
+// chunks_thread is dropped (it is the prefix of chunks_thread_recent) and a lookup
+// by thread still uses an index.
+func TestRedundantThreadIndexDropped(t *testing.T) {
+	s, _ := open(t)
+	var n int
+	if err := s.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE name = 'chunks_thread'`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("chunks_thread present=%d err=%v", n, err)
+	}
+	rows, err := s.db.Query(`EXPLAIN QUERY PLAN SELECT id FROM chunks WHERE thread_id = ?`, "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var plan string
+	for rows.Next() {
+		var a, b, c int
+		var d string
+		if err := rows.Scan(&a, &b, &c, &d); err != nil {
+			t.Fatal(err)
+		}
+		plan += d + "\n"
+	}
+	if !strings.Contains(plan, "chunks_thread_recent") {
+		t.Fatalf("plan does not use the covering index: %s", plan)
 	}
 }

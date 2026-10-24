@@ -16,7 +16,12 @@ public final class CaptureService {
     static let todayDayKey = "capture.todayDay"
 
     public private(set) var status: CaptureStatus = .off {
-        didSet { if status != oldValue { Self.log.info("capture \(String(describing: self.status), privacy: .public)") } }
+        didSet {
+            guard status != oldValue else { return }
+            Self.log.info("capture \(String(describing: self.status), privacy: .public)")
+            // Capture stopped for any reason (pause, trust revoked, memory off).
+            if oldValue.isCapturing, !status.isCapturing { revertManualAccessibility() }
+        }
     }
     private static let log = Logger(subsystem: "dev.platynotch.app", category: "capture")
     /// Drives the menu bar capture dot.
@@ -34,6 +39,7 @@ public final class CaptureService {
     @ObservationIgnored private var lastHashes: [String: Int] = [:]
     @ObservationIgnored private var interval: Duration = .seconds(CaptureSettings.defaultIntervalSeconds)
     @ObservationIgnored private var watcher: ConfigFileWatcher?
+    @ObservationIgnored private nonisolated(unsafe) var terminationObserver: NSObjectProtocol?
     /// Chromium/Electron accessibility turned on by capture; confined to `walkQueue`.
     @ObservationIgnored private let manualAX: ManualAccessibility
     /// Seconds since the last keyboard or mouse input (any app).
@@ -53,6 +59,21 @@ public final class CaptureService {
 
     public convenience init(client: CoreClient) {
         self.init(send: { try await client.send($0) })
+        observeTerminations()
+    }
+
+    deinit {
+        if let terminationObserver { NSWorkspace.shared.notificationCenter.removeObserver(terminationObserver) }
+    }
+
+    /// Forgets the accessibility state of an app that quits.
+    private func observeTerminations() {
+        terminationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            let pid = app.processIdentifier
+            MainActor.assumeIsolated { self?.forgetManualAccessibility(pid: pid) }
+        }
     }
 
     /// Reads `config.json` now and again whenever it changes, starting or stopping capture.
@@ -66,7 +87,13 @@ public final class CaptureService {
     /// New settings (the config file, or the Settings window once it exists).
     public func apply(_ new: CaptureSettings) {
         if new == settings, (loop != nil) == new.enabled { return }   // unrelated change in the directory
+        let newlyExcluded = Set(new.excludeApps).subtracting(settings.excludeApps)
         settings = new
+        for bundleID in newlyExcluded {
+            for app in NSRunningApplication.runningApplications(withBundleIdentifier: bundleID) {
+                revertManualAccessibility(pid: app.processIdentifier)
+            }
+        }
         if new.enabled {
             start(interval: .seconds(new.intervalSeconds))
         } else {
@@ -105,6 +132,18 @@ public final class CaptureService {
         } else {
             walkQueue.async { manualAX.disableAll() }
         }
+    }
+
+    /// Turns `AXManualAccessibility` off again in one app (newly excluded).
+    func revertManualAccessibility(pid: pid_t) {
+        let manualAX = self.manualAX
+        walkQueue.async { manualAX.disable(pid: pid) }
+    }
+
+    /// Drops an app that quit from the accessibility bookkeeping.
+    func forgetManualAccessibility(pid: pid_t) {
+        let manualAX = self.manualAX
+        walkQueue.async { manualAX.forget(pid: pid) }
     }
 
     /// Turns `AXManualAccessibility` on for `pid` (once; only where settable).
@@ -156,6 +195,10 @@ public final class CaptureService {
 
     private func tick() {
         refreshStatus()
+        if status == .capturing, !Self.sessionIsActive() {   // locked or switched away
+            revertManualAccessibility()
+            return
+        }
         guard status == .capturing, !walking, Self.sessionIsActive(),
               let app = NSWorkspace.shared.frontmostApplication,
               app.processIdentifier != getpid() else { return }

@@ -100,6 +100,7 @@ final class MemoryModelsTests: DefaultsTestCase {
         private var log: [String] = []
         var calls: [String] { lock.withLock { log } }
         func isSettable(pid: pid_t) -> Bool { true }
+        func isOn(pid: pid_t) -> Bool { false }
         func set(_ on: Bool, pid: pid_t) { lock.withLock { log.append("\(on) \(pid)") } }
     }
 
@@ -124,5 +125,17 @@ final class MemoryModelsTests: DefaultsTestCase {
         capture.enableManualAccessibility(pid: 9)
         capture.revertManualAccessibility(wait: true)
         XCTAssertEqual(ax.calls.suffix(2), ["true 9", "false 9"])
+    }
+
+    /// One app is undone when excluded; a quit app is forgotten without a set(false).
+    func testManualAccessibilityUndoneForOneAppAndForgottenOnQuit() {
+        let ax = FakeAX()
+        let capture = CaptureService(send: { _ in }, defaults: defaults(), manualAX: ax)
+        capture.enableManualAccessibility(pid: 1)
+        capture.enableManualAccessibility(pid: 2)
+        capture.revertManualAccessibility(pid: 1)
+        capture.forgetManualAccessibility(pid: 2)
+        capture.revertManualAccessibility(wait: true)   // drains the queue; nothing left to undo
+        XCTAssertEqual(ax.calls, ["true 1", "true 2", "false 1"])
     }
 }

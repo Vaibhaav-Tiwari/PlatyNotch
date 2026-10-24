@@ -81,16 +81,17 @@ func (s *Store) SearchFTS(match string, f Filter, limit int) ([]ChunkRow, error)
 // RecentThreads returns one chunk per thread for the limit threads captured
 // most recently (matching f): the first chunk of each thread's newest capture.
 // Listing recent chunks instead let one busy thread fill the whole list. The
-// per-thread maximum comes from the chunks_thread_recent index.
+// per-thread maximum comes from the chunks_thread_recent index. Threads captured
+// in the same millisecond order by their newest chunk id, so the list is stable.
 func (s *Store) RecentThreads(f Filter, limit int) ([]ChunkRow, error) {
 	w, args := f.chunkWhere()
 	args = append(args, limit)
 	return s.scanRows(`SELECT `+chunkCols+` FROM (
-		SELECT c.thread_id AS tid, MAX(c.captured_at) AS at FROM chunks c
-		WHERE 1=1`+w+` GROUP BY c.thread_id ORDER BY at DESC LIMIT ?) m
+		SELECT c.thread_id AS tid, MAX(c.captured_at) AS at, MAX(c.id) AS mx FROM chunks c
+		WHERE 1=1`+w+` GROUP BY c.thread_id ORDER BY at DESC, mx DESC LIMIT ?) m
 		JOIN chunks c ON c.id = (SELECT id FROM chunks WHERE thread_id = m.tid AND captured_at = m.at ORDER BY id LIMIT 1)
 		JOIN threads t ON t.id = c.thread_id
-		ORDER BY c.captured_at DESC, c.id DESC`, args...)
+		ORDER BY m.at DESC, m.mx DESC`, args...)
 }
 
 // chunkWhere is where() over chunks alone (the app through a threads subquery),

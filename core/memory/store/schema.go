@@ -92,4 +92,8 @@ INSERT INTO chunks_fts(chunks_fts) VALUES('rebuild');
 	// 4: the recent list's newest chunk per thread, from the index alone.
 	`
 CREATE INDEX chunks_thread_recent ON chunks(thread_id, captured_at, id);
+`,
+	// 5: chunks_thread is the prefix of chunks_thread_recent.
+	`
+DROP INDEX IF EXISTS chunks_thread;
 `}
