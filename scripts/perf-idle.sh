@@ -40,10 +40,15 @@
 #                           player shows the music bars and changes what is measured.
 #   -h, --help              this help
 #
-# Environment: PN_PERF_LIMIT (default 1.0, percent of one core), PN_PERF_WARMUP (s,
-# default 10), PN_PERF_VERBOSE=1 (print every sample), PN_PERF_APPEARANCE (Appearance settings as a plist data literal, e.g.
-# "<7b2273686f77506c617479223a66616c73657d>" = {"showPlaty":false}; default: the defaults). Without --app the release executable uses the adapter in
-# build/mediaremote-adapter when build-app.sh has built it there, else the fallback.
+# Environment:
+#   PN_PERF_LIMIT       percent of one core (default 1.0)
+#   PN_PERF_WARMUP      seconds before sampling (default 10)
+#   PN_PERF_VERBOSE=1   print every sample
+#   PN_PERF_APPEARANCE  Appearance settings as a plist data literal, e.g.
+#                       "<7b2273686f77506c617479223a66616c73657d>" = {"showPlaty":false}
+#                       (default: the defaults)
+# Without --app the release executable uses the adapter in build/mediaremote-adapter when
+# build-app.sh has built it there, else the fallback.
 #
 # Settings: the release executable's UserDefaults domain is "PlatyNotch", the bundle
 # copy's dev.platynotch.perf (never the installed app's dev.platynotch.app). Widget layout and

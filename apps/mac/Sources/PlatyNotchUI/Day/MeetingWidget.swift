@@ -80,27 +80,34 @@ final class MeetingWidget: NotchWidget {
         self.context = context
         calendar.startWatching()
         observeWake()
-        observeAccess()
+        accessGeneration += 1
+        observeAccess(generation: accessGeneration)
         tick()
     }
+
+    /// Bumped on every start and stop: an observation chain from an earlier run stops.
+    @ObservationIgnored private var accessGeneration = 0
+    /// How many ticks ran (tests).
+    @ObservationIgnored private(set) var ticks = 0
 
     /// A wake-up is scheduled (tests: none without calendar access).
     var hasWakeScheduled: Bool { task != nil }
 
     /// Ticks when the access status changes, while running (no polling for a grant).
-    private func observeAccess() {
+    private func observeAccess(generation: Int) {
         withObservationTracking {
             _ = calendar.access
         } onChange: { [weak self] in
             Task { @MainActor in
-                guard let self, self.context != nil else { return }
+                guard let self, self.context != nil, self.accessGeneration == generation else { return }
                 self.tick()
-                self.observeAccess()
+                self.observeAccess(generation: generation)
             }
         }
     }
 
     func stop() {
+        accessGeneration += 1   // the access observation from this run ends
         task?.cancel()
         task = nil
         if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) }
@@ -118,6 +125,7 @@ final class MeetingWidget: NotchWidget {
     /// Re-reads access and events, shows a due reminder, and sleeps until the next change.
     func tick() {
         guard context != nil else { return }
+        ticks += 1
         calendar.refreshAccess()
         calendar.refresh()
         now = clock()

@@ -102,10 +102,8 @@ final class TimeWidgetTests: DefaultsTestCase {
         await r.widget.backupsSettled()
         XCTAssertEqual(r.notifier.pending[id], t0 + 600 + TimeBackup.delay)
         XCTAssertFalse(r.notifier.calendarIDs.contains(id))
-        await r.widget.backupsSettled()
         XCTAssertEqual(r.notifier.authorizationRequests, 1)   // asked on the first timer
         XCTAssertTrue(r.widget.addTimer("5"))
-        await r.widget.backupsSettled()
         XCTAssertEqual(r.notifier.authorizationRequests, 1)   // only once
         r.widget.toggleTimer(timer.id)                         // pause
         await r.widget.backupsSettled()
@@ -155,7 +153,8 @@ final class TimeWidgetTests: DefaultsTestCase {
         XCTAssertEqual(r.sound.playing, .alarm)
         XCTAssertEqual(r.widget.liveActivities.first?.priority, LivePriority.alarmRinging)
         r.surfaces.stopRinging(id: id)          // menu bar Stop
-        await r.widget.backupsSettled()
+        let stopped = await eventually { r.widget.ringing.isEmpty && r.sound.playing == nil }
+        XCTAssertTrue(stopped, "the menu bar Stop reaches the widget")
         XCTAssertEqual(r.widget.ringing, [])
         XCTAssertNil(r.sound.playing)
         XCTAssertFalse(r.widget.state.alarms[0].enabled)   // a once alarm turns itself off

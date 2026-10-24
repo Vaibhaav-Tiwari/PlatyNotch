@@ -110,7 +110,7 @@ rules being checked are `PanelPrecedence` in `PlatyNotchKit/PanelState.swift`.
   PlatyNotch; hovering it does not open the panel. During a full-screen app a nudge waits
   and shows after leaving full screen if it has not expired. An agent notice shows on top
   of a nudge and the nudge returns after it.
-- [ ] **18. Two displays.** With "Show on all displays" on, a ringing card shows on both
+- [ ] **18. Two displays.** With Settings › Appearance › Show on: All displays, a ringing card shows on both
   panels and Stop on one clears both. The drop zone opens only on the display whose notch
   the drag approaches.
 - [ ] **19. Menu bar Stop.** While anything rings, the menu bar menu starts with one
@@ -283,9 +283,9 @@ build loses the grant on every rebuild.
   - approval peek up, or the panel open: the **system** HUD shows (a 2 pt indicator is
     not feedback enough to take the key); the approval card does not move;
   - brightness keys with the cursor on an external display: the system handles them;
-  - two displays, "Show on all displays" off, cursor on the display without the panel:
-    the system HUD shows; move the cursor to the notch display: ours. With "Show on all
-    displays" on: ours, on the display under the cursor only.
+  - two displays, Show on: Display with the menu bar, cursor on the display without the panel:
+    the system HUD shows; move the cursor to the notch display: ours. With Show on: All
+    displays: ours, on the display under the cursor only.
 - [ ] **49. Hang.** Find the pid (`pgrep -x PlatyNotch`), `kill -STOP <pid>` (this
   stops every thread, the tap's too), press volume up a few times: after at most about a
   second the **system HUD shows and the volume changes** (the window server timed the
@@ -313,8 +313,8 @@ build loses the grant on every rebuild.
 Automated: `ShelfTests` (store, bookmarks, missing state, expiry, drag poller),
 `ShelfWidgetTests` (detector through fake signals, drop zone and the panel, receiving,
 missing files), `PanelSurfaceTests` (drop zone vs ringing, open panel restored). The shelf
-lives in `$PLATYNOTCH_HOME/shelf` (0700; `items.json` 0600; owned copies in
-`<uuid>/`). Use a throwaway `PLATYNOTCH_HOME` and check `ls -la "$PLATYNOTCH_HOME/shelf"`.
+lives in `$PLATYNOTCH_HOME/shelf.noindex` (0700; `items.json` 0600; owned copies in
+`<uuid>/`). Use a throwaway `PLATYNOTCH_HOME` and check `ls -la "$PLATYNOTCH_HOME/shelf.noindex"`.
 
 - [ ] **54. Real drag-enter after the pass-through flip (closes #16).** Drag a file from
   Finder slowly towards the notch. Within about 60 pt the drop zone opens ("Drop to keep
@@ -325,7 +325,7 @@ lives in `$PLATYNOTCH_HOME/shelf` (0700; `items.json` 0600; owned copies in
   creation, so this would mean AppKit withholds drag-enter after `ignoresMouseEvents`
   flips mid-drag.
 - [ ] **55. Drag in, several sources.** Finder (3 files at once: all three, in the
-  dragged order); Safari image (an owned copy under `shelf/<uuid>/`); Safari link (a
+  dragged order); Safari image (an owned copy under `shelf.noindex/<uuid>/`); Safari link (a
   link card); selected text from TextEdit (a text card); a photo from Photos and an
   attachment from Mail (file promises: owned copies appear after a moment). Nothing
   prompts for any permission.
@@ -371,7 +371,7 @@ lives in `$PLATYNOTCH_HOME/shelf` (0700; `items.json` 0600; owned copies in
   nothing droppable: the zone closes within about 0.3 s.
 - [ ] **68. Expiry while off.** Shelf off, an owned item 8 days old in
   `items.json` (quit first): relaunch PlatyNotch; its `<uuid>/` folder and entry are gone
-  although the shelf stays off. Shelf off and never used: launch creates no `shelf/` folder.
+  although the shelf stays off. Shelf off and never used: launch creates no `shelf.noindex/` folder.
 - [ ] **69. Shelf off, drag over the pill.** Turn the shelf off, drag a file over the
   pill: no drop zone and no "Drop here" placeholder; after release, Activity Monitor
   shows PlatyNotch idle (no leftover cursor polling).
@@ -447,14 +447,14 @@ History, Clear All, and the Accessibility button.
   it), copies are not recorded, Activity Monitor shows no 0.5 s wake-ups from PlatyNotch
   (Energy tab, idle wake-ups). Turn it on: earlier history is still there.
 - [ ] **80. Images and files.** Copy an image in Preview (⌘C) and a screenshot to the
-  clipboard (⌃⇧⌘4): one image row each, a PNG in `clipboard/images/`; copying the same
+  clipboard (⌃⇧⌘4): one image row each, a PNG in `clipboard.noindex/images/`; copying the same
   image again moves it to the top (no second file). An image over 10 MB is skipped.
   Copy files in Finder: one row ("name + 2 more"); ↩ pastes them in a Finder window.
   Delete an image row: its PNG is gone.
 - [ ] **81. Retention.** Keep: 1 day; set an item's `copiedAt` 2 days back in
   `history.json` (quit first) and relaunch, once with the widget on and once off: it and
   its image are gone. Up to: 50: older items beyond 50 go at once; pinned ones stay.
-- [ ] **82. Damaged history.** Quit, write junk into `clipboard/history.json`, relaunch:
+- [ ] **82. Damaged history.** Quit, write junk into `clipboard.noindex/history.json`, relaunch:
   history starts empty, `history.json.corrupt-<date>` (0600) keeps the old text, every
   file in `images/` is still there after a second relaunch, and Settings shows "A damaged
   history file was set aside" with Delete Kept Files (which removes them).
@@ -858,8 +858,8 @@ cd apps/mac && swift build && PLATYNOTCH_RENDER_DIR=/tmp/pn-renders PLATYNOTCH_H
 
 - [ ] **171. Idle under 1%.** On a notched M1 both runs print PASS (mean of 60 one-second
   `top` samples, the first dropped). Note the Mac, macOS and which of Music / Spotify ran.
-- [ ] **172. Settings migrate.** Before updating, set Minimal, Show on all displays and live
-  side left (Plan 3 keys). After: Settings › Appearance shows Minimal, "All displays",
+- [ ] **172. Settings migrate.** Before updating, set Minimal, the old "Show on all displays"
+  and live side left (Plan 3 keys). After: Settings › Appearance shows Minimal, "All displays",
   Live activities Left; the panels look as before.
 - [ ] **173. Live changes.** In Settings › Appearance change each control with the panel in
   view: Minimal hides the resting pill at once; Theme repaints the open panel; Live

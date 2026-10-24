@@ -258,6 +258,22 @@ final class DayWidgetsTests: DefaultsTestCase {
         XCTAssertFalse(widget.hasWakeScheduled)
     }
 
+    /// Round 2: turning the widget off and on quickly leaves one access observation, not two.
+    func testMeetingAccessObservationEndsWithStop() async {
+        let calendar = CalendarService(eventKit: false)
+        let widget = MeetingWidget(calendar: calendar)
+        let ctx = context()
+        widget.start(context: ctx)
+        widget.stop()
+        widget.start(context: ctx)
+        let before = widget.ticks
+        calendar.setForTesting(access: .granted, meetings: [])
+        _ = await eventually { widget.ticks > before }
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(widget.ticks, before + 1, "the earlier run's observation chain stopped")
+        widget.stop()
+    }
+
     // MARK: - Reminders
 
     func testRemindersWidgetOffByDefaultAndInert() {

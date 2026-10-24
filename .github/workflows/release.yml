@@ -37,9 +37,13 @@ jobs:
           fetch-depth: 0   # tags and the commit count (CFBundleVersion)
           persist-credentials: false   # only the appcast step gets a token, for its push
 
+      # Pinned to the Xcode that `latest-stable` resolved to on this runner when Plan 3b
+      # shipped (26.3): a new image's Xcode can change what compiles (Swift 6 isolation
+      # checks, type-check time) under an unchanged commit. Move the pin on purpose, in its
+      # own commit, after checking a run with the new version (keep ci.yml in step).
       - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
-          xcode-version: latest-stable
+          xcode-version: '26.3'
 
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
