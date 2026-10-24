@@ -119,7 +119,7 @@ func Search(ctx context.Context, s *store.Store, e provider.Embedder, q protocol
 
 	ts := terms(q.Query)
 	if len(ts) == 0 {
-		rows, err := s.RecentChunks(f, topK)
+		rows, err := s.RecentThreads(f, limit)
 		if err != nil {
 			return nil, err
 		}

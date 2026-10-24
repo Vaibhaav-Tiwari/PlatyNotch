@@ -97,6 +97,19 @@ func (i *Ingester) Ingest(c protocol.CaptureText) (int, error) {
 			return 0, nil
 		}
 		prevContent, versionID = prev.Content, prev.ID
+	} else {
+		// A new hour: diff against the thread's last version, so a window left
+		// open is not chunked (and embedded) again in full every hour.
+		last, err := i.store.LatestVersionBefore(th.ID, v.HourBucket)
+		if err != nil {
+			return 0, err
+		}
+		if last != nil {
+			if last.ContentHash == hash {
+				return 0, nil
+			}
+			prevContent = last.Content
+		}
 	}
 	pieces := Chunk(NewText(prevContent, text), chunkSize, chunkOverlap)
 	if len(pieces) == 0 {

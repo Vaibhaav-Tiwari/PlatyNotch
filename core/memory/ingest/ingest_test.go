@@ -258,17 +258,31 @@ func TestChangedTextAddsOnlyNewChunksSameVersion(t *testing.T) {
 func TestNewHourNewVersion(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0)
 	i, s := newIngester(t, &now)
-	if _, err := i.Ingest(capture(long)); err != nil {
-		t.Fatal(err)
+	first, err := i.Ingest(capture(long))
+	if err != nil || first == 0 {
+		t.Fatalf("first=%d err=%v", first, err)
 	}
+	// The same window an hour later: a new hourly version, but its text was
+	// already chunked, so nothing is chunked (or embedded) again.
 	now = now.Add(time.Hour)
 	n, err := i.Ingest(capture(long))
-	if err != nil || n == 0 {
-		t.Fatalf("n=%d err=%v", n, err)
+	if err != nil || n != 0 {
+		t.Fatalf("unchanged next hour: n=%d err=%v", n, err)
 	}
-	th, v, _, _, _ := s.Counts()
-	if th != 1 || v != 2 {
-		t.Fatalf("threads=%d versions=%d", th, v)
+	th, v, ch, _, _ := s.Counts()
+	if th != 1 || v != 2 || ch != first {
+		t.Fatalf("threads=%d versions=%d chunks=%d first=%d", th, v, ch, first)
+	}
+	// Only lines new since the last version are chunked.
+	now = now.Add(time.Hour)
+	extra := "A line written in the third hour, long enough to be kept."
+	n, err = i.Ingest(capture(long + "\n" + extra))
+	if err != nil || n != 1 {
+		t.Fatalf("changed next hour: n=%d err=%v", n, err)
+	}
+	ps, _ := s.PendingChunks("embed", 1000)
+	if last := ps[len(ps)-1].Text; !strings.Contains(last, extra) || strings.Contains(last, long[:40]) {
+		t.Fatalf("last chunk = %q", last)
 	}
 }
 
