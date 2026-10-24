@@ -306,6 +306,46 @@ final class BasketTests: DefaultsTestCase {
         XCTAssertEqual(next.basket(holdsPin.id)?.items.map(\.id), [pinnedItem.id])
     }
 
+    func testRecoveryOverflowIsLeftAloneAtLaterStartsToo() throws {
+        let d = defaults()
+        let first = baskets(defaults: d)
+        var copies: [URL] = []
+        var ids: [UUID] = []
+        for _ in 0..<BasketStore.maxBaskets {
+            let b = try XCTUnwrap(first.create(at: .zero))
+            ids.append(b.id)
+            copies.append(URL(fileURLWithPath: try XCTUnwrap(first.store(for: b.id)?.addOwnedData(Data("png".utf8), filename: "a.png")?.fileRef?.path)))
+        }
+        // Two more folders than baskets can come back (a crash with an older build, say).
+        for _ in 0..<2 {
+            let id = UUID()
+            ids.append(id)
+            let s = ShelfStore(directory: root.appendingPathComponent("baskets.noindex/\(id.uuidString)"),
+                               bookmarks: PathBookmarks(), now: { [t0] in t0 })
+            copies.append(URL(fileURLWithPath: try XCTUnwrap(s.addOwnedData(Data("png".utf8), filename: "b.png")?.fileRef?.path)))
+        }
+        d.set(Data("not json".utf8), forKey: BasketStore.recordsKey)
+        let second = baskets(defaults: d)
+        second.restore()
+        XCTAssertEqual(second.baskets.count, BasketStore.maxBaskets)
+        XCTAssertEqual(d.stringArray(forKey: BasketStore.overflowKey)?.count, 2, "the extra folders are marked")
+        for c in copies { XCTAssertTrue(fm.fileExists(atPath: c.path)) }
+
+        // The list reads fine now, yet the marked folders are still never cleared.
+        let third = baskets(defaults: d)
+        third.restore()
+        for c in copies { XCTAssertTrue(fm.fileExists(atPath: c.path), "kept at the next start too") }
+        XCTAssertEqual(d.stringArray(forKey: BasketStore.overflowKey)?.count, 2)
+
+        // With room again, a marked folder comes back as a basket.
+        third.close(try XCTUnwrap(third.baskets.first?.id), keepItems: false)
+        let fourth = baskets(defaults: d)
+        fourth.restore()
+        XCTAssertEqual(fourth.baskets.count, BasketStore.maxBaskets)
+        XCTAssertEqual(fourth.baskets.filter { $0.name == "Recovered Basket" }.count, BasketStore.maxBaskets)
+        XCTAssertEqual(d.stringArray(forKey: BasketStore.overflowKey)?.count, 1)
+    }
+
     func testCrashLeftoversAreClearedUnlessPinned() throws {
         let d = defaults()
         let first = baskets(defaults: d)

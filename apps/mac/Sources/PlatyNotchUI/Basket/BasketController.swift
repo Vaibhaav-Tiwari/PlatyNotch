@@ -307,13 +307,11 @@ final class BasketController: DragMonitorListener {
     func resolveClose(_ host: BasketHost, _ choice: BasketCloseChoice) {
         guard host.closeAsk != nil else { return }
         host.closeAsk = nil
-        switch choice {
-        case .moveToShelf: close(host, keepItems: true)
-        case .discard:
-            guard !host.isBusy else { return system.beep() }
-            close(host, keepItems: false)
-        case .cancel: break
-        }
+        guard choice != .cancel else { return }
+        // Something may have started writing into it since the question (a drop is refused
+        // while it shows, but be sure): its folder must stay, so nothing closes now.
+        guard !host.isBusy else { return system.beep() }
+        close(host, keepItems: choice == .moveToShelf)
     }
 
     /// `keepItems`: to the shelf first; when that fails the basket stays with what is left.

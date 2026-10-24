@@ -119,6 +119,28 @@ private final class Reg: HotKeyRegistration {
     func unregister() { active = false }
 }
 
+/// A drag from another app carrying `pasteboard`.
+private final class DropInfo: NSObject, NSDraggingInfo {
+    let draggingPasteboard: NSPasteboard
+    @MainActor init(_ pb: NSPasteboard) { draggingPasteboard = pb }
+    var draggingDestinationWindow: NSWindow? { nil }
+    var draggingSourceOperationMask: NSDragOperation { .copy }
+    var draggingLocation: NSPoint { .zero }
+    var draggedImageLocation: NSPoint { .zero }
+    var draggedImage: NSImage? { nil }
+    var draggingSource: Any? { nil }
+    var draggingSequenceNumber: Int { 1 }
+    func slideDraggedImage(to screenPoint: NSPoint) {}
+    var draggingFormation: NSDraggingFormation = .default
+    var animatesToDestination = false
+    var numberOfValidItemsForDrop = 1
+    func enumerateDraggingItems(options enumOpts: NSDraggingItemEnumerationOptions = [], for view: NSView?,
+                                classes classArray: [AnyClass], searchOptions: [NSPasteboard.ReadingOptionKey: Any] = [:],
+                                using block: (NSDraggingItem, Int, UnsafeMutablePointer<ObjCBool>) -> Void) {}
+    var springLoadingHighlight: NSSpringLoadingHighlight { .none }
+    func resetSpringLoading() {}
+}
+
 @MainActor
 private final class CoveredDisplays {
     var ids: Set<CGDirectDisplayID> = []
@@ -661,6 +683,76 @@ final class BasketControllerTests: DefaultsTestCase {
         await sleeper.fire()   // the promise never finished: after the timeout it lets go
         XCTAssertFalse(host.isBusy)
         XCTAssertEqual(host.room, 2)
+    }
+
+    // MARK: - Round 2 (N1, N3)
+
+    func testNothingStartsWhileTheCloseQuestionShows() throws {
+        let r = rig()
+        r.controller.fileActionsOn = { true }
+        let host = try XCTUnwrap(r.controller.summon(at: CGPoint(x: 300, y: 300)))
+        let file = r.dir.appendingPathComponent("a.txt")
+        try Data("x".utf8).write(to: file)
+        host.store.addFile(file)
+        host.sync()
+        XCTAssertNotNil(host.fileActions)
+        r.controller.requestClose(host)
+        XCTAssertNotNil(host.closeAsk)
+        XCTAssertNil(host.fileActions, "Actions is off while it asks")
+        XCTAssertFalse(r.controller.menu(for: host).items.contains { $0.title == "Actions" })
+        XCTAssertNil(host.reserveResultFolder())
+        // Drops are refused, on the view and in the host.
+        let pb = NSPasteboard.withUniqueName()
+        pb.clearContents()
+        pb.setString("note", forType: .string)
+        let view = BasketDropView(rootView: BasketView(host: host))
+        view.host = host
+        XCTAssertEqual(view.draggingEntered(DropInfo(pb)), [])
+        XCTAssertFalse(view.performDragOperation(DropInfo(pb)))
+        XCTAssertEqual(host.receive(pasteboard: pb), 0)
+        XCTAssertEqual(host.receivePromises(from: pb), 0)
+        r.controller.resolveClose(host, .cancel)
+        XCTAssertEqual(view.draggingEntered(DropInfo(pb)), .copy, "takes drops again")
+        pb.releaseGlobally()
+    }
+
+    func testMoveToShelfRefusedWhileSomethingIsWriting() throws {
+        let r = rig()
+        let shelf = ShelfStore(directory: r.dir.appendingPathComponent("shelf.noindex"))
+        r.store.shelf = { shelf }
+        let host = try XCTUnwrap(r.controller.summon(at: CGPoint(x: 300, y: 300)))
+        host.store.addText("x")
+        host.afterChange()
+        r.controller.requestClose(host)
+        let folder = UUID()
+        host.beginReceiving(folder)   // a promise started meanwhile
+        for choice in [BasketCloseChoice.moveToShelf, .discard] {
+            r.controller.requestClose(host)
+            host.closeAsk = BasketCloseAsk(count: 1, canMoveToShelf: true)
+            let beeps = r.system.beeps
+            r.controller.resolveClose(host, choice)
+            XCTAssertEqual(r.system.beeps, beeps + 1, "\(choice) refused")
+            XCTAssertEqual(r.controller.hosts.count, 1)
+        }
+        XCTAssertTrue(shelf.items.isEmpty)
+        host.endReceiving(folder)
+        host.closeAsk = BasketCloseAsk(count: 1, canMoveToShelf: true)
+        r.controller.resolveClose(host, .moveToShelf)
+        XCTAssertTrue(r.controller.hosts.isEmpty)
+        XCTAssertEqual(shelf.items.map(\.title), ["x"])
+    }
+
+    func testPromiseTimeoutsAreCancelled() throws {
+        let r = rig()
+        let host = try XCTUnwrap(r.controller.summon(at: CGPoint(x: 300, y: 300)))
+        let a = UUID()
+        host.beginReceiving(a)
+        host.beginReceiving(UUID())
+        XCTAssertEqual(host.pendingTimeouts, 2)
+        host.endReceiving(a)
+        XCTAssertEqual(host.pendingTimeouts, 1, "cancelled when the promise finishes")
+        host.cancelWork()
+        XCTAssertEqual(host.pendingTimeouts, 0, "and when the basket stops")
     }
 
     func testNothingLeaksAfterCloseOrStop() throws {

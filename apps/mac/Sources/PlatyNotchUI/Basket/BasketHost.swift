@@ -35,6 +35,9 @@ final class BasketHost: ItemListHost, FileActionResults, Identifiable {
     @ObservationIgnored private(set) var receiving: Set<UUID> = []
     /// Folders reserved for a file action's result, not yet an item.
     @ObservationIgnored private(set) var reserved: Set<UUID> = []
+    /// Each receiving folder's timeout (cancelled when it finishes or the basket stops).
+    @ObservationIgnored private var receiveTimeouts: [UUID: Task<Void, Never>] = [:]
+    var pendingTimeouts: Int { receiveTimeouts.count }
     /// A promise still unfinished after this long no longer holds the basket open (M4).
     static let promiseTimeout: TimeInterval = 60
     @ObservationIgnored private let sleep: @MainActor (TimeInterval) async -> Void
@@ -98,6 +101,8 @@ final class BasketHost: ItemListHost, FileActionResults, Identifiable {
     func cancelWork() {
         refreshTask?.cancel()
         importTask?.cancel()
+        for t in receiveTimeouts.values { t.cancel() }
+        receiveTimeouts = [:]
         if actionCenterMade { actionCenter.cancelAll() }
     }
 
@@ -182,8 +187,10 @@ final class BasketHost: ItemListHost, FileActionResults, Identifiable {
         if !active { refreshMissing() }
     }
 
+    /// Nil while File actions is off, and while the close question shows (N1: nothing may
+    /// start writing into a basket that is about to close).
     var fileActions: FileActionCenter? {
-        guard fileActionsOn() else { return nil }
+        guard fileActionsOn(), closeAsk == nil else { return nil }
         actionCenterMade = true
         return actionCenter
     }
@@ -191,7 +198,7 @@ final class BasketHost: ItemListHost, FileActionResults, Identifiable {
     // MARK: - FileActionResults (Task 2: every shelf action works here)
 
     func reserveResultFolder() -> (id: UUID, folder: URL)? {
-        guard room > 0, let r = store.reserveOwnedFolder() else { return nil }
+        guard closeAsk == nil, room > 0, let r = store.reserveOwnedFolder() else { return nil }
         reserved.insert(r.id)
         return r
     }
@@ -231,7 +238,7 @@ final class BasketHost: ItemListHost, FileActionResults, Identifiable {
     @discardableResult
     func receive(pasteboard pb: NSPasteboard) -> Int {
         let room = self.room
-        guard room > 0, ShelfDropPolicy.accepts(types: (pb.types ?? []).map(\.rawValue)) else { return 0 }
+        guard closeAsk == nil, room > 0, ShelfDropPolicy.accepts(types: (pb.types ?? []).map(\.rawValue)) else { return 0 }
         var added = 0
         let files = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
         if !files.isEmpty {
@@ -266,7 +273,7 @@ final class BasketHost: ItemListHost, FileActionResults, Identifiable {
 
     /// File promises (Photos, Mail) into owned folders, up to `room`. Returns how many started.
     func receivePromises(from pb: NSPasteboard) -> Int {
-        guard ShelfDropPolicy.accepts(types: (pb.types ?? []).map(\.rawValue)),
+        guard closeAsk == nil, ShelfDropPolicy.accepts(types: (pb.types ?? []).map(\.rawValue)),
               let receivers = pb.readObjects(forClasses: [NSFilePromiseReceiver.self]) as? [NSFilePromiseReceiver]
         else { return 0 }
         var started = 0
@@ -288,7 +295,7 @@ final class BasketHost: ItemListHost, FileActionResults, Identifiable {
                     // A second file of one promise stays in its folder, unlisted (swept later).
                     remaining -= 1
                     if remaining == 0 {
-                        self.receiving.remove(folderID)
+                        self.endReceiving(folderID)
                         self.store.discardReserved(folderID)
                     }
                 }
@@ -303,10 +310,19 @@ final class BasketHost: ItemListHost, FileActionResults, Identifiable {
     func beginReceiving(_ folderID: UUID) {
         receiving.insert(folderID)
         let sleep = self.sleep
-        Task { [weak self] in
+        receiveTimeouts[folderID]?.cancel()
+        receiveTimeouts[folderID] = Task { [weak self] in
             await sleep(Self.promiseTimeout)
+            guard !Task.isCancelled else { return }
             self?.receiving.remove(folderID)
+            self?.receiveTimeouts[folderID] = nil
         }
+    }
+
+    /// The promise into `folderID` finished: its timeout is cancelled.
+    func endReceiving(_ folderID: UUID) {
+        receiving.remove(folderID)
+        receiveTimeouts.removeValue(forKey: folderID)?.cancel()
     }
 
     private func imageName() -> String {

@@ -77,6 +77,9 @@ public final class BasketStore {
     public static let maxBaskets = 6
     public static let maxItems = 50
     public static let recordsKey = "baskets.kept"
+    /// Folders left alone during a recovery because `maxBaskets` came back already (ids):
+    /// at the next start they are recovered when there is room, never cleared (N2).
+    public static let overflowKey = "baskets.overflow"
     private nonisolated static let log = Logger(subsystem: "dev.platynotch.app", category: "baskets")
 
     public let directory: URL
@@ -262,6 +265,8 @@ public final class BasketStore {
             entries.append(Entry(meta: meta, store: store))
         }
         damagedFolders = []
+        let overflowBefore = Set((defaults?.stringArray(forKey: Self.overflowKey) ?? []).compactMap(UUID.init(uuidString:)))
+        var overflow: [UUID] = []
         let names = (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? []
         for name in names.sorted() {
             guard let id = UUID(uuidString: name), !seen.contains(id) else { continue }
@@ -270,16 +275,28 @@ public final class BasketStore {
                 damagedFolders.append(store.directory)
                 continue
             }
-            let adopt = recordsReadable ? store.items.contains(where: \.pinned) : !store.items.isEmpty
+            // Recovering: the record list was unreadable now, or this folder was left alone
+            // in an earlier recovery. Then nothing in it is ever cleared.
+            let recovering = !recordsReadable || overflowBefore.contains(id)
+            let adopt = recovering ? !store.items.isEmpty : store.items.contains(where: \.pinned)
             if adopt, entries.count < Self.maxBaskets {
                 prepare(store)
                 let usedColors = Set(entries.map(\.meta.color))
                 let color = BasketColor.allCases.first { !usedColors.contains($0) } ?? .blue
-                let title = recordsReadable ? "Kept Basket" : "Recovered Basket"
+                let title = recovering ? "Recovered Basket" : "Kept Basket"
                 entries.append(Entry(meta: Basket(id: id, name: title, color: color, pinned: true), store: store))
                 seen.insert(id)
-            } else if recordsReadable, !store.items.contains(where: \.pinned) {
+            } else if recovering {
+                if adopt { overflow.append(id) }   // no room: left alone, and marked
+            } else if !adopt {
                 discard(store)
+            }
+        }
+        if persist, let defaults {
+            if overflow.isEmpty {
+                defaults.removeObject(forKey: Self.overflowKey)
+            } else {
+                defaults.set(overflow.map(\.uuidString), forKey: Self.overflowKey)
             }
         }
         saveRecords()

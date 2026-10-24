@@ -69,7 +69,8 @@ final class BasketDropView: NSHostingView<BasketView> {
     override func draggingEnded(_ sender: NSDraggingInfo) { host?.setDropTargeted(false) }
 
     private func offer(_ info: NSDraggingInfo) -> NSDragOperation {
-        guard let host, host.room > 0, ShelfDropTarget.accepts(info) else {
+        // Not while the close question shows: the basket may be about to go (N1).
+        guard let host, host.closeAsk == nil, host.room > 0, ShelfDropTarget.accepts(info) else {
             host?.setDropTargeted(false)
             return []
         }
@@ -78,7 +79,7 @@ final class BasketDropView: NSHostingView<BasketView> {
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard let host, host.room > 0, ShelfDropTarget.accepts(sender) else { return false }
+        guard let host, host.closeAsk == nil, host.room > 0, ShelfDropTarget.accepts(sender) else { return false }
         host.setDropTargeted(false)
         let pb = sender.draggingPasteboard
         let hasFiles = pb.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true])
