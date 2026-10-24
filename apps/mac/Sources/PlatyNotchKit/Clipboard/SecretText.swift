@@ -3,7 +3,8 @@ import Foundation
 /// Obvious secrets in copied text, with the same patterns as Memory's redaction
 /// (`core/memory/ingest/redact.go`): private key blocks, JWTs, `sk-` API keys, AWS
 /// access key ids, GitHub tokens (`gh?_`, `github_pat_`), Slack tokens (`xox?-`), Google
-/// API keys (`AIza`) and Luhn-valid 13–19 digit card numbers. Clipboard history skips
+/// API keys (`AIza`) and Luhn-valid 13–19 digit card numbers (a stricter card rule than Go's,
+/// see `containsCard`). Clipboard history skips
 /// such text entirely rather than storing a redacted copy (a redacted copy would paste
 /// the wrong thing). Keep the two lists in step.
 public enum SecretText {
@@ -27,50 +28,113 @@ public enum SecretText {
         return containsCard(text)
     }
 
-    /// Separators allowed between digit groups of a card number, 1 or 2 of them: space,
-    /// tab, NBSP, figure space, narrow NBSP, dash (Go `cardRun`).
-    static func isCardSeparator(_ v: UInt32) -> Bool {
-        v == 0x20 || v == 0x09 || v == 0xA0 || v == 0x2007 || v == 0x202F || v == 0x2D
-    }
-
-    /// Luhn-valid 13–19 digit card numbers. Digit groups joined by 1–2 separators form a
-    /// run; every window of whole groups in a run is a candidate (Go `redactCards`).
+    /// The card rule is stricter than Go's redaction (round 2): a redaction that also
+    /// catches a date or a spreadsheet cell costs a few characters, a skip loses the whole
+    /// copy. A card is one standalone run of 13–19 digits, Luhn-valid, either contiguous or
+    /// in card-shaped groups (4-4-4-4[-1…4], Amex 4-6-5, Diners 4-6-4) joined by one
+    /// consistent separator (a space, NBSP-like space or dash); never part of a longer run
+    /// of digit groups, a word, or a date-like sequence (`-./:` next to digits). A
+    /// following `MM/YY` expiry does not count as part of the run.
     static func containsCard(_ text: String) -> Bool {
-        var groups: [[UInt8]] = []
-        var current: [UInt8] = []
-        var gap = 0
-        for scalar in text.unicodeScalars {
-            let v = scalar.value
-            if v >= 0x30, v <= 0x39 {
-                if current.isEmpty, !groups.isEmpty, gap == 0 || gap > 2 {
-                    // Not joined to the previous group: check the finished run.
-                    if runHasCard(groups) { return true }
-                    groups = []
-                }
-                current.append(UInt8(v - 0x30))
-                gap = 0
-            } else if !current.isEmpty || !groups.isEmpty {
-                if !current.isEmpty {
-                    groups.append(current)
-                    current = []
-                }
-                gap = isCardSeparator(v) ? gap + 1 : 3   // 3: anything else ends the run
+        let s = Array(text.unicodeScalars)
+        var i = 0
+        while i < s.count {
+            guard isDigit(s[i]) else { i += 1; continue }
+            if i == 0 || !isWordChar(s[i - 1]) {
+                if isCard(at: i, in: s) { return true }
             }
-        }
-        if !current.isEmpty { groups.append(current) }
-        return runHasCard(groups)
-    }
-
-    private static func runHasCard(_ groups: [[UInt8]]) -> Bool {
-        for i in groups.indices {
-            var digits: [UInt8] = []
-            for j in i..<groups.count {
-                digits += groups[j]
-                if digits.count > 19 { break }
-                if digits.count >= 13, luhn(digits) { return true }
-            }
+            while i < s.count, isDigit(s[i]) { i += 1 }
         }
         return false
+    }
+
+    /// A group separator: space, NBSP, figure space, narrow NBSP or dash.
+    static func isGroupSeparator(_ c: Unicode.Scalar) -> Bool {
+        [0x20, 0xA0, 0x2007, 0x202F, 0x2D].contains(c.value)
+    }
+
+    private static func isDigit(_ c: Unicode.Scalar) -> Bool { c.value >= 0x30 && c.value <= 0x39 }
+
+    private static func isWordChar(_ c: Unicode.Scalar) -> Bool {
+        CharacterSet.alphanumerics.contains(c) || c == "_"
+    }
+
+    private static func isDateSeparator(_ c: Unicode.Scalar) -> Bool { "-./:".unicodeScalars.contains(c) }
+
+    /// The end of a digit group starting at `i`.
+    private static func groupEnd(_ s: [Unicode.Scalar], _ i: Int) -> Int {
+        var j = i
+        while j < s.count, isDigit(s[j]) { j += 1 }
+        return j
+    }
+
+    /// Nothing that would make the run longer or date-like sits just before `start`.
+    private static func cleanBefore(_ s: [Unicode.Scalar], _ start: Int) -> Bool {
+        guard start > 0 else { return true }
+        let c = s[start - 1]
+        if isWordChar(c) { return false }
+        if isDateSeparator(c), start >= 2, isDigit(s[start - 2]) { return false }
+        return true
+    }
+
+    /// Nothing that would make the run longer or date-like sits just after `end`.
+    private static func cleanAfter(_ s: [Unicode.Scalar], _ end: Int) -> Bool {
+        guard end < s.count else { return true }
+        let c = s[end]
+        if isWordChar(c) { return false }
+        if isDateSeparator(c), end + 1 < s.count, isDigit(s[end + 1]) { return false }
+        return true
+    }
+
+    private static func isCard(at start: Int, in s: [Unicode.Scalar]) -> Bool {
+        let first = groupEnd(s, start)
+        let length = first - start
+        // Contiguous: one standalone group of 13–19 digits.
+        if (13...19).contains(length), cleanBefore(s, start), cleanAfter(s, first) {
+            return luhn(digits(s, start, first))
+        }
+        guard length == 4, first < s.count, isGroupSeparator(s[first]) else { return false }
+        // The run must start here: not preceded by the same separator after a digit.
+        let sep = s[first]
+        if start >= 2, s[start - 1] == sep, isDigit(s[start - 2]), !followsDate(s, start - 1) { return false }
+        if !cleanBefore(s, start) { return false }
+        var sizes = [length]
+        var end = first
+        while end + 1 < s.count, s[end] == sep, isDigit(s[end + 1]) {
+            let next = groupEnd(s, end + 1)
+            // `12/27` after the number is an expiry, not part of it.
+            if next < s.count, s[next] == "/" { break }
+            sizes.append(next - end - 1)
+            end = next
+        }
+        let expiryFollows = end + 1 < s.count && s[end] == sep && isDigit(s[end + 1])
+        guard isCardLayout(sizes), expiryFollows || cleanAfter(s, end) else { return false }
+        if !expiryFollows, end < s.count, isGroupSeparator(s[end]), end + 1 < s.count, isDigit(s[end + 1]) {
+            return false   // another separator kind continues the digits
+        }
+        return luhn(digits(s, start, end))
+    }
+
+    /// The digit group ending just before `index` belongs to a date or time (`2024-01-15`,
+    /// `10:30`): a separate token, so a card after it still starts a run of its own.
+    private static func followsDate(_ s: [Unicode.Scalar], _ index: Int) -> Bool {
+        var k = index - 1
+        while k >= 0, isDigit(s[k]) { k -= 1 }
+        guard k >= 1, isDateSeparator(s[k]), isDigit(s[k - 1]) else { return false }
+        return s[k] != s[index]   // a dash before dash groups is the same run, not a date
+    }
+
+    /// 4-4-4-4 with an optional last group of 1–4 (13–19 digits), Amex 4-6-5, Diners 4-6-4.
+    static func isCardLayout(_ sizes: [Int]) -> Bool {
+        let total = sizes.reduce(0, +)
+        guard sizes.count >= 2, (13...19).contains(total) else { return false }
+        if sizes == [4, 6, 5] || sizes == [4, 6, 4] { return true }
+        guard let last = sizes.last, (1...4).contains(last) else { return false }
+        return sizes.dropLast().allSatisfy { $0 == 4 }
+    }
+
+    private static func digits(_ s: [Unicode.Scalar], _ from: Int, _ to: Int) -> [UInt8] {
+        s[from..<to].compactMap { isDigit($0) ? UInt8($0.value - 0x30) : nil }
     }
 
     static func luhn(_ digits: [UInt8]) -> Bool {
