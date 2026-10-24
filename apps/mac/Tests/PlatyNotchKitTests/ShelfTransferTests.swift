@@ -22,8 +22,9 @@ final class ShelfTransferTests: DefaultsTestCase {
         try? fm.removeItem(at: root)
     }
 
-    private func store(_ name: String) -> ShelfStore {
-        ShelfStore(directory: root.appendingPathComponent(name), bookmarks: PathBookmarks(), now: { [t0] in t0 })
+    private func store(_ name: String, rename: @escaping ShelfStore.FolderRename = ShelfStore.renameExclusive) -> ShelfStore {
+        ShelfStore(directory: root.appendingPathComponent(name), bookmarks: PathBookmarks(), now: { [t0] in t0 },
+                   renameFolder: rename)
     }
 
     func testOwnedCopyMovesWithOneRename() throws {
@@ -102,6 +103,54 @@ final class ShelfTransferTests: DefaultsTestCase {
                        Data("blocker".utf8))
     }
 
+    /// Fix round 1: a target whose index cannot be written takes nothing; no folder moves.
+    func testUnwritableTargetIndexMovesNothing() throws {
+        let shelf = store("shelf"), basket = store("basket")
+        let owned = try XCTUnwrap(shelf.addOwnedData(Data("png".utf8), filename: "a.png"))
+        let text = try XCTUnwrap(shelf.addText("hello"))
+        // A folder where the basket's index file would go: every index write fails.
+        try fm.createDirectory(at: basket.directory.appendingPathComponent(ShelfStore.indexName),
+                               withIntermediateDirectories: true)
+        let before = shelf.items
+
+        XCTAssertNil(shelf.transfer(owned.id, to: basket))
+        XCTAssertNil(shelf.transfer(text.id, to: basket))
+        XCTAssertEqual(shelf.items, before, "the source is unchanged")
+        XCTAssertTrue(basket.items.isEmpty, "the target is put back")
+        XCTAssertTrue(fm.fileExists(atPath: try XCTUnwrap(owned.fileRef?.path)), "the copy did not move")
+        XCTAssertFalse(fm.fileExists(atPath: basket.directory.appendingPathComponent(owned.id.uuidString).path))
+        XCTAssertEqual(store("shelf").items.map(\.id), before.map(\.id), "the source index still lists both")
+    }
+
+    /// Fix round 1: across volumes the rename fails with EXDEV; nothing is copied or deleted.
+    func testCrossVolumeRenameFailsCleanly() throws {
+        let calls = RenameLog()
+        let shelf = store("shelf", rename: { from, to in calls.add(from, to); return EXDEV })
+        let basket = store("basket")
+        let item = try XCTUnwrap(shelf.addOwnedData(Data("png".utf8), filename: "a.png"))
+
+        XCTAssertNil(shelf.transfer(item.id, to: basket))
+        XCTAssertEqual(calls.count, 1)
+        XCTAssertEqual(shelf.items, [item])
+        XCTAssertTrue(fm.fileExists(atPath: try XCTUnwrap(item.fileRef?.path)))
+        XCTAssertTrue(basket.items.isEmpty)
+        XCTAssertTrue(store("basket").items.isEmpty, "the target's index was rolled back")
+        XCTAssertFalse(fm.fileExists(atPath: basket.directory.appendingPathComponent(item.id.uuidString).path))
+    }
+
+    /// The real rename refuses to replace what is already there (EEXIST), even an empty folder.
+    func testExclusiveRenameNeverReplaces() throws {
+        let a = root.appendingPathComponent("a"), b = root.appendingPathComponent("b")
+        try fm.createDirectory(at: a, withIntermediateDirectories: true)
+        try fm.createDirectory(at: b, withIntermediateDirectories: true)
+        XCTAssertEqual(ShelfStore.renameExclusive(a, b), EEXIST)
+        XCTAssertTrue(fm.fileExists(atPath: a.path))
+        let c = root.appendingPathComponent("c")
+        XCTAssertEqual(ShelfStore.renameExclusive(a, c), 0)
+        XCTAssertFalse(fm.fileExists(atPath: a.path))
+        XCTAssertTrue(fm.fileExists(atPath: c.path))
+    }
+
     func testRefusals() throws {
         let shelf = store("shelf"), basket = store("basket")
         let item = try XCTUnwrap(shelf.addText("hello"))
@@ -154,4 +203,10 @@ final class ShelfTransferTests: DefaultsTestCase {
             XCTAssertTrue(PrivateFolder.isMarked(dir))
         }
     }
+}
+
+/// Records rename calls (thread-safe enough for a test's one thread).
+private final class RenameLog: @unchecked Sendable {
+    private(set) var count = 0
+    func add(_ from: URL, _ to: URL) { count += 1 }
 }
