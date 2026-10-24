@@ -7,15 +7,18 @@ public struct BasketScreen: Equatable, Sendable {
     /// Where the notch panel may ever draw on this display, with a margin (R5): a basket
     /// never overlaps it. Nil on a display without a panel.
     public var exclusion: CGRect?
+    /// The display (hiding over a full-screen app is per display); nil when unknown.
+    public var displayID: CGDirectDisplayID?
 
-    public init(visibleFrame: CGRect, exclusion: CGRect?) {
+    public init(visibleFrame: CGRect, exclusion: CGRect?, displayID: CGDirectDisplayID? = nil) {
         self.visibleFrame = visibleFrame
         self.exclusion = exclusion
+        self.displayID = displayID
     }
 
     /// A display with a notch panel laid out as `layout`.
-    public init(visibleFrame: CGRect, layout: PanelLayout) {
-        self.init(visibleFrame: visibleFrame, exclusion: BasketPlacement.exclusion(for: layout))
+    public init(visibleFrame: CGRect, layout: PanelLayout, displayID: CGDirectDisplayID? = nil) {
+        self.init(visibleFrame: visibleFrame, exclusion: BasketPlacement.exclusion(for: layout), displayID: displayID)
     }
 }
 
@@ -56,9 +59,7 @@ public enum BasketPlacement {
     /// that screen's exclusion, by the smallest move: below it, left of it or right of it.
     /// Nil when it fits nowhere on that screen.
     public static func clamp(_ frame: CGRect, screens: [BasketScreen]) -> CGRect? {
-        let center = CGPoint(x: frame.midX, y: frame.midY)
-        guard let screen = screens.first(where: { PanelLayout.contains($0.visibleFrame, center) })
-                ?? screens.min(by: { distance(center, $0.visibleFrame) < distance(center, $1.visibleFrame) }) else { return nil }
+        guard let screen = screen(of: frame, in: screens) else { return nil }
         let bounds = screen.visibleFrame.insetBy(dx: margin, dy: margin)
         guard frame.width <= bounds.width, frame.height <= bounds.height else { return nil }
         let inside = fit(frame, in: bounds)
@@ -77,6 +78,13 @@ public enum BasketPlacement {
             .map { fit($0, in: bounds) }
             .filter { !$0.intersects(ex) && bounds.contains($0) }
         return valid.min { moved(inside, $0) < moved(inside, $1) }
+    }
+
+    /// The screen holding `frame`'s center, else the nearest one.
+    public static func screen(of frame: CGRect, in screens: [BasketScreen]) -> BasketScreen? {
+        let center = CGPoint(x: frame.midX, y: frame.midY)
+        return screens.first { PanelLayout.contains($0.visibleFrame, center) }
+            ?? screens.min { distance(center, $0.visibleFrame) < distance(center, $1.visibleFrame) }
     }
 
     /// True when `frame` is clear of every screen's exclusion (tests, and a last check

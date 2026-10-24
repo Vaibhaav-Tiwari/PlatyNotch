@@ -244,6 +244,32 @@ final class BasketTests: DefaultsTestCase {
         XCTAssertTrue(fm.fileExists(atPath: copy.appendingPathComponent("a.png").path),
                       "a basket left by a crash with a damaged index: nothing deleted")
         XCTAssertTrue(store.baskets.isEmpty)
+        XCTAssertEqual(store.damagedCount, 1, "Settings shows it, with Delete Kept Copies")
+        let again = baskets(defaults: defaults())
+        again.restore()
+        XCTAssertTrue(fm.fileExists(atPath: copy.appendingPathComponent("a.png").path), "still kept at the next start")
+        XCTAssertEqual(again.damagedCount, 1)
+        again.deleteDamaged()   // the user's confirmed click
+        XCTAssertFalse(fm.fileExists(atPath: folder.path))
+        XCTAssertEqual(again.damagedCount, 0)
+    }
+
+    func testUnreadableRecordsClearNothing() throws {
+        let d = defaults()
+        let first = baskets(defaults: d)
+        let loose = try XCTUnwrap(first.create(at: .zero))
+        let copy = try XCTUnwrap(first.store(for: loose.id)?.addOwnedData(Data("png".utf8), filename: "a.png"))
+        let empty = try XCTUnwrap(first.create(at: .zero))
+        _ = empty
+        d.set(Data("not json".utf8), forKey: BasketStore.recordsKey)
+        XCTAssertNil(BasketStore.readRecords(from: d))
+        let next = baskets(defaults: d)
+        next.restore()
+        XCTAssertTrue(fm.fileExists(atPath: try XCTUnwrap(copy.fileRef?.path)), "the record list is damaged: nothing cleared")
+        XCTAssertEqual(next.baskets.map(\.id), [loose.id])
+        XCTAssertEqual(next.baskets.first?.name, "Recovered Basket")
+        XCTAssertEqual(next.baskets.first?.pinned, true)
+        XCTAssertEqual(BasketStore.readRecords(from: d)?.map(\.id), [loose.id], "readable again")
     }
 
     func testOnlyKeptBasketsComeBack() throws {

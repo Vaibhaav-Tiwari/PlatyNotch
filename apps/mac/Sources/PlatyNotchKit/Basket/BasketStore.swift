@@ -245,33 +245,69 @@ public final class BasketStore {
     /// Brings back the kept baskets recorded in defaults (owned copies past 7 days
     /// expire), and clears folders of baskets that were not kept (left by a crash): their
     /// items are removed and own copies deleted, unless the folder's index is damaged
-    /// (then nothing in it is deleted) or it holds a pinned item (then it comes back as a
-    /// basket). At most `maxBaskets` come back; folders beyond that are left alone.
+    /// (then nothing in it is deleted, and it counts in `damagedCount`) or it holds a
+    /// pinned item (then it comes back as a basket). When the record list itself is there
+    /// but unreadable, nothing is cleared: every leftover folder holding items comes back
+    /// as a pinned "Recovered Basket" instead. At most `maxBaskets` come back; folders
+    /// beyond that are left alone.
     public func restore() {
         guard persist, entries.isEmpty else { return }
-        let records = Self.loadRecords(from: defaults)
+        let read = Self.readRecords(from: defaults)
+        let recordsReadable = read != nil
         var seen = Set<UUID>()
-        for r in records where entries.count < Self.maxBaskets && seen.insert(r.id).inserted {
+        for r in read ?? [] where entries.count < Self.maxBaskets && seen.insert(r.id).inserted {
             let store = openStore(r.id)
             prepare(store)
             let meta = Basket(id: r.id, name: r.name, color: r.color, pinned: r.pinned, origin: r.origin)
             entries.append(Entry(meta: meta, store: store))
         }
+        damagedFolders = []
         let names = (try? fileManager.contentsOfDirectory(atPath: directory.path)) ?? []
         for name in names.sorted() {
             guard let id = UUID(uuidString: name), !seen.contains(id) else { continue }
             let store = openStore(id)
-            if store.items.contains(where: \.pinned), entries.count < Self.maxBaskets {
+            if Self.isDamaged(store) {
+                damagedFolders.append(store.directory)
+                continue
+            }
+            let adopt = recordsReadable ? store.items.contains(where: \.pinned) : !store.items.isEmpty
+            if adopt, entries.count < Self.maxBaskets {
                 prepare(store)
                 let usedColors = Set(entries.map(\.meta.color))
                 let color = BasketColor.allCases.first { !usedColors.contains($0) } ?? .blue
-                entries.append(Entry(meta: Basket(id: id, name: "Kept Basket", color: color, pinned: true), store: store))
+                let title = recordsReadable ? "Kept Basket" : "Recovered Basket"
+                entries.append(Entry(meta: Basket(id: id, name: title, color: color, pinned: true), store: store))
                 seen.insert(id)
-            } else if !store.items.contains(where: \.pinned) {
+            } else if recordsReadable, !store.items.contains(where: \.pinned) {
                 discard(store)
             }
         }
         saveRecords()
+    }
+
+    // MARK: - Damaged indexes (kept until the user decides, like the shelf's C2)
+
+    /// Leftover basket folders whose index is damaged: nothing in them was deleted.
+    public private(set) var damagedFolders: [URL] = []
+
+    /// Basket folders holding copies a damaged index may have listed (open baskets and
+    /// leftovers): Settings shows the count with Delete Kept Copies.
+    public var damagedCount: Int {
+        damagedFolders.count + entries.filter { Self.isDamaged($0.store) }.count
+    }
+
+    /// The user's "Delete Kept Copies" (after a confirming click): leftover damaged folders
+    /// are deleted; an open basket keeps its items and loses only the set-aside index and
+    /// the copies no item lists.
+    public func deleteDamaged() {
+        guard persist else { return }
+        for dir in damagedFolders { try? fileManager.removeItem(at: dir) }
+        damagedFolders = []
+        for e in entries where Self.isDamaged(e.store) { e.store.deleteKeptFiles() }
+    }
+
+    private static func isDamaged(_ store: ShelfStore) -> Bool {
+        store.quarantinedIndex != nil || store.readOnly || store.hasKeptFiles
     }
 
     /// Owned copies past 7 days go; then folders no item lists (a promise cut short).
@@ -319,8 +355,14 @@ public final class BasketStore {
     // MARK: - Records
 
     public static func loadRecords(from defaults: UserDefaults?) -> [BasketRecord] {
-        guard let data = defaults?.data(forKey: recordsKey),
-              let records = try? JSONDecoder().decode([BasketRecord].self, from: data) else { return [] }
+        readRecords(from: defaults) ?? []
+    }
+
+    /// The records; nil when they are there but cannot be read (none saved is `[]`).
+    public static func readRecords(from defaults: UserDefaults?) -> [BasketRecord]? {
+        guard let defaults, let value = defaults.object(forKey: recordsKey) else { return [] }
+        guard let data = value as? Data,
+              let records = try? JSONDecoder().decode([BasketRecord].self, from: data) else { return nil }
         return records
     }
 
