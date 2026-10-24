@@ -62,6 +62,8 @@ public final class NowPlaying {
     /// Perf runs only (`LaunchOptions.fakeNowPlaying`): `start` reports a fake track as
     /// playing and reads no player.
     @ObservationIgnored public var fakePlaying = false
+    /// Smoke runs: never send an Apple Event to a player (no AppleScript fallback, no heart).
+    @ObservationIgnored var sendsAppleEvents = true
     /// The Apple Events behind the heart (tests pass their own).
     @ObservationIgnored var music: MusicScripting = .system
     /// Which build Music last answered, so a refusal after a rebuild is explained.
@@ -83,6 +85,8 @@ public final class NowPlaying {
         }
         if let files = AdapterFiles.locate() {
             startAdapter(files)
+        } else if !sendsAppleEvents {
+            Self.log.notice("smoke run: no mediaremote-adapter and no AppleScript fallback")
         } else {
             Self.log.notice("mediaremote-adapter not bundled; using AppleScript for Spotify / Music")
             startFallback()
@@ -136,7 +140,7 @@ public final class NowPlaying {
     /// first time, on this click). The heart follows Music's answer; a refusal or failure
     /// says why under the controls instead of doing nothing.
     public func toggleLike() {
-        guard canLike, !likeBusy else { return }
+        guard sendsAppleEvents, canLike, !likeBusy else { return }
         guard music.isRunning() else {
             showLikeMessage("Music is not running.")
             return
@@ -180,7 +184,7 @@ public final class NowPlaying {
     /// The new track's favourite state, only when Music already allows PlatyNotch (checked
     /// without asking), so reading it never shows a prompt.
     private func readLiked() {
-        guard canLike, music.isRunning() else { return }
+        guard sendsAppleEvents, canLike, music.isRunning() else { return }
         let title = info?.title
         let music = self.music
         AppleScriptPlayer.queue.async {
@@ -323,6 +327,7 @@ public final class NowPlaying {
     // MARK: - AppleScript fallback
 
     private func startFallback() {
+        guard sendsAppleEvents else { return }
         source = .appleScript
         pollTask?.cancel()
         pollTask = Task { @MainActor [weak self] in
