@@ -54,17 +54,20 @@ jobs:
       - name: diag build tests
         working-directory: apps/mac
         run: swift build --build-tests
-      - name: diag filter DragMonitorTests
+      - name: diag single tests
         working-directory: apps/mac
         continue-on-error: true
-        run: swift test --skip-build --filter DragMonitorTests 2>&1 | tail -60
+        run: |
+          for t in testNothingInstalledWithoutSubscribers testInertMonitorInstallsNothing testDroppedSubscriptionUnsubscribes testRefCountedStartAndStop testDragTypesOnlyWhileDragging; do
+            swift test --skip-build --filter "DragMonitorTests/$t" > "/tmp/$t.log" 2>&1; echo "RESULT $t exit=$?"; grep -E "signal|passed|failed" "/tmp/$t.log" | head -5
+          done
       - name: diag lldb DragMonitorTests
         working-directory: apps/mac
         continue-on-error: true
         run: |
-          B=$(find .build/debug -maxdepth 1 -name '*.xctest' | head -1)
-          echo "bundle: $B"
-          lldb --batch -o 'settings set target.process.stop-on-exec false' -o run -k 'bt all' -k 'quit 1' -- "$(xcrun --find xctest)" -XCTest PlatyNotchUITests.DragMonitorTests "$B" 2>&1 | tail -200
+          B="$(swift build --show-bin-path)/PlatyNotchPackageTests.xctest"
+          echo "bundle: $B"; ls -d "$B"
+          lldb --batch -o run -k 'bt all' -k 'quit 1' -- "$(xcrun --find xctest)" -XCTest PlatyNotchUITests.DragMonitorTests/testDragTypesOnlyWhileDragging "$B" 2>&1 | tail -150
       - name: diag crash reports
         if: always()
         run: |
