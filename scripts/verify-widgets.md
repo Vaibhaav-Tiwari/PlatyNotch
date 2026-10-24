@@ -849,11 +849,11 @@ scripts/perf-idle.sh --music-fallback   # AppleScript now-playing fallback
 scripts/perf-idle.sh --app                    # build/PlatyNotch.app, run as a dev.platynotch.perf copy
 ```
 
-Themed views in both schemes (HUD, approval card, game boards, shelf), as PNGs to look at:
+Themed views in both schemes (HUD, approval card, game boards, shelf, memory graph), as PNGs to look at:
 
 ```sh
 cd apps/mac && swift build && PLATYNOTCH_RENDER_DIR=/tmp/pn-renders PLATYNOTCH_HOME=<temp home> \
-  PLATYNOTCH_CORE_BIN=<core> .build/debug/PlatyNotch --smoke    # SMOKE OK … renders=18 theme=<current theme>
+  PLATYNOTCH_CORE_BIN=<core> .build/debug/PlatyNotch --smoke    # SMOKE OK … renders=24 theme=<current theme>
 ```
 
 - [ ] **171. Idle under 1%.** On a notched M1 both runs print PASS (mean of 60 one-second
@@ -1003,3 +1003,36 @@ tester: these checks only read what the app says.
   offers Copy Command (`tccutil reset AppleEvents dev.platynotch.app`). After the tester runs
   it, the next click asks again. With Safari's switch simply off (same build), the notice
   gives System Settings › Privacy & Security › Automation › PlatyNotch › Safari instead.
+
+## Memory graph
+
+Use an installed build with memory on and a few days of captures (or a throwaway home where
+you browsed a little). The graph is read from the core over `memory.graph`; `notch mcp`'s
+`memory_graph` tool returns the same nodes and edges. PNGs of the view with sample data:
+`memory-graph-*.png` from the render command above.
+
+- [ ] **199. Graph view.** Memory tab › Graph: apps (blue rounded squares), threads (teal
+  circles), sites (green diamonds) and open loops (orange triangles) with lines between
+  them; the legend under the graph names each shape. App names are written under the apps.
+  24 h, 7 d and 30 d each load their own graph; Refresh reloads it. The same data gives the
+  same picture every time.
+- [ ] **200. Hover and click.** Hovering a shape outlines it, dims everything it is not
+  linked to and names it with its kind and links on the line under the graph ("Thread · 3
+  connections: Mail, …"). Clicking keeps that until another click (on the same shape or
+  empty space). Titles with odd characters show them made visible, on one line.
+- [ ] **201. Static at rest.** Leave the panel open on Graph for a minute without moving the
+  pointer: nothing moves, and Activity Monitor shows PlatyNotch under 1% CPU. With Reduce
+  motion on, the graph appears without the short fade.
+- [ ] **202. Only when shown.** (`MemoryGraphModelTests` checks no request goes out before
+  the view appears.) Open Graph, switch to Search, read a new page for a minute, then open
+  Graph again: the new page is there. It does not change while Graph stays open; Refresh or
+  another range picks it up.
+- [ ] **203. Empty and off.** In a fresh home with memory on and no captures, Graph says
+  "Nothing captured in the last 7 days." With memory off it says "Memory is off" with Open
+  Memory Settings.
+- [ ] **204. VoiceOver.** With VoiceOver on, the graph reads as "Memory graph, Last 7 days, n
+  items" and its children are a list, heaviest first: "Thread, Inbox, 3 connections".
+  Activating one shows its links on the detail line. The range buttons read "Last 24
+  hours" and so on.
+- [ ] **205. Loops whose thread is gone.** An open loop whose source thread was purged by
+  retention still shows, linked to its app (or alone when that app is not in the range).

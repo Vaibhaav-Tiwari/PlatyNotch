@@ -176,7 +176,7 @@ Memory is **off by default**. Turn it on in **Settings › Memory** (setting
 ### Use your memory from AI apps (MCP)
 
 `notch mcp` is a local stdio MCP server that lets AI apps search your memory
-and open loops. Register it with:
+and open loops, and read your memory graph. Register it with:
 
 ```sh
 notch mcp install claude-desktop   # or: claude-code, cursor
@@ -207,6 +207,12 @@ captures:
 
 "Pause capture for 1 hour" is in the menu bar item's menu and in the Memory
 tab.
+
+**Graph.** The Memory tab's Graph view draws the apps, threads (pages,
+documents, conversations), sites and open loops from the last 24 hours, 7 days
+or 30 days, linked by where you saw them and what you switched between. It is
+built on your Mac from `memory.db`, with no AI involved, and AI apps can read
+the same graph through the `memory_graph` MCP tool.
 
 ## License
 
