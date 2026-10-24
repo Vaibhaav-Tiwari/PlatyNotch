@@ -61,6 +61,10 @@ enum FileActionError: Error, Equatable, LocalizedError {
     case unsupported
     case tooLarge(UInt64)
     case unsafeArchive
+    /// A symbolic link in it is absolute or climbs out with `..`.
+    case unsafeLinks
+    /// It lists more than this many entries (`ZipInspector.maxEntries`).
+    case tooManyEntries(Int)
     /// Its data does not match what it declares (sizes, stream end, CRC), or it is cut short.
     case damagedArchive
     case noSubject
@@ -78,6 +82,8 @@ enum FileActionError: Error, Equatable, LocalizedError {
         case .unsupported: "this Mac can't make that kind of file"
         case .tooLarge(let cap): "it would unpack to more than \(ByteCountFormatter.string(fromByteCount: Int64(cap), countStyle: .binary))"
         case .unsafeArchive: "the archive is damaged or unsafe (its entries would land outside its folder, or its headers disagree)"
+        case .unsafeLinks: "this archive contains links that point outside their folder"
+        case .tooManyEntries(let max): "it has more than \(max.formatted()) files and folders"
         case .damagedArchive: "the archive is damaged (its contents don't match what it declares)"
         case .noSubject: "no subject was found"
         case .noText: "no text was found"
@@ -115,6 +121,11 @@ struct SystemFileActions: FileActionPerforming {
     static let freeSpaceMargin: UInt64 = 64 << 20
 
     var unzipCap: UInt64 = defaultUnzipCap
+    /// Unzip refuses an archive listing more entries than this (a seam for tests).
+    var unzipEntryCap: Int = ZipInspector.maxEntries
+    /// Whether the unzip should stop, asked between chunks (a seam for tests: the work's
+    /// own task by default).
+    var unzipIsCancelled: @Sendable () -> Bool = { Task.isCancelled }
     var ditto = ProcessRunner(executableURL: URL(fileURLWithPath: "/usr/bin/ditto"), stopsOnCancel: true)
     /// Free bytes on the volume of a folder (a seam for tests).
     var freeSpaceAt: @Sendable (URL) -> UInt64? = { SystemFileActions.freeSpace(at: $0) }
@@ -335,11 +346,12 @@ struct SystemFileActions: FileActionPerforming {
     /// Into `<folder>/<archive name>/`, with PlatyNotch's own extractor (`ZipExtractor`),
     /// never ditto: only entries the checked directory lists, each exactly its declared
     /// bytes, size and CRC. Refused first when the archive declares more than `unzipCap`,
-    /// fails `ZipInspector` (hidden or mismatched entries, unsafe names or links), or would
-    /// not fit on the disk. On any failure or cancel, what it wrote is deleted.
+    /// fails `ZipInspector` (hidden or mismatched entries, unsafe names or links, more than
+    /// `unzipEntryCap` entries), or would not fit on the disk. On any failure or cancel, what it wrote is deleted.
     func unzip(_ src: URL, into folder: URL) async throws -> URL {
-        guard let summary = ZipInspector.summary(of: src) else { throw FileActionError.unreadable }
-        guard summary.problem == nil else { throw FileActionError.unsafeArchive }
+        let entryCap = unzipEntryCap
+        guard let summary = ZipInspector.summary(of: src, maxEntries: entryCap) else { throw FileActionError.unreadable }
+        if let problem = summary.problem { throw Self.archiveError(problem, entryCap: entryCap) }
         let cap = unzipCap
         guard summary.uncompressedBytes <= cap else { throw FileActionError.tooLarge(cap) }
         let needed = summary.uncompressedBytes.addingReportingOverflow(Self.freeSpaceMargin)
@@ -354,21 +366,34 @@ struct SystemFileActions: FileActionPerforming {
             throw FileActionError.failed("the folder could not be made")
         }
         do {
-            _ = try await Self.detached { try ZipExtractor.extract(src, into: dest, cap: cap, isCancelled: { Task.isCancelled }) }
+            let isCancelled = unzipIsCancelled
+            _ = try await Self.detached {
+                try ZipExtractor.extract(src, into: dest, cap: cap, maxEntries: entryCap, isCancelled: isCancelled)
+            }
         } catch {
             try? FileManager.default.removeItem(at: dest)
-            throw Self.unzipError(error, cap: cap)
+            throw Self.unzipError(error, cap: cap, entryCap: entryCap)
         }
         return dest
     }
 
-    static func unzipError(_ error: Error, cap: UInt64) -> FileActionError {
+    /// Why `ZipInspector` refused it, for the card.
+    static func archiveError(_ problem: ZipInspector.Problem, entryCap: Int) -> FileActionError {
+        switch problem {
+        case .unsafeLink: .unsafeLinks
+        case .tooManyEntries: .tooManyEntries(entryCap)
+        case .unsafeName, .mismatchedHeaders, .unknownSizes, .unlistedData: .unsafeArchive
+        }
+    }
+
+    static func unzipError(_ error: Error, cap: UInt64, entryCap: Int = ZipInspector.maxEntries) -> FileActionError {
         if let e = error as? FileActionError { return e }
         if error is CancellationError { return .cancelled }
         guard let failure = error as? ZipExtractor.Failure else { return .failed(error.localizedDescription) }
         switch failure {
         case .unreadable: return .unreadable
-        case .unsafe, .unsafeName: return .unsafeArchive
+        case .unsafe(let problem): return archiveError(problem, entryCap: entryCap)
+        case .unsafeName: return .unsafeArchive
         case .encrypted: return .failed("it is encrypted")
         case .unsupportedMethod: return .failed("it uses a kind of compression PlatyNotch can't unpack")
         case .tooLarge: return .tooLarge(cap)

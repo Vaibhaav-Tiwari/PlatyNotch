@@ -142,13 +142,17 @@ final class FileActionsEngineTests: DefaultsTestCase {
         }
     }
 
-    /// Fix round 1: cancelling reaches work on a background thread (it stops between pages).
+    /// Fix round 1: cancelling reaches work on a background thread (it stops between
+    /// pages). Fix round 4: 20 pages of 1200 px (about 3 s in all); cancelled once the
+    /// background work has made the PDF, which then closes with fewer pages than asked.
     func testCancelReachesBackgroundWork() async throws {
-        let png = try Fixtures.png(at: root.appendingPathComponent("big.png"), width: 3000, height: 3000)
-        let sources = Array(repeating: png, count: SystemFileActions.maxPDFImages)
+        let png = try Fixtures.png(at: root.appendingPathComponent("big.png"), width: 1200, height: 1200)
+        let sources = Array(repeating: png, count: 20)
         let out = try folder()
+        let pdf = out.appendingPathComponent("big and 19 more.pdf")
         let task = Task { [engine] in try await engine.perform(.combinePDF, sources: sources, into: out) }
-        try await Task.sleep(for: .milliseconds(50))
+        let begun = await eventually { self.fm.fileExists(atPath: pdf.path) }
+        XCTAssertTrue(begun, "the background work started")
         let started = Date()
         task.cancel()
         do {
@@ -157,7 +161,9 @@ final class FileActionsEngineTests: DefaultsTestCase {
         } catch {
             XCTAssertEqual(error as? FileActionError, .cancelled)
         }
-        XCTAssertLessThan(Date().timeIntervalSince(started), 2, "stopped soon, not after all 100 pages")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2, "stopped soon, not after all 20 pages")
+        let pages = CGPDFDocument(pdf as CFURL)?.numberOfPages ?? 0
+        XCTAssertLessThan(pages, sources.count, "the page loop stopped early")
     }
 
     func testCombineCap() async throws {
@@ -291,25 +297,78 @@ final class FileActionsEngineTests: DefaultsTestCase {
     }
 
     /// Cancelling an unzip stops the extractor between chunks and deletes what it wrote.
+    /// Fix round 4: deterministic. A 2 MB file (eight 256 KiB output chunks); the cancel
+    /// check trips as soon as the first chunk is on disk.
     func testCancelledUnzipLeavesNothing() async throws {
         let src = root.appendingPathComponent("big.bin")
-        var bytes = [UInt8](repeating: 0, count: 64 << 20)
+        var bytes = [UInt8](repeating: 0, count: 2 << 20)
         for i in stride(from: 0, to: bytes.count, by: 4096) { bytes[i] = UInt8(truncatingIfNeeded: i >> 12) }
         try Data(bytes).write(to: src)
         guard case .file(let zip) = try await engine.perform(.zip, sources: [src], into: try folder("z")) else {
             return XCTFail("no zip")
         }
         let out = try folder("u")
-        let task = Task { [engine] in try await engine.perform(.unzip, sources: [zip], into: out) }
-        try await Task.sleep(for: .milliseconds(20))
-        task.cancel()
+        var stopping = SystemFileActions()
+        stopping.unzipIsCancelled = { Self.partialHasData(under: out) }
         do {
-            _ = try await task.value
-            // A fast machine may finish 64 MB first; then the result is whole.
+            _ = try await stopping.perform(.unzip, sources: [zip], into: out)
+            XCTFail("finished despite the cancel")
         } catch {
             XCTAssertEqual(error as? FileActionError, .cancelled)
-            XCTAssertEqual(try fm.contentsOfDirectory(atPath: out.path), [], "what it wrote is deleted")
         }
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: out.path), [], "what it wrote is deleted")
+    }
+
+    /// Whether a non-empty `.partial-` file (an entry being written) is anywhere under `dir`.
+    nonisolated private static func partialHasData(under dir: URL) -> Bool {
+        let fm = FileManager.default
+        let paths = (try? fm.subpathsOfDirectory(atPath: dir.path)) ?? []
+        return paths.contains { path in
+            guard path.contains(".partial-") else { return false }
+            let size = (try? fm.attributesOfItem(atPath: dir.appendingPathComponent(path).path)[.size] as? Int) ?? 0
+            return size > 0
+        }
+    }
+
+    /// Fix round 4: a link pointing outside its folder gets its own message.
+    func testUnzipRefusesAnOutsideLinkSayingSo() async throws {
+        let e2 = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("PlatyNotchKitTests/Fixtures/zips/E2_symlink_unix_abs.zip")
+        let out = try folder()
+        do {
+            _ = try await engine.perform(.unzip, sources: [e2], into: out)
+            XCTFail("unzipped an outside link")
+        } catch {
+            XCTAssertEqual(error as? FileActionError, .unsafeLinks)
+            XCTAssertEqual((error as? FileActionError)?.errorDescription,
+                           "this archive contains links that point outside their folder")
+        }
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: out.path), [])
+        XCTAssertEqual(SystemFileActions.unzipError(ZipExtractor.Failure.unsafe(.unsafeLink), cap: 1), .unsafeLinks,
+                       "a link refused while extracting says the same")
+    }
+
+    /// Fix round 4: more entries than the cap (injected small) is refused before anything
+    /// is written, with its own message.
+    func testUnzipRefusesTooManyEntries() async throws {
+        let src = root.appendingPathComponent("Three")
+        try fm.createDirectory(at: src, withIntermediateDirectories: true)
+        for n in ["a", "b", "c"] { try Data(n.utf8).write(to: src.appendingPathComponent(n + ".txt")) }
+        guard case .file(let zip) = try await engine.perform(.zip, sources: [src], into: try folder("z")) else {
+            return XCTFail("no zip")
+        }
+        var capped = SystemFileActions()
+        capped.unzipEntryCap = 2
+        let out = try folder("u")
+        do {
+            _ = try await capped.perform(.unzip, sources: [zip], into: out)
+            XCTFail("unzipped past the entry cap")
+        } catch {
+            XCTAssertEqual(error as? FileActionError, .tooManyEntries(2))
+        }
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: out.path), [], "nothing written")
+        XCTAssertEqual(FileActionError.tooManyEntries(ZipInspector.maxEntries).errorDescription,
+                       "it has more than \(50_000.formatted()) files and folders")
     }
 
     /// Fix round 2: not enough free space: refused before anything is written.
