@@ -89,8 +89,11 @@ enum BuiltInWidgets {
     }
 
     /// Every power feature (`WidgetCategory.power`); `persist: false` gives inert ones
-    /// (no monitors, permissions, files or network), as `--smoke-power` checks. None yet.
+    /// (no monitors, permissions, files or network), as `--smoke-power` checks.
     static func powerWidgets(persist: Bool) -> [any NotchWidget] {
-        []
+        var out: [any NotchWidget] = []
+        // Quick notes and Obsidian tasks: no vault, watch or file until set up in its settings.
+        out.append(persist ? NotesWidget() : NotesWidget.inert())
+        return out
     }
 }
