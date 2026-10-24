@@ -346,6 +346,45 @@ final class ShelfTests: XCTestCase {
         XCTAssertEqual(after.expireOwned(olderThan: 0, now: t0.addingTimeInterval(1)), [listed.id])
     }
 
+    /// Round 2: a folder a plain (not owned) file item points into is listed: neither
+    /// Delete Kept Copies nor the sweep deletes it. Two ways in: a kept copy dragged back
+    /// onto the shelf, and Locate… pointed at a file inside an owned folder.
+    func testFileItemsInsideOwnedFoldersAreNeverDeleted() throws {
+        let fm = FileManager.default
+        let s = store()
+        let a = try XCTUnwrap(s.addOwnedData(Data("a".utf8), filename: "a.png"))
+        let b = try XCTUnwrap(s.addOwnedData(Data("b".utf8), filename: "b.png"))
+        let aFile = a.fileRef!.url, bFile = b.fileRef!.url
+        try Data("{ not json".utf8).write(to: shelfDir.appendingPathComponent(ShelfStore.indexName))
+
+        let after = store()   // damaged index: both folders are unlisted kept copies
+        XCTAssertEqual(after.keptFolderCount(), 2)
+        // 1. The user drags kept copy a back onto the shelf (a plain file item).
+        let dragged = after.addFile(aFile)
+        XCTAssertFalse(dragged.ownsFile)
+        // 2. A missing item is located onto kept copy b.
+        let missing = after.addFile(root.appendingPathComponent("gone.txt"))
+        after.relocate(missing.id, to: bFile)
+        XCTAssertEqual(after.keptFolderCount(), 0, "both folders are listed now")
+
+        after.deleteKeptFiles()
+        XCTAssertTrue(fm.fileExists(atPath: aFile.path), "Delete Kept Copies keeps a listed file")
+        XCTAssertTrue(fm.fileExists(atPath: bFile.path))
+
+        // The sweep (no damaged index any more, folders old enough) keeps them too.
+        let later = store(now: t0.addingTimeInterval(30 * day))
+        later.sweepOrphans(olderThan: 0)
+        XCTAssertTrue(fm.fileExists(atPath: aFile.path), "the sweep keeps a listed file")
+        XCTAssertTrue(fm.fileExists(atPath: bFile.path))
+        // Through a symlink to the folder, too.
+        let link = root.appendingPathComponent("link")
+        try fm.createSymbolicLink(at: link, withDestinationURL: aFile.deletingLastPathComponent())
+        later.remove(dragged.id)
+        later.addFile(link.appendingPathComponent("a.png"))
+        later.sweepOrphans(olderThan: 0)
+        XCTAssertTrue(fm.fileExists(atPath: aFile.path), "listed through a symlink")
+    }
+
     func testNoKeptFilesWithAHealthyIndex() throws {
         let s = store()
         _ = try XCTUnwrap(s.addOwnedData(Data("a".utf8), filename: "a.png"))

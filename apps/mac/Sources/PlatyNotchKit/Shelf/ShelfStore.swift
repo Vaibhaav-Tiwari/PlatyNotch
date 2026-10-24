@@ -413,7 +413,7 @@ public final class ShelfStore {
         guard persist, !deletionsBlocked,
               let names = try? fileManager.contentsOfDirectory(atPath: directory.path),
               !names.contains(where: { $0.hasPrefix(Self.corruptPrefix) }) else { return }
-        let owned = Set(items.filter(\.ownsFile).map(\.id)).union(keeping)
+        let owned = listedFolders().union(keeping)
         let cutoff = now().addingTimeInterval(-olderThan)
         for name in names {
             guard let id = UUID(uuidString: name), !owned.contains(id) else { continue }
@@ -454,13 +454,30 @@ public final class ShelfStore {
 
     private func unlistedFolders(keeping: Set<UUID>) -> [UUID] {
         guard persist, let names = try? fileManager.contentsOfDirectory(atPath: directory.path) else { return [] }
-        let listed = Set(items.filter(\.ownsFile).map(\.id)).union(keeping)
+        let listed = listedFolders().union(keeping)
         return names.compactMap { name in
             guard let id = UUID(uuidString: name), !listed.contains(id) else { return nil }
             var isDir: ObjCBool = false
             let exists = fileManager.fileExists(atPath: ownedFolder(id).path, isDirectory: &isDir)
             return exists && isDir.boolValue ? id : nil
         }
+    }
+
+    /// The `<uuid>` folders some item still lists: every owned item's own folder, and the
+    /// folder of any file item (owned or not) whose path, standardized and with symlinks
+    /// resolved, lies inside `<directory>/<uuid>/` (a kept copy dragged back onto the shelf,
+    /// or Locate… pointed at a file in one). Such a folder is never swept or deleted.
+    func listedFolders() -> Set<UUID> {
+        var ids = Set(items.filter(\.ownsFile).map(\.id))
+        let root = directory.standardizedFileURL.resolvingSymlinksInPath().path + "/"
+        for item in items {
+            guard let ref = item.fileRef else { continue }
+            let path = ref.url.standardizedFileURL.resolvingSymlinksInPath().path
+            guard path.hasPrefix(root) else { continue }
+            let first = path.dropFirst(root.count).split(separator: "/").first.map(String.init) ?? ""
+            if let id = UUID(uuidString: first) { ids.insert(id) }
+        }
+        return ids
     }
 
     /// Re-applies the backup and Spotlight exclusion to an existing folder (each start).
@@ -522,11 +539,24 @@ public final class ShelfStore {
     /// Reads the index. A missing one is an empty shelf. One that exists but cannot be
     /// read or decoded is moved aside (`items.json.corrupt-<date>`, 0600) and blocks every
     /// sweep and expiry: the shelf starts empty and no folder is deleted.
+    /// A file item stored under the shelf's folder before it was renamed to `.noindex`
+    /// (`<parent>/shelf/…`): its path is moved to the same place under `directory`, so an
+    /// owned copy without a usable bookmark still resolves after the migration.
+    private func rebased(_ item: ShelfItem) -> ShelfItem {
+        guard var ref = item.fileRef, directory.pathExtension == "noindex" else { return item }
+        let oldRoot = directory.deletingPathExtension().standardizedFileURL.path + "/"
+        guard ref.path.hasPrefix(oldRoot) else { return item }
+        ref.path = directory.standardizedFileURL.path + "/" + ref.path.dropFirst(oldRoot.count)
+        var out = item
+        out.kind = .file(ref)
+        return out
+    }
+
     private func load() {
         guard fileManager.fileExists(atPath: indexURL.path) else { return }
         if let data = try? Data(contentsOf: indexURL),
            let decoded = try? JSONDecoder().decode([ShelfItem].self, from: data) {
-            items = decoded
+            items = decoded.map(rebased)
             return
         }
         let f = ISO8601DateFormatter()
