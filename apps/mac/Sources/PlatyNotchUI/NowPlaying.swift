@@ -203,12 +203,12 @@ public final class NowPlaying {
         artworkTint = nil
         guard let data else { return }
         let generation = artworkGeneration
-        Task.detached(priority: .utility) { [weak self] in
-            guard let rgb = Self.dominantColor(of: data) else { return }
-            await MainActor.run {
-                guard let self, self.artworkGeneration == generation else { return }
-                self.artworkTint = Color(red: rgb.r, green: rgb.g, blue: rgb.b)
-            }
+        // The decode runs detached and never sees `self`; the result is applied back here
+        // on the main actor (older compilers reject sending `self` into the detached task).
+        Task { [weak self] in
+            let rgb = await Task.detached(priority: .utility) { NowPlaying.dominantColor(of: data) }.value
+            guard let self, let rgb, self.artworkGeneration == generation else { return }
+            self.artworkTint = Color(red: rgb.r, green: rgb.g, blue: rgb.b)
         }
     }
 

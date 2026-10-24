@@ -104,11 +104,15 @@ public actor CoreClient {
                 // connection would race the next start()'s loop (its late .disconnected
                 // could follow the new .connected), so drop it without any event.
                 if Task.isCancelled { t.close(); break }
+                // hello and subscribe go out first. Only then is the connection usable and
+                // reported: the actor is reentrant at each send, so a request issued on an
+                // early `.connected` could otherwise land between hello and subscribe.
+                try await handshake(t)
+                if Task.isCancelled { t.close(); break }
                 transport = t
                 wasConnected = true
                 attempt = 0
                 continuation.yield(.connected)
-                try await handshake(t)
                 var codec = LineCodec()
                 for await chunk in t.incoming {
                     for line in codec.feed(chunk) { dispatch(line) }

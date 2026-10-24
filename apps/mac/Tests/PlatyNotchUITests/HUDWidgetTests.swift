@@ -127,6 +127,7 @@ final class HUDWidgetTests: XCTestCase {
                                                 surfaces: r.surfaces, openPanel: { _ in }))
         for d in displays {
             let c = NotchController(store: AppStore(), client: client, plugins: [], widgets: r.registry, surfaces: r.surfaces)
+            c.cursorLocation = { CGPoint(x: 100, y: 100) }   // never the real mouse
             c.debugHandle(.display(d))
             r.controllers.append(c)
         }

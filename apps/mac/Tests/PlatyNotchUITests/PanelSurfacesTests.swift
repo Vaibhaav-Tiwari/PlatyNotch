@@ -64,6 +64,7 @@ final class PanelSurfacesTests: XCTestCase {
                                               surfaces: surfaces, openPanel: { _ in }))
         let c = NotchController(store: AppStore(), client: client, plugins: [], widgets: registry,
                                 surfaces: surfaces, minimal: minimal)
+        c.cursorLocation = { CGPoint(x: 100, y: 100) }   // never the real mouse
         return Rig(surfaces: surfaces, registry: registry, widget: w, controller: c)
     }
 

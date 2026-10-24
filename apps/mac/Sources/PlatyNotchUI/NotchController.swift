@@ -55,7 +55,7 @@ public final class NotchController {
     var awaitingDrop: Bool { dropGraceTask != nil }
     /// Whether the left mouse button is down (a drag cannot be in progress otherwise).
     var mouseDown: () -> Bool = { NSEvent.pressedMouseButtons & 1 != 0 }
-    /// Where the cursor is when a drag session ends (tests pin it).
+    /// Where the cursor is now (tests pin it, so no result depends on the real mouse).
     var cursorLocation: () -> CGPoint = { NSEvent.mouseLocation }
     private var workspaceObservers: [NSObjectProtocol] = []
 
@@ -191,7 +191,7 @@ public final class NotchController {
     private func apply() {
         defer { surfaces.sinkStateChanged() }   // the media-key tap's view of where a HUD would show
         guard let panel, let layout else { return }
-        cursor = NSEvent.mouseLocation   // never decide pass-through from a stale position
+        cursor = cursorLocation()   // never decide pass-through from a stale position
         let mode = machine.mode
         suppressed = FullScreenPolicy.shouldSuppress(
             fullScreen: fullScreen, mode: mode, cursor: cursor, revealRect: layout.revealRect,

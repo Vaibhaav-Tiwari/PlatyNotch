@@ -115,6 +115,7 @@ final class ShelfWidgetTests: XCTestCase {
                                               surfaces: surfaces, openPanel: { _ in }))
         let c = NotchController(store: AppStore(), client: client, plugins: [], widgets: registry,
                                 surfaces: surfaces, minimal: false)
+        c.cursorLocation = { CGPoint(x: 100, y: 100) }   // never the real mouse
         c.debugHandle(.layout(PanelLayout(screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),
                                           visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 950),
                                           auxLeft: CGRect(x: 0, y: 950, width: 654, height: 32),
@@ -288,6 +289,7 @@ final class ShelfWidgetTests: XCTestCase {
         XCTAssertEqual(r.controller.mode, .peek(.drop))
         down = false
         r.controller.dragMoved(to: CGPoint(x: 756, y: 800))   // the poll sees the release first
+        r.controller.cursorLocation = { CGPoint(x: 756, y: 800) }   // still over the zone
         r.surfaces.setDragSession(active: false)              // and the detector ends the session
         XCTAssertEqual(r.controller.mode, .peek(.drop), "still the drop zone")
         XCTAssertTrue(r.controller.awaitingDrop)
