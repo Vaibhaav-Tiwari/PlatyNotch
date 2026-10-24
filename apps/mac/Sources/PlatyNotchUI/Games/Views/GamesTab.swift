@@ -90,7 +90,7 @@ struct GamesTab: View {
             TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: !host.isRunning)) { timeline in
                 GameBoard(session: host.session, date: timeline.date, decorate: !reduceMotion)
                     .onChange(of: timeline.date) { _, date in
-                        host.frame(now: date.timeIntervalSinceReferenceDate)
+                        host.frame(now: date.timeIntervalSinceReferenceDate, from: surfaceID)
                     }
             }
             GameKeyCatcher(onKey: { host.handle($0, from: surfaceID) },

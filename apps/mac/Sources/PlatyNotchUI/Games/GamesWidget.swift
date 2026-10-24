@@ -26,6 +26,9 @@ public final class GamesWidget: NotchWidget {
     public let host: GameHost
     @ObservationIgnored private var openTab: () -> Void = {}
 
+    /// Scores come from `defaults` (the app passes `.standard`, the same domain as
+    /// `WidgetContext.defaults`), not from the context in `start`: the tile and Settings
+    /// show the best scores before the widget starts and while it is off.
     /// `defaults: nil` keeps scores in memory only (smoke runs).
     public init(defaults: UserDefaults? = .standard) {
         host = GameHost(defaults: defaults)

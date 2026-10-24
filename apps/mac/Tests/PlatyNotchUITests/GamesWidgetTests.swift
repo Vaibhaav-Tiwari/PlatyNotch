@@ -75,8 +75,8 @@ final class GamesWidgetTests: XCTestCase {
         XCTAssertEqual(r.host.session.phase, .ready)
         XCTAssertTrue(r.host.blockers.collapsed, "no tab on screen yet")
         let before = r.host.session
-        r.host.frame(now: 1)
-        r.host.frame(now: 2)
+        r.host.frame(now: 1, from: r.tab)
+        r.host.frame(now: 2, from: r.tab)
         XCTAssertFalse(r.host.handle(.space, from: UUID()), "no tab was clicked: keys are not the game's")
         XCTAssertEqual(r.host.session, before, "frames and keys before play change nothing")
         XCTAssertNil(r.defaults.data(forKey: HighScores.key), "nothing saved")
@@ -85,8 +85,8 @@ final class GamesWidgetTests: XCTestCase {
     func testApprovalMidGamePausesAndKeysDoNotReachTheGame() async throws {
         let r = rig()
         play(r)
-        r.host.frame(now: 10)
-        r.host.frame(now: 10 + GameSession.snakeStep + 0.001)
+        r.host.frame(now: 10, from: r.tab)
+        r.host.frame(now: 10 + GameSession.snakeStep + 0.001, from: r.tab)
         let snapshot = r.host.session.snake
 
         try addApproval(r)
@@ -99,15 +99,15 @@ final class GamesWidgetTests: XCTestCase {
         for k in [GameKey.up, .down, .left, .right, .space, .escape] {
             XCTAssertFalse(r.host.handle(k, from: r.tab), "\(k) is not the game's while an approval is pending")
         }
-        r.host.frame(now: 11)
-        r.host.frame(now: 12)
+        r.host.frame(now: 11, from: r.tab)
+        r.host.frame(now: 12, from: r.tab)
         XCTAssertEqual(r.host.session.snake, snapshot)
     }
 
     func testKeysNeverReachTheGameEvenBeforeTheObservationFires() throws {
         let r = rig()
         play(r)
-        r.host.frame(now: 0)
+        r.host.frame(now: 0, from: r.tab)
         try addApproval(r)
         // No yield: the key itself re-reads the store.
         XCTAssertFalse(r.host.handle(.left, from: r.tab))
@@ -117,8 +117,8 @@ final class GamesWidgetTests: XCTestCase {
     func testResumeAfterApprovalRestoresExactState() async throws {
         let r = rig()
         play(r, .tetris)
-        r.host.frame(now: 0)
-        r.host.frame(now: 0.25)
+        r.host.frame(now: 0, from: r.tab)
+        r.host.frame(now: 0.25, from: r.tab)
         XCTAssertTrue(r.host.handle(.left, from: r.tab))
         XCTAssertTrue(r.host.handle(.up, from: r.tab))
         let snapshot = r.host.session.tetris
@@ -137,15 +137,15 @@ final class GamesWidgetTests: XCTestCase {
         XCTAssertTrue(r.host.handle(.space, from: r.tab))
         XCTAssertEqual(r.host.session.phase, .playing)
         XCTAssertEqual(r.host.session.tetris, snapshot, "exactly where it left off")
-        r.host.frame(now: 500)   // first frame after the resume only sets the clock
+        r.host.frame(now: 500, from: r.tab)   // first frame after the resume only sets the clock
         XCTAssertEqual(r.host.session.tetris, snapshot)
     }
 
     func testRingingPausesTheGame() async {
         let r = rig()
         play(r, .flappy)
-        r.host.frame(now: 0)
-        r.host.frame(now: 0.05)
+        r.host.frame(now: 0, from: r.tab)
+        r.host.frame(now: 0.05, from: r.tab)
         let bird = r.host.session.flappy
         XCTAssertTrue(r.surfaces.ring(id: "time.alarm", title: "Alarm"))
         await settle()
@@ -153,7 +153,7 @@ final class GamesWidgetTests: XCTestCase {
         XCTAssertTrue(r.host.blockers.ringing)
         XCTAssertTrue(r.host.handle(.space, from: r.tab), "Space is taken (not passed to the panel)")
         XCTAssertEqual(r.host.session.phase, .paused, "but cannot resume while it rings")
-        r.host.frame(now: 1)
+        r.host.frame(now: 1, from: r.tab)
         XCTAssertEqual(r.host.session.flappy, bird)
 
         r.surfaces.stopRinging(id: "time.alarm")
@@ -200,15 +200,15 @@ final class GamesWidgetTests: XCTestCase {
         // Drive the engine through the host: frames until the snake hits the wall.
         r.host.session = s
         var t = 0.0
-        r.host.frame(now: t)
+        r.host.frame(now: t, from: r.tab)
         t += GameSession.snakeStep + 0.0001
-        r.host.frame(now: t)
+        r.host.frame(now: t, from: r.tab)
         var tweak = r.host.session
         tweak.snake.food = PlatyNotchKit.Point(x: 0, y: 0)
         r.host.session = tweak
         while r.host.session.phase == .playing, t < 30 {
             t += GameSession.snakeStep
-            r.host.frame(now: t)
+            r.host.frame(now: t, from: r.tab)
         }
         XCTAssertEqual(r.host.session.phase, .over)
         XCTAssertEqual(told, [GameResult(kind: .snake, score: 1)])
@@ -268,6 +268,60 @@ final class GamesWidgetTests: XCTestCase {
         XCTAssertFalse(v.hasFocus, "no window: not focused")
         _ = v.resignFirstResponder()
         XCTAssertFalse(v.acceptsFirstResponder)
+    }
+
+    /// Two displays showing the Games tab both run a TimelineView: only the owner's frames
+    /// advance the game, so it never runs at double speed.
+    func testFramesOnlyFromTheOwner() {
+        let r = rig()
+        play(r)
+        let other = UUID()
+        r.host.surfaceChanged(other, GameSurface(shown: true, fullScreen: false, focused: false))
+        XCTAssertEqual(r.host.owner, r.tab)
+        let head = r.host.session.snake.body[0]
+        r.host.frame(now: 0, from: r.tab)
+        r.host.frame(now: 0, from: other)
+        r.host.frame(now: GameSession.snakeStep + 0.001, from: other)   // ignored
+        XCTAssertEqual(r.host.session.snake.body[0], head)
+        r.host.frame(now: GameSession.snakeStep + 0.001, from: r.tab)
+        XCTAssertEqual(r.host.session.snake.body[0].x, head.x + 1, "one step, from the owner's clock only")
+    }
+
+    /// Key loss disarms the board: the panel becoming key again (hover, a click elsewhere
+    /// on it) does not give the board keys until it is clicked itself.
+    func testKeyLossDisarmsTheBoard() {
+        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 100, height: 100), styleMask: [.borderless],
+                              backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let v = GameKeyView(frame: CGRect(x: 0, y: 0, width: 100, height: 100))
+        window.contentView = v
+        var focus: [Bool] = []
+        v.onFocus = { focus.append($0) }
+        v.mouseDown(with: click())
+        XCTAssertTrue(v.armed)
+        XCTAssertTrue(window.firstResponder === v)
+        NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
+        XCTAssertFalse(v.armed)
+        XCTAssertFalse(v.acceptsFirstResponder)
+        XCTAssertFalse(window.firstResponder === v, "gave up first responder")
+        XCTAssertEqual(focus.last, false)
+        NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: window)
+        XCTAssertFalse(v.hasFocus, "becoming key again is not a click on the board")
+        _ = window.makeFirstResponder(v)
+        XCTAssertFalse(window.firstResponder === v, "only a click arms it")
+    }
+
+    func testRepeatsAreMarked() throws {
+        let held = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+                                                  windowNumber: 0, context: nil, characters: " ",
+                                                  charactersIgnoringModifiers: " ", isARepeat: true, keyCode: 49))
+        XCTAssertEqual(GameKey(event: held), GameKey(.space, isRepeat: true))
+    }
+
+    private func click() -> NSEvent {
+        NSEvent.mouseEvent(with: .leftMouseDown, location: .zero, modifierFlags: [], timestamp: 0,
+                           windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
     }
 
     func testGamesTabFitsTheExpandedPanel() {

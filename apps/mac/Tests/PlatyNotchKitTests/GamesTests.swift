@@ -554,6 +554,41 @@ final class GameSessionTests: XCTestCase {
         XCTAssertFalse(s.key(.escape), "a second Escape goes to the panel (closes it)")
     }
 
+    /// Space held through a game over (or a pause) auto-repeats: the repeats never skip the
+    /// game-over screen, start or resume a game, or slam piece after piece.
+    func testHeldSpaceNeverRestartsOrResumes() {
+        let held = GameKey(.space, isRepeat: true)
+        var s = GameSession(kind: .snake, seed: 1)
+        s.setBlockers(clear)
+        XCTAssertTrue(s.key(held))
+        XCTAssertEqual(s.phase, .ready, "a repeat does not start")
+        XCTAssertTrue(s.key(.space))
+        s.advance(to: 0)
+        while s.phase == .playing { s.snake.step(); s.advance(to: 0) }   // run into the wall
+        XCTAssertEqual(s.phase, .over)
+        let over = s
+        XCTAssertTrue(s.key(held), "taken (not passed to the panel)")
+        XCTAssertEqual(s, over, "the game-over screen stays")
+        XCTAssertTrue(s.key(.escape) == false)
+        XCTAssertTrue(s.key(.space))
+        XCTAssertEqual(s.phase, .playing, "a fresh press restarts")
+        XCTAssertTrue(s.key(.escape))
+        XCTAssertTrue(s.key(held))
+        XCTAssertEqual(s.phase, .paused, "a repeat does not resume")
+
+        var t = playing(.tetris)
+        let piece = t.tetris
+        XCTAssertTrue(t.key(held))
+        XCTAssertEqual(t.tetris, piece, "a repeat does not slam another piece")
+        XCTAssertTrue(t.key(.space))
+        XCTAssertNotEqual(t.tetris, piece)
+
+        var f = playing(.flappy)
+        let bird = f.flappy.velocity
+        XCTAssertTrue(f.key(held))
+        XCTAssertNotEqual(f.flappy.velocity, bird, "holding Space still flaps")
+    }
+
     func testGame2048NeedsNoFrames() {
         var s = playing(.twenty48)
         XCTAssertFalse(s.isRunning, "turn-based: no frame loop")

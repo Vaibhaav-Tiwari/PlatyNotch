@@ -30,34 +30,55 @@ public enum GameKind: String, CaseIterable, Identifiable, Sendable {
 }
 
 /// The keys games take: arrows, WASD, Space and Escape. Nothing with ⌘, ⌃ or ⌥ is ever a
-/// game key: ⌘↩ / ⌘⌫ belong to the approval cards (C30).
-public enum GameKey: Equatable, Sendable {
-    case up, down, left, right, space, escape
+/// game key: ⌘↩ / ⌘⌫ belong to the approval cards (C30). `isRepeat` marks an auto-repeat
+/// of a held key: it never starts, restarts or resumes a game (or slams another piece).
+public struct GameKey: Equatable, Sendable, CustomStringConvertible {
+    public enum Kind: Equatable, Sendable { case up, down, left, right, space, escape }
 
     public enum Modifier: Hashable, Sendable { case shift, command, control, option }
 
-    public init?(keyCode: UInt16, characters: String?, modifiers: Set<Modifier>) {
-        guard modifiers.isDisjoint(with: [.command, .control, .option]) else { return nil }
+    public var kind: Kind
+    public var isRepeat: Bool
+
+    public init(_ kind: Kind, isRepeat: Bool = false) {
+        self.kind = kind
+        self.isRepeat = isRepeat
+    }
+
+    public static let up = GameKey(.up)
+    public static let down = GameKey(.down)
+    public static let left = GameKey(.left)
+    public static let right = GameKey(.right)
+    public static let space = GameKey(.space)
+    public static let escape = GameKey(.escape)
+
+    public init?(keyCode: UInt16, characters: String?, modifiers: Set<Modifier>, isRepeat: Bool = false) {
+        guard modifiers.isDisjoint(with: [.command, .control, .option]),
+              let kind = Self.kind(keyCode: keyCode, characters: characters) else { return nil }
+        self.init(kind, isRepeat: isRepeat)
+    }
+
+    private static func kind(keyCode: UInt16, characters: String?) -> Kind? {
         switch keyCode {
-        case 123: self = .left
-        case 124: self = .right
-        case 125: self = .down
-        case 126: self = .up
-        case 49: self = .space
-        case 53: self = .escape
+        case 123: return .left
+        case 124: return .right
+        case 125: return .down
+        case 126: return .up
+        case 49: return .space
+        case 53: return .escape
         default:
             switch characters?.lowercased() {
-            case "w": self = .up
-            case "a": self = .left
-            case "s": self = .down
-            case "d": self = .right
+            case "w": return .up
+            case "a": return .left
+            case "s": return .down
+            case "d": return .right
             default: return nil
             }
         }
     }
 
     public var direction: Direction? {
-        switch self {
+        switch kind {
         case .up: .up
         case .down: .down
         case .left: .left
@@ -65,6 +86,8 @@ public enum GameKey: Equatable, Sendable {
         case .space, .escape: nil
         }
     }
+
+    public var description: String { isRepeat ? "\(kind) (repeat)" : "\(kind)" }
 }
 
 public enum GamePhase: Equatable, Sendable {
@@ -194,13 +217,16 @@ public struct GameSession: Equatable, Sendable {
     /// Escape closes it). While an approval is pending no key is the game's.
     public mutating func key(_ k: GameKey) -> Bool {
         if blockers.approval { return false }
-        switch k {
+        switch k.kind {
         case .escape:
             guard phase == .playing else { return false }
             pauseIfPlaying()
             return true
         case .space:
             guard !blockers.isBlocked else { return true }   // taken, but nothing resumes
+            // A held Space auto-repeats: it must not skip the game-over screen into a new
+            // game, resume right after a pause, or slam piece after piece.
+            guard !k.isRepeat || (phase == .playing && kind == .flappy) else { return true }
             switch phase {
             case .ready, .over: newGame()
             case .paused:
@@ -258,7 +284,7 @@ public struct GameSession: Equatable, Sendable {
         case .snake:
             if let d = k.direction { snake.turn(d) }
         case .tetris:
-            switch k {
+            switch k.kind {
             case .left: tetris.apply(.left)
             case .right: tetris.apply(.right)
             case .up: tetris.apply(.rotate)
@@ -269,7 +295,7 @@ public struct GameSession: Equatable, Sendable {
         case .twenty48:
             if let d = k.direction { game2048.move(d) }
         case .flappy:
-            if k == .space || k == .up { flappy.flap() }
+            if k.kind == .space || k.kind == .up { flappy.flap() }
         }
         finishIfOver()
     }

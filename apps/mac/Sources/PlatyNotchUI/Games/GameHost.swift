@@ -100,8 +100,10 @@ public final class GameHost {
         return taken
     }
 
-    /// A frame (the TimelineView's date, seconds).
-    public func frame(now time: Double) {
+    /// A frame (the TimelineView's date, seconds) from tab `id`. Only the owner's frames
+    /// count: two displays showing the tab must not drive the clock twice.
+    public func frame(now time: Double, from id: UUID) {
+        guard id == owner else { return }
         refresh()
         guard session.isRunning else { return }
         var next = session
@@ -193,7 +195,8 @@ extension GameKey {
         if flags.contains(.command) { mods.insert(.command) }
         if flags.contains(.control) { mods.insert(.control) }
         if flags.contains(.option) { mods.insert(.option) }
-        self.init(keyCode: event.keyCode, characters: event.charactersIgnoringModifiers, modifiers: mods)
+        self.init(keyCode: event.keyCode, characters: event.charactersIgnoringModifiers, modifiers: mods,
+                  isRepeat: event.isARepeat)
     }
 }
 
@@ -245,11 +248,13 @@ final class GameKeyView: NSView {
             onFocus(false)
             return
         }
-        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
-            observers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.reportFocus() }
-            })
-        }
+        let nc = NotificationCenter.default
+        observers.append(nc.addObserver(forName: NSWindow.didBecomeKeyNotification, object: window, queue: nil) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reportFocus() }
+        })
+        observers.append(nc.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: nil) { [weak self] _ in
+            MainActor.assumeIsolated { self?.windowResignedKey() }
+        })
     }
 
     /// The board takes keys: armed, first responder, in the key window.
@@ -258,6 +263,14 @@ final class GameKeyView: NSView {
     }
 
     func reportFocus() { onFocus(hasFocus) }
+
+    /// Key loss disarms the board: when the panel becomes key again (hover, another click
+    /// on the panel) the board does not take keys until it is clicked itself.
+    func windowResignedKey() {
+        armed = false
+        if let window, window.firstResponder === self { window.makeFirstResponder(nil) }
+        reportFocus()
+    }
 
     func dismantle() {
         for o in observers { NotificationCenter.default.removeObserver(o) }
