@@ -75,7 +75,12 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
                          styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
         w.title = "Welcome to PlatyNotch"
         w.titlebarAppearsTransparent = true
-        w.contentViewController = NSHostingController(rootView: root)
+        // The window keeps this size. By default the hosting controller resizes the window
+        // to the SwiftUI content's ideal size, which for these pages is thousands of points
+        // tall: onboarding opened as a narrow strip the height of the screen.
+        let host = NSHostingController(rootView: root.frame(width: 620, height: 520))
+        host.sizingOptions = []
+        w.contentViewController = host
         w.setContentSize(NSSize(width: 620, height: 520))
         w.isReleasedWhenClosed = false
         w.delegate = self
