@@ -15,16 +15,23 @@ final class Permissions {
     }
 
     /// Apps PlatyNotch scripts with Apple Events: terminals (jump to a session's tab),
-    /// music players (now playing controls) and browsers ("Add current tab", Task 11).
+    /// music players (now playing controls), browsers ("Add current tab", Task 11) and
+    /// Mail (the v0.2 Mail widget).
     static let automationTargets: [(id: String, name: String)] = [
         (TerminalApps.appleTerminalID, "Terminal"), (TerminalApps.iTermID, "iTerm"),
         ("com.apple.Music", "Music"), ("com.spotify.client", "Spotify"),
-    ] + SupportedBrowser.allCases.map { ($0.rawValue, $0.name) }
+    ] + SupportedBrowser.allCases.map { ($0.rawValue, $0.name) } + [(MailSystem.mailID, "Mail")]
 
-    /// Browsers are asked only from "Add current tab" (the one place their Automation
-    /// prompt may appear), so Settings shows their status without an Allow button.
+    /// Browsers are asked only from "Add current tab" and Mail only from the Mail widget's
+    /// Allow button (the one place each Automation prompt may appear), so Settings shows
+    /// their status without an Allow button.
     static func asksFromSettings(_ bundleID: String) -> Bool {
-        SupportedBrowser(rawValue: bundleID) == nil
+        SupportedBrowser(rawValue: bundleID) == nil && bundleID != MailSystem.mailID
+    }
+
+    /// Where an app without an Allow button in Settings is asked from.
+    static func askedFrom(_ bundleID: String) -> String {
+        bundleID == MailSystem.mailID ? "Asked from the Mail widget's Allow button" : "Asked when you click Add current tab"
     }
 
     private(set) var accessibility = false

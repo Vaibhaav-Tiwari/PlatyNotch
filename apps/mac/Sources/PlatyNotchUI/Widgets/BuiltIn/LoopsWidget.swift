@@ -94,6 +94,8 @@ enum BuiltInWidgets {
         var list: [any NotchWidget] = []
         // Camera only after a click in its tile; never in smoke runs.
         list.append(persist ? MirrorWidget() : MirrorWidget.inert())
+        // Mail only while it is running; never in smoke runs (no process, no Apple Event).
+        list.append(persist ? MailWidget() : MailWidget.inert())
         return list
     }
 }

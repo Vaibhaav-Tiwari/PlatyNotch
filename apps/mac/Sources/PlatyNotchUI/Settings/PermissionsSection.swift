@@ -51,7 +51,7 @@ struct PermissionRows: View {
                 openSettings: { Permissions.open(.reminders) })
             VStack(alignment: .leading, spacing: 6) {
                 PermissionHeader(title: "Automation", systemImage: "applescript",
-                                 why: "Brings a session's terminal tab forward, controls Music and Spotify, and reads a browser's front tab when you click Add current tab.",
+                                 why: "Brings a session's terminal tab forward, controls Music and Spotify, reads a browser's front tab when you click Add current tab, and reads unread mail for the Mail widget.",
                                  withoutIt: "Jumping to a session only activates the app; no play/pause for those players; no Add current tab.")
                 let targets = permissions.installedAutomationTargets
                 if targets.isEmpty {
@@ -67,7 +67,8 @@ struct PermissionRows: View {
                                          allow: { permissions.requestAutomation(bundleID: t.id) },
                                          openSettings: { Permissions.open(.automation) })
                         } else {
-                            BrowserAutomationNote(state: permissions.automation[t.id] ?? .notAsked)
+                            BrowserAutomationNote(state: permissions.automation[t.id] ?? .notAsked,
+                                                  askedFrom: Permissions.askedFrom(t.id))
                         }
                     }
                     .padding(.leading, 28)
@@ -165,12 +166,13 @@ private struct StateText: View {
 /// A browser's row: asked from "Add current tab" only, never from here.
 private struct BrowserAutomationNote: View {
     let state: Permissions.State
+    let askedFrom: String
 
     var body: some View {
         switch state {
         case .denied: Button("Open System Settings") { Permissions.open(.automation) }
         case .granted: EmptyView()
-        default: Text("Asked when you click Add current tab").font(.caption).foregroundStyle(.secondary)
+        default: Text(verbatim: askedFrom).font(.caption).foregroundStyle(.secondary)
         }
     }
 }

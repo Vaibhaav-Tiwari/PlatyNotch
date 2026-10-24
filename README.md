@@ -132,7 +132,7 @@ features, and asks for its permission only from its own button.
 | --- | --- | --- |
 | Camera | You click Show Mirror in the Mirror tile | Mirror: the camera runs only while it shows; hiding it, closing the panel, locking the screen or display sleep turns it off. Nothing is recorded |
 | Accessibility | Coming in v0.2 | Window snapping |
-| Automation: Mail | Coming in v0.2 | Mail |
+| Automation: Mail | You click Allow in the Mail tile (never from Settings) | Mail: unread count and the newest senders and subjects, read every 5 minutes only while Mail is open. PlatyNotch never opens Mail and keeps nothing |
 | Files and Folders | Coming in v0.2 | The notes folder |
 
 Network: nothing is sent anywhere unless you turn on something that is network by

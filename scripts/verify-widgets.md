@@ -1139,3 +1139,30 @@ Mirror, on an installed build.
   says Turn On Again (when macOS forgot the grant); clicking it asks once more.
 - [ ] **447. No camera.** With the lid closed on an external display and no camera, Show
   Mirror says no camera was found; nothing keeps trying.
+
+## Apple Mail (v0.2)
+
+Automated: `MailWidgetTests` (through a fake system: no script, status check or link while
+Mail is closed, the prompt only from Allow, nothing saved, a stop kills the script) and
+`IntegrationsTests` (the script's answer, links, and that the script only reads). Turn on
+Settings › Widgets › Power features › Mail, on an installed build.
+
+- [ ] **460. Mail closed.** Quit Mail, open the panel: the tile says "Mail is not open". Wait
+  10 minutes with the panel open and closed: Mail never opens, and `ps ax | grep osascript`
+  shows nothing.
+- [ ] **461. Allow only from the tile.** On a Mac where PlatyNotch never asked for Mail, open
+  Mail, then the panel: the tile shows Allow and no prompt appears. Settings › Permissions ›
+  Automation lists Mail with "Asked from the Mail widget's Allow button" and no Allow button.
+  Click Allow in the tile: macOS asks once; OK shows the unread count and up to 5 messages.
+- [ ] **462. What it shows.** The count matches Mail's Inbox badge; the 5 rows are the newest
+  unread, newest first, each with the sender's name and the subject on one line.
+- [ ] **463. Open a message.** Click a row: Mail comes forward with that message open.
+- [ ] **464. Refresh.** Mark a message read in Mail: it leaves the tile within 5 minutes, or
+  at once when you reopen the panel after 30 seconds.
+- [ ] **465. Mail quits.** With messages shown, quit Mail: the tile says "Mail is not open"
+  and the messages are gone. Open Mail again: they come back without a click.
+- [ ] **466. Refused.** Turn Mail off for PlatyNotch in System Settings › Privacy & Security ›
+  Automation: the tile explains how to turn it back on, with Open Settings; it never asks
+  by itself.
+- [ ] **467. Nothing kept.** Turn Mail off and on: the tile reads again (nothing was saved).
+  `defaults read dev.platynotch.app | grep -i mail` shows only `automationGrant.com.apple.mail`.
