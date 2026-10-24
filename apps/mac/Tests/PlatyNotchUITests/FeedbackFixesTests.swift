@@ -87,6 +87,17 @@ final class FeedbackFixesTests: DefaultsTestCase {
         XCTAssertEqual(reminders.access, .denied)
     }
 
+    /// The user switched to another app while the prompt was up: it is left in front.
+    func testNoRestoreWhenTheUserMovedOn() async {
+        let log = FocusLog()
+        let calendar = CalendarService(seam: .init(status: { .notAsked }, request: {
+            log.active = false   // e.g. the user clicked into another app meanwhile
+            return true
+        }), focus: focus(log))
+        await calendar.requestAccess()
+        XCTAssertEqual(log.steps, ["activate"])
+    }
+
     /// Already active (the Settings window): nothing is activated or handed back.
     func testRequestWhileActiveLeavesFocusAlone() async {
         let log = FocusLog()
@@ -162,20 +173,44 @@ final class FeedbackFixesTests: DefaultsTestCase {
                       rebuilt.likeMessage ?? "")
     }
 
-    /// A new track shows Music's real heart, read only when Music already allows PlatyNotch.
-    func testNewTrackReadsTheHeartOnlyWhenAllowed() async {
+    /// The heart is read when the tile appears and on a track change while it is shown,
+    /// only when Music already allows PlatyNotch; never for a heart nobody sees.
+    func testHeartIsReadOnlyWhileShownAndAllowed() async {
         let fake = FakeMusic()
         fake.readResult = .state(true)
+        fake.lock.withLock { fake.allowed = true }
         let np = nowPlaying(fake)
         np.debugApply(musicTrack("One"))
         await drainBackground()
-        XCTAssertEqual(fake.lock.withLock { fake.reads }, 0, "not allowed yet: no Apple Event, so no prompt")
+        XCTAssertEqual(fake.lock.withLock { fake.reads }, 0, "no music view on screen: nothing read")
         XCTAssertNil(np.liked)
 
-        fake.lock.withLock { fake.allowed = true }
-        np.debugApply(musicTrack("Two"))
+        np.setVisible(true)
         let read = await eventually { np.liked == true }
-        XCTAssertTrue(read)
+        XCTAssertTrue(read, "read once when the tile appears")
+
+        fake.readResult = .state(false)
+        np.debugApply(musicTrack("Two"))
+        let next = await eventually { np.liked == false }
+        XCTAssertTrue(next, "a new track while shown is read too")
+
+        np.setVisible(false)
+        let reads = fake.lock.withLock { fake.reads }
+        np.debugApply(musicTrack("Three"))
+        await drainBackground()
+        XCTAssertEqual(fake.lock.withLock { fake.reads }, reads, "hidden again: no reads")
+    }
+
+    /// Not allowed yet: no Apple Event at all (so no prompt), even with the tile shown.
+    func testHeartIsNotReadBeforeMusicAllows() async {
+        let fake = FakeMusic()
+        let np = nowPlaying(fake)
+        np.debugApply(musicTrack("One"))
+        np.setVisible(true)
+        await drainBackground()
+        XCTAssertEqual(fake.lock.withLock { fake.reads }, 0)
+        XCTAssertNil(np.liked)
+        np.setVisible(false)
     }
 
     /// Lets the AppleScript queue and the main-actor hop after it run.

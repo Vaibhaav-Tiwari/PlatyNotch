@@ -20,13 +20,14 @@ struct PromptFocus {
         restore: { pid in _ = NSRunningApplication(processIdentifier: pid)?.activate() })
 
     /// Runs `body` with PlatyNotch active; when it was not, the app that was frontmost gets
-    /// the keyboard back afterwards.
+    /// the keyboard back afterwards, but only if PlatyNotch is still the active app (the
+    /// user may have moved on to another app while the prompt was up).
     func around<T>(_ body: () async -> T) async -> T {
         if isActive() { return await body() }
         let previous = frontmost()
         activate()
         let result = await body()
-        if let previous, previous != ProcessInfo.processInfo.processIdentifier { restore(previous) }
+        if let previous, previous != ProcessInfo.processInfo.processIdentifier, isActive() { restore(previous) }
         return result
     }
 }

@@ -107,7 +107,10 @@ public final class NowPlaying {
     /// only then (or while music was playing at the last poll), else at the idle rate.
     public func setVisible(_ visible: Bool) {
         viewers = max(0, viewers + (visible ? 1 : -1))
-        if visible { refreshOutputDevice() }
+        if visible {
+            refreshOutputDevice()
+            readLiked()   // the heart shows Music's state when the tile appears
+        }
     }
 
     public func playPause() { command(.togglePlayPause) }
@@ -181,8 +184,9 @@ public final class NowPlaying {
         }
     }
 
-    /// The new track's favourite state, only when Music already allows PlatyNotch (checked
-    /// without asking), so reading it never shows a prompt.
+    /// The track's favourite state, when the tile appears or the track changes while it is
+    /// shown, and only when Music already allows PlatyNotch (checked without asking), so
+    /// reading it never shows a prompt.
     private func readLiked() {
         guard sendsAppleEvents, canLike, music.isRunning() else { return }
         let title = info?.title
@@ -259,7 +263,8 @@ public final class NowPlaying {
             showLikeMessage(nil)
         }
         info = new
-        if trackChanged { readLiked() }
+        // Only while a music view is on screen: nothing is read for a heart nobody sees.
+        if trackChanged, viewers > 0 { readLiked() }
         if isPlaying != wasPlaying { onPlayingChange?(isPlaying) }
         if viewers > 0 { refreshOutputDevice() }
     }
