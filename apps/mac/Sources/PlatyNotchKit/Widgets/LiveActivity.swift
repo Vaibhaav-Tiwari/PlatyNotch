@@ -109,12 +109,14 @@ public enum AgentsLive {
     /// One activity: blocked (80) when any session is blocked, else active (30) when any
     /// is working, else none.
     public static func activities(sessions: [Session]) -> [LiveActivity] {
-        let states = sessions.map(\.state).filter { $0 == .active || $0 == .blocked }
+        let states: [SessionState] = sessions.map(\.state).filter { $0 == .active || $0 == .blocked }
         guard !states.isEmpty else { return [] }
         let blocked = states.contains(.blocked)
-        return [LiveActivity(id: "agents", widgetID: widgetID,
-                             priority: blocked ? LivePriority.agentBlocked : LivePriority.agentActive,
-                             glyph: .agentDots(states), tint: blocked ? .warning : .accent,
-                             accessibilityLabel: blocked ? "An agent needs you" : "Agents working")]
+        // Plain locals keep the initializer call cheap to type-check (it took ~0.7 s inline).
+        let priority: Int = blocked ? LivePriority.agentBlocked : LivePriority.agentActive
+        let tint: LiveTint = blocked ? .warning : .accent
+        let label: String = blocked ? "An agent needs you" : "Agents working"
+        return [LiveActivity(id: "agents", widgetID: widgetID, priority: priority,
+                             glyph: .agentDots(states), tint: tint, accessibilityLabel: label)]
     }
 }

@@ -6,3 +6,5 @@
 .worktrees/
 /apps/mac/Resources/mediaremote-adapter/
 /build/
+.build-typecheck/
+typecheck.log

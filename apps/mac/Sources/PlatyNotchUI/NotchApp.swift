@@ -383,19 +383,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// and the HUD widget's views (an inert copy: it is off by default, and smoke never taps keys).
     private func buildSurfaceViews() {
         let hud = HUDWidget.inert()
-        let views: [AnyView] = HUDKind.allCases.map { AnyView(HUDBar(state: HUDState(kind: $0, level: 0.5, until: Date()))) }
-            + HUDKind.allCases.compactMap { hud.hudView(kind: $0, level: 0.5) }
-            + [AnyView(HUDView(kind: .volume, level: 0.5, output: "MacBook Pro Speakers")),
-               hud.tileView()] + [hud.settingsView()].compactMap { $0 }
-            + [AnyView(HUDIndicator(state: HUDState(kind: .volume, level: 0.5, until: Date()))),
-               AnyView(DropZonePlaceholder()), AnyView(RingingFallback(id: "smoke", onStop: {})),
-               AnyView(ShelfDropZone(shelf: ShelfWidget.inert())),
-               AnyView(ClipCopiedPeek()), AnyView(ClipboardTile(widget: ClipboardWidget.inert())),
-               AnyView(ClipboardSettings(widget: ClipboardWidget.inert())),
-               AnyView(ClipPickerView(model: ClipPickerModel(widget: clipboard), onChoose: { _ in },
-                                      trusted: { false }, imageURL: { _ in nil })),
-               AnyView(RingingOverlay(title: "Alarm", subtitle: "Alarm · 7:00", isAlarm: true, onSnooze: {}, onStop: {}))]
-            + Self.dayViews() + Self.wellbeingViews() + Self.systemViews()
+        // Built up statement by statement: one long `+` chain of arrays was too slow for
+        // Xcode 26.3's type checker (CI failed with "unable to type-check in reasonable time").
+        var views: [AnyView] = []
+        views += HUDKind.allCases.map { AnyView(HUDBar(state: HUDState(kind: $0, level: 0.5, until: Date()))) }
+        views += HUDKind.allCases.compactMap { hud.hudView(kind: $0, level: 0.5) }
+        views.append(AnyView(HUDView(kind: .volume, level: 0.5, output: "MacBook Pro Speakers")))
+        views.append(hud.tileView())
+        if let settings = hud.settingsView() { views.append(settings) }
+        views.append(AnyView(HUDIndicator(state: HUDState(kind: .volume, level: 0.5, until: Date()))))
+        views.append(AnyView(DropZonePlaceholder()))
+        views.append(AnyView(RingingFallback(id: "smoke", onStop: {})))
+        views.append(AnyView(ShelfDropZone(shelf: ShelfWidget.inert())))
+        views.append(AnyView(ClipCopiedPeek()))
+        views.append(AnyView(ClipboardTile(widget: ClipboardWidget.inert())))
+        views.append(AnyView(ClipboardSettings(widget: ClipboardWidget.inert())))
+        views.append(AnyView(ClipPickerView(model: ClipPickerModel(widget: clipboard), onChoose: { _ in },
+                                            trusted: { false }, imageURL: { _ in nil })))
+        views.append(AnyView(RingingOverlay(title: "Alarm", subtitle: "Alarm · 7:00", isAlarm: true,
+                                            onSnooze: {}, onStop: {})))
+        views += Self.dayViews()
+        views += Self.wellbeingViews()
+        views += Self.systemViews()
         for v in views {
             NSHostingView(rootView: v.frame(width: 380).environment(\.colorScheme, .dark)).layoutSubtreeIfNeeded()
         }
