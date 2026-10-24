@@ -59,6 +59,8 @@ enum BuiltInWidgets {
         registry.register(time)
         registry.register(persist ? HUDWidget() : HUDWidget.inert())
         let shelf = persist ? ShelfWidget() : ShelfWidget.inert()
+        // Shelf items get "Actions ›" only while the File actions power feature runs.
+        shelf.fileActionsOn = { [weak registry] in registry?.running.contains(FileActionsWidget.widgetID) ?? false }
         registry.register(shelf)
         registry.register(clipboard ?? (persist ? ClipboardWidget() : ClipboardWidget.inert()))
         registry.register(persist ? RemindersWidget(reminders: today.reminders, calendar: today.calendar) : RemindersWidget.inert())
@@ -89,8 +91,9 @@ enum BuiltInWidgets {
     }
 
     /// Every power feature (`WidgetCategory.power`); `persist: false` gives inert ones
-    /// (no monitors, permissions, files or network), as `--smoke-power` checks. None yet.
+    /// (no monitors, permissions, files or network), as `--smoke-power` checks.
     static func powerWidgets(persist: Bool) -> [any NotchWidget] {
-        []
+        // File actions has no state of its own: the same instance is inert.
+        [FileActionsWidget()]
     }
 }

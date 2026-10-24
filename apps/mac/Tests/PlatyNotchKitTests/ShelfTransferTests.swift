@@ -22,9 +22,59 @@ final class ShelfTransferTests: DefaultsTestCase {
         try? fm.removeItem(at: root)
     }
 
-    private func store(_ name: String, rename: @escaping ShelfStore.FolderRename = ShelfStore.renameExclusive) -> ShelfStore {
+    private func store(_ name: String, rename: @escaping ShelfStore.FolderRename = ShelfStore.renameExclusive,
+                       write: @escaping ShelfStore.IndexWrite = ShelfStore.writeIndexFile) -> ShelfStore {
         ShelfStore(directory: root.appendingPathComponent(name), bookmarks: PathBookmarks(), now: { [t0] in t0 },
-                   renameFolder: rename)
+                   renameFolder: rename, writeIndex: write)
+    }
+
+    /// Task 2 pre-step: the target's index write fails once after writing the file (as a
+    /// failed chmod would); the rollback writes it again, so the file matches memory.
+    func testFailedTargetWriteIsWrittenAgainAfterRollback() throws {
+        let shelf = store("shelf")
+        let writes = FlakyWriter()
+        let basket = store("basket", write: writes.write)
+        let kept = try XCTUnwrap(basket.addText("already there"))
+        let owned = try XCTUnwrap(shelf.addOwnedData(Data("png".utf8), filename: "a.png"))
+        let text = try XCTUnwrap(shelf.addText("hello"))
+
+        for id in [owned.id, text.id] {
+            writes.failNext()
+            XCTAssertNil(shelf.transfer(id, to: basket))
+            XCTAssertEqual(basket.items.map(\.id), [kept.id], "rolled back in memory")
+            XCTAssertEqual(store("basket").items.map(\.id), [kept.id], "and on disk: written again")
+        }
+        XCTAssertEqual(writes.failures, 2)
+        XCTAssertEqual(Set(shelf.items.map(\.id)), [owned.id, text.id])
+        XCTAssertTrue(fm.fileExists(atPath: try XCTUnwrap(owned.fileRef?.path)), "the copy did not move")
+    }
+
+    /// Fix round 1: several files from disk, one index write, the first ending up first.
+    func testAddFilesWritesTheIndexOnce() throws {
+        let writes = FlakyWriter()
+        let shelf = store("shelf", write: writes.write)
+        let a = root.appendingPathComponent("a.txt"), b = root.appendingPathComponent("b.txt")
+        for u in [a, b] { try Data("x".utf8).write(to: u) }
+        let before = writes.count
+        let added = shelf.addFiles([a, b])
+        XCTAssertEqual(writes.count - before, 1)
+        XCTAssertEqual(added.map(\.fileRef?.name), ["a.txt", "b.txt"])
+        XCTAssertEqual(shelf.items.map(\.fileRef?.name), ["a.txt", "b.txt"])
+        XCTAssertTrue(shelf.items.allSatisfy { !$0.ownsFile })
+        XCTAssertEqual(store("shelf").items.count, 2)
+    }
+
+    /// A rename that fails after the target's index listed the item: written again without it.
+    func testFailedRenameWritesTheTargetAgain() throws {
+        let shelf = store("shelf", rename: { _, _ in EXDEV })
+        let writes = FlakyWriter()
+        let basket = store("basket", write: writes.write)
+        let owned = try XCTUnwrap(shelf.addOwnedData(Data("png".utf8), filename: "a.png"))
+        let before = writes.count
+        XCTAssertNil(shelf.transfer(owned.id, to: basket))
+        XCTAssertEqual(writes.count - before, 2, "listed, then written again without it")
+        XCTAssertTrue(store("basket").items.isEmpty)
+        XCTAssertEqual(shelf.items.map(\.id), [owned.id])
     }
 
     func testOwnedCopyMovesWithOneRename() throws {
@@ -201,6 +251,30 @@ final class ShelfTransferTests: DefaultsTestCase {
             let mode = try XCTUnwrap(fm.attributesOfItem(atPath: dir.path)[.posixPermissions] as? NSNumber)
             XCTAssertEqual(mode.intValue & 0o777, 0o700)
             XCTAssertTrue(PrivateFolder.isMarked(dir))
+        }
+    }
+}
+
+/// Writes the index for real, but the next write after `failNext()` throws once it has
+/// written the file (a failed permission change after an atomic write).
+private final class FlakyWriter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var failPending = false
+    private(set) var failures = 0
+    private(set) var count = 0
+
+    func failNext() { lock.lock(); failPending = true; lock.unlock() }
+
+    var write: ShelfStore.IndexWrite {
+        { [self] data, url in
+            try ShelfStore.writeIndexFile(data, url)
+            lock.lock(); defer { lock.unlock() }
+            count += 1
+            if failPending {
+                failPending = false
+                failures += 1
+                throw CocoaError(.fileWriteNoPermission)
+            }
         }
     }
 }

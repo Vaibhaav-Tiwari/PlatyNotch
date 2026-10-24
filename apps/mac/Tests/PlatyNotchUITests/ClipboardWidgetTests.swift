@@ -589,6 +589,37 @@ final class ClipboardWidgetTests: DefaultsTestCase {
         XCTAssertNil(m.perform(.swallow))
     }
 
+    /// Task 2 fix round 1: a picker a link opened does not paste on ↩ (or ⌘1–9) until an
+    /// arrow key or the mouse shows the user is there.
+    func testPickerOpenedByALinkHoldsPasteBack() throws {
+        let r = try rig()
+        for t in ["alpha", "beta"] { r.pb.copyText(t); r.timer.tick() }
+        let m = ClipPickerModel(widget: r.widget)
+        m.reset(armed: false)
+        XCTAssertNil(m.perform(.paste))
+        XCTAssertNil(m.perform(.quickPick(1)))
+        XCTAssertNil(m.perform(.down))
+        XCTAssertTrue(m.pasteArmed)
+        XCTAssertEqual(m.perform(.paste), .choose(m.results[1]))
+        // Fix round 2: a hover arms only once the pointer moved, and not in the first 0.3 s.
+        var t = Date(timeIntervalSince1970: 1_000)
+        m.now = { t }
+        m.reset(armed: false, pointer: CGPoint(x: 100, y: 100))
+        m.pointerMoved(to: CGPoint(x: 100, y: 100))   // AppKit's hover under a still cursor
+        XCTAssertFalse(m.pasteArmed)
+        m.pointerMoved(to: CGPoint(x: 140, y: 90))   // moved, but too soon
+        XCTAssertFalse(m.pasteArmed)
+        t += ClipPickerModel.hoverArmDelay + 0.01
+        m.pointerMoved(to: CGPoint(x: 100, y: 100))   // late, but still where it opened
+        XCTAssertFalse(m.pasteArmed)
+        XCTAssertNil(m.perform(.paste))
+        m.pointerMoved(to: CGPoint(x: 101, y: 100))
+        XCTAssertTrue(m.pasteArmed)
+        XCTAssertEqual(m.perform(.quickPick(1)), .choose(m.results[0]))
+        m.reset()
+        XCTAssertTrue(m.pasteArmed, "the hot key opens it armed")
+    }
+
     func testPickerWindowSitsBelowTheNotchPanelAndDoesNotActivate() {
         let picker = ClipPickerWindow()
         let notch = NotchPanel(frame: CGRect(x: 0, y: 0, width: 10, height: 10))

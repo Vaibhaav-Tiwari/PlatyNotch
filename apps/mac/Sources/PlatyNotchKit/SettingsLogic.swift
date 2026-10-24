@@ -131,6 +131,10 @@ public enum PolicyRuleCheck {
 }
 
 /// `platynotch://` URLs the app itself handles. Anything else goes to plugins.
+///
+/// Any web page or app can open these, so a route never acts by itself (R7): adding to
+/// the shelf and starting a timer first ask in a peek, and do nothing while the widget
+/// they need is off; `clipboard/open` only opens the picker.
 public enum AppURL: Equatable, Sendable {
     public static let scheme = "platynotch"
 
@@ -140,19 +144,121 @@ public enum AppURL: Equatable, Sendable {
     case onboarding
     /// `platynotch://open` — expand the panel.
     case open
+    /// `platynotch://shelf/add?path=<percent-encoded>&path=…` — the raw `path` values, in
+    /// order (checked by `ShelfAddPolicy` before anything is asked).
+    case shelfAdd([String])
+    /// `platynotch://timer/start?d=25m` — seconds (`d` as in the timer's quick add:
+    /// 25m, 90s, 1h, 1h30m; more than 0 and at most 24 h).
+    case timerStart(TimeInterval)
+    /// `platynotch://clipboard/open` — the clipboard history picker.
+    case clipboardOpen
     /// Our scheme, a host the app does not handle (offered to plugins in order).
     case plugin(URL)
 
+    /// Nil for another scheme, and for a malformed shelf, timer or clipboard URL (those
+    /// hosts are the app's; they never reach plugins).
     public static func route(_ url: URL) -> AppURL? {
         guard url.scheme?.lowercased() == scheme else { return nil }
+        let path = url.pathComponents.filter { $0 != "/" }.map { $0.lowercased() }
         switch url.host?.lowercased() {
         case "settings":
-            let section = url.pathComponents.first { $0 != "/" }
-            return .settings(section: section?.lowercased())
+            return .settings(section: path.first)
         case "onboarding": return .onboarding
         case "open", "panel": return .open
+        case "shelf":
+            guard path == ["add"] else { return nil }
+            let paths = query(url, "path")
+            return paths.isEmpty ? nil : .shelfAdd(paths)
+        case "timer":
+            guard path == ["start"], let d = query(url, "d").first, let seconds = DurationParser.parse(d) else { return nil }
+            return .timerStart(seconds)
+        case "clipboard":
+            return path == ["open"] ? .clipboardOpen : nil
         default: return .plugin(url)
         }
+    }
+
+    /// Every value of the query item `name` (percent-decoded), in order.
+    private static func query(_ url: URL, _ name: String) -> [String] {
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        return items.filter { $0.name == name }.compactMap(\.value)
+    }
+}
+
+/// Which paths `platynotch://shelf/add` may add (R7): absolute, existing, never inside
+/// PlatyNotch's own folder, at most `maxPaths` per URL (more and nothing is added).
+///
+/// Two steps, so a link touches nothing on disk before the user clicks: `lexical` (string
+/// checks only) decides whether to ask at all; `accept` (symlinks resolved, existence
+/// checked) runs after the click on what `lexical` returned.
+public enum ShelfAddPolicy {
+    public static let maxPaths = 20
+
+    /// String checks only, so nothing on disk is looked at (no stat, no symlinks): an
+    /// absolute path, `.`, `..` and repeated `/` folded by hand (a `..` above `/` is
+    /// refused), not under `home` by its path, in order without repeats. Nil when more than
+    /// `maxPaths` were given.
+    public static func lexical(_ paths: [String], home: URL) -> [URL]? {
+        guard paths.count <= maxPaths else { return nil }
+        let root = normalize(home.path) ?? home.path
+        var seen = Set<String>()
+        var out: [URL] = []
+        for raw in paths {
+            guard !raw.contains("\0"), let path = normalize(raw), path != "/", path != root,
+                  !path.hasPrefix(root + "/"), seen.insert(path).inserted else { continue }
+            out.append(URL(filePath: path, directoryHint: .notDirectory))
+        }
+        return out
+    }
+
+    /// `raw` with `.`, `..` and empty components folded, by string alone; nil when it is
+    /// not absolute or a `..` would climb above `/`.
+    public static func normalize(_ raw: String) -> String? {
+        guard raw.hasPrefix("/") else { return nil }
+        var parts: [Substring] = []
+        for part in raw.split(separator: "/", omittingEmptySubsequences: true) {
+            if part == "." { continue }
+            if part == ".." {
+                guard !parts.isEmpty else { return nil }
+                parts.removeLast()
+                continue
+            }
+            parts.append(part)
+        }
+        return "/" + parts.joined(separator: "/")
+    }
+
+    /// After the click: `lexical`, then with symlinks resolved (a link into the home is
+    /// refused) and only what `exists`. Nil when more than `maxPaths` were given.
+    public static func accept(_ paths: [String], home: URL, exists: (String) -> Bool) -> [URL]? {
+        guard let candidates = lexical(paths, home: home) else { return nil }
+        let root = home.standardizedFileURL.resolvingSymlinksInPath().path
+        var seen = Set<String>()
+        return candidates.filter { url in
+            let real = url.resolvingSymlinksInPath().path
+            return real != "/" && real != root && !real.hasPrefix(root + "/") && exists(url.path) && seen.insert(real).inserted
+        }
+    }
+}
+
+/// What the confirm peek of an acting route asks.
+public enum AppURLPrompt {
+    /// "Add 2 files to the shelf?"
+    public static func addFiles(_ count: Int) -> String {
+        count == 1 ? "Add 1 file to the shelf?" : "Add \(count) files to the shelf?"
+    }
+
+    /// "Start a 25 minute timer?", "Start a 1 hour 30 minute timer?"
+    public static func startTimer(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        let h = total / 3600, m = (total % 3600) / 60, s = total % 60
+        var parts: [String] = []
+        if h > 0 { parts.append("\(h) hour") }
+        if m > 0 { parts.append("\(m) minute") }
+        if s > 0 || parts.isEmpty { parts.append("\(s) second") }
+        let first = [h, m, s].first { $0 > 0 } ?? 0
+        let article = String(first).hasPrefix("8") || first == 11 || first == 18 ? "an" : "a"
+        return "Start \(article) \(parts.joined(separator: " ")) timer?"
     }
 }
 

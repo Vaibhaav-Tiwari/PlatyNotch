@@ -22,6 +22,9 @@ public final class WidgetRegistry {
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let persist: Bool
     @ObservationIgnored private var context: WidgetContext?
+    /// Peek views of the app itself (the URL routes' confirm card and notices), asked
+    /// after every running widget. Set by the app; nil in tests.
+    @ObservationIgnored var appPeeks: (@MainActor (String) -> AnyView?)?
 
     /// `persist: false` reads the saved layout but never writes it (smoke runs).
     public init(defaults: UserDefaults = .standard, persist: Bool = true) {
@@ -123,7 +126,7 @@ public final class WidgetRegistry {
     // MARK: - Surface views (first running widget that supplies one)
 
     public func peekView(id: String) -> AnyView? {
-        runningWidgets.lazy.compactMap { $0.peekView(id: id) }.first
+        runningWidgets.lazy.compactMap { $0.peekView(id: id) }.first ?? appPeeks?(id)
     }
 
     public func hudView(kind: HUDKind, level: Double) -> AnyView? {

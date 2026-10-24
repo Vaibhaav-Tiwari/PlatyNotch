@@ -245,6 +245,13 @@ final class ClipboardWidget: NotchWidget, ClipboardMenuControl {
         picker.toggle()
     }
 
+    /// `platynotch://clipboard/open`: opens (never closes) the picker, with ↩ held back
+    /// until the user presses an arrow key or moves the mouse over it.
+    func openPickerFromLink() {
+        guard isRunning else { return }
+        picker.open(armed: false)
+    }
+
     // MARK: - Copy and paste
 
     /// Puts `item` on the pasteboard (not recorded again: the watcher skips our write) and
