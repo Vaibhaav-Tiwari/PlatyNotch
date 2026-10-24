@@ -14,6 +14,21 @@ struct SystemTile: View {
             if widget.options.headphones {
                 ForEach(widget.headphones) { h in HeadphonesRow(info: h) }
             }
+            if widget.options.downloads {
+                ForEach(widget.downloadsActive, id: \.path) { d in
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.down.circle").foregroundStyle(Theme.tint(.accent)).frame(width: 22)
+                            .accessibilityHidden(true)
+                        Text(verbatim: d.name).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
+                        Spacer(minLength: 4)
+                        Text("Downloading").font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+                if let url = widget.finishedDownload {
+                    FinishedDownloadRow(widget: widget, url: url)
+                }
+            }
         }
         .onAppear { widget.refreshHeadphones() }
     }
@@ -42,6 +57,71 @@ enum HeadphonesText {
         if n.contains("airpods pro") { return "airpodspro" }
         if n.contains("airpods") { return "airpods" }
         return "headphones"
+    }
+}
+
+/// The last finished download with its buttons (in the tile).
+struct FinishedDownloadRow: View {
+    let widget: SystemWidget
+    let url: URL
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.tint(.accent)).frame(width: 22)
+                .accessibilityHidden(true)
+            Text(verbatim: url.lastPathComponent).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
+            Spacer(minLength: 4)
+            DownloadButtons(widget: widget, compact: true)
+        }
+    }
+}
+
+/// Open, Show in Finder and (shelf on) Move to Shelf: the only ways a download is acted on.
+struct DownloadButtons: View {
+    let widget: SystemWidget
+    var compact = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button("Open") { widget.openDownload() }
+            Button(compact ? "Show" : "Show in Finder") { widget.revealDownload() }
+                .accessibilityLabel("Show in Finder")
+            if widget.canMoveToShelf {
+                Button(compact ? "Shelf" : "Move to Shelf") { widget.moveDownloadToShelf() }
+                    .accessibilityLabel("Move to Shelf")
+            }
+        }
+        .buttonStyle(.borderless)
+        .font(.system(size: 11))
+    }
+}
+
+/// The finished-download notice below the notch (`PanelLayout.widgetPeekHeight`).
+struct DownloadPeekView: View {
+    let widget: SystemWidget
+    let url: URL
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(Theme.tint(.accent))
+                    .frame(width: 34, height: 34)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Downloaded").font(.system(size: 13, weight: .semibold))
+                    Text(verbatim: url.lastPathComponent).font(.system(size: 11)).foregroundStyle(.secondary)
+                        .lineLimit(1).truncationMode(.middle)
+                }
+                Spacer(minLength: 0)
+            }
+            HStack {
+                Spacer(minLength: 0)
+                DownloadButtons(widget: widget)
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -172,6 +252,8 @@ struct SystemSettings: View {
                 .fixedSize(horizontal: false, vertical: true)
             Divider()
             HeadphonesSettings(widget: widget)
+            Divider()
+            DownloadsSettings(widget: widget)
         }
     }
 }
@@ -216,5 +298,64 @@ struct HeadphonesSettings: View {
                 : "Waiting for Bluetooth access."
         }
         return widget.headphones.isEmpty ? "On. No headphones connected." : "On."
+    }
+}
+
+/// The downloads button: the only place the Downloads-folder prompt can appear.
+struct DownloadsSettings: View {
+    let widget: SystemWidget
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label("Downloads", systemImage: "arrow.down.circle")
+                Spacer()
+                if widget.options.downloads {
+                    if widget.downloadsDenied {
+                        Button("Open System Settings") { Permissions.open(.filesAndFolders) }
+                    }
+                    Button("Turn Off") { widget.setDownloads(false) }
+                } else {
+                    Button("Turn On…") { widget.setDownloads(true) }
+                }
+            }
+            if widget.options.downloads {
+                HStack {
+                    Text(widget.options.extraFolder.map { "Also watching \(($0 as NSString).abbreviatingWithTildeInPath)" }
+                         ?? "Watching ~/Downloads")
+                        .font(.caption).lineLimit(1).truncationMode(.middle)
+                    Spacer()
+                    Button(widget.options.extraFolder == nil ? "Add a Folder…" : "Change…") { chooseFolder() }
+                    if widget.options.extraFolder != nil {
+                        Button("Remove") { widget.setExtraFolder(nil) }
+                    }
+                }
+            }
+            Text(status)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var status: String {
+        if widget.options.downloads, widget.downloadsDenied {
+            return "macOS did not allow PlatyNotch to see your Downloads folder (System Settings › Privacy & "
+                + "Security › Files and Folders)."
+        }
+        return "Shows a download in progress in the pill and a notice when it finishes, with Open, Show in "
+            + "Finder and Move to Shelf (when the shelf is on). Turning it on asks to see your Downloads folder. "
+            + "Only file names are read, never their contents, and nothing happens to a file unless you click."
+    }
+
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Watch"
+        panel.message = "Choose a second folder your browser saves downloads to."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        widget.setExtraFolder(DownloadsMonitor.canonical(url.path))
     }
 }

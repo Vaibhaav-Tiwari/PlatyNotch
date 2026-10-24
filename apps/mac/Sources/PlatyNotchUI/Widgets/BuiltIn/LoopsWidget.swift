@@ -57,7 +57,8 @@ enum BuiltInWidgets {
         registry.register(LoopsWidget(store: store, actions: today.loops))
         registry.register(TimeWidget(persist: persist))
         registry.register(persist ? HUDWidget() : HUDWidget.inert())
-        registry.register(persist ? ShelfWidget() : ShelfWidget.inert())
+        let shelf = persist ? ShelfWidget() : ShelfWidget.inert()
+        registry.register(shelf)
         registry.register(clipboard ?? (persist ? ClipboardWidget() : ClipboardWidget.inert()))
         registry.register(persist ? RemindersWidget(reminders: today.reminders, calendar: today.calendar) : RemindersWidget.inert())
         registry.register(persist ? WeatherWidget() : WeatherWidget.inert())
@@ -67,6 +68,11 @@ enum BuiltInWidgets {
                                   : WellbeingWidget.inert())
         // On by default with battery and keep-awake only (no permission); headphones and
         // downloads stay off until turned on in its settings. Smoke: no IOKit at all.
-        registry.register(persist ? SystemWidget() : SystemWidget.inert())
+        // "Move to Shelf" only while the shelf runs.
+        let toShelf: @MainActor () -> (@MainActor (URL) -> Bool)? = { [weak registry, weak shelf] in
+            guard let registry, let shelf, registry.running.contains(ShelfWidget.widgetID) else { return nil }
+            return { shelf.addFile($0) }
+        }
+        registry.register(persist ? SystemWidget(downloads: .system(shelf: toShelf)) : SystemWidget.inert())
     }
 }

@@ -429,18 +429,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Task 9's views with an inert widget (no IOKit, no assertion, nothing saved): the
     /// tile and settings, a battery row, the plug-in / unplug peeks and the headphones
-    /// peek, row and settings with sample states (no Bluetooth).
+    /// peek, row and settings, the downloads settings, notice and row with sample states
+    /// (no Bluetooth, no FSEvents, no file touched).
     private static func systemViews() -> [AnyView] {
         let w = SystemWidget.inert()
         let charging = BatteryState(percent: 72, charging: true, pluggedIn: true, minutesRemaining: 48)
         let low = BatteryState(percent: 8, charging: false, pluggedIn: false, minutesRemaining: 12)
         let airPods = HeadphonesInfo(id: "smoke", name: "AirPods Pro", battery: .init(left: 80, right: 75, case: 40))
+        let file = URL(fileURLWithPath: "/nonexistent/Quarterly report.pdf")
         return [w.tileView(), w.settingsView(), AnyView(BatteryRow(state: low)),
                 AnyView(PowerPeekView(peek: .init(change: .pluggedIn, state: charging))),
                 AnyView(PowerPeekView(peek: .init(change: .unplugged, state: low))),
                 AnyView(HeadphonesPeekView(info: airPods)), AnyView(HeadphonesRow(info: airPods)),
                 AnyView(HeadphonesPeekView(info: .init(id: "smoke2", name: "Headphones", battery: .init()))),
-                AnyView(HeadphonesSettings(widget: w))].compactMap { $0 }
+                AnyView(HeadphonesSettings(widget: w)), AnyView(DownloadsSettings(widget: w)),
+                AnyView(DownloadPeekView(widget: w, url: file)), AnyView(FinishedDownloadRow(widget: w, url: file))]
+            .compactMap { $0 }
     }
 
     /// `--smoke-settings`: builds the Settings window (every section) and the onboarding

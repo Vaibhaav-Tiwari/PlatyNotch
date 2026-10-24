@@ -85,6 +85,48 @@ private final class FakeHeadphones: HeadphonesSource {
     func send(_ e: HeadphonesEvent) { onEvent?(e) }
 }
 
+/// Never a real FSEvents stream: the test sends batches of paths.
+@MainActor
+private final class FakeWatch: FolderWatching {
+    let folders: [String]
+    let onPaths: @MainActor ([String]) -> Void
+    var stopped = false
+    init(_ folders: [String], _ onPaths: @escaping @MainActor ([String]) -> Void) {
+        self.folders = folders
+        self.onPaths = onPaths
+    }
+    func stop() { stopped = true }
+}
+
+@MainActor
+private final class FakeWatches {
+    var made: [FakeWatch] = []
+    var live: FakeWatch? { made.last.flatMap { $0.stopped ? nil : $0 } }
+    var factory: FolderWatcherFactory {
+        { [unowned self] folders, onPaths in
+            let w = FakeWatch(folders, onPaths)
+            self.made.append(w)
+            return w
+        }
+    }
+}
+
+@MainActor
+private final class FakeFiles: FileActions {
+    var opened: [URL] = []
+    var revealed: [URL] = []
+    func open(_ url: URL) { opened.append(url) }
+    func reveal(_ url: URL) { revealed.append(url) }
+}
+
+@MainActor
+private final class Disk {
+    var files: Set<String> = []
+    var probes: [String] = []
+    var allow = true
+    var shelf: [URL]? = nil   // nil: the shelf is off
+}
+
 @MainActor
 private final class Clock {
     var now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -127,6 +169,9 @@ final class SystemWidgetTests: XCTestCase {
         let power: FakePower
         let asserter: FakeAsserter
         let headphones: FakeHeadphones
+        let watches: FakeWatches
+        let files: FakeFiles
+        let disk: Disk
         let clock: Clock
         let defaults: UserDefaults
     }
@@ -141,8 +186,23 @@ final class SystemWidgetTests: XCTestCase {
         let headphones = FakeHeadphones()
         headphones.access = bluetooth
         let clock = Clock()
-        let w = SystemWidget(power: power, asserter: asserter, headphones: headphones, defaults: d,
-                             clock: { clock.now })
+        let watches = FakeWatches()
+        let files = FakeFiles()
+        let disk = Disk()
+        let exists: (String) -> Bool = { path in MainActor.assumeIsolated { disk.files.contains(path) } }
+        let probe: @MainActor (String) async -> Bool = { folder in
+            disk.probes.append(folder)
+            return disk.allow
+        }
+        let addToShelf: @MainActor (URL) -> Bool = { url in
+            disk.shelf?.append(url)
+            return true
+        }
+        let shelf: @MainActor () -> (@MainActor (URL) -> Bool)? = { disk.shelf == nil ? nil : addToShelf }
+        let services = SystemWidget.DownloadsServices(folder: "/Users/me/Downloads", watch: watches.factory,
+                                                      exists: exists, probe: probe, files: files, shelf: shelf)
+        let w = SystemWidget(power: power, asserter: asserter, headphones: headphones, downloads: services,
+                             defaults: d, clock: { clock.now })
         let client = CoreClient(socketPath: "/nonexistent")
         let registry = WidgetRegistry(defaults: defaults(), persist: false)
         registries.append(registry)
@@ -158,7 +218,7 @@ final class SystemWidgetTests: XCTestCase {
                                               events: CoreEventHub(), defaults: d, notify: NoopNotifier(),
                                               surfaces: surfaces, openPanel: { _ in }))
         return Rig(widget: w, registry: registry, controller: c, power: power, asserter: asserter,
-                   headphones: headphones, clock: clock, defaults: d)
+                   headphones: headphones, watches: watches, files: files, disk: disk, clock: clock, defaults: d)
     }
 
     private func peek(_ id: String) -> PanelMode { .peek(.widget(id: id)) }
@@ -176,6 +236,9 @@ final class SystemWidgetTests: XCTestCase {
         XCTAssertEqual(r.asserter.begun, 0)
         XCTAssertFalse(r.widget.options.headphones, "headphones are off until turned on")
         XCTAssertEqual(r.headphones.starts, 0, "no Bluetooth registration, so no Bluetooth prompt")
+        XCTAssertFalse(r.widget.options.downloads, "downloads are off until turned on")
+        XCTAssertTrue(r.watches.made.isEmpty, "no FSEvents stream")
+        XCTAssertTrue(r.disk.probes.isEmpty, "the Downloads folder is never touched, so no prompt")
     }
 
     func testDisabledDoesNoWork() {
@@ -402,5 +465,107 @@ final class SystemWidgetTests: XCTestCase {
         let peekView = NSHostingView(rootView: r.registry.peekView(id: SystemWidget.headphonesPeekID)!.frame(width: 360))
         peekView.layoutSubtreeIfNeeded()
         XCTAssertGreaterThan(peekView.fittingSize.width, 0)
+    }
+
+    // MARK: - Downloads (opt-in sub-feature)
+
+    private let folder = "/Users/me/Downloads"
+
+    private func turnOnDownloads(_ r: Rig) async {
+        r.widget.setDownloads(true)
+        await r.widget.downloadsTask?.value
+    }
+
+    func testDownloadsButtonAsksThenWatches() async {
+        let r = rig()
+        await turnOnDownloads(r)
+        XCTAssertEqual(r.disk.probes, [folder], "the button is where the Downloads prompt can appear")
+        XCTAssertEqual(r.watches.live?.folders, [folder], "~/Downloads only")
+        XCTAssertTrue(r.widget.options.downloads)
+        XCTAssertEqual(SystemWidget.Options.load(r.defaults).downloads, true)
+
+        let temp = "\(folder)/report.pdf.crdownload", final = "\(folder)/report.pdf"
+        r.disk.files = [temp]
+        r.watches.live?.onPaths([temp])
+        let a = r.widget.liveActivities.first { $0.id == SystemWidget.downloadActivityID }
+        XCTAssertEqual(a?.priority, LivePriority.download)
+        XCTAssertEqual(a?.trailing, "report.pdf", "the in-progress activity shows the file name")
+        XCTAssertEqual(r.widget.downloadsActive.map(\.name), ["report.pdf"])
+
+        r.disk.files = [final]
+        r.watches.live?.onPaths([temp, final])
+        XCTAssertNil(r.widget.liveActivities.first { $0.id == SystemWidget.downloadActivityID })
+        XCTAssertEqual(r.widget.finishedDownload, URL(fileURLWithPath: final))
+        XCTAssertEqual(r.controller.mode, peek(SystemWidget.downloadPeekID), "a finished notice")
+        XCTAssertNotNil(r.registry.peekView(id: SystemWidget.downloadPeekID))
+        XCTAssertTrue(r.files.opened.isEmpty && r.files.revealed.isEmpty, "nothing is done without a click")
+
+        r.widget.openDownload()
+        r.widget.revealDownload()
+        XCTAssertEqual(r.files.opened, [URL(fileURLWithPath: final)])
+        XCTAssertEqual(r.files.revealed, [URL(fileURLWithPath: final)])
+    }
+
+    func testMoveToShelfOnlyWhenTheShelfIsOn() async {
+        let r = rig()
+        await turnOnDownloads(r)
+        let final = "\(folder)/a.zip"
+        r.disk.files = [final]
+        r.watches.live?.onPaths(["\(folder)/a.zip.crdownload", final])
+        XCTAssertFalse(r.widget.canMoveToShelf, "the shelf is off: no Move to Shelf")
+        XCTAssertFalse(r.widget.moveDownloadToShelf())
+
+        r.disk.shelf = []
+        XCTAssertTrue(r.widget.canMoveToShelf)
+        XCTAssertTrue(r.widget.moveDownloadToShelf())
+        XCTAssertEqual(r.disk.shelf, [URL(fileURLWithPath: final)])
+    }
+
+    func testDownloadsDeniedWatchesNothing() async {
+        let r = rig()
+        r.disk.allow = false
+        await turnOnDownloads(r)
+        XCTAssertTrue(r.watches.made.isEmpty)
+        XCTAssertTrue(r.widget.downloadsDenied)
+        XCTAssertTrue(r.widget.options.downloads, "stays on so the settings show how to allow it")
+    }
+
+    func testDownloadsAtLaunchWatchWithoutAsking() {
+        let r = rig(defaults: savedOptions(.init(downloads: true, extraFolder: "/Volumes/Work/In")))
+        XCTAssertTrue(r.disk.probes.isEmpty, "no folder listing at launch")
+        XCTAssertEqual(r.watches.live?.folders, [folder, "/Volumes/Work/In"], "plus the chosen folder")
+    }
+
+    func testDownloadsStopWithTheWidgetAndTurnOff() async {
+        let r = rig()
+        await turnOnDownloads(r)
+        let temp = "\(folder)/x.iso.crdownload"
+        r.disk.files = [temp]
+        r.watches.live?.onPaths([temp])
+        XCTAssertFalse(r.widget.downloadsActive.isEmpty)
+
+        r.registry.setEnabled(SystemWidget.widgetID, false)
+        XCTAssertTrue(r.watches.made.allSatisfy(\.stopped), "the widget off: no FSEvents stream")
+        XCTAssertTrue(r.widget.downloadsActive.isEmpty)
+        XCTAssertTrue(r.widget.liveActivities.isEmpty)
+        r.watches.made.last?.onPaths([temp])
+        XCTAssertTrue(r.widget.downloadsActive.isEmpty, "late batches are ignored")
+
+        r.registry.setEnabled(SystemWidget.widgetID, true)
+        XCTAssertNotNil(r.watches.live, "on again: watching again (already allowed)")
+        r.widget.setDownloads(false)
+        XCTAssertNil(r.watches.live, "turned off: stream stopped")
+        XCTAssertEqual(SystemWidget.Options.load(r.defaults).downloads, false)
+    }
+
+    func testChoosingASecondFolderRestartsTheWatch() async {
+        let r = rig()
+        await turnOnDownloads(r)
+        r.widget.setExtraFolder("/Volumes/Work/In")
+        XCTAssertEqual(r.watches.made.count, 2)
+        XCTAssertTrue(r.watches.made[0].stopped)
+        XCTAssertEqual(r.watches.live?.folders, [folder, "/Volumes/Work/In"])
+        r.widget.setExtraFolder(nil)
+        XCTAssertEqual(r.watches.live?.folders, [folder])
     }
 }

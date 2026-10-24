@@ -336,6 +336,16 @@ final class ShelfWidget: NotchWidget {
         }
     }
 
+    /// Adds a file the user picked elsewhere (the System widget's "Move to Shelf"). The
+    /// file stays where it is; false while the shelf is off.
+    @discardableResult
+    func addFile(_ url: URL) -> Bool {
+        guard isRunning, let store else { return false }
+        store.addFile(url)
+        afterChange()
+        return true
+    }
+
     func remove(_ ids: [UUID]) {
         guard let store else { return }
         for id in ids { store.remove(id) }

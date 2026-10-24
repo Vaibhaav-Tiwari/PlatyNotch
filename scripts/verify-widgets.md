@@ -654,3 +654,30 @@ Probe on the build Mac (macOS 26.4, nothing granted): IOBluetoothDevice answers
   "Allow Bluetooth…" asks.
 - [ ] **131. Widget off.** Turn System off: `sample PlatyNotch 3` shows nothing from
   IOBluetooth notifications; connecting headphones shows nothing.
+
+### Downloads
+
+- [ ] **132. Off by default, no prompt.** Fresh defaults (`tccutil reset SystemPolicyDownloadsFolder
+  dev.platynotch.app`): no Downloads-folder prompt at launch or anywhere but the button.
+  `lsof -p $(pgrep -x PlatyNotch)` shows no FSEvents use for Downloads.
+- [ ] **133. The button asks.** Settings › Widgets › System › Downloads › Turn On…: the
+  "access files in your Downloads folder" prompt appears now. Allow. (Don't allow: the
+  settings say so with "Open System Settings"; nothing is watched.)
+- [ ] **134. Chrome / Edge / Arc.** Download a large file: within a second or two the pill
+  shows ↓ and the file name (not "Unconfirmed …" for more than a moment); the tile lists
+  it as Downloading. When done: a notice below the notch "Downloaded <name>" with Open,
+  Show in Finder and (shelf on) Move to Shelf, for about 8 s; it stays in the tile.
+- [ ] **135. Safari.** The same with Safari (its `.download` bundle): one notice when it
+  finishes, with the final name; no notice for the bundle's inner files.
+- [ ] **136. Firefox.** The same with Firefox (`.part` plus an empty placeholder): one
+  notice when it finishes, not at the start.
+- [ ] **137. Buttons only.** Nothing opens, moves or is revealed until you click. Open
+  opens the file; Show in Finder selects it; Move to Shelf adds it to the shelf (the file
+  stays in Downloads). With the shelf widget off, there is no Move to Shelf button.
+- [ ] **138. Not downloads.** Copy a file into Downloads in Finder, unzip an archive there,
+  cancel a download: no notice. A paused download leaves the pill after 10 minutes.
+- [ ] **139. Second folder.** Add a Folder… (e.g. a folder your browser saves to): downloads
+  there show too. Remove: only ~/Downloads again. No Safari-container lookup.
+- [ ] **140. Off.** Turn Downloads off (or the System widget off): a download in progress
+  leaves the pill at once; new downloads show nothing; `sample PlatyNotch 3` shows no
+  FSEvents callbacks.
