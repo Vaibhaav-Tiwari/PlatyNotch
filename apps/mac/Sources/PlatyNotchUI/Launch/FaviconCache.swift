@@ -79,8 +79,13 @@ struct RefusingFaviconFetcher: FaviconFetching {
 /// most once a day. Every response is checked again here, whatever the fetcher did: the
 /// final URL on the pinned site's https origin, `FaviconPolicy.accepts`, and a body that
 /// decodes as an image. Anything else means the letter icon.
-final class FaviconCache: Sendable {
+///
+/// `close()` (the widget stopped) makes every later write a no-op, and writes happen under
+/// the same lock, so a fetch that finishes after `removeAll()` never recreates the folder.
+final class FaviconCache: @unchecked Sendable {
     let directory: URL
+    private let lock = NSLock()
+    private var closed = false
     private let fetcher: FaviconFetching
     private let decodes: @Sendable (Data) -> Bool
     private let now: @Sendable () -> Date
@@ -125,6 +130,7 @@ final class FaviconCache: Sendable {
         for candidate in FaviconURL.candidates(for: site) where FaviconURL.isSameOrigin(candidate, as: site) {
             guard !Task.isCancelled else { return nil }
             guard let response = try? await fetcher.fetch(candidate), accepts(response, for: site) else { continue }
+            guard !Task.isCancelled else { return nil }
             save(response.data, key: key)
             return response.data
         }
@@ -146,9 +152,34 @@ final class FaviconCache: Sendable {
         try? FileManager.default.removeItem(at: failureFile(key: key))
     }
 
-    /// Deletes the whole cache directory (the widget was turned off).
+    /// No writes from now on (until `reopen`).
+    func close() {
+        lock.withLock { closed = true }
+    }
+
+    func reopen() {
+        lock.withLock { closed = false }
+    }
+
+    /// Closes the cache and deletes its directory (the widget was turned off).
+    func removeAll() {
+        lock.withLock {
+            closed = true
+            Self.removeAll(in: directory)
+        }
+    }
+
+    /// Deletes a cache directory (no cache object exists: the widget never started).
     static func removeAll(in directory: URL) {
         try? FileManager.default.removeItem(at: directory)
+    }
+
+    /// Runs `write` unless closed, holding the lock so `removeAll` cannot interleave.
+    private func writing(_ write: () -> Void) {
+        lock.withLock {
+            guard !closed else { return }
+            write()
+        }
     }
 
     // MARK: - Disk
@@ -166,19 +197,23 @@ final class FaviconCache: Sendable {
     }
 
     private func save(_ data: Data, key: String) {
-        guard prepareDirectory() else { return }
-        let file = iconFile(key: key)
-        guard (try? data.write(to: file, options: .atomic)) != nil else { return }
-        stamp(file)
-        try? FileManager.default.removeItem(at: failureFile(key: key))
+        writing {
+            guard prepareDirectory() else { return }
+            let file = iconFile(key: key)
+            guard (try? data.write(to: file, options: .atomic)) != nil else { return }
+            stamp(file)
+            try? FileManager.default.removeItem(at: failureFile(key: key))
+        }
     }
 
     private func markFailure(key: String) {
-        try? FileManager.default.removeItem(at: iconFile(key: key))
-        guard prepareDirectory() else { return }
-        let file = failureFile(key: key)
-        guard FileManager.default.createFile(atPath: file.path, contents: Data()) else { return }
-        stamp(file)
+        writing {
+            try? FileManager.default.removeItem(at: iconFile(key: key))
+            guard prepareDirectory() else { return }
+            let file = failureFile(key: key)
+            guard FileManager.default.createFile(atPath: file.path, contents: Data()) else { return }
+            stamp(file)
+        }
     }
 
     /// 0600, modified now (the injected clock).

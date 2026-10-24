@@ -810,3 +810,9 @@ icons in `<home>/favicons` (0700).
 - [ ] **168. Disable.** Settings › Widgets: turn Sites & Shortcuts off: the tile goes, a
   running shortcut is stopped, `<home>/favicons` is deleted; pins come back when turned on
   (icons are fetched again).
+- [ ] **169. Add Current Tab from Settings.** With Chrome frontmost, open PlatyNotch
+  Settings › Widgets › Sites & Shortcuts and click Add Current Tab: Chrome's tab is pinned
+  (the browser active before Settings, not "Open Safari, Chrome or Arc first").
+- [ ] **170. Leaving Agents mid-refresh.** Open Settings › Agents and switch section at
+  once: no "exit status 15" appears when you come back (notch commands are not killed when
+  a view goes away).

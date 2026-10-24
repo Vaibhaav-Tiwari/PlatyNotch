@@ -79,14 +79,14 @@ final class LaunchWidget: NotchWidget {
          faviconDirectory: URL? = CorePaths.favicons(),
          fetcher: @escaping () -> FaviconFetching = { OriginFaviconFetcher() },
          shortcuts: ShortcutsRunning = ShortcutsRunner(),
-         tabs: BrowserTabReading = AppleScriptTabReader(),
+         tabs: BrowserTabReading? = nil,
          open: @escaping @MainActor (URL) -> Bool = { NSWorkspace.shared.open($0) },
          clock: @escaping @Sendable () -> Date = Date.init) {
         self.defaults = defaults
         self.faviconDirectory = faviconDirectory
         makeFetcher = fetcher
         self.shortcuts = shortcuts
-        self.tabs = tabs
+        self.tabs = tabs ?? AppleScriptTabReader()
         opener = open
         self.clock = clock
         pins = defaults.map(LaunchPins.load(from:)) ?? LaunchPins()
@@ -115,6 +115,8 @@ final class LaunchWidget: NotchWidget {
         if cache == nil, let dir = faviconDirectory {
             cache = FaviconCache(directory: dir, fetcher: makeFetcher(), now: clock)
         }
+        cache?.reopen()
+        tabs.startTracking()
         refreshIcons()
         refreshTask?.cancel()
         refreshTask = Task { @MainActor [weak self] in
@@ -131,6 +133,8 @@ final class LaunchWidget: NotchWidget {
     func stop() {
         running = false
         context = nil
+        cache?.close()
+        tabs.stopTracking()
         for t in iconTasks.values { t.cancel() }
         iconTasks = [:]
         refreshTask?.cancel()
@@ -153,7 +157,11 @@ final class LaunchWidget: NotchWidget {
         icons = [:]
         notice = nil
         closePicker()
-        if let dir = faviconDirectory { FaviconCache.removeAll(in: dir) }
+        if let cache {
+            cache.removeAll()
+        } else if let dir = faviconDirectory {
+            FaviconCache.removeAll(in: dir)
+        }
     }
 
     // MARK: - Icons
@@ -276,6 +284,8 @@ final class LaunchWidget: NotchWidget {
                  error: true)
         case .timedOut(let b):
             show("\(b.name) did not answer.", error: true)
+        case .busy(let b):
+            show("Still waiting for \(b.name)’s last answer. Try again in a few seconds.", error: true)
         case .failed(let b, let code):
             show("Could not read \(b.name)’s tab (\(code)).", error: true)
         }

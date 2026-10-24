@@ -336,6 +336,52 @@ final class LaunchWidgetTests: XCTestCase {
         XCTAssertEqual(LaunchPins.load(from: r.defaults).sites.count, 1, "pins stay")
     }
 
+    final class GatedFetcher: FaviconFetching, @unchecked Sendable {
+        private let lock = NSLock()
+        private var open = false
+        private var _started = 0
+        var started: Int { lock.withLock { _started } }
+        func release() { lock.withLock { open = true } }
+
+        /// Waits for `release()`, ignoring cancellation, then answers with a good icon.
+        func fetch(_ url: URL) async throws -> FaviconResponse {
+            lock.withLock { _started += 1 }
+            while !lock.withLock({ open }) { try? await Task.sleep(for: .milliseconds(5)) }
+            return try FakeFetcher.png(url)
+        }
+    }
+
+    func testFetchFinishingAfterDisableWritesNothing() async throws {
+        let fetcher = GatedFetcher()
+        let dir = tempDir()
+        let w = LaunchWidget(defaults: defaults(), faviconDirectory: dir, fetcher: { fetcher }, shortcuts: FakeShortcuts(),
+                             tabs: FakeTabs(), open: { _ in true })
+        w.start(context: context())
+        w.pin(URL(string: "https://a.com")!)
+        await waitFor { fetcher.started == 1 }
+        w.stop()
+        w.disabled()
+        fetcher.release()
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.path), "nothing recreates favicons/ after disable")
+    }
+
+    func testClosedCacheNeverWritesEvenUncancelled() async throws {
+        let fetcher = GatedFetcher()
+        let dir = tempDir()
+        let cache = FaviconCache(directory: dir, fetcher: fetcher)
+        let load = Task.detached { await cache.load(for: URL(string: "https://a.com")!) }
+        await waitFor { fetcher.started == 1 }
+        cache.removeAll()
+        fetcher.release()
+        _ = await load.value
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.path))
+        cache.reopen()
+        let again = await cache.load(for: URL(string: "https://a.com")!)
+        XCTAssertNotNil(again)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dir.path), "reopened (started again): writes resume")
+    }
+
     // MARK: - The real fetcher and redirect guard (no request is made)
 
     func testOriginFetcherRefusesNonHttpsBeforeAnyRequest() async {
@@ -521,7 +567,38 @@ final class LaunchWidgetTests: XCTestCase {
         let r = await ProcessRunner(executableURL: bin).run([], timeout: .seconds(10))
         XCTAssertEqual(r.status, 3)
         XCTAssertEqual(r.stdout, "started\n")
+        XCTAssertTrue(r.truncated, "the grandchild still held the pipe")
         XCTAssertLessThan(Date().timeIntervalSince(start), 3.5)
+    }
+
+    func testFullOutputIsReadToEOFAndNotTruncated() async throws {
+        let bin = try script("head -c 600000 /dev/zero; head -c 300000 /dev/zero >&2; exit 0")
+        for _ in 0..<5 {
+            let r = await ProcessRunner(executableURL: bin).run([], timeout: .seconds(10))
+            XCTAssertEqual(r.status, 0)
+            XCTAssertFalse(r.truncated)
+            XCTAssertEqual(r.stdout.utf8.count, 600_000)
+            XCTAssertEqual(r.stderr.utf8.count, 300_000)
+        }
+    }
+
+    func testCoreRunnerTreatsTruncatedOutputAsAnError() async throws {
+        let bin = try script("sleep 4 & echo '{\"ok\":true}'; exit 0")
+        let r = await CoreRunner(binaryURL: bin).run(["hooks", "status"])
+        XCTAssertTrue(r.truncated)
+        XCTAssertEqual(r.status, CoreRunner.truncatedStatus, "never a silent status 0 with partial output")
+        XCTAssertTrue(r.combined.contains("output incomplete"))
+    }
+
+    func testCoreRunnerIgnoresTaskCancellation() async throws {
+        let bin = try script("sleep 1; echo done")
+        let task = Task { await CoreRunner(binaryURL: bin).run(["hooks", "status"]) }
+        try await Task.sleep(for: .milliseconds(200))
+        task.cancel()
+        let r = await task.value
+        XCTAssertEqual(r.status, 0, "a view's .task ending must not SIGTERM the command")
+        XCTAssertEqual(r.stdout, "done\n")
+        XCTAssertFalse(r.cancelled)
     }
 
     func testProcessRunnerCapsOutput() async throws {

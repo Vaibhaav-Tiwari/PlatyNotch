@@ -221,6 +221,12 @@ public enum SupportedBrowser: String, CaseIterable, Sendable {
     end timeout
     """
 
+    /// The app to treat as frontmost: `current`, unless that is PlatyNotch itself (its
+    /// Settings window is active), then the last other app that was active.
+    public static func effectiveFrontmost(current: String?, currentIsSelf: Bool, previous: String?) -> String? {
+        currentIsSelf || current == nil ? previous : current
+    }
+
     /// The frontmost app when it is a running supported browser, else the first running
     /// one in `allCases` order; nil when none runs.
     public static func pick(frontmost: String?, running: Set<String>) -> SupportedBrowser? {

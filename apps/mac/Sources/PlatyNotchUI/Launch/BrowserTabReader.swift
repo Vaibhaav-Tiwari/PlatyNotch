@@ -13,6 +13,8 @@ enum TabReadResult: Equatable, Sendable {
     /// Automation for that browser is turned off for PlatyNotch.
     case denied(SupportedBrowser)
     case timedOut(SupportedBrowser)
+    /// A previous script (one that timed out) is still running; nothing was sent.
+    case busy(SupportedBrowser)
     case failed(SupportedBrowser, Int)
 }
 
@@ -21,19 +23,62 @@ enum TabReadResult: Equatable, Sendable {
 /// from the "Add current tab" button. Tests and smoke runs use a fake.
 protocol BrowserTabReading: Sendable {
     @MainActor func currentTab() async -> TabReadResult
+    /// While the widget runs: remember the last app other than PlatyNotch that was active,
+    /// so "Add Current Tab" in the Settings window (PlatyNotch active) uses that browser.
+    @MainActor func startTracking()
+    @MainActor func stopTracking()
+}
+
+extension BrowserTabReading {
+    @MainActor func startTracking() {}
+    @MainActor func stopTracking() {}
 }
 
 /// `SupportedBrowser.script` (constant AppleScript, nothing spliced in) for the frontmost
-/// running browser, else the first running one. Runs on its own queue, never the main
-/// thread; the script itself gives up after 5 s and the caller after `timeout`.
-struct AppleScriptTabReader: BrowserTabReading {
+/// running browser, else the first running one ("frontmost" is the last other app while
+/// PlatyNotch itself is active). Runs on its own queue, never the main thread; the
+/// script itself gives up after 5 s and the caller after `timeout`.
+///
+/// One script at a time: NSAppleScript is not documented as safe to run concurrently, so
+/// a click while a timed-out script still runs returns `.busy` at once instead of queuing
+/// behind it (the script's own 5 s Apple Event timeout bounds that wait).
+@MainActor
+final class AppleScriptTabReader: BrowserTabReading {
     static let timeout: Double = 8
     private static let queue = DispatchQueue(label: "dev.platynotch.launch.browser-tab", qos: .userInitiated)
+    private static let gate = ScriptGate()
 
-    @MainActor func currentTab() async -> TabReadResult {
+    private var previousApp: String?
+    private var observer: NSObjectProtocol?
+
+    init() {}
+
+    func startTracking() {
+        guard observer == nil else { return }
+        let own = ProcessInfo.processInfo.processIdentifier
+        observer = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            guard let app, app.processIdentifier != own, let id = app.bundleIdentifier else { return }
+            MainActor.assumeIsolated { self?.previousApp = id }
+        }
+    }
+
+    func stopTracking() {
+        if let observer { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
+        observer = nil
+        previousApp = nil
+    }
+
+    func currentTab() async -> TabReadResult {
         let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
-        let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        let frontApp = NSWorkspace.shared.frontmostApplication
+        let isSelf = frontApp?.processIdentifier == ProcessInfo.processInfo.processIdentifier
+        let front = SupportedBrowser.effectiveFrontmost(current: frontApp?.bundleIdentifier, currentIsSelf: isSelf,
+                                                        previous: previousApp)
         guard let browser = SupportedBrowser.pick(frontmost: front, running: running) else { return .noBrowser }
+        guard Self.gate.enter() else { return .busy(browser) }
         let source = browser.script
         let outcome = await Self.execute(source)
         return Self.result(outcome, browser: browser)
@@ -64,7 +109,11 @@ struct AppleScriptTabReader: BrowserTabReading {
     private static func execute(_ source: String) async -> ScriptOutcome {
         await withCheckedContinuation { (cont: CheckedContinuation<ScriptOutcome, Never>) in
             let once = ResumeOnce(cont)
-            queue.async { once.resume(runScript(source)) }
+            queue.async {
+                let outcome = runScript(source)
+                gate.leave()
+                once.resume(outcome)
+            }
             DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { once.resume(.failure(-1712)) }
         }
     }
@@ -76,6 +125,23 @@ struct AppleScriptTabReader: BrowserTabReading {
         let out = script.executeAndReturnError(&error)
         if let error { return .failure((error[NSAppleScript.errorNumber] as? Int) ?? -1) }
         return .value(out.stringValue ?? "")
+    }
+}
+
+/// At most one script running (including one the caller stopped waiting for).
+private final class ScriptGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var busy = false
+
+    func enter() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if busy { return false }
+        busy = true
+        return true
+    }
+
+    func leave() {
+        lock.lock(); busy = false; lock.unlock()
     }
 }
 

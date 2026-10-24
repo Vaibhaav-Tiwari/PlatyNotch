@@ -200,6 +200,17 @@ final class LaunchTests: XCTestCase {
         XCTAssertNil(SupportedBrowser.pick(frontmost: nil, running: ["org.mozilla.firefox"]))
     }
 
+    func testSettingsWindowUsesTheLastOtherApp() {
+        let safari = SupportedBrowser.safari.rawValue
+        XCTAssertEqual(SupportedBrowser.effectiveFrontmost(current: "dev.platynotch.app", currentIsSelf: true, previous: safari),
+                       safari, "PlatyNotch's Settings window is active: the browser before it")
+        XCTAssertEqual(SupportedBrowser.effectiveFrontmost(current: "com.google.Chrome", currentIsSelf: false, previous: safari),
+                       "com.google.Chrome")
+        XCTAssertNil(SupportedBrowser.effectiveFrontmost(current: nil, currentIsSelf: true, previous: nil))
+        let front = SupportedBrowser.effectiveFrontmost(current: nil, currentIsSelf: true, previous: "company.thebrowser.Browser")
+        XCTAssertEqual(SupportedBrowser.pick(frontmost: front, running: [safari, "company.thebrowser.Browser"]), .arc)
+    }
+
     // MARK: - Shortcuts
 
     func testShortcutsArgumentsNeverParseTheNameAsAnOption() {
