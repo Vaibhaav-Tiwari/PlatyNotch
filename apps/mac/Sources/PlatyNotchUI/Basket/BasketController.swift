@@ -335,55 +335,68 @@ final class BasketController: DragMonitorListener {
     func menu(for host: BasketHost) -> NSMenu {
         let menu = NSMenu()
         menu.autoenablesItems = false
-        func add(_ title: String, enabled: Bool = true, to m: NSMenu = menu, _ action: @escaping @MainActor () -> Void) {
-            let mi = ClosureMenuItem(title: title, action: action)
-            mi.isEnabled = enabled
-            m.addItem(mi)
-        }
-        add(host.pinned ? "Unpin Basket" : "Pin Basket") { [weak self, weak host] in
+        let pinTitle = host.pinned ? "Unpin Basket" : "Pin Basket"
+        Self.add(pinTitle, to: menu) { [weak self, weak host] in
             guard let self, let host else { return }
             self.setPinned(host, !host.pinned)
         }
-        let colors = NSMenu()
-        for c in BasketColor.allCases {
-            let mi = ClosureMenuItem(title: c.title) { [weak self, weak host] in
-                guard let self, let host else { return }
-                self.setColor(host, c)
-            }
-            mi.state = c == host.color ? .on : .off
-            colors.addItem(mi)
-        }
-        let color = NSMenuItem(title: "Color", action: nil, keyEquivalent: "")
-        color.submenu = colors
-        menu.addItem(color)
-        add("Rename…") { [weak self, weak host] in
+        menu.addItem(colorItem(for: host))
+        Self.add("Rename…", to: menu) { [weak self, weak host] in
             guard let self, let host else { return }
             self.rename(host)
         }
-        if let center = host.fileActions, !host.items.isEmpty {
-            let writers = host.pasteboardWriters(for: host.items)
-            let pairs: [(item: ShelfItem, url: URL?)] = writers.map { pair in
-                (pair.0, (pair.1 as? NSURL).flatMap { $0.isFileURL ? $0 as URL : nil })
-            }
-            let entries = center.entries(for: pairs)
-            if !entries.isEmpty {
-                let actions = NSMenuItem(title: "Actions", action: nil, keyEquivalent: "")
-                actions.submenu = ShelfItemView.actionsMenu(entries, center: center, host: host, pairs: pairs)
-                menu.addItem(actions)
-            }
-        }
+        if let actions = actionsItem(for: host) { menu.addItem(actions) }
         menu.addItem(.separator())
-        add("Move All to Shelf", enabled: !host.items.isEmpty && store.shelf() != nil) { [weak self, weak host] in
+        let canMove = !host.items.isEmpty && store.shelf() != nil
+        Self.add("Move All to Shelf", enabled: canMove, to: menu) { [weak self, weak host] in
             guard let self, let host else { return }
             self.moveAllToShelf(host)
         }
-        add("Clear", enabled: host.items.contains { !$0.pinned }) { [weak host] in host?.clearUnpinned() }
+        let canClear = host.items.contains { !$0.pinned }
+        Self.add("Clear", enabled: canClear, to: menu) { [weak host] in host?.clearUnpinned() }
         menu.addItem(.separator())
-        add("Close Basket") { [weak self, weak host] in
+        Self.add("Close Basket", to: menu) { [weak self, weak host] in
             guard let self, let host else { return }
             self.requestClose(host)
         }
         return menu
+    }
+
+    private static func add(_ title: String, enabled: Bool = true, to menu: NSMenu,
+                            _ action: @escaping @MainActor () -> Void) {
+        let item = ClosureMenuItem(title: title, action: action)
+        item.isEnabled = enabled
+        menu.addItem(item)
+    }
+
+    private func colorItem(for host: BasketHost) -> NSMenuItem {
+        let colors = NSMenu()
+        for c in BasketColor.allCases {
+            let item = ClosureMenuItem(title: c.title) { [weak self, weak host] in
+                guard let self, let host else { return }
+                self.setColor(host, c)
+            }
+            item.state = c == host.color ? .on : .off
+            colors.addItem(item)
+        }
+        let color = NSMenuItem(title: "Color", action: nil, keyEquivalent: "")
+        color.submenu = colors
+        return color
+    }
+
+    /// "Actions ›" for every item in the basket, while File actions runs.
+    private func actionsItem(for host: BasketHost) -> NSMenuItem? {
+        guard let center = host.fileActions, !host.items.isEmpty else { return nil }
+        let writers = host.pasteboardWriters(for: host.items)
+        let pairs: [(item: ShelfItem, url: URL?)] = writers.map { pair in
+            let url: URL? = (pair.1 as? NSURL).flatMap { $0.isFileURL ? $0 as URL : nil }
+            return (pair.0, url)
+        }
+        let entries = center.entries(for: pairs)
+        guard !entries.isEmpty else { return nil }
+        let actions = NSMenuItem(title: "Actions", action: nil, keyEquivalent: "")
+        actions.submenu = ShelfItemView.actionsMenu(entries, center: center, host: host, pairs: pairs)
+        return actions
     }
 
     // MARK: - Switcher (⌃⌥B)
