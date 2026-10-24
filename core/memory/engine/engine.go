@@ -14,6 +14,7 @@ import (
 
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/config"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory"
+	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory/graph"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory/ingest"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory/loops"
 	"github.com/Vaibhaav-Tiwari/PlatyNotch/core/memory/provider"
@@ -203,6 +204,13 @@ func (e *Engine) Search(ctx context.Context, q protocol.MemorySearch) ([]protoco
 		return nil, errClosed
 	}
 	return search.Search(ctx, e.s, e.emb, q)
+}
+
+func (e *Engine) Graph(_ context.Context, q protocol.MemoryGraphQuery) (protocol.MemoryGraph, error) {
+	if e.isClosed() {
+		return protocol.MemoryGraph{}, errClosed
+	}
+	return graph.Build(e.s, q, e.now())
 }
 
 func (e *Engine) Loops(_ context.Context, status string) ([]protocol.Loop, error) {

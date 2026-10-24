@@ -54,6 +54,17 @@ func TestCaptureToSearch(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(e.home, "memory.db")); err != nil {
 		t.Fatalf("memory.db: %v", err)
 	}
+	// The same capture is a thread in the graph, linked to its app.
+	if err := u.w.Send(protocol.TypeMemoryGraph, "g1", protocol.MemoryGraphQuery{Hours: 24}); err != nil {
+		t.Fatal(err)
+	}
+	var g protocol.MemoryGraph
+	if err := u.next(protocol.TypeMemoryGraph).Decode(&g); err != nil {
+		t.Fatal(err)
+	}
+	if len(g.Nodes) != 2 || len(g.Edges) != 1 || g.Edges[0].Kind != protocol.EdgeIn {
+		t.Fatalf("graph: %+v", g)
+	}
 }
 
 type e2eExt struct{}
