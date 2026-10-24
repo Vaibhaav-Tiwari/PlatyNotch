@@ -6,6 +6,7 @@ enum BuiltinTab {
     static let today = "today"
     static let focus = "focus"
     static let memory = "memory"
+    static let games = GamesWidget.tabID
 }
 
 /// The open panel: tab bar, pending approvals (always on top), then the selected tab.
@@ -34,6 +35,7 @@ struct ExpandedPanel: View {
             (tabs.first { $0.id == selectedTab } ?? tabs[0]).view
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .clipped()
+                .environment(\.selectPanelTab, { selectedTab = $0 })   // the games tile opens its tab
         }
     }
 
@@ -81,6 +83,14 @@ struct ExpandedPanel: View {
         tabs.append(PanelTab(id: BuiltinTab.memory, title: "Memory", systemImage: "brain") {
             MemoryTab(store: store, memory: memory)
         })
+        // The Games tab belongs to the games widget: shown only while it runs.
+        if widgets.running.contains(GamesWidget.widgetID),
+           let games = widgets.widget(GamesWidget.widgetID) as? GamesWidget {
+            let host = games.host
+            tabs.append(PanelTab(id: BuiltinTab.games, title: "Games", systemImage: "gamecontroller") {
+                GamesTab(host: host)
+            })
+        }
         return tabs + extraTabs
     }
 

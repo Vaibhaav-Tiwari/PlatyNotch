@@ -199,6 +199,7 @@ public final class NotchController {
         let visible = mode != .hidden && !suppressed
         model.mode = mode
         model.visible = visible
+        model.fullScreen = fullScreen
         model.hud = machine.hud
         model.hudIndicator = machine.hudIndicator
         model.ringingChip = ringingChip

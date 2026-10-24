@@ -339,6 +339,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             failure = "surfaces: \(problem)"
         }
         if failure == nil { buildSurfaceViews() }
+        if failure == nil, let problem = Self.checkGameViews() { failure = "games: \(problem)" }
         if failure == nil, let menuBar,
            !menuBar.menuTitles.contains("Pause clipboard history") || menuBar.menuAutoenables {
             failure = "menu bar clipboard item missing or menu autoenables"
@@ -357,7 +358,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         print("SMOKE OK panels=\(controllers.count) mode=\(mode) menubar=\(menuBar != nil)"
               + " updates=\(updater.isEnabled ? "on" : "off") hooklink=\(Self.describe(hookLink))"
-              + " widgets=\(built.count) surfaces=ok sounds=\(sounds)")
+              + " widgets=\(built.count) surfaces=ok sounds=\(sounds) games=\(GameKind.allCases.count)")
         fflush(stdout)
         exit(0)
     }
@@ -454,6 +455,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 AnyView(HeadphonesSettings(widget: w)), AnyView(DownloadsSettings(widget: w)),
                 AnyView(DownloadPeekView(widget: w, url: file)), AnyView(FinishedDownloadRow(widget: w, url: file))]
             .compactMap { $0 }
+    }
+
+    /// Task 10's views with an inert widget (no scores saved, no frames: nothing plays):
+    /// the tile, the settings, the Games tab on every game, and each board. The tab must
+    /// lay out within `GameLayout.tabSize` (explicit frames; no ideal size may grow it).
+    /// Returns the first problem, nil when all fit.
+    static func checkGameViews() -> String? {
+        let w = GamesWidget.inert()
+        let tab = GameLayout.tabSize
+        let small: [AnyView] = [w.tileView(), w.settingsView()].compactMap { $0 }
+        for v in small {
+            NSHostingView(rootView: v.frame(width: 380).environment(\.colorScheme, .dark)).layoutSubtreeIfNeeded()
+        }
+        for kind in GameKind.allCases {
+            w.host.select(kind)
+            let host = NSHostingView(rootView: GamesTab(host: w.host).environment(\.colorScheme, .dark))
+            host.layoutSubtreeIfNeeded()
+            let fit = host.fittingSize
+            if fit.width > tab.width + 1 || fit.height > tab.height + 1 {
+                return "\(kind.title) tab is \(Int(fit.width))x\(Int(fit.height)), more than \(Int(tab.width))x\(Int(tab.height))"
+            }
+            let board = NSHostingView(rootView: GameBoard(session: w.host.session, date: Date(), decorate: true))
+            board.layoutSubtreeIfNeeded()
+            if board.fittingSize.width > GameLayout.boardArea.width + 1 { return "\(kind.title) board too wide" }
+        }
+        return nil
     }
 
     /// `--smoke-settings`: builds the Settings window (every section) and the onboarding

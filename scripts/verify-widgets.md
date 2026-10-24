@@ -716,3 +716,41 @@ reinstall, an ad-hoc rebuild) changes the stamp and turns downloads off instead.
   as if dragged there. Settings › Widgets › Shelf says items from Downloads, Desktop or
   Documents may ask macOS for access when shown; that prompt (if any) comes from showing the
   shelf item the user added, which is accepted.
+
+## Task 10: Games
+
+Automated: `GamesTests` (engines, seams, determinism, `GameSession` pausing and keys,
+`HighScores`, board sizes against the expanded panel), `GamesWidgetTests` (approval /
+ringing / collapse / key loss / full screen pause the game through the real `AppStore`
+and `PanelSurfaces`; resume restores the exact state; ⌘ chords are never game keys; the
+tab fits `GameLayout.tabSize`), and `--smoke` (`games=4`: the tile, settings, the tab on
+every game and each board laid out with an inert widget). High scores live in
+`UserDefaults.standard` under `games.highScores` (`defaults delete PlatyNotch games.highScores`).
+
+- [ ] **148. Play each.** Open the panel › Games (or the Games tile in Today). For Snake,
+  Tetris, 2048 and Flappy: click the board, press Space, play with arrows and WASD (Tetris:
+  ↑ rotates, ↓ drops a row, Space slams; Flappy: Space or ↑ flaps). Each board fits the
+  panel with nothing clipped, on a notched and on an external display.
+- [ ] **149. Click first, never hover.** Open the Games tab and press Space or arrows
+  without clicking: nothing happens ("Click to play"). Hovering the board never takes
+  focus. After a click, keys work.
+- [ ] **150. Approval mid-game.** While Snake or Tetris plays, trigger an approval
+  (`scripts/fake-events.sh`): the game freezes at once, the board gives way to "Game
+  paused while an approval is waiting", and the approval card is answerable with ⌘↩ /
+  ⌘⌫ (never swallowed by the game). Arrows and Space do nothing to the game while it is
+  pending. After answering: "Click to play" → click → Space resumes exactly where it was.
+- [ ] **151. Escape.** While playing, Escape pauses ("Paused · Press Space"); a second
+  Escape closes the panel. With an approval pending, Escape never hides the approval.
+- [ ] **152. Collapse and focus.** While playing, move the cursor away so the panel
+  collapses: the game is paused when you come back. Click another app's window while the
+  panel stays open: the game pauses (key loss).
+- [ ] **153. Ringing.** Start a 5 s timer, play Flappy: when it rings the game pauses
+  ("Something is ringing") and Space does not resume until Stop.
+- [ ] **154. Full screen.** Reveal the panel over a full-screen app: the game shows
+  "Paused" and does not run.
+- [ ] **155. Idle cost.** With a game paused (or the Games tab closed), Activity Monitor
+  shows PlatyNotch idle (no 60 fps redraw). 2048 never runs a frame loop.
+- [ ] **156. Reduce Motion.** With System Settings › Accessibility › Display › Reduce
+  motion on, games still play; Snake's food does not pulse and Flappy's bird does not tilt.
+- [ ] **157. High scores.** Finish a game with a new best: "New best: N!" shows, the tile
+  and Settings › Widgets › Games show it after a relaunch; Reset High Scores clears them.

@@ -74,5 +74,7 @@ enum BuiltInWidgets {
             return { shelf.addFile($0) }
         }
         registry.register(persist ? SystemWidget(downloads: .system(shelf: toShelf)) : SystemWidget.inert())
+        // On by default; does nothing until a game is played. Smoke: scores never saved.
+        registry.register(persist ? GamesWidget() : GamesWidget.inert())
     }
 }

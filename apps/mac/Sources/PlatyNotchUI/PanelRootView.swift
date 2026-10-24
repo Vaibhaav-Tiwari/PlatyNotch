@@ -7,6 +7,8 @@ import SwiftUI
 final class PanelViewModel {
     var mode: PanelMode = .compact
     var visible = false
+    /// A full-screen app covers this panel's display (games pause).
+    var fullScreen = false
     var layout: PanelLayout?
     var selectedTab = BuiltinTab.agents
     /// Which approval cards have been on screen long enough to be answered (this window).
@@ -55,6 +57,9 @@ struct PanelRootView: View {
         // not while hidden or suppressed over full screen.
         .environment(\.panelTicking, model.visible)
         .environment(\.musicVisualiser, today.visualiser)
+        // The games tab pauses unless the panel is open, on screen and not over full screen.
+        .environment(\.gamePanel, GamePanelState(expanded: model.mode == .expanded, visible: model.visible,
+                                                 fullScreen: model.fullScreen))
         .animation(.spring(duration: 0.25), value: model.mode)
         .animation(.easeOut(duration: 0.15), value: model.visible)
     }
