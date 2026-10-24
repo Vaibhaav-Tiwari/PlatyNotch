@@ -12,6 +12,24 @@ final class ZipExtractorTests: DefaultsTestCase {
         URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures/zips")
     }
 
+    /// Archives of `sampleFolder` made by the system's tools, built once for the class.
+    nonisolated(unsafe) private static var toolRoot: URL?
+    nonisolated(unsafe) private static var toolArchives: [URL] = []
+
+    override class func setUp() {
+        super.setUp()
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("ZipExtractorTests-tools-\(UUID().uuidString)")
+        toolRoot = dir
+        toolArchives = (try? makeToolArchives(in: dir)) ?? []
+    }
+
+    override class func tearDown() {
+        if let toolRoot { try? FileManager.default.removeItem(at: toolRoot) }
+        toolRoot = nil
+        toolArchives = []
+        super.tearDown()
+    }
+
     override func setUpWithError() throws {
         root = fm.temporaryDirectory.appendingPathComponent("ZipExtractorTests-\(UUID().uuidString)")
         try fm.createDirectory(at: root, withIntermediateDirectories: true)
@@ -47,6 +65,10 @@ final class ZipExtractorTests: DefaultsTestCase {
     }
 
     private func ditto(_ args: [String]) throws -> Int32 {
+        try Self.ditto(args)
+    }
+
+    private static func ditto(_ args: [String]) throws -> Int32 {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
         p.arguments = args
@@ -134,7 +156,8 @@ final class ZipExtractorTests: DefaultsTestCase {
 
     // MARK: - Archives made here by the system's tools
 
-    private func sampleFolder() throws -> URL {
+    private static func sampleFolder(in root: URL) throws -> URL {
+        let fm = FileManager.default
         let src = root.appendingPathComponent("src/Sample Folder")
         try fm.createDirectory(at: src.appendingPathComponent("sub/deeper"), withIntermediateDirectories: true)
         try fm.createDirectory(at: src.appendingPathComponent("emptydir"), withIntermediateDirectories: true)
@@ -147,7 +170,8 @@ final class ZipExtractorTests: DefaultsTestCase {
         return src
     }
 
-    private func run(_ tool: String, _ args: [String], in dir: URL, stdout: URL? = nil) throws -> Bool {
+    private static func run(_ tool: String, _ args: [String], in dir: URL, stdout: URL? = nil) throws -> Bool {
+        let fm = FileManager.default
         guard fm.isExecutableFile(atPath: tool) else { return false }
         let p = Process()
         p.executableURL = URL(fileURLWithPath: tool)
@@ -163,8 +187,10 @@ final class ZipExtractorTests: DefaultsTestCase {
         return p.terminationStatus == 0
     }
 
-    func testSystemToolArchivesMatchDitto() throws {
-        let src = try sampleFolder()
+    /// The sample folder archived with ditto, Info-ZIP (`-r -y`, `-fz`, to stdout) and
+    /// bsdtar: whichever of them this Mac has.
+    private static func makeToolArchives(in root: URL) throws -> [URL] {
+        let src = try sampleFolder(in: root)
         let parent = src.deletingLastPathComponent()
         let name = src.lastPathComponent
         var made: [URL] = []
@@ -178,6 +204,11 @@ final class ZipExtractorTests: DefaultsTestCase {
         if try run("/usr/bin/zip", ["-r", "-y", "-q", "-", name], in: parent, stdout: d) { made.append(d) }
         let e = root.appendingPathComponent("bsdtar.zip")
         if try run("/usr/bin/tar", ["--format", "zip", "-cf", e.path, name], in: parent) { made.append(e) }
+        return made
+    }
+
+    func testSystemToolArchivesMatchDitto() throws {
+        let made = Self.toolArchives
         XCTAssertGreaterThanOrEqual(made.count, 1)
         for zip in made { try assertMatchesDitto(zip) }
     }
@@ -280,8 +311,51 @@ final class ZipExtractorTests: DefaultsTestCase {
         XCTAssertEqual(ZipExtractor.safeParts("/abs/./x//y"), ["abs", "x", "y"], "a leading / dropped")
         XCTAssertNil(ZipExtractor.safeParts("a/../b"))
         XCTAssertNil(ZipExtractor.safeParts("a\0b"))
-        XCTAssertEqual(ZipExtractor.fileMode(0o106777), 0o777)
+        XCTAssertEqual(ZipExtractor.fileMode(0o106777), 0o755, "set-ID and group/other write dropped")
         XCTAssertEqual(ZipExtractor.folderMode(0o1000), 0o755)
+        XCTAssertEqual(ZipExtractor.fileMode(nil), 0o644)
+        XCTAssertEqual(ZipExtractor.fileMode(0o100400), 0o600, "the owner can always write")
+        XCTAssertEqual(ZipExtractor.folderMode(0o040500), 0o700)
+    }
+
+    /// Fix round 4: nothing unzipped is group- or world-writable (`setAttributes` ignores
+    /// the umask, so 0777 in the archive would be -rwxrwxrwx on disk).
+    func testWorldWritableModesAreNarrowed() throws {
+        var file = ZipFixture.Entry("open.sh", Data("#!/bin/sh\n".utf8))
+        file.mode = 0o100777
+        var folder = ZipFixture.Entry("open/", Data())
+        folder.mode = 0o040777
+        var sticky = ZipFixture.Entry("tmp/", Data())
+        sticky.mode = 0o041777
+        var stickyFile = ZipFixture.Entry("sticky.txt", Data("s".utf8))
+        stickyFile.mode = 0o101777
+        let out = try fresh()
+        try ZipExtractor.extract(try archive([file, folder, sticky, stickyFile]), into: out, cap: cap)
+        let mode = { (p: String) in (try? self.fm.attributesOfItem(atPath: out.appendingPathComponent(p).path)[.posixPermissions] as? Int) ?? -1 }
+        XCTAssertEqual(mode("open.sh"), 0o755, "0777 file")
+        XCTAssertEqual(mode("open"), 0o755, "0777 folder")
+        XCTAssertEqual(mode("tmp"), 0o755, "01777 folder: no sticky bit, no group/other write")
+        XCTAssertEqual(mode("sticky.txt"), 0o755, "01777 file")
+        XCTAssertEqual(ZipExtractor.fileMode(0o1777), 0o755)
+        XCTAssertEqual(ZipExtractor.folderMode(0o1777), 0o755)
+        XCTAssertEqual(ZipExtractor.fileMode(0o100666), 0o644)
+    }
+
+    /// Fix round 4: too many entries is refused by the inspector, before anything is
+    /// written (a small injected cap; the real one is 50,000).
+    func testEntryCap() throws {
+        XCTAssertEqual(ZipInspector.maxEntries, 50_000)
+        let url = try archive([ZipFixture.Entry("a.txt", Data("a".utf8)), ZipFixture.Entry("b.txt", Data("b".utf8)),
+                               ZipFixture.Entry("c/", Data())])
+        XCTAssertEqual(ZipInspector.summary(of: url, maxEntries: 2)?.problem, .tooManyEntries)
+        XCTAssertNil(ZipInspector.summary(of: url, maxEntries: 3)?.problem, "exactly the cap is fine")
+        XCTAssertNil(ZipInspector.summary(of: url)?.problem)
+        let out = try fresh()
+        XCTAssertThrowsError(try ZipExtractor.extract(url, into: out, cap: cap, maxEntries: 2)) {
+            XCTAssertEqual($0 as? ZipExtractor.Failure, .unsafe(.tooManyEntries))
+        }
+        XCTAssertEqual(contents(out), [], "nothing written")
+        XCTAssertEqual(try ZipExtractor.extract(url, into: try fresh(), cap: cap, maxEntries: 3), 3)
     }
 
     func testDuplicateNamesAreRefused() throws {

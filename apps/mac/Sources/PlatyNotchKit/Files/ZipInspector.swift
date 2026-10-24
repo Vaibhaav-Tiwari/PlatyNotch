@@ -24,6 +24,9 @@ public enum ZipInspector {
         /// Bytes before the directory that no listed entry accounts for: a hidden entry, a
         /// gap, entries out of order, or anything prepended.
         case unlistedData
+        /// More entries than `maxEntries` (or the cap given): refused before any is read,
+        /// so a directory of tiny entries cannot make the unzip run for minutes.
+        case tooManyEntries
     }
 
     public struct Summary: Equatable, Sendable {
@@ -42,6 +45,8 @@ public enum ZipInspector {
     public static let maxDirectoryBytes = 64 << 20
     /// A symbolic link target longer than this is refused.
     public static let maxLinkTarget = 4096
+    /// An archive listing more entries than this is refused (`tooManyEntries`).
+    public static let maxEntries = 50_000
 
     /// One central directory record (what `ZipExtractor` extracts from).
     struct Entry {
@@ -65,11 +70,11 @@ public enum ZipInspector {
     }
 
     /// Nil when `url` is not a readable ZIP archive.
-    public static func summary(of url: URL) -> Summary? {
-        inspect(url)?.summary
+    public static func summary(of url: URL, maxEntries: Int = maxEntries) -> Summary? {
+        inspect(url, maxEntries: maxEntries)?.summary
     }
 
-    static func inspect(_ url: URL) -> Inspection? {
+    static func inspect(_ url: URL, maxEntries: Int = maxEntries) -> Inspection? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
         guard let size = try? handle.seekToEnd(), size >= 22 else { return nil }
@@ -90,6 +95,11 @@ public enum ZipInspector {
             count = record.u64(32)
             dirSize = record.u64(40)
             dirOffset = record.u64(48)
+        }
+        // The declared count, before the directory is read or anything is written.
+        if count > UInt64(max(maxEntries, 0)) {
+            return Inspection(summary: Summary(entries: Int(clamping: count), uncompressedBytes: 0, problem: .tooManyEntries),
+                              entries: [])
         }
         // Written so nothing can overflow (zip64 values are attacker-chosen).
         guard dirSize <= UInt64(maxDirectoryBytes), dirOffset <= size, dirSize <= size - dirOffset,

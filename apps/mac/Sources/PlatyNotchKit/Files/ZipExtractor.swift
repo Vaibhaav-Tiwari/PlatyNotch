@@ -15,12 +15,14 @@ import zlib
 ///   skipped); any `..` or NUL refuses the archive, as does a repeated name;
 /// - files are written to a temporary sibling, then renamed into place (never replacing);
 ///   folders are made for names ending in `/`; set-user-ID, set-group-ID and sticky bits
-///   are dropped and the owner can always read and write;
+///   are dropped, as is group and other write (`setAttributes` ignores the umask), and
+///   the owner can always read and write;
 /// - links (relative, no `..`, stored, per `ZipInspector`) are made last, so nothing is
 ///   ever written through one;
 /// - `__MACOSX/` (AppleDouble metadata, not content) is skipped;
-/// - memory stays constant (64 KiB in, 256 KiB out), and `isCancelled` is asked between
-///   chunks.
+/// - at most `ZipInspector.maxEntries` entries (refused before anything is written);
+/// - memory stays constant (64 KiB in, 256 KiB out, an autorelease pool per entry), and
+///   `isCancelled` is asked between chunks.
 ///
 /// What it wrote stays on failure; the caller unzips into a fresh folder and deletes it.
 public enum ZipExtractor {
@@ -47,9 +49,9 @@ public enum ZipExtractor {
     /// Extracts `archive` into the existing folder `dest`. Returns how many entries were
     /// written (files, folders and links).
     @discardableResult
-    public static func extract(_ archive: URL, into dest: URL, cap: UInt64,
+    public static func extract(_ archive: URL, into dest: URL, cap: UInt64, maxEntries: Int = ZipInspector.maxEntries,
                                isCancelled: () -> Bool = { false }) throws -> Int {
-        guard let inspection = ZipInspector.inspect(archive) else { throw Failure.unreadable }
+        guard let inspection = ZipInspector.inspect(archive, maxEntries: maxEntries) else { throw Failure.unreadable }
         if let problem = inspection.summary.problem { throw Failure.unsafe(problem) }
         guard inspection.summary.uncompressedBytes <= cap else { throw Failure.tooLarge }
         guard let handle = try? FileHandle(forReadingFrom: archive) else { throw Failure.unreadable }
@@ -76,24 +78,28 @@ public enum ZipExtractor {
         var count = 0
         for (e, parts, kind) in plan {
             if isCancelled() { throw Failure.cancelled }
-            let url = parts.reduce(dest) { $0.appendingPathComponent($1) }
-            try makeParents(of: url, under: dest, fm)
-            switch kind {
-            case .folder:
-                guard e.uncompressed == 0 else { throw Failure.damaged }
-                if !fm.fileExists(atPath: url.path) {
-                    do {
-                        try fm.createDirectory(at: url, withIntermediateDirectories: false,
-                                               attributes: [.posixPermissions: folderMode(e.mode)])
-                    } catch { throw Failure.writeFailed }
+            // Foundation's per-file objects (URLs, handles, attributes) are freed per entry,
+            // not when the whole archive is done.
+            try autoreleasepool {
+                let url = parts.reduce(dest) { $0.appendingPathComponent($1) }
+                try makeParents(of: url, under: dest, fm)
+                switch kind {
+                case .folder:
+                    guard e.uncompressed == 0 else { throw Failure.damaged }
+                    if !fm.fileExists(atPath: url.path) {
+                        do {
+                            try fm.createDirectory(at: url, withIntermediateDirectories: false,
+                                                   attributes: [.posixPermissions: folderMode(e.mode)])
+                        } catch { throw Failure.writeFailed }
+                    }
+                case .link:
+                    // Stored and small (checked by ZipInspector); the target is the data.
+                    var target = Data()
+                    try copyData(e, from: handle, isCancelled: isCancelled) { target.append($0) }
+                    links.append((url, String(decoding: target, as: UTF8.self)))
+                case .file:
+                    try writeFile(e, to: url, from: handle, isCancelled: isCancelled)
                 }
-            case .link:
-                // Stored and small (checked by ZipInspector); the target is the data.
-                var target = Data()
-                try copyData(e, from: handle, isCancelled: isCancelled) { target.append($0) }
-                links.append((url, String(decoding: target, as: UTF8.self)))
-            case .file:
-                try writeFile(e, to: url, from: handle, isCancelled: isCancelled)
             }
             count += 1
         }
@@ -101,7 +107,9 @@ public enum ZipExtractor {
             guard !target.isEmpty, !target.hasPrefix("/"), !ZipInspector.isUnsafe(target) else {
                 throw Failure.unsafe(.unsafeLink)
             }
-            do { try fm.createSymbolicLink(atPath: url.path, withDestinationPath: target) } catch { throw Failure.writeFailed }
+            try autoreleasepool {
+                do { try fm.createSymbolicLink(atPath: url.path, withDestinationPath: target) } catch { throw Failure.writeFailed }
+            }
         }
         return count
     }
@@ -131,16 +139,22 @@ public enum ZipExtractor {
         return parts
     }
 
-    /// The owner's rwx kept, read and write always; set-ID and sticky bits dropped.
+    /// The archive's permission bits without group and other write (0o022: nothing
+    /// unzipped is world-writable, and `setAttributes` ignores the umask) and without the
+    /// set-ID and sticky bits; the owner can always read and write. 0644 when unset.
     static func fileMode(_ mode: UInt32?) -> Int {
         guard let mode, mode & 0o777 != 0 else { return 0o644 }
-        return Int(mode & 0o777) | 0o600
+        return Int(mode & keptBits) | 0o600
     }
 
+    /// As `fileMode`, the owner's rwx always; 0755 when unset.
     static func folderMode(_ mode: UInt32?) -> Int {
         guard let mode, mode & 0o777 != 0 else { return 0o755 }
-        return Int(mode & 0o777) | 0o700
+        return Int(mode & keptBits) | 0o700
     }
+
+    /// rwx for the owner, r-x for group and other.
+    private static let keptBits: UInt32 = 0o777 & ~0o022
 
     /// Parent folders inside `dest` (made with 0755 when an archive lists files before
     /// their folder). Links are made last, so no parent here can be one.
