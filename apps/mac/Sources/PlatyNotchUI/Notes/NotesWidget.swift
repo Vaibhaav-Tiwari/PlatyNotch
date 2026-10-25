@@ -574,7 +574,7 @@ struct NotesTile: View {
             .padding(6)
             .background(Theme.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             if let status = widget.status {
-                Text(verbatim: status).font(.system(size: 10)).foregroundStyle(.secondary)
+                Text(verbatim: status).font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.leading, 6)
             }
@@ -611,12 +611,12 @@ struct NotesTile: View {
             }
             if widget.tasks.count > NotesWidget.shownLimit {
                 Text("+\(widget.tasks.count - NotesWidget.shownLimit) more")
-                    .font(.system(size: 10)).foregroundStyle(.tertiary).padding(.leading, 6)
+                    .font(DS.font(TypeScale.caption)).foregroundStyle(.tertiary).padding(.leading, 6)
             }
         }
         if widget.vault != nil, widget.capped {
             Text("Showing tasks from the newest \(widget.noteCount) notes")
-                .font(.system(size: 10)).foregroundStyle(.tertiary).padding(.leading, 6)
+                .font(DS.font(TypeScale.caption)).foregroundStyle(.tertiary).padding(.leading, 6)
         }
     }
 
@@ -639,12 +639,12 @@ struct NotesTile: View {
             VStack(alignment: .leading, spacing: 0) {
                 Text(verbatim: task.title).font(.system(size: 12)).lineLimit(1)
                 Text(verbatim: NotesWidget.fileName(task.file) + (task.isRecurring ? " · Tick it in Obsidian" : ""))
-                    .font(.system(size: 9)).foregroundStyle(.tertiary).lineLimit(1)
+                    .font(DS.font(TypeScale.caption)).foregroundStyle(.tertiary).lineLimit(1)
             }
             Spacer(minLength: 4)
             if let due {
                 Text(verbatim: due)
-                    .font(.system(size: 10))
+                    .font(DS.font(TypeScale.caption))
                     .foregroundStyle(due == "Overdue" ? Theme.tint(.critical) : Color.secondary)
             }
         }
@@ -673,10 +673,10 @@ struct NotesSettings: View {
                                                                    set: { widget.setCreateDailyNote($0) }))
             if !widget.dailyFolderValid {
                 Text("Use a folder inside the vault, such as Daily or Journal/Daily.")
-                    .font(.caption).foregroundStyle(Theme.tint(.warning))
+                    .font(DS.font(TypeScale.caption)).foregroundStyle(Theme.tint(.warning))
             }
             Text(status)
-                .font(.caption)
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

@@ -33,7 +33,7 @@ struct PermissionRows: View {
                 openSettings: { Permissions.open(.accessibility) })
             if let advice = permissions.accessibilityAdvice.text {
                 Text(verbatim: advice)
-                    .font(.caption)
+                    .font(DS.font(TypeScale.caption))
                     .foregroundStyle(Theme.color(.attention))
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.leading, 28)
@@ -60,7 +60,7 @@ struct PermissionRows: View {
                     Permissions.listsAutomation($0.id, mailWidgetOn: mailWidgetOn)
                 }
                 if targets.isEmpty {
-                    Text("None of Terminal, iTerm, Music, Spotify, Safari, Chrome or Arc is installed.").font(.caption).foregroundStyle(.secondary)
+                    Text("None of Terminal, iTerm, Music, Spotify, Safari, Chrome or Arc is installed.").font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
                 }
                 ForEach(targets, id: \.id) { t in
                     HStack {
@@ -81,7 +81,7 @@ struct PermissionRows: View {
                 }
                 if permissions.anyAutomationDenied {
                     Text(verbatim: "Turned on but still refused, or macOS no longer asks? PlatyNotch was rebuilt or updated and macOS keeps the old answer. In Terminal run: \(PermissionAdvice.resetAppleEvents)")
-                        .font(.caption)
+                        .font(DS.font(TypeScale.caption))
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
@@ -149,8 +149,8 @@ private struct PermissionHeader: View {
             Image(systemName: systemImage).font(.title3).frame(width: 18)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.body.weight(.medium))
-                Text(why).font(.caption)
-                Text("If denied: \(withoutIt)").font(.caption).foregroundStyle(.secondary)
+                Text(why).font(DS.font(TypeScale.caption))
+                Text("If denied: \(withoutIt)").font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
             }
         }
     }
@@ -161,10 +161,10 @@ private struct StateText: View {
 
     var body: some View {
         switch state {
-        case .granted: Label("Allowed", systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(.caption)
-        case .denied: Label("Denied", systemImage: "xmark.circle").foregroundStyle(.secondary).font(.caption)
-        case .notAsked: Text("Not allowed yet").foregroundStyle(.secondary).font(.caption)
-        case .unavailable(let why): Text(verbatim: why).foregroundStyle(.secondary).font(.caption)
+        case .granted: Label("Allowed", systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(DS.font(TypeScale.caption))
+        case .denied: Label("Denied", systemImage: "xmark.circle").foregroundStyle(.secondary).font(DS.font(TypeScale.caption))
+        case .notAsked: Text("Not allowed yet").foregroundStyle(.secondary).font(DS.font(TypeScale.caption))
+        case .unavailable(let why): Text(verbatim: why).foregroundStyle(.secondary).font(DS.font(TypeScale.caption))
         }
     }
 }
@@ -178,7 +178,7 @@ private struct BrowserAutomationNote: View {
         switch state {
         case .denied: Button("Open System Settings") { Permissions.open(.automation) }
         case .granted: EmptyView()
-        default: Text(verbatim: askedFrom).font(.caption).foregroundStyle(.secondary)
+        default: Text(verbatim: askedFrom).font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
         }
     }
 }

@@ -226,7 +226,7 @@ private struct ConfigErrorBanner: View {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: title).font(.callout.weight(.semibold))
-                Text(verbatim: "\(error)\n\(path)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                Text(verbatim: "\(error)\n\(path)").font(DS.font(TypeScale.caption)).foregroundStyle(.secondary).textSelection(.enabled)
             }
             Spacer()
         }
@@ -276,7 +276,7 @@ struct CommandOutputView: View {
             }
             ScrollView {
                 Text(verbatim: output.text)
-                    .font(.system(.caption, design: .monospaced))
+                    .font(.system(size: 11, design: .monospaced))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -293,7 +293,7 @@ struct InlineError: View {
     var body: some View {
         if let text {
             Label { Text(verbatim: text) } icon: { Image(systemName: "exclamationmark.triangle") }
-                .font(.caption)
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.red)
         }
     }

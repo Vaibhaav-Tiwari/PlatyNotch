@@ -23,7 +23,7 @@ struct AgentsSection: View {
                     }
                     .disabled(agents.busy)
                     Text("Shows Claude's 5-hour and weekly limits in the notch. Your own status line keeps running after ours.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(4)
@@ -85,7 +85,7 @@ private struct AgentRow: View {
                     Text(verbatim: row.name).font(.body.weight(.medium))
                     if row.approvalsExperimental { Badge(text: "experimental") }
                 }
-                Text(verbatim: status).font(.caption).foregroundStyle(row.error == nil ? Color.secondary : Color.red)
+                Text(verbatim: status).font(DS.font(TypeScale.caption)).foregroundStyle(row.error == nil ? Color.secondary : Color.red)
                     .lineLimit(2)
                     .help(row.configPath)
             }
@@ -129,7 +129,7 @@ struct Badge: View {
     let text: String
     var body: some View {
         Text(verbatim: text)
-            .font(.caption2.weight(.semibold))
+            .font(DS.font(TypeScale.caption).weight(.semibold))
             .padding(.horizontal, 5).padding(.vertical, 1)
             .background(.orange.opacity(0.2), in: Capsule())
             .foregroundStyle(.orange)

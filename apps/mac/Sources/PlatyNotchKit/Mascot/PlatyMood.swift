@@ -158,8 +158,8 @@ public struct PlatyEarFit: Equatable, Sendable {
     public static let spacing: CGFloat = 4
     /// An agent dot and the space before it.
     public static let dot: CGFloat = 7 + 4
-    /// The "+n" label (two digits) and the space before it.
-    public static let overflowLabel: CGFloat = 18
+    /// The "+n" label (two digits at the 11 pt floor) and the space before it.
+    public static let overflowLabel: CGFloat = 22
 
     /// Dots drawn.
     public let dots: Int

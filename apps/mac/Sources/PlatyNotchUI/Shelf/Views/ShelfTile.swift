@@ -22,13 +22,13 @@ struct ShelfTile: View {
     private func statusLine(_ text: String) -> some View {
         HStack(spacing: 4) {
             Text(verbatim: text)
-                .font(.system(size: 10))
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
             Spacer(minLength: 0)
             Button { host.fileActions?.dismissStatus() } label: { Image(systemName: "xmark") }
                 .buttonStyle(.borderless)
-                .font(.system(size: 9))
+                .font(DS.font(TypeScale.caption))
                 .accessibilityLabel("Dismiss")
         }
     }
@@ -87,10 +87,10 @@ struct ShelfCard: View {
     private func progress(_ run: FileActionCenter.Run) -> some View {
         VStack(spacing: 4) {
             ProgressView().controlSize(.small)
-            Text(verbatim: run.title).font(.system(size: 9)).lineLimit(1)
+            Text(verbatim: run.title).font(DS.font(TypeScale.caption)).lineLimit(1)
             Button("Cancel") { host.fileActions?.cancel(item.id) }
                 .buttonStyle(.borderless)
-                .font(.system(size: 9))
+                .font(DS.font(TypeScale.caption))
         }
         .frame(width: Self.size.width, height: Self.size.height)
         .background(RoundedRectangle(cornerRadius: 8).fill(.background.opacity(0.85)))
@@ -99,7 +99,8 @@ struct ShelfCard: View {
     }
 
     private var content: some View {
-        VStack(spacing: 3) {
+        // Spacing 1: two 11 pt title lines fit under the thumbnail in the fixed card.
+        VStack(spacing: 1) {
             ZStack(alignment: .topTrailing) {
                 ShelfThumbnail(item: item, missing: missing).frame(width: 40, height: 40)
                 if missing {
@@ -108,7 +109,7 @@ struct ShelfCard: View {
                         .foregroundStyle(Theme.color(.attention))
                         .accessibilityLabel("Missing")
                 } else if item.pinned {
-                    Image(systemName: "pin.fill").font(.system(size: 9)).foregroundStyle(.secondary)
+                    Image(systemName: "pin.fill").font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
                 }
             }
             if missing {
@@ -121,11 +122,13 @@ struct ShelfCard: View {
                         .accessibilityLabel("Remove \(item.title)")
                 }
                 .buttonStyle(.borderless)
-                .font(.system(size: 10))
+                .font(DS.font(TypeScale.caption))
             } else {
+                // One word ("example.com") truncates in the middle rather than breaking
+                // mid-word at 11 pt; names with spaces wrap to two lines.
                 Text(verbatim: item.title)
-                    .font(.system(size: 10))
-                    .lineLimit(2)
+                    .font(DS.font(TypeScale.caption))
+                    .lineLimit(item.title.contains(" ") ? 2 : 1)
                     .multilineTextAlignment(.center)
                     .truncationMode(.middle)
             }

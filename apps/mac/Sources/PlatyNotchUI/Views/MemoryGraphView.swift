@@ -149,7 +149,7 @@ struct MemoryGraphView: View {
                     Text(verbatim: "Nothing captured in the \(model.range.spoken.lowercased()).")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                     Text("Apps, pages, documents and open loops show here as you work.")
-                        .font(.system(size: 10)).foregroundStyle(.tertiary)
+                        .font(DS.font(TypeScale.caption)).foregroundStyle(.tertiary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
@@ -207,11 +207,11 @@ private struct MemoryGraphBody: View {
                 Text(verbatim: MemoryGraphFormat.label(node))
                     .font(.system(size: 11, weight: .semibold)).lineLimit(1)
                 Text(verbatim: MemoryGraphFormat.detail(node, in: graph))
-                    .font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                    .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary).lineLimit(1)
             }
         } else {
             Text("Hover or click a shape to see what it links to.")
-                .font(.system(size: 10)).foregroundStyle(.tertiary).lineLimit(1)
+                .font(DS.font(TypeScale.caption)).foregroundStyle(.tertiary).lineLimit(1)
         }
     }
 
@@ -331,7 +331,7 @@ struct GraphScene {
         guard show else { return }
         let r = CGFloat(MemoryGraphFormat.radius(weight: n.weight, maxWeight: maxWeight))
         let label = MemoryGraphFormat.shortLabel(n, max: 28)
-        let text = Text(verbatim: label).font(.system(size: 10, weight: n.id == focus ? .semibold : .regular))
+        let text = Text(verbatim: label).font(DS.font(TypeScale.caption).weight(n.id == focus ? .semibold : .regular))
             .foregroundStyle(.primary)
         let resolved = ctx.resolve(text)
         let at = CGPoint(x: c.x, y: c.y + r + 2)
@@ -400,7 +400,7 @@ struct MemoryGraphLegend: View {
                     .frame(width: 10, height: 10)
                     .accessibilityHidden(true)
                     Text(verbatim: MemoryGraphFormat.kindName(kind))
-                        .font(.system(size: 10)).foregroundStyle(.secondary)
+                        .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 0)

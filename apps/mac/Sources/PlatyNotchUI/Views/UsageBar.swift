@@ -11,7 +11,7 @@ struct UsageBar: View {
         let fraction = PanelFormat.usageFraction(window.usedPercent)
         HStack(spacing: 6) {
             Text(label)
-                .font(.system(size: 10, weight: .medium))
+                .font(DS.font(TypeScale.caption).weight(.medium))
                 .foregroundStyle(.secondary)
                 .frame(width: 34, alignment: .leading)
             GeometryReader { geo in
@@ -24,12 +24,12 @@ struct UsageBar: View {
             }
             .frame(height: 5)
             Text(PanelFormat.usagePercent(window.usedPercent))
-                .font(.system(size: 10))
+                .font(DS.font(TypeScale.caption))
                 .monospacedDigit()
                 .frame(width: 32, alignment: .trailing)
             if let reset = PanelFormat.resetCountdown(resetsAt: window.resetsAt, now: now) {
                 Text(reset)
-                    .font(.system(size: 10))
+                    .font(DS.font(TypeScale.caption))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .frame(width: 92, alignment: .leading)
@@ -66,7 +66,7 @@ struct UsageSection: View {
                     ForEach(providers, id: \.0) { provider in
                         let (name, limits) = provider
                         Text(name)
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(DS.font(TypeScale.caption).weight(.semibold))
                             .foregroundStyle(.secondary)
                         if let w = limits.fiveHour { UsageBar(label: "5 h", window: w, now: ctx.date) }
                         if let w = limits.weekly { UsageBar(label: "Week", window: w, now: ctx.date) }

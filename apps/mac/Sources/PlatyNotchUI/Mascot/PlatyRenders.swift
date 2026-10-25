@@ -225,7 +225,7 @@ struct PlatyPillPreview: View {
                     .frame(width: 64)
                     Color.black.frame(width: 180)
                     Text(verbatim: "4:59")
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
                         .foregroundStyle(.gray)
                         .frame(width: 64)
                 }

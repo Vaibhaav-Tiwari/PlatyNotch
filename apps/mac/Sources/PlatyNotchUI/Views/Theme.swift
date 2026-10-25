@@ -21,7 +21,7 @@ enum Theme {
     /// The Allow button's tint: systemGreen in dark, a darker green in light (4.5:1 on
     /// its tinted fill, `PanelPalette.allowLight`).
     static func allow(_ scheme: ColorScheme) -> Color {
-        scheme == .light ? Color(PanelPalette.allowLight) : color(.active)
+        scheme == .light ? Color(PanelPalette.allowLight) : Color(nsColor: .systemGreen)
     }
 
     /// Small warning text ("Contains hidden characters"): systemOrange in dark, a darker
@@ -50,31 +50,25 @@ enum Theme {
     /// Line height of `mono`, used to size the approval summary.
     static let monoLineHeight: CGFloat = 14
 
-    /// `color(_:)` as an NSColor (layer-backed dots).
+    /// `color(_:)` as an NSColor (layer-backed dots): the state palette (`StateTone`),
+    /// resolved against the view's appearance. Exited sessions are a faint idle.
     static func nsColor(_ tone: AgentTone) -> NSColor {
-        switch tone {
-        case .active: .systemGreen
-        case .attention: .systemOrange
-        case .idle: .systemGray
-        case .off: NSColor.systemGray.withAlphaComponent(0.35)
-        }
+        DS.dynamicNSColor(StateTone(tone), alpha: tone == .off ? 0.35 : 1)
     }
 
+    /// A session's tone in the state palette: working teal, needs-you amber, idle grey.
     static func color(_ tone: AgentTone) -> Color {
-        switch tone {
-        case .active: Color(nsColor: .systemGreen)
-        case .attention: Color(nsColor: .systemOrange)
-        case .idle: Color(nsColor: .systemGray)
-        case .off: Color(nsColor: .systemGray).opacity(0.35)
-        }
+        DS.dynamicColor(StateTone(tone), alpha: tone == .off ? 0.35 : 1)
     }
 
+    /// A live activity's tint: neutral is the label colour; accent, warning and critical
+    /// are the working, needs-you and error states.
     static func tint(_ tint: LiveTint) -> Color {
         switch tint {
         case .neutral: Color(nsColor: .labelColor)
-        case .accent: Color(nsColor: .systemGreen)
-        case .warning: Color(nsColor: .systemOrange)
-        case .critical: Color(nsColor: .systemRed)
+        case .accent: DS.dynamicColor(.working)
+        case .warning: DS.dynamicColor(.needsYou)
+        case .critical: DS.dynamicColor(.error)
         }
     }
 
@@ -205,7 +199,7 @@ struct Tag: View {
 
     var body: some View {
         Text(verbatim: text)
-            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .font(.system(size: 11, weight: .medium, design: .monospaced))
             .lineLimit(1)
             .padding(.horizontal, 5)
             .padding(.vertical, 1)

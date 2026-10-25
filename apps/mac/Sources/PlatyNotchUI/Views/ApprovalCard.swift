@@ -34,7 +34,7 @@ struct ApprovalCard: View {
                 header(visible, status, lookFirst: lookFirst)
                 if visible.hadHidden {
                     Label("Contains hidden characters", systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(DS.font(TypeScale.caption).weight(.medium))
                         .foregroundStyle(Theme.warning(scheme))
                 }
                 SummaryView(summary: visible.summary, maxLines: maxLines)
@@ -182,7 +182,7 @@ private struct TrailingIconLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: 4) {
             configuration.title
-            configuration.icon.font(.system(size: 10))
+            configuration.icon.font(DS.font(TypeScale.caption))
         }
     }
 }

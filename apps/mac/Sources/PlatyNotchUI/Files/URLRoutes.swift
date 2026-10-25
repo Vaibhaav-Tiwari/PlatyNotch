@@ -181,10 +181,10 @@ struct RouteConfirmCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: router.question ?? "").font(.system(size: 12, weight: .semibold))
                 if let detail = router.detail {
-                    Text(verbatim: detail).font(.system(size: 10)).foregroundStyle(.secondary)
+                    Text(verbatim: detail).font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
                         .lineLimit(1).truncationMode(.middle)
                 }
-                Text("Asked by a link").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text("Asked by a link").font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 4)
             Button("Cancel") { router.cancel() }

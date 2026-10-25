@@ -56,12 +56,12 @@ struct MeetingTile: View {
                 ForEach(ahead.dropFirst().prefix(Self.laterCount)) { m in
                     HStack(spacing: 6) {
                         Text(m.start.formatted(date: .omitted, time: .shortened))
-                            .font(.system(size: 10, design: .monospaced))
+                            .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(.secondary)
                         Text(verbatim: m.title).font(.system(size: 11)).lineLimit(1)
                         Spacer(minLength: 0)
                         if m.joinURL != nil {
-                            Image(systemName: "video").font(.system(size: 9)).foregroundStyle(.tertiary)
+                            Image(systemName: "video").font(DS.font(TypeScale.caption)).foregroundStyle(.tertiary)
                                 .accessibilityLabel("Has a join link")
                         }
                     }
@@ -190,15 +190,15 @@ struct MeetingSettings: View {
                 Text("Calendar access")
                 Spacer()
                 switch calendar.access {
-                case .granted: Label("Allowed", systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(.caption)
+                case .granted: Label("Allowed", systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(DS.font(TypeScale.caption))
                 case .notAsked: Button("Allow Calendar Access") { Task { await calendar.requestAccess() } }
                 case .denied: Button("Open System Settings") { NSWorkspace.shared.open(CalendarService.settingsURL) }
-                case .unavailable: Text("Needs the installed app.").foregroundStyle(.secondary).font(.caption)
+                case .unavailable: Text("Needs the installed app.").foregroundStyle(.secondary).font(DS.font(TypeScale.caption))
                 }
             }
             Text("Reminders peek at 10, 5 and 1 minutes before a meeting (not during a focus session). "
                  + "Join opens the meeting link only when you click it.")
-                .font(.caption)
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

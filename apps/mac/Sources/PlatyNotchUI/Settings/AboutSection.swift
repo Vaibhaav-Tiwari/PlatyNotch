@@ -17,7 +17,7 @@ struct AboutSection: View {
                     Link("github.com/Vaibhaav-Tiwari/PlatyNotch/releases", destination: UpdaterConfig.releasesURL)
                 }
                 Text("PlatyNotch is open source under the Apache-2.0 license. The bundled mediaremote-adapter is BSD-3-Clause; Sparkle is MIT. License texts are in the app's Resources folder.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
             }
             .formStyle(.grouped)
         }

@@ -68,7 +68,7 @@ struct MusicTile: View {
                     Image(nsImage: icon).resizable().frame(width: 12, height: 12).accessibilityHidden(true)
                 }
                 Text(verbatim: [nowPlaying.appName, nowPlaying.outputDevice].compactMap { $0 }.joined(separator: " · "))
-                    .font(.system(size: 10))
+                    .font(DS.font(TypeScale.caption))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
@@ -110,7 +110,7 @@ private struct LikeMessage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Label(text, systemImage: "exclamationmark.triangle")
-                .font(.system(size: 10))
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(Theme.tint(.warning))
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
@@ -158,7 +158,7 @@ struct MusicScrubber: View {
 
     private func time(_ seconds: TimeInterval?) -> some View {
         Text(verbatim: seconds.map { $0 < 0 ? "-" + TodayFormat.clock(-$0) : TodayFormat.clock($0) } ?? "")
-            .font(.system(size: 9, weight: .medium, design: .rounded))
+            .font(.system(size: 11, weight: .medium, design: .rounded))
             .monospacedDigit()
             .foregroundStyle(.secondary)
             .frame(width: 34, alignment: .center)

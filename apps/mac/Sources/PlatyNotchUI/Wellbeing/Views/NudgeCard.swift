@@ -139,7 +139,7 @@ struct WellbeingTile: View {
                 }
             }
             if let quiet = quietNote() {
-                Text(quiet).font(.system(size: 10)).foregroundStyle(.tertiary)
+                Text(quiet).font(DS.font(TypeScale.caption)).foregroundStyle(.tertiary)
             }
         }
     }
@@ -198,7 +198,7 @@ struct WellbeingSettings: View {
                  + "Nudges wait during a focus session, a meeting (with the Meetings widget and calendar access), "
                  + "full screen and quiet hours, and 5 minutes away from the keyboard counts as a break. "
                  + "No permission needed.")
-                .font(.caption)
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

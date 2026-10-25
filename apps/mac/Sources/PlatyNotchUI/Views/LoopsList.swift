@@ -107,7 +107,7 @@ private struct LoopRow: View {
                         .lineLimit(2)
                     if let source = loop.sourceApp, !source.isEmpty {
                         Text(verbatim: source)
-                            .font(.system(size: 10))
+                            .font(DS.font(TypeScale.caption))
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
                     }
@@ -126,7 +126,7 @@ private struct LoopRow: View {
             .font(.system(size: 11))
             if let error = actions.errors[loop.id] {
                 Text(verbatim: error)
-                    .font(.system(size: 10))
+                    .font(DS.font(TypeScale.caption))
                     .foregroundStyle(Theme.color(.attention))
                     .lineLimit(2)
             }

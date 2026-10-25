@@ -126,7 +126,7 @@ struct GamesTile: View {
         return VStack(spacing: 2) {
             Text(verbatim: kind.shortTitle).font(.system(size: 11, weight: .medium))
             Text(best > 0 ? "Best \(best)" : "New")
-                .font(.system(size: 10))
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)

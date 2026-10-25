@@ -53,7 +53,7 @@ struct CompactPill: View {
             ForEach(dots.dots.prefix(shown), id: \.key) { AgentDot(tone: $0.tone) }
             if count > 0, !badge {
                 Text("+\(count)")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
             }
         }
@@ -66,7 +66,7 @@ struct CompactPill: View {
                 .foregroundStyle(Theme.color(.attention))
         } else if approvalCount > 0 {
             Text("\(approvalCount)")
-                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .font(.system(size: 11, weight: .bold, design: .rounded))
                 .foregroundStyle(.black)   // on the orange badge
                 .frame(minWidth: 14, minHeight: 14)
                 .background(Theme.color(.attention), in: Capsule())
@@ -114,7 +114,7 @@ private struct OverflowBadge: View {
 
     var body: some View {
         Text("+\(count)")
-            .font(.system(size: 8, weight: .bold, design: .rounded))
+            .font(.system(size: 11, weight: .bold, design: .rounded))
             .foregroundStyle(.white)
             .padding(.horizontal, 2)
             .background(Color(white: 0.25), in: Capsule())
@@ -131,7 +131,7 @@ struct LiveGlyphView: View {
         Group {
             switch glyph {
             case .symbol(let name):
-                Image(systemName: name).font(.system(size: 10, weight: .semibold))
+                Image(systemName: name).font(DS.font(TypeScale.caption).weight(.semibold))
             case .musicBars:
                 MusicBars(color: Theme.tint(tint))
             case .agentDots(let states):
@@ -149,7 +149,7 @@ struct LiveGlyphView: View {
                 }
                 .frame(width: 10, height: 10)
             case .text(let s):
-                Text(verbatim: s).font(.system(size: 10, weight: .semibold, design: .rounded))
+                Text(verbatim: s).font(.system(size: 11, weight: .semibold, design: .rounded))
             }
         }
         .foregroundStyle(Theme.tint(tint))
@@ -186,7 +186,7 @@ private struct LiveTrailing: View {
 
     private func label(_ s: String) -> some View {
         Text(verbatim: s)
-            .font(.system(size: 10, weight: .semibold, design: .rounded))
+            .font(.system(size: 11, weight: .semibold, design: .rounded))
             .monospacedDigit()
             .truncationMode(.tail)
             .foregroundStyle(.secondary)

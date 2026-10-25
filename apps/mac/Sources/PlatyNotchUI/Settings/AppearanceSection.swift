@@ -20,7 +20,7 @@ struct AppearanceSection: View {
                 Section {
                     Toggle("Launch at login", isOn: Binding(get: { loginEnabled }, set: { on in setLogin(on) }))
                     if let loginNote {
-                        Text(verbatim: loginNote).font(.caption).foregroundStyle(.secondary)
+                        Text(verbatim: loginNote).font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -38,7 +38,7 @@ struct AppearanceSection: View {
         }
         .pickerStyle(.radioGroup)
         Text("Minimal hides the pill while nothing is live. Approvals and notices still appear.")
-            .font(.caption).foregroundStyle(.secondary)
+            .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
         Picker("Open on", selection: $settings.openOn) {
             Text("Hover").tag(AppearanceSettings.OpenTrigger.hover)
             Text("Click").tag(AppearanceSettings.OpenTrigger.click)
@@ -56,7 +56,7 @@ struct AppearanceSection: View {
         }
         .pickerStyle(.segmented)
         Text("Dark by default: on a notch the panel joins the black camera housing. The resting pill there stays black in every theme.")
-            .font(.caption).foregroundStyle(.secondary)
+            .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
     }
 
     @ViewBuilder private var pillRows: some View {
@@ -72,10 +72,10 @@ struct AppearanceSection: View {
         }
         .pickerStyle(.segmented)
         Text("The side of the pill that shows music, timers and approvals; agent dots take the other.")
-            .font(.caption).foregroundStyle(.secondary)
+            .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
         Toggle("Show Platy", isOn: $settings.showPlaty)
         Text("Platy the platypus sits beside the agent dots and shows how things are going. Off gives the plain look.")
-            .font(.caption).foregroundStyle(.secondary)
+            .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
     }
 
     @ViewBuilder private var displayRows: some View {
@@ -85,10 +85,10 @@ struct AppearanceSection: View {
             Text("Displays with a notch").tag(AppearanceSettings.DisplayChoice.withNotch)
         }
         Text("Volume and brightness HUDs show on the display under the pointer when it has a panel.")
-            .font(.caption).foregroundStyle(.secondary)
+            .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
         Toggle("Hide in full screen", isOn: $settings.hideInFullScreen)
         Text("Move to the top edge to reveal it. Approvals and ringing alarms always show.")
-            .font(.caption).foregroundStyle(.secondary)
+            .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
     }
 
     @ViewBuilder private var motionRows: some View {
@@ -99,7 +99,7 @@ struct AppearanceSection: View {
         }
         .pickerStyle(.segmented)
         Text("Calm opens smoothly and closes without bounce. Lively springs a little more. Reduced only fades, as does the system's Reduce Motion.")
-            .font(.caption).foregroundStyle(.secondary)
+            .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
     }
 
     private static func seconds(_ v: Double) -> String { String(format: "%.2f s", v) }
@@ -137,7 +137,7 @@ private struct LabeledSlider: View {
             HStack(spacing: 8) {
                 Slider(value: $value, in: range, step: step)
                 Text(verbatim: format(value))
-                    .font(.caption.monospacedDigit())
+                    .font(DS.font(TypeScale.caption).monospacedDigit())
                     .foregroundStyle(.secondary)
                     .frame(width: 52, alignment: .trailing)
             }

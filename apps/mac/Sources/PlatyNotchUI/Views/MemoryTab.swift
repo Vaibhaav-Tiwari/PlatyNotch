@@ -224,11 +224,11 @@ private struct MemoryHitRow: View {
                 Spacer(minLength: 4)
                 TimelineView(.periodic(from: .now, by: 60)) { ctx in
                     Text(verbatim: MemoryFormat.when(hit.at, now: ctx.date))
-                        .font(.system(size: 10)).foregroundStyle(.tertiary)
+                        .font(DS.font(TypeScale.caption)).foregroundStyle(.tertiary)
                 }
             }
             Text(verbatim: MemoryFormat.title(hit.sourceApp))
-                .font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary).lineLimit(1)
             Text(verbatim: MemoryFormat.snippet(hit.snippet))
                 .font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(3)
         }
@@ -248,11 +248,11 @@ private struct MemoryStatusLine: View {
         VStack(alignment: .leading, spacing: 2) {
             if status.enabled {
                 Text(verbatim: summary)
-                    .font(.system(size: 10)).foregroundStyle(.tertiary).lineLimit(1)
+                    .font(DS.font(TypeScale.caption)).foregroundStyle(.tertiary).lineLimit(1)
             }
             if let error = status.lastError, !error.isEmpty {
                 Text(verbatim: SummarySanitizer.visible(error, singleLine: true).text)
-                    .font(.system(size: 10)).foregroundStyle(Theme.color(.attention)).lineLimit(2)
+                    .font(DS.font(TypeScale.caption)).foregroundStyle(Theme.color(.attention)).lineLimit(2)
             }
             if let capture { captureRow(capture) }
         }
@@ -288,7 +288,7 @@ private struct MemoryStatusLine: View {
                 Button("Pause capture for 1 hour") { capture.pause(for: 3600) }.buttonStyle(.borderless)
             }
         }
-        .font(.system(size: 10))
+        .font(DS.font(TypeScale.caption))
         .lineLimit(2)
         if capture.status == .capturing { CaptureActivityLines(activity: capture.activity) }
     }
@@ -308,7 +308,7 @@ private struct CaptureActivityLines: View {
                     Text(verbatim: skip).foregroundStyle(.tertiary)
                 }
             }
-            .font(.system(size: 10))
+            .font(DS.font(TypeScale.caption))
             .lineLimit(1)
         }
     }

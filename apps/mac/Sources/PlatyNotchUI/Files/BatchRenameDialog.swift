@@ -45,7 +45,7 @@ struct BatchRenameView: View {
                 .textFieldStyle(.roundedBorder)
                 .onSubmit(submit)
             Text("{name} the name · {n} or {n:3} the number · {date:yyyy-MM-dd} today. The extension is kept.")
-                .font(.system(size: 10))
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             ScrollView {

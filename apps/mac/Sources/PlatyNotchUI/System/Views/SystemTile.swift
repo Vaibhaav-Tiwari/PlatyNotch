@@ -195,7 +195,7 @@ struct KeepAwakeRow: View {
             }
         }
         if let error = widget.keepAwake.lastError {
-            Text(error).font(.system(size: 10)).foregroundStyle(.secondary)
+            Text(error).font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
         }
     }
 
@@ -247,7 +247,7 @@ struct SystemSettings: View {
                  + "(10% or less) and charging. Keep awake: stops the display sleeping for the time you pick; "
                  + "it ends when the time is up, when you turn this widget off, or when you quit. "
                  + "Neither needs a permission.")
-                .font(.caption)
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Divider()
@@ -281,7 +281,7 @@ struct HeadphonesSettings: View {
                 }
             }
             Text(status)
-                .font(.caption)
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -316,11 +316,11 @@ struct DownloadsSettings: View {
                 folderRow
             }
             if let why = widget.extraFolderRejection {
-                Text(why).font(.caption).foregroundStyle(Theme.tint(.warning))
+                Text(why).font(DS.font(TypeScale.caption)).foregroundStyle(Theme.tint(.warning))
                     .fixedSize(horizontal: false, vertical: true)
             }
             Text(status)
-                .font(.caption)
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -346,7 +346,7 @@ struct DownloadsSettings: View {
 
     private var folderRow: some View {
         HStack {
-            Text(folderText).font(.caption).lineLimit(1).truncationMode(.middle)
+            Text(folderText).font(DS.font(TypeScale.caption)).lineLimit(1).truncationMode(.middle)
             Spacer()
             Button(widget.options.extraFolder == nil ? "Add a Folder…" : "Change…") { chooseFolder() }
             if widget.options.extraFolder != nil {

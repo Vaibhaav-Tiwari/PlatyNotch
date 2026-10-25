@@ -39,7 +39,7 @@ struct PolicySection: View {
             Label {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(PolicyRuleCheck.allowNote)
-                    Text(PolicyRuleCheck.allowDetail).font(.caption)
+                    Text(PolicyRuleCheck.allowDetail).font(DS.font(TypeScale.caption))
                 }
             } icon: { Image(systemName: "info.circle") }
                 .font(.callout)
@@ -48,7 +48,7 @@ struct PolicySection: View {
             ForEach(Array(draft.enumerated()), id: \.element.id) { i, rule in
                 if let w = PolicyRuleCheck.warning(rule) {
                     Label { Text(verbatim: "Rule \(i + 1): \(w)") } icon: { Image(systemName: "exclamationmark.triangle") }
-                        .font(.caption).foregroundStyle(.orange)
+                        .font(DS.font(TypeScale.caption)).foregroundStyle(.orange)
                 }
             }
 

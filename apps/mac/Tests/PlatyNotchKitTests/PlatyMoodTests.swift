@@ -263,9 +263,11 @@ final class PlatyMoodTests: XCTestCase {
         XCTAssertEqual(PlatyEarFit(earWidth: 86, dots: 3, overflow: 2), PlatyEarFit(dots: 3, overflowCount: 2, badge: false))
         XCTAssertEqual(PlatyEarFit(earWidth: 86, dots: 2, overflow: 0), PlatyEarFit(dots: 2, overflowCount: 0, badge: false))
         XCTAssertEqual(PlatyEarFit(earWidth: 34, dots: 1, overflow: 0), PlatyEarFit(dots: 1, overflowCount: 0, badge: false))
-        // Room for some dots and the label: the squeezed-out dots join the "+n".
-        XCTAssertEqual(PlatyEarFit(earWidth: 52, dots: 3, overflow: 0), PlatyEarFit(dots: 1, overflowCount: 2, badge: false))
-        XCTAssertEqual(PlatyEarFit(earWidth: 52, dots: 3, overflow: 4), PlatyEarFit(dots: 1, overflowCount: 6, badge: false))
+        // Room for some dots and the label: the squeezed-out dots join the "+n". (The label
+        // is 22 pt at the 11 pt floor: 56 holds three dots alone, or one dot and the label.)
+        XCTAssertEqual(PlatyEarFit(earWidth: 56, dots: 3, overflow: 0), PlatyEarFit(dots: 3, overflowCount: 0, badge: false))
+        XCTAssertEqual(PlatyEarFit(earWidth: 56, dots: 3, overflow: 4), PlatyEarFit(dots: 1, overflowCount: 6, badge: false))
+        XCTAssertEqual(PlatyEarFit(earWidth: 52, dots: 3, overflow: 0), PlatyEarFit(dots: 0, overflowCount: 3, badge: false))
         // Compact beside a notch (40 - 6): no room for the label, so "+n" is a badge on Platy.
         XCTAssertEqual(PlatyEarFit(earWidth: 34, dots: 3, overflow: 0), PlatyEarFit(dots: 1, overflowCount: 2, badge: true))
         XCTAssertEqual(PlatyEarFit(earWidth: 10, dots: 3, overflow: 1), PlatyEarFit(dots: 0, overflowCount: 4, badge: true))

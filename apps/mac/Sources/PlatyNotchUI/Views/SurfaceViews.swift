@@ -90,7 +90,7 @@ struct RingingChip: View {
         Button(action: onStop) {
             HStack(spacing: 4) {
                 Image(systemName: "bell.and.waves.left.and.right.fill")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(DS.font(TypeScale.caption).weight(.semibold))
                 Text("Stop").font(.system(size: 11, weight: .semibold))
             }
             .foregroundStyle(.black)   // on the orange chip in every theme
