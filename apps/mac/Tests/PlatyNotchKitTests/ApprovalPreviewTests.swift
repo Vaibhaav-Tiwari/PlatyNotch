@@ -174,6 +174,19 @@ final class ApprovalPreviewTests: DefaultsTestCase {
         }
     }
 
+    /// Phase 4 carry-over: a trailing newline is not a change `LineDiff` shows, so it does
+    /// not offer "Show changes".
+    func testTrailingNewlineOnlyIsNoDiff() {
+        let edit = approval("Edit", ["old_string": .string("a\nb"), "new_string": .string("a\nb\n")])
+        XCTAssertFalse(ApprovalPreview.hasDiff(edit))
+        XCTAssertEqual(ApprovalPreview.hasDiff(edit), !ApprovalPreview(approval: edit).diff.isEmpty)
+        let multi = approval("MultiEdit", ["edits": .array([.object(["old_string": .string("x\n"), "new_string": .string("x")])])])
+        XCTAssertFalse(ApprovalPreview.hasDiff(multi))
+        XCTAssertEqual(ApprovalPreview.hasDiff(multi), !ApprovalPreview(approval: multi).diff.isEmpty)
+        let write = approval("Write", ["content": .string("\n")])
+        XCTAssertEqual(ApprovalPreview.hasDiff(write), !ApprovalPreview(approval: write).diff.isEmpty)
+    }
+
     func testPreviewCacheBuildsOncePerApproval() {
         let cache = ApprovalPreviewCache()
         let a = approval("Write", ["content": .string("one\ntwo")])

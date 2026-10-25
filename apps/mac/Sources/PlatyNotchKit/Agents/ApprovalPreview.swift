@@ -108,22 +108,24 @@ public struct ApprovalPreview: Equatable, Sendable {
 
     /// Whether the payload carries something the diff would show, without building it (the
     /// peek's "Show changes"): Edit's two strings differing, a MultiEdit edit doing so, or
-    /// non-empty Write `content` / NotebookEdit `new_source`. Same answer as
-    /// `!ApprovalPreview(approval:).diff.isEmpty`.
+    /// non-empty Write `content` / NotebookEdit `new_source`. Strings are compared as
+    /// `LineDiff.lines`, the way the diff sees them, so a change in a trailing newline alone
+    /// offers nothing. Same answer as `!ApprovalPreview(approval:).diff.isEmpty`.
     public static func hasDiff(_ approval: Approval) -> Bool {
         guard case .object(let input)? = approval.input?.value else { return false }
         func string(_ key: String, _ o: [String: JSONValue]) -> String? {
             if case .string(let s)? = o[key] { return s }
             return nil
         }
-        if let old = string("old_string", input), let new = string("new_string", input) { return old != new }
+        func differs(_ old: String, _ new: String) -> Bool { LineDiff.lines(old) != LineDiff.lines(new) }
+        if let old = string("old_string", input), let new = string("new_string", input) { return differs(old, new) }
         if case .array(let edits)? = input["edits"] {
             for case .object(let e) in edits {
-                if let old = string("old_string", e), let new = string("new_string", e), old != new { return true }
+                if let old = string("old_string", e), let new = string("new_string", e), differs(old, new) { return true }
             }
             return false
         }
-        if let added = string("content", input) ?? string("new_source", input) { return !added.isEmpty }
+        if let added = string("content", input) ?? string("new_source", input) { return !LineDiff.lines(added).isEmpty }
         return false
     }
 }
