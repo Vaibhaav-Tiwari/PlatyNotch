@@ -177,3 +177,118 @@ private struct PlainPill: View {
             .overlay(Theme.panelShape(hasNotch: false).stroke(Color.gray.opacity(0.5), lineWidth: 1))
     }
 }
+
+/// Frames of the real open/close morph (`PanelRootView` in an off-screen window beside a
+/// 14-inch notch), captured while the mode change animates: for `--pill-gallery`.
+@MainActor
+enum MorphRenders {
+    /// The scenes: agents working (Platy grows into the agents hero), a timer alone (the
+    /// pill's timer glyph grows into the hero's), and agents under Reduced (a cross-fade).
+    enum Scene: String, CaseIterable {
+        case agents, timer, reduced
+    }
+
+    /// Seconds after the mode change for the start, middle and end frames.
+    static let times: [(String, Double)] = [("start", 0.0), ("middle", 0.08), ("end", 0.8)]
+
+    /// Writes `morph-<scene>-<open|close>-<start|middle|end>-<dark|light>.png`; returns how many.
+    static func write(to dir: URL) -> Result<Int, PlatyRenders.Failure> {
+        var count = 0
+        for scene in Scene.allCases {
+            for theme in [AppearanceSettings.Theme.dark, .light] {
+                for open in [true, false] {
+                    let shots = capture(scene, theme: theme, open: open)
+                    for ((label, _), data) in zip(times, shots) {
+                        let name = "morph-\(scene.rawValue)-\(open ? "open" : "close")-\(label)-\(theme == .dark ? "dark" : "light").png"
+                        guard let data else { return .failure(PlatyRenders.Failure(message: "\(name) did not render")) }
+                        do { try data.write(to: dir.appendingPathComponent(name)) } catch {
+                            return .failure(PlatyRenders.Failure(message: "cannot write \(name)"))
+                        }
+                        count += 1
+                    }
+                }
+            }
+        }
+        return .success(count)
+    }
+
+    private static func rig(_ scene: Scene) -> NowRenders.Rig {
+        switch scene {
+        case .agents, .reduced: NowRenders.agentsHero()
+        case .timer:
+            NowRenders.timerHero()
+        }
+    }
+
+    /// The panel from compact to open (or back), captured at `times`.
+    static func capture(_ scene: Scene, theme: AppearanceSettings.Theme, open: Bool) -> [Data?] {
+        let rig = rig(scene)
+        rig.store.apply(.connected)   // the live ear shows the item, not the reconnecting glyph
+        let model = PanelViewModel()
+        let layout: PanelLayout = NowRenders.layout
+        model.layout = layout
+        model.visible = true
+        model.mode = open ? .compact : .expanded
+        var appearance = AppearanceSettings()
+        appearance.theme = theme
+        appearance.motion = scene == .reduced ? .reduced : .calm
+        model.appearance = appearance
+        let root = PanelRootView(model: model, store: rig.store, responder: ApprovalResponder(client: rig.client),
+                                 today: rig.today, widgets: rig.registry, memory: MemoryServices(client: rig.client),
+                                 extraTabs: [], onOpenTerminal: { _ in })
+            .environment(\.platyMood, rig.mood)
+        let size: CGSize = layout.windowFrame.size
+        let host = NSHostingView(rootView: root)
+        host.sizingOptions = []
+        host.frame = CGRect(origin: .zero, size: size)
+        // Off screen, like every render window: never shown on the user's display.
+        let window = NSWindow(contentRect: CGRect(x: -10_000, y: 10_000, width: size.width, height: size.height),
+                              styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.ignoresMouseEvents = true
+        window.appearance = NSAppearance(named: theme == .light ? .aqua : .darkAqua)
+        window.backgroundColor = theme == .light ? NSColor(white: 0.7, alpha: 1) : NSColor(white: 0.45, alpha: 1)
+        window.contentView = host
+        window.orderFrontRegardless()
+        defer { window.orderOut(nil) }
+        RunLoop.main.run(until: Date().addingTimeInterval(0.4))
+        // Warm up with one open and close: the first open builds every view of the panel,
+        // which would stall the frames being captured.
+        model.mode = open ? .expanded : .compact
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        model.mode = open ? .compact : .expanded
+        RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        model.mode = open ? .expanded : .compact
+        let start = Date()
+        var out: [Data?] = []
+        for (_, t) in times {
+            RunLoop.main.run(until: start.addingTimeInterval(t))
+            out.append(snapshot(host))
+        }
+        return out
+    }
+
+    /// The layer tree with its animations applied (presentation values: a frame
+    /// mid-animation), at 2x. Layer rendering leaves out masks, so content is not clipped
+    /// to the panel's rounded corners here.
+    private static func snapshot(_ view: NSView) -> Data? {
+        guard let layer = view.layer else { return nil }
+        let scale: CGFloat = 2
+        let w = Int(view.bounds.width * scale)
+        let h = Int(view.bounds.height * scale)
+        guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+              let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        if let bg = view.window?.backgroundColor.cgColor {
+            ctx.setFillColor(bg)
+            ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        }
+        ctx.scaleBy(x: scale, y: scale)
+        // The hosting view's layer is flipped (y down); the bitmap context is not.
+        ctx.translateBy(x: 0, y: view.bounds.height)
+        ctx.scaleBy(x: 1, y: -1)
+        (layer.presentation() ?? layer).render(in: ctx)
+        guard let image = ctx.makeImage() else { return nil }
+        return NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
+    }
+}

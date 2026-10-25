@@ -32,7 +32,7 @@ struct AgentsHero: View {
         HeroLayout(title: agents.title, subtitle: agents.subtitle,
                    action: HeroAction(title: action.title, systemImage: symbol, run: onPrimary)) {
             if let mood {
-                PlatyView(mood: mood, size: 96)
+                PlatyView(mood: mood, size: 96, morphID: MorphID.platy)
             } else {
                 DS.icon(tone.symbol, size: IconSize.hero)
                     .foregroundStyle(DS.dynamicColor(tone))

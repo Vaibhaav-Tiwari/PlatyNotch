@@ -45,7 +45,9 @@ struct ExpandedPanel: View {
             }
             (tabs.first { $0.id == selectedTab } ?? tabs[0]).view
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .clipped()
+                // Now fits without clipping (`NowMetrics`), and must not clip Platy or the
+                // live glyph while they morph in from the pill; other tabs stay clipped.
+                .clipped(unless: selectedTab == BuiltinTab.now)
                 .environment(\.selectPanelTab, { selectedTab = $0 })   // the games tile opens its tab
         }
     }
@@ -182,5 +184,12 @@ struct ExpandedPanel: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Close panel")
         }
+    }
+}
+
+extension View {
+    /// `clipped()` unless `skip`.
+    @ViewBuilder func clipped(unless skip: Bool) -> some View {
+        if skip { self } else { clipped() }
     }
 }

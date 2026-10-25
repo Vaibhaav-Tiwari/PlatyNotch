@@ -44,10 +44,13 @@ struct NowView: View {
         case .approvalsPending(let line):
             compactLine(line)
         case .live:
+            let heroID: String = items[deck.current(in: items) ?? 0].id
             VStack(alignment: .leading, spacing: NowMetrics.gap) {
                 liveHero(items, agents: agents)
                 rows
             }
+            // Stepping or a new top item cross-fades (spec 9: ≤ 0.2 s).
+            .animation(.easeInOut(duration: MotionPreset.crossFade), value: heroID)
         case .summary:
             VStack(alignment: .leading, spacing: NowMetrics.gap) {
                 HeroFrame(keyline: nil, position: nil, onStep: nil) {
@@ -86,7 +89,7 @@ struct NowView: View {
         let item: LiveItem = items[index]
         let count: Int = items.count
         HeroFrame(keyline: keyline(item), position: HeroDeck.position(index, of: count),
-                  onStep: count > 1 ? { delta in deck.step(delta, in: items) } : nil) {
+                  onStep: count > 1 ? { delta in deck.step(delta, in: items) } : nil, itemID: item.id) {
             heroContent(item)
         }
         .id(item.id)

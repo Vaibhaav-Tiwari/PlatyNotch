@@ -37,19 +37,25 @@ enum Theme {
     /// system glass when `style` is `.glass` (pass `effectiveSurface(glassAvailable:mode:
     /// approvalsShowing:)`, which keeps every approval on an opaque surface). `hasNotch` is
     /// reserved: the notch band is drawn separately (`PanelLayout.notchBand`).
+    ///
+    /// The opaque surfaces are one shape whose colour changes, so opening and closing
+    /// resize (and recolour) the same surface with the panel instead of cross-fading two
+    /// surfaces at their own sizes (a seam around the pill while closing).
     @ViewBuilder
     static func surface(_ scheme: ColorScheme, mode: PanelMode, hasNotch: Bool,
                         style: AppearanceSettings.SurfaceStyle) -> some View {
-        switch mode {
-        case .hidden, .compact:
-            surface(scheme)
-        default:
-            if style == .glass, #available(macOS 26, *) {
-                Rectangle().fill(Color.clear).glassEffect(.regular, in: Rectangle())
-            } else {
-                scheme == .light ? lightSurface : panelDark
-            }
+        let pill: Bool = mode == .hidden || mode == .compact
+        if !pill, style == .glass, #available(macOS 26, *) {
+            Rectangle().fill(Color.clear).glassEffect(.regular, in: Rectangle())
+        } else {
+            Rectangle().fill(surfaceColor(scheme, pill: pill))
         }
+    }
+
+    /// The opaque surface's colour: the pill's (black on a notch) or the open panel's.
+    static func surfaceColor(_ scheme: ColorScheme, pill: Bool) -> Color {
+        if pill { return surface(scheme) }
+        return scheme == .light ? lightSurface : panelDark
     }
 
     /// The Allow button's tint: systemGreen in dark, a darker green in light (4.5:1 on

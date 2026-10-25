@@ -100,7 +100,7 @@ struct CompactPill: View {
 
     @ViewBuilder private func platyGlyph(count: Int, badge: Bool, dots: Int, earOnLeft: Bool) -> some View {
         if let platy {
-            PlatyView(mood: platy, size: PlatyEarFit.platy)
+            PlatyView(mood: platy, size: PlatyEarFit.platy, morphID: MorphID.platy)
                 .overlay(alignment: earOnLeft ? .bottomTrailing : .bottomLeading) {
                     // From Platy's centre outward, across the ear's free room and the
                     // pill's outer padding; never over a dot, the notch or past the pill's
@@ -149,6 +149,7 @@ struct LiveEarView: View {
     let connection: ConnectionState
     let earWidth: CGFloat
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.morph) private var morph
 
     var body: some View {
         if connection != .connected {
@@ -166,6 +167,8 @@ struct LiveEarView: View {
                                  indicators: content.indicators.count)
             HStack(spacing: LiveEarFit.spacing) {
                 LiveGlyphView(glyph: top.glyph, tint: top.tint)
+                    // Grows into the hero's glyph when the hero shows the same item.
+                    .morph(morph?.liveID == top.id ? MorphID.live(top.id) : nil)
                     .frame(maxWidth: LiveEarFit.glyph)
                 if fit.trailingWidth > 0 {
                     LiveTrailing(activity: top)

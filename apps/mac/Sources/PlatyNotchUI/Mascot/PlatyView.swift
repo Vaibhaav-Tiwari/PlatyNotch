@@ -16,17 +16,24 @@ import SwiftUI
 struct PlatyView: View {
     let mood: PlatyMood
     let size: CGFloat
+    /// The open/close morph id (`MorphID.platy` in the pill and the hero): Platy scales
+    /// and moves between them (no effect under reduced motion).
+    var morphID: String?
     @Environment(\.panelTicking) private var ticking
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    init(mood: PlatyMood, size: CGFloat) {
+    init(mood: PlatyMood, size: CGFloat, morphID: String? = nil) {
         self.mood = mood
         self.size = size
+        self.morphID = morphID
     }
 
     var body: some View {
         let animates = Self.frameInterval(mood: mood, ticking: ticking, reduceMotion: reduceMotion) != nil
+        // Square and flexible inside the matched geometry, so a morph scales Platy.
         PlatyLayerView(mood: mood, size: size, animates: animates)
+            .aspectRatio(1, contentMode: .fit)
+            .morph(morphID)
             .frame(width: size, height: size)
             .accessibilityElement()
             .accessibilityLabel(mood.accessibilityLabel)

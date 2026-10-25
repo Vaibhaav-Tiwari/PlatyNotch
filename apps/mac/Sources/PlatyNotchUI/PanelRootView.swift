@@ -47,6 +47,8 @@ struct PanelRootView: View {
     /// The mode before the current one: picks the open or the close spring. Updated after
     /// each change, so the body that animates a change still sees the old mode here.
     @State private var previousMode: PanelMode = .compact
+    /// The open/close morph's matched geometry (spec 9).
+    @Namespace private var morphSpace
 
     var body: some View {
         let scheme = Theme.scheme(model.appearance.theme, system: systemScheme, mode: model.mode,
@@ -54,12 +56,18 @@ struct PanelRootView: View {
         ZStack(alignment: .topLeading) {
             if let layout = model.layout {
                 let r = PanelLayout.localRect(layout.contentRect(for: model.mode), in: layout.windowFrame)
-                content(layout)
+                // One container around the mode's content: modifiers on the bare switch would
+                // be copied into each branch, so a mode change cross-faded two whole panels
+                // (surface and clip at their own sizes) instead of growing one.
+                ZStack(alignment: .topLeading) { content(layout) }
                     .frame(width: r.width, height: r.height)
                     .overlay(alignment: .topLeading) { chip(layout) }
                     .background(alignment: .topLeading) { surface(layout, scheme: scheme, content: r) }
                     .clipShape(Theme.panelShape(hasNotch: layout.hasNotch))
                     .offset(x: r.minX, y: r.minY)
+                    // Reduced motion (and Reduce Motion): each mode is its own panel, so a
+                    // change cross-fades the two instead of resizing one (spec 9).
+                    .id(crossFadeKey)
                     .opacity(model.visible ? 1 : 0)
             }
         }
@@ -70,6 +78,7 @@ struct PanelRootView: View {
         .environment(\.panelTicking, model.visible)
         .environment(\.musicVisualiser, today.visualiser)
         .environment(\.platyMood, model.appearance.showPlaty ? platyMood : nil)
+        .environment(\.morph, morphContext)
         // The games tab pauses unless the panel is open, on screen and not over full screen.
         .environment(\.gamePanel, GamePanelState(expanded: model.mode == .expanded, visible: model.visible,
                                                  fullScreen: model.fullScreen))
@@ -105,6 +114,30 @@ struct PanelRootView: View {
         let music: Bool = today.nowPlaying.isPlaying
         let focus: Bool = today.focus.focusActive
         return today.platy.mood(sessions: sessions, approvals: approvals, musicPlaying: music, focusActive: focus)
+    }
+
+    /// What identifies the panel container: one for every mode while it morphs, the mode
+    /// itself under reduced motion (a cross-fade, no resizing).
+    private var crossFadeKey: String {
+        let preset: MotionPreset = model.appearance.effectiveMotion(reduceMotion: reduceMotion)
+        return Morph.morphsPlaty(motion: preset) ? "panel" : model.mode.description
+    }
+
+    /// The morph (spec 9): Platy always, and the pill's trailing glyph when Now's hero shows
+    /// the same live item; nil under reduced motion (cross-fades only, no morph).
+    private var morphContext: MorphContext? {
+        let preset: MotionPreset = model.appearance.effectiveMotion(reduceMotion: reduceMotion)
+        guard Morph.morphsPlaty(motion: preset) else { return nil }
+        let now: Date = Date()
+        let activities: [LiveActivity] = widgets.liveActivities
+        let pill = PillContent(activities: activities, sessions: store.sessions, approvals: store.approvals.count,
+                               hiddenKinds: [], now: now)
+        guard let trailing: String = pill.trailing?.id else { return MorphContext(namespace: morphSpace, liveID: nil) }
+        let agents: AgentsLive? = AgentsLive.make(sessions: store.sessions, log: today.agentActivity.log, now: now)
+        let items: [LiveItem] = HeroDeck.items(widgets.rankedLive(agents: agents, now: now))
+        let hero: String? = items.isEmpty ? nil : items[model.heroDeck.current(in: items) ?? 0].id
+        let live: String? = Morph.matches(pillTrailingID: trailing, heroTopID: hero, motion: preset) ? trailing : nil
+        return MorphContext(namespace: morphSpace, liveID: live)
     }
 
     /// Appearance › Motion: the open or close spring of the preset (no blur in any preset);

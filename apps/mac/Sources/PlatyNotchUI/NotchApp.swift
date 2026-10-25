@@ -12,7 +12,11 @@ public enum NotchApp {
         let options = LaunchOptions(arguments: CommandLine.arguments, env: ProcessInfo.processInfo.environment)
         if let dir = options.renderIconDir { finishRender("RENDER ICON", PlatyRenders.writeIconset(to: url(dir))) }
         if let dir = options.platyGalleryDir { finishRender("PLATY GALLERY", PlatyRenders.writeGallery(to: url(dir))) }
-        if let dir = options.pillGalleryDir { finishRender("PILL GALLERY", PillRenders.writeGallery(to: url(dir))) }
+        if let dir = options.pillGalleryDir {
+            let pills = PillRenders.writeGallery(to: url(dir))
+            let morph = pills.flatMap { n in MorphRenders.write(to: url(dir)).map { n + $0 } }
+            finishRender("PILL GALLERY", morph)
+        }
         if options.smokePower { finishPowerSmoke() }
         let delegate = AppDelegate(coreBinary: coreBinary, plugins: plugins, options: options)
         app.delegate = delegate

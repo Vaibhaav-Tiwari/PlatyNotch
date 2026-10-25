@@ -52,7 +52,7 @@ struct TodaySummaryHero: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if let platyMood {
-                PlatyView(mood: platyMood, size: 96)
+                PlatyView(mood: platyMood, size: 96, morphID: MorphID.platy)
             }
         }
         .accessibilityElement(children: .combine)
