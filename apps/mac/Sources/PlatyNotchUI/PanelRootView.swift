@@ -25,7 +25,7 @@ final class PanelViewModel {
     var onStopRinging: (String) -> Void = { _ in }
     /// The open panel's Settings gear (never in the approval peek, no keyboard shortcut).
     var onOpenSettings: () -> Void = {}
-    /// Settings › Appearance, clamped (live side, theme, spring).
+    /// Settings › Appearance, clamped (live side, theme, motion).
     var appearance: AppearanceSettings = AppearanceSettings()
 }
 
@@ -42,8 +42,9 @@ struct PanelRootView: View {
     /// The system's scheme (Appearance › Theme: System follows it).
     @Environment(\.colorScheme) private var systemScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// The blur new content settles out of after a mode change (Appearance › spring blur).
-    @State private var morphBlur: CGFloat = 0
+    /// The mode before the current one: picks the open or the close spring. Updated after
+    /// each change, so the body that animates a change still sees the old mode here.
+    @State private var previousMode: PanelMode = .compact
 
     var body: some View {
         let scheme = Theme.scheme(model.appearance.theme, system: systemScheme, mode: model.mode,
@@ -52,7 +53,6 @@ struct PanelRootView: View {
             if let layout = model.layout {
                 let r = PanelLayout.localRect(layout.contentRect(for: model.mode), in: layout.windowFrame)
                 content(layout)
-                    .blur(radius: morphBlur)
                     .frame(width: r.width, height: r.height)
                     .overlay(alignment: .topLeading) { chip(layout) }
                     .background(Theme.surface(scheme))
@@ -73,7 +73,7 @@ struct PanelRootView: View {
                                                  fullScreen: model.fullScreen))
         .animation(modeAnimation, value: model.mode)
         .animation(.easeOut(duration: 0.15), value: model.visible)
-        .onChange(of: model.mode) { settleBlur() }
+        .onChange(of: model.mode) { _, new in previousMode = new }
     }
 
     /// Platy's mood from the store, music, focus and the timed inputs.
@@ -86,22 +86,15 @@ struct PanelRootView: View {
         return today.platy.mood(sessions: sessions, approvals: approvals, musicPlaying: music, focusActive: focus)
     }
 
-    /// Appearance › spring (clamped); a short ease with Reduce Motion.
+    /// Appearance › Motion: the open or close spring of the preset (no blur in any preset);
+    /// a short ease for Reduced and with Reduce Motion.
     private var modeAnimation: Animation {
-        if reduceMotion { return .easeOut(duration: 0.15) }
-        let spring = model.appearance.spring
-        return .spring(response: spring.response, dampingFraction: spring.dampingFraction)
-    }
-
-    /// New content starts blurred and settles sharp with the spring. Runs once per mode
-    /// change (never while resting), and not at all with Reduce Motion or a 0 blur.
-    private func settleBlur() {
-        let blur = CGFloat(model.appearance.spring.blur)
-        guard !reduceMotion, blur > 0 else { return }
-        var start = Transaction()
-        start.disablesAnimations = true
-        withTransaction(start) { morphBlur = blur }
-        withAnimation(modeAnimation) { morphBlur = 0 }
+        let preset: MotionPreset = model.appearance.effectiveMotion(reduceMotion: reduceMotion)
+        let direction: MotionDirection = MotionDirection.between(previousMode, model.mode)
+        guard let spring = preset.spring(direction) else {
+            return .easeOut(duration: MotionPreset.reducedFade)
+        }
+        return .spring(response: spring.response, dampingFraction: spring.damping)
     }
 
     @ViewBuilder private func content(_ layout: PanelLayout) -> some View {

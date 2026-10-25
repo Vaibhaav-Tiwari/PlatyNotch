@@ -32,7 +32,11 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     /// Dark by default (Task 12 ruling, not the plan's `.system`): on a notched display the
     /// panel joins the black camera housing, which a light panel would show as a hole.
     public var theme: Theme = .dark
+    /// The old spring sliders' value. Kept (and saved) so older versions read it, but no
+    /// view reads it any more: `motion` replaced it (spec 9).
     public var spring: SpringParams = .standard
+    /// Calm, Lively or Reduced (spec 9). Settings without it migrate from `spring`.
+    public var motion: MotionPreset = .calm
     /// Hide the pill over full-screen apps (top edge reveals it). Never hides a pending
     /// approval, a ringing alarm or timer, the open panel or the drop zone.
     public var hideInFullScreen = true
@@ -45,7 +49,8 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public init(mode: Mode = .alwaysOn, openOn: OpenTrigger = .hover,
                 hoverDelay: Double = HoverDebouncer.defaultEnterDelay, pillWidth: PillWidth = .standard,
                 liveSide: Side = .right, displays: DisplayChoice = .main, theme: Theme = .dark,
-                spring: SpringParams = .standard, hideInFullScreen: Bool = true, showPlaty: Bool = true) {
+                spring: SpringParams = .standard, hideInFullScreen: Bool = true, showPlaty: Bool = true,
+                motion: MotionPreset = .calm) {
         self.mode = mode
         self.openOn = openOn
         self.hoverDelay = hoverDelay
@@ -56,10 +61,11 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         self.spring = spring
         self.hideInFullScreen = hideInFullScreen
         self.showPlaty = showPlaty
+        self.motion = motion
     }
 
     private enum CodingKeys: String, CodingKey {
-        case mode, openOn, hoverDelay, pillWidth, liveSide, displays, theme, spring, hideInFullScreen, showPlaty
+        case mode, openOn, hoverDelay, pillWidth, liveSide, displays, theme, spring, hideInFullScreen, showPlaty, motion
     }
 
     /// Missing keys and unknown cases keep the defaults, so `{}` (or a value from an older
@@ -77,6 +83,9 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         spring = (try? c.decodeIfPresent(SpringParams.self, forKey: .spring)) ?? d.spring
         hideInFullScreen = (try? c.decodeIfPresent(Bool.self, forKey: .hideInFullScreen)) ?? d.hideInFullScreen
         showPlaty = (try? c.decodeIfPresent(Bool.self, forKey: .showPlaty)) ?? d.showPlaty
+        // No saved motion: an untouched spring becomes Calm, a changed one Lively.
+        motion = (try? c.decodeIfPresent(MotionPreset.self, forKey: .motion))
+            ?? (spring == .standard ? .calm : .lively)
     }
 
     /// The spring and hover delay inside their ranges.

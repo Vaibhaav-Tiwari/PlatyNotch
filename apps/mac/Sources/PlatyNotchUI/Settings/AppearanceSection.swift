@@ -92,19 +92,17 @@ struct AppearanceSection: View {
     }
 
     @ViewBuilder private var motionRows: some View {
-        LabeledSlider(title: "Spring response", value: $settings.spring.response,
-                      range: SpringParams.responseRange, step: 0.01, format: Self.seconds)
-        LabeledSlider(title: "Damping", value: $settings.spring.dampingFraction,
-                      range: SpringParams.dampingRange, step: 0.01, format: Self.plain)
-        LabeledSlider(title: "Blur", value: $settings.spring.blur,
-                      range: SpringParams.blurRange, step: 1, format: Self.points)
-        Button("Reset motion") { settings.spring = .standard }
-            .disabled(settings.spring == .standard)
+        Picker("Motion", selection: $settings.motion) {
+            Text("Calm").tag(MotionPreset.calm)
+            Text("Lively").tag(MotionPreset.lively)
+            Text("Reduced").tag(MotionPreset.reduced)
+        }
+        .pickerStyle(.segmented)
+        Text("Calm opens smoothly and closes without bounce. Lively springs a little more. Reduced only fades, as does the system's Reduce Motion.")
+            .font(.caption).foregroundStyle(.secondary)
     }
 
     private static func seconds(_ v: Double) -> String { String(format: "%.2f s", v) }
-    private static func plain(_ v: Double) -> String { String(format: "%.2f", v) }
-    private static func points(_ v: Double) -> String { String(format: "%.0f pt", v) }
 
     private func readLogin() {
         let s = SMAppService.mainApp.status
