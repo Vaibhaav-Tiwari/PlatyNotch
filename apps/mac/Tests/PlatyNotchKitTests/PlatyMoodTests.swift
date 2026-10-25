@@ -126,7 +126,7 @@ final class PlatyMoodTests: XCTestCase {
     }
 
     func testEveryAnimatedMoodIsPeriodicAndMoves() {
-        for m in PlatyMood.allCases where m.animates {
+        for m in PlatyMood.allCases where m.animates && !m.playsOnce {
             let p = m.period
             var distinct = Set<String>()
             for t in stride(from: 0.05, through: 3 * p, by: p / 7) {
@@ -145,11 +145,14 @@ final class PlatyMoodTests: XCTestCase {
         XCTAssertEqual(working.first?.time, 0)
         XCTAssertEqual(working.count, Int((PlatyMood.working.period / PlatyMood.pillTick).rounded(.up)))
         for (t, pose) in working { XCTAssertEqual(pose, PlatyPoseValues.at(.working, time: t)) }
+        // Waiting: one 2 s wave at 6 fps, played once (`playsOnce`).
         let waiting = PlatyPoseValues.loop(.waiting)
         let p = PlatyMood.waiting.period
-        let last = try XCTUnwrap(waiting.last)
-        XCTAssertEqual(last.time, 0.5 * p, accuracy: 1e-9, "one frame holds the still half")
-        XCTAssertTrue(waiting.allSatisfy { $0.time <= 0.5 * p + 1e-9 })
+        XCTAssertEqual(p, 2)
+        let interval = try XCTUnwrap(PlatyMood.waiting.frameInterval)
+        XCTAssertGreaterThan(waiting.count, 4)
+        XCTAssertLessThanOrEqual(waiting.count, Int((p / interval).rounded(.up)))
+        XCTAssertTrue(waiting.allSatisfy { $0.time < p })
         XCTAssertEqual(PlatyPoseValues.loop(.idle).count, 1)
         XCTAssertEqual(PlatyPoseValues.loop(.sleepy).count, 4, "1 fps over 4 s")
         for m in PlatyMood.allCases {
@@ -181,35 +184,68 @@ final class PlatyMoodTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(try XCTUnwrap(PlatyMood.waiting.frameInterval), 1.0 / 6)
     }
 
-    /// Frames come only while the pose can change: waiting taps in the first half of its
-    /// loop and holds still in the second, where no frame is scheduled.
-    func testWaitingSkipsItsStillHalf() throws {
-        let p = PlatyMood.waiting.period
-        let still = PlatyPoseValues.at(.waiting, time: 10 * p + 0.5 * p)
-        for k in 0..<20 {
-            let t = 10 * p + p * (0.5 + 0.49 * Double(k) / 20)
-            XCTAssertEqual(PlatyPoseValues.at(.waiting, time: t), still, "the second half is still")
-            XCTAssertEqual(PlatyMood.waiting.nextFrame(after: t), 11 * p, accuracy: 1e-9, "skips to the next loop")
-        }
-        let interval = try XCTUnwrap(PlatyMood.waiting.frameInterval)
-        let t0 = 10 * p + 0.1 * p
-        let n0 = PlatyMood.waiting.nextFrame(after: t0)
-        XCTAssertGreaterThan(n0, t0)
-        XCTAssertLessThanOrEqual(n0, t0 + interval + 1e-9)
-        XCTAssertEqual((n0 / interval).rounded() * interval, n0, accuracy: 1e-9, "on the shared grid")
-        // The last moving frame lands on the start of the still half, not past it.
-        let late = 10 * p + 0.5 * p - interval / 2
-        XCTAssertEqual(PlatyMood.waiting.nextFrame(after: late), 10 * p + 0.5 * p, accuracy: 1e-9)
-        // Other moods step on the shared 12 fps grid.
+    /// Waiting (spec 8.1): the flag waves once over 2 s, then Platy holds still with the
+    /// flag up; done shows its check once. Neither loops.
+    func testWaitingWavesOnceThenHolds() {
+        XCTAssertTrue(PlatyMood.waiting.playsOnce)
+        XCTAssertTrue(PlatyMood.done.playsOnce)
+        for m in PlatyMood.allCases where m != .waiting && m != .done { XCTAssertFalse(m.playsOnce, "\(m)") }
+        XCTAssertEqual(PlatyPoseValues.at(.waiting, time: 2.5), PlatyPoseValues.rest(.waiting))
+        XCTAssertEqual(PlatyPoseValues.at(.waiting, time: 600), PlatyPoseValues.rest(.waiting))
+        let moving = stride(from: 0.0, to: 2.0, by: 0.1).map { PlatyPoseValues.at(.waiting, time: $0) }
+        XCTAssertTrue(moving.contains { $0 != PlatyPoseValues.rest(.waiting) }, "the pose moves between 0 and 2")
+        XCTAssertGreaterThan(Set(moving.map { "\($0)" }).count, 3)
+    }
+
+    /// Moving moods step on the shared 12 fps grid (Platy and the pill's timelines share frames).
+    func testFramesStepOnTheSharedGrid() throws {
         let w = try XCTUnwrap(PlatyMood.working.frameInterval)
         XCTAssertEqual(w, PlatyMood.pillTick)
         XCTAssertEqual(PlatyMood.working.nextFrame(after: 3.3), 40 * w, accuracy: 1e-9)
         XCTAssertEqual(PlatyMood.working.nextFrame(after: 40 * w), 41 * w, accuracy: 1e-9, "always moves on")
-        // Frames per loop: waiting draws about half its loop's worth.
-        var t = 100 * p
-        var frames = 0
-        while t < 101 * p { t = PlatyMood.waiting.nextFrame(after: t); frames += 1 }
-        XCTAssertLessThanOrEqual(frames, Int((0.5 * p / interval).rounded(.up)) + 2)
+        let interval = try XCTUnwrap(PlatyMood.waiting.frameInterval)
+        let n0 = PlatyMood.waiting.nextFrame(after: 0.1)
+        XCTAssertEqual((n0 / interval).rounded() * interval, n0, accuracy: 1e-9, "on the shared grid")
+    }
+
+    func testWaitingRestHasFlag() {
+        XCTAssertTrue(PlatyPoseValues.rest(.waiting).flag)
+        XCTAssertEqual(PlatyPoseValues.rest(.waiting).tint, .amber)
+        for t in stride(from: 0.0, through: 3.0, by: 0.25) {
+            XCTAssertTrue(PlatyPoseValues.at(.waiting, time: t).flag, "the flag stays up through the wave")
+        }
+        for m in PlatyMood.allCases where m != .waiting { XCTAssertFalse(PlatyPoseValues.rest(m).flag, "\(m)") }
+    }
+
+    func testDoneHoldsAfterOneLoop() {
+        let p = PlatyMood.done.period
+        XCTAssertEqual(PlatyPoseValues.at(.done, time: p + 0.3), PlatyPoseValues.rest(.done))
+        XCTAssertTrue(PlatyPoseValues.at(.done, time: 0.3 * p).check)
+        XCTAssertNotEqual(PlatyPoseValues.at(.done, time: 0.25 * p), PlatyPoseValues.rest(.done), "it plays once")
+    }
+
+    /// Ruling 14: an agent that finished in the last 10 minutes shows done while nothing
+    /// works or needs you.
+    func testRecentFinishShowsDoneOnlyWhenNothingWorks() {
+        let now = Date(timeIntervalSince1970: 3_000_000)
+        var log = AgentFinishLog()
+        log.record(SessionChanges(finished: ["a"], enteredNeedsYou: [], allFinished: true),
+                   now: now.addingTimeInterval(-300))
+        let flags = PlatyMoodFlags()
+        func moodFor(_ states: [SessionState]) -> PlatyMood {
+            let done = PlatyMoodResolver.showsDone(flags: flags, log: log, sessions: states, now: now)
+            return mood(states, finished: done)
+        }
+        XCTAssertEqual(moodFor([.idle]), .done)
+        XCTAssertEqual(moodFor([]), .done)
+        XCTAssertEqual(moodFor([.idle, .active]), .working)
+        XCTAssertEqual(moodFor([.waitingInput]), .waiting)
+        XCTAssertFalse(PlatyMoodResolver.showsDone(flags: flags, log: log, sessions: [.idle],
+                                                   now: now.addingTimeInterval(301)), "the window ran out")
+        var fresh = PlatyMoodFlags()
+        fresh.finish(at: now)
+        XCTAssertTrue(PlatyMoodResolver.showsDone(flags: fresh, log: AgentFinishLog(), sessions: [.active], now: now),
+                      "the 4 s flag still shows done beside a working session")
     }
 
     /// Reduce Motion and paused panels draw `rest`: the mood must still read.
@@ -252,9 +288,9 @@ final class PlatyMoodTests: XCTestCase {
         let bob = stride(from: 0.0, to: PlatyMood.working.period, by: 0.05)
             .map { PlatyPoseValues.at(.working, time: $0).bounce }.max() ?? 0
         XCTAssertGreaterThan(jump, 2 * bob, "celebrating jumps, working bobs")
-        let taps = stride(from: 0.0, to: PlatyMood.waiting.period, by: 0.05)
-            .map { PlatyPoseValues.at(.waiting, time: $0).tailWag }
-        XCTAssertGreaterThan((taps.max() ?? 0) - (taps.min() ?? 0), 0.5, "the tail taps")
+        let wave = stride(from: 0.0, to: PlatyMood.waiting.period, by: 0.05)
+            .map { PlatyPoseValues.at(.waiting, time: $0).flagAngle }
+        XCTAssertGreaterThan((wave.max() ?? 0) - (wave.min() ?? 0), 10, "the flag waves")
     }
 
     // MARK: - The agents ear with Platy

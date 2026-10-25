@@ -27,6 +27,7 @@ enum PlatyPalette {
     static let check = Color(platyHex: 0x2FB75A)
     static let zzz = Color(platyHex: 0x9FB8FF)
     static let amber = Color(platyHex: 0xFFB020)
+    static let flagPole = Color(platyHex: 0x5E3F28)
     static let water = Color(platyHex: 0x4FC3F7)
     static let shadow = Color.black.opacity(0.22)
 }
@@ -238,6 +239,29 @@ enum PlatyShapes {
         return p
     }
 
+    /// The bottom of the waiting flag's pole (it swings about here).
+    static let flagBase = CGPoint(x: 85, y: 76)
+    static let flagTop = CGPoint(x: 85, y: 3)
+
+    /// The flag's pole.
+    static func flagPole() -> Path {
+        var p = Path()
+        p.move(to: flagBase)
+        p.addLine(to: flagTop)
+        return p
+    }
+
+    /// The amber pennant at the top of the pole, pointing out to the right.
+    static func flagCloth() -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: flagTop.x, y: flagTop.y))
+        p.addLine(to: CGPoint(x: 99, y: flagTop.y + 4))
+        p.addLine(to: CGPoint(x: 99, y: flagTop.y + 18))
+        p.addLine(to: CGPoint(x: flagTop.x, y: flagTop.y + 24))
+        p.closeSubpath()
+        return p
+    }
+
     static let checkBadge = CGRect(x: 70, y: 6, width: 26, height: 26)
 
     static func checkMark() -> Path {
@@ -289,6 +313,7 @@ enum PlatyArt {
         drawBody(fig, pose: pose, detail: d)
         drawFace(fig, pose: pose, detail: d)
         if pose.headphones { drawHeadphones(fig, detail: d) }
+        if pose.flag { drawFlag(fig, angle: pose.flagAngle, detail: d) }
         drawExtras(g, pose: pose, detail: d)
     }
 
@@ -423,6 +448,22 @@ enum PlatyArt {
                 g.fill(Path(roundedRect: pad, cornerRadius: 3, style: .continuous), with: .color(PlatyPalette.cupPad))
             }
         }
+    }
+
+    /// The amber flag Platy holds up when it needs you, swung `angle` degrees about the
+    /// bottom of its pole.
+    private static func drawFlag(_ g: GraphicsContext, angle: Double, detail: PlatyDetail) {
+        var f = g
+        let base = PlatyShapes.flagBase
+        f.translateBy(x: base.x, y: base.y)
+        f.rotate(by: .degrees(angle))
+        f.translateBy(x: -base.x, y: -base.y)
+        let width: CGFloat = detail == .tiny ? 5 : 3.5
+        f.stroke(PlatyShapes.flagPole(), with: .color(PlatyPalette.flagPole),
+                 style: StrokeStyle(lineWidth: width, lineCap: .round))
+        let cloth = PlatyShapes.flagCloth()
+        f.fill(cloth, with: .color(PlatyPalette.amber))
+        if detail != .tiny { f.stroke(cloth, with: .color(PlatyPalette.sparkleEdge), lineWidth: 1) }
     }
 
     /// Sparkles, the done check, the sleepy "z"s and the water: they do not lean or bounce.
