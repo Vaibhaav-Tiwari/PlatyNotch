@@ -25,6 +25,8 @@ public final class WidgetRegistry {
     /// Peek views of the app itself (the URL routes' confirm card and notices), asked
     /// after every running widget. Set by the app; nil in tests.
     @ObservationIgnored var appPeeks: (@MainActor (String) -> AnyView?)?
+    /// Opens Settings at a route such as "widgets/<id>" (a widget's "Set up"). Set by the app.
+    @ObservationIgnored public var openSettingsHandler: (@MainActor (String) -> Void)?
 
     /// `persist: false` reads the saved layout but never writes it (smoke runs).
     public init(defaults: UserDefaults = .standard, persist: Bool = true) {
@@ -121,6 +123,37 @@ public final class WidgetRegistry {
     /// go to the widget placed first).
     public var liveActivities: [LiveActivity] {
         visibleWidgets.filter { running.contains($0.id) }.flatMap(\.liveActivities)
+    }
+
+    // MARK: - Kinds (spec 6.2)
+
+    /// The Library's tools: enabled widgets that are tools, in the user's order.
+    public var toolWidgets: [any NotchWidget] {
+        visibleWidgets.filter { $0.kind.contains(.tool) }
+    }
+
+    /// Glances that can show now: enabled, running, glance widgets with content.
+    public var glanceWidgets: [any NotchWidget] {
+        visibleWidgets.filter { running.contains($0.id) && $0.kind.contains(.glance) && $0.hasContent }
+    }
+
+    /// Every enabled glance widget, in the user's order (the default glance slots).
+    public var glanceCapableIDs: [String] {
+        visibleWidgets.filter { $0.kind.contains(.glance) }.map(\.id)
+    }
+
+    /// Running widgets' live activities and the agents item through the one priority model.
+    public func rankedLive(agents: AgentsLive?, now: Date) -> [LiveItem] {
+        PriorityModel.rank(liveActivities, agents: agents, now: now)
+    }
+
+    /// A widget's "Set up": its own action, else its settings page.
+    public func runSetup(_ id: String) {
+        guard let w = widget(id) else { return }
+        switch w.setupAction {
+        case .openSettings: openSettingsHandler?("widgets/\(id)")
+        case .run(let action): action()
+        }
     }
 
     // MARK: - Surface views (first running widget that supplies one)
