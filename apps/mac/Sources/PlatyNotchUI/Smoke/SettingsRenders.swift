@@ -21,7 +21,38 @@ enum SettingsRenders {
             let name = "settings-" + id + (detail.map { "-" + $0.lowercased() } ?? "")
             out.append((name, AnyView(root), size))
         }
+        let onboarding = CGSize(width: OnboardingWindowController.size.width,
+                                height: OnboardingWindowController.size.height)
+        for (index, page) in OnboardingFlow.firstRun.pages.enumerated() {
+            out.append(("onboarding-\(index + 1)-\(Self.slug(page))", Self.onboarding(page: index), onboarding))
+        }
+        out.append(("onboarding-4-try-it-done", Self.onboarding(page: 3, tryItDone: true), onboarding))
+        out.append(("onboarding-tour-1", Self.onboarding(page: 0, flow: .tour), onboarding))
         return out
+    }
+
+    static func slug(_ page: OnboardingFlow.Page) -> String {
+        switch page {
+        case .meetPlaty: "meet-platy"
+        case .pickSetup: "pick-setup"
+        case .permissions: "permissions"
+        case .tryIt: "try-it"
+        }
+    }
+
+    /// An onboarding page as its window shows it (inert: it never opens the notch).
+    static func onboarding(page: Int, flow: OnboardingFlow = .firstRun, tryItDone: Bool = false) -> AnyView {
+        let model = OnboardingWindowController.Model()
+        model.inert = true
+        model.flow = flow
+        model.page = page
+        model.visible = false
+        model.tryItDone = tryItDone
+        let view = OnboardingView(model: model, services: makeServices(), onFinish: {})
+            .frame(width: OnboardingWindowController.size.width, height: OnboardingWindowController.size.height)
+            .tint(SettingsTint.accent)
+            .environment(\.panelTicking, false)
+        return AnyView(view)
     }
 
     /// Every page, and the sub-pages worth seeing.

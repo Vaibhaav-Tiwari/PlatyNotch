@@ -210,6 +210,9 @@ enum NowRenders {
         out.append(("hero-meeting", panel(meetingHero()), true))
         out.append(("hero-agents", panel(agentsHero()), true))
         out.append(("peek-hover", hoverPeek(agentsHero()), true))
+        // Existing users' tour card at the top of Now (spec 14), and the first run's "Try it" sample.
+        out.append(("now-tour-card", panel(everythingOn(), tourOffer: TourOffer(onTake: {}, onDismiss: {})), true))
+        out.append(("now-try-it-sample", panel(builtIns(meeting: false), tourSample: TryItSession.sample), true))
         out += AgentsRenders.views()
         out += LibraryRenders.views()
         return out
@@ -314,7 +317,8 @@ enum NowRenders {
     /// The open panel as `PanelRootView` lays it out: 16 pt margins, content below the
     /// camera housing, 10 pt at the bottom; clipped, so anything too tall shows.
     static func panel(_ rig: Rig, route: PanelRoute = PanelRoute(destination: .now), extraTabs: [PanelTab] = [],
-                      memory: MemoryServices? = nil, memoryMode: MemoryTab.Mode = .search) -> AnyView {
+                      memory: MemoryServices? = nil, memoryMode: MemoryTab.Mode = .search,
+                      tourOffer: TourOffer? = nil, tourSample: LiveActivity? = nil) -> AnyView {
         let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelMargin
         let height: CGFloat = NowMetrics.available(in: layout)
         var current = route
@@ -322,6 +326,7 @@ enum NowRenders {
                                  today: rig.today, widgets: rig.registry, memory: memory ?? MemoryServices(client: rig.client),
                                  extraTabs: extraTabs, route: Binding(get: { current }, set: { current = $0 }),
                                  onCollapse: {}, fixedNow: fixedNow, glanceDefaults: rig.glances, memoryMode: memoryMode,
+                                 tourOffer: tourOffer, tourSample: tourSample,
                                  onDecide: { _, _ in }, onOpenTerminal: { _ in })
             .frame(width: width, height: height, alignment: .top)
             .clipped()

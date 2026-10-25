@@ -130,6 +130,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var defaultsObserver: NSObjectProtocol?
     /// First run, the tour card or neither (`prepareFirstRun`).
     private var firstRun: FirstRunState = .settled
+    /// The first run's "Try it" (one for every display's panel).
+    private let tryIt = TryItSession()
     /// Settings › Appearance; the panels are built from it (`AppearanceStore`, C32).
     private var appearance = AppearanceStore.load(from: .standard)
     /// The one runtime shortcut catalog every widget claims global shortcuts in (M1).
@@ -244,8 +246,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try? await Task.sleep(for: .seconds(self.options.smokeDelay))
                 await self.finishSmoke()
             }
-        } else if !onboarding.isDone {
-            onboarding.show()
+        } else if OnboardingLaunch.showsFirstRun(firstRun) {
+            // A new install only: someone who used PlatyNotch before gets the tour card.
+            onboarding.show(flow: .firstRun)
         }
     }
 
@@ -278,7 +281,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let route = AppURL.route(url) else { continue }
             switch route {
             case .settings(let section): openSettings(section: section)
-            case .onboarding: onboarding.show()
+            case .onboarding: onboarding.show(flow: .firstRun, confirmsPresets: !OnboardingLaunch.showsFirstRun(firstRun))
             case .open: openPanel(tab: nil)
             case .plugin(let u): _ = plugins.first { $0.handle(url: u) }
             case .shelfAdd, .timerStart, .clipboardOpen: router.handle(route)
@@ -364,7 +367,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func wireSettingsEntryPoints() {
         memory.onOpenSettings = { [weak self] in self?.openSettings(section: "memory") }
         today.calendar.onOpenSettings = { [weak self] in self?.openSettings(section: SettingsPageID.privacy.rawValue) }
-        settingsServices.showOnboarding = { [weak self] in self?.onboarding.show() }
+        // "Take the tour again" replays the whole first run; presets ask before turning anything off.
+        settingsServices.showOnboarding = { [weak self] in self?.onboarding.show(flow: .firstRun, confirmsPresets: true) }
+        settingsServices.demoNotchHandler = { [weak self] in self?.demoNotch() }
+        settingsServices.tryItHandler = { [weak self] done in self?.armTryIt(onDone: done) }
+        settingsServices.cancelTryItHandler = { [weak self] in self?.cancelTryIt() }
+        settingsServices.openSettingsHandler = { [weak self] in self?.openSettings(section: $0) }
+        onboarding.onEnded = { [weak self] in self?.applyTourState() }
         settingsServices.restartCore = { [weak self] in self?.scheduleCoreRestart() }
         // A widget's "Set up" asks for "widgets/<id>": Settings opens that widget's page.
         widgets.openSettingsHandler = { [weak self] route in self?.openSettings(section: route) }
@@ -476,6 +485,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             c.attach(to: screen)
             return c
         }
+        applyTourState()
+    }
+
+    // MARK: - First run, the tour card and "Try it"
+
+    /// Each panel's tour card (existing users, until taken or dismissed), the "Try it"
+    /// sample while it is armed, and the open hook that finishes it.
+    private func applyTourState() {
+        let d = UserDefaults.standard
+        let offer: TourOffer? = OnboardingLaunch.offersTourCard(firstRun, tourOffered: d.bool(forKey: FirstRunState.tourOfferedKey))
+            ? TourOffer(onTake: { [weak self] in self?.takeTour() }, onDismiss: { [weak self] in self?.dismissTour() })
+            : nil
+        let sample: LiveActivity? = tryIt.armed ? TryItSession.sample : nil
+        let store = self.store
+        for c in controllers {
+            c.panelModel.tourOffer = offer
+            c.panelModel.tourSample = sample
+            c.onExpanded = { [weak self] in self?.tryIt.panelExpanded(approvals: store.approvals.count) }
+        }
+    }
+
+    private func takeTour() {
+        UserDefaults.standard.set(true, forKey: FirstRunState.tourOfferedKey)
+        applyTourState()
+        for c in controllers { c.collapse() }
+        onboarding.show(flow: .tour)
+    }
+
+    private func dismissTour() {
+        UserDefaults.standard.set(true, forKey: FirstRunState.tourOfferedKey)
+        applyTourState()
+    }
+
+    /// "Meet Platy": the notch on the main display opens and closes once.
+    private func demoNotch() {
+        let primary = NSScreen.screens.first?.displayID
+        guard let c = controllers.first(where: { $0.displayID == primary }) ?? controllers.first else { return }
+        c.expand()
+        Task { @MainActor [weak c] in
+            try? await Task.sleep(for: .milliseconds(1_200))
+            c?.collapse()
+        }
+    }
+
+    /// "Try it": a sample in Now until the panel opens; then Platy celebrates.
+    private func armTryIt(onDone: @escaping () -> Void) {
+        tryIt.arm { [weak self] in
+            guard let self else { return }
+            self.today.platy.celebrate()
+            self.applyTourState()
+            onDone()
+        }
+        applyTourState()
+    }
+
+    private func cancelTryIt() {
+        guard tryIt.armed else { return }
+        tryIt.cancel()
+        applyTourState()
     }
 
     // MARK: - Smoke checks

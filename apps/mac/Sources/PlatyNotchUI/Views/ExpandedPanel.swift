@@ -44,6 +44,10 @@ struct ExpandedPanel: View {
     var onConnectAgent: () -> Void = {}
     /// Renders only: the Memory tool's first view.
     var memoryMode: MemoryTab.Mode = .search
+    /// Existing users' tour card at the top of Now (spec 14).
+    var tourOffer: TourOffer?
+    /// The first run's "Try it" sample in Now.
+    var tourSample: LiveActivity?
     let onDecide: (Approval, ApprovalBehavior) -> Void
     let onOpenTerminal: (Session) -> Void
 
@@ -131,7 +135,8 @@ struct ExpandedPanel: View {
         NowView(store: store, widgets: widgets, today: today, deck: deck, glanceDefaults: glanceDefaults,
                 onOpenTool: { openTool($0) },
                 onOpenAgents: { route = PanelRoute(destination: .agents) }, onOpenTerminal: onOpenTerminal,
-                fixedNow: fixedNow, cycling: NowSettings.load(from: glanceDefaults).heroCycling)
+                fixedNow: fixedNow, cycling: NowSettings.load(from: glanceDefaults).heroCycling,
+                tourOffer: tourOffer, tourSample: tourSample)
     }
 
     // MARK: - Library

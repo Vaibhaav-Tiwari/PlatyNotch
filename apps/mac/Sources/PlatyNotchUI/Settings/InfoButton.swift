@@ -1,3 +1,4 @@
+import AppKit
 import PlatyNotchKit
 import SwiftUI
 
@@ -136,5 +137,17 @@ struct SettingsLink: View {
             Text(verbatim: title).foregroundStyle(SettingsTint.accent)
         }
         .help(destination.absoluteString)
+    }
+}
+
+/// The Settings and onboarding windows: a smoke run or a test parks them off screen,
+/// where AppKit would otherwise pull a titled window back onto a display when it is
+/// ordered in.
+final class AppSettingsWindow: NSWindow {
+    /// Off screen on purpose (smoke runs and tests): the frame is kept as given.
+    var keepsOffScreen = false
+
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        keepsOffScreen ? frameRect : super.constrainFrameRect(frameRect, to: screen)
     }
 }

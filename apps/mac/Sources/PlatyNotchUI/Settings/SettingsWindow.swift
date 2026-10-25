@@ -15,6 +15,14 @@ final class SettingsServices {
     let updater: AppUpdater
     let widgets: WidgetRegistry
     var showOnboarding: () -> Void = {}
+    /// The first run's "Meet Platy": the real notch opens and closes once (the app's panels).
+    var demoNotchHandler: () -> Void = {}
+    /// The first run's "Try it": a sample in Now, then `onDone` when the panel opens.
+    var tryItHandler: (@escaping () -> Void) -> Void = { _ in }
+    /// Ends a "Try it" that is still waiting (the window closed).
+    var cancelTryItHandler: () -> Void = {}
+    /// Opens Settings at a page ("widgets/mirror"): the first run's camera and Bluetooth rows.
+    var openSettingsHandler: (String) -> Void = { _ in }
     /// Debounced restart of the supervised core (the app's `scheduleCoreRestart`), for
     /// changes config.json does not see, such as a rotated Keychain key.
     var restartCore: () -> Void = {}
@@ -30,6 +38,38 @@ final class SettingsServices {
         permissions = Permissions(calendar: calendar, reminders: reminders)
         permissions.mailWidgetOn = { [weak widgets] in widgets?.isEnabled(MailWidget.widgetID) ?? false }
         agents = AgentsModel(runner: runner)
+    }
+
+    func demoNotch() { demoNotchHandler() }
+
+    func armTryIt(onDone: @escaping () -> Void) { tryItHandler(onDone) }
+
+    func cancelTryIt() { cancelTryItHandler() }
+
+    /// What `p` would change from the widgets on now (plug-ins never).
+    func presetChange(_ p: SetupPreset) -> PresetChange {
+        let on: Set<String> = Set(widgets.orderedWidgets.map(\.id).filter { widgets.isEnabled($0) })
+        return PresetChange.plan(p, enabled: on)
+    }
+
+    /// Applies a setup (spec 10): its widgets on and off, its four glances, Minimal or
+    /// Always on, and Agents shown when it says so. Callers ask first when
+    /// `presetChange(p).needsConfirmation` (Settings; the first run applies directly).
+    func applyPreset(_ p: SetupPreset, defaults: UserDefaults = .standard) {
+        let change = presetChange(p)
+        for id in change.turnOn where widgets.widget(id) != nil { widgets.setEnabled(id, true) }
+        for id in change.turnOff where widgets.widget(id) != nil { widgets.setEnabled(id, false) }
+        GlanceSlots(ids: p.glances).save(to: defaults)
+        var appearance = AppearanceStore.load(from: defaults)
+        if appearance.mode != p.mode {
+            appearance.mode = p.mode
+            AppearanceStore.save(appearance, to: defaults)
+        }
+        if p.showsAgents {
+            var visibility = AgentsVisibility.load(from: defaults)
+            visibility.forcedOn = true
+            visibility.save(to: defaults)
+        }
     }
 }
 
@@ -149,15 +189,18 @@ final class SettingsWindowController {
 
     func close() { window?.close() }
 
-    /// For `--smoke-settings`: an invisible window (still laid out and rendered).
+    /// For `--smoke-settings` and tests: an invisible window (still laid out and rendered),
+    /// off screen before it is ordered in, so it never shows where the user works.
+    /// Autosave off first, so the saved Settings frame is never moved off screen.
     func showForSmoke() {
+        let w = window ?? makeWindow()
+        window = w
+        w.setFrameAutosaveName("")
+        w.alphaValue = 0
+        w.ignoresMouseEvents = true
+        (w as? AppSettingsWindow)?.keepsOffScreen = true
+        w.setFrameOrigin(NSPoint(x: -10_000, y: 10_000))
         show(activate: false)
-        window?.alphaValue = 0
-        window?.ignoresMouseEvents = true
-        // Off screen as well as invisible: a smoke run never puts a window where the user works.
-        // Autosave off first, so the saved Settings frame is never moved off screen.
-        window?.setFrameAutosaveName("")
-        window?.setFrameOrigin(NSPoint(x: -10_000, y: 10_000))
     }
 
     static let size = NSSize(width: 800, height: 580)
@@ -165,7 +208,7 @@ final class SettingsWindowController {
 
     private func makeWindow() -> NSWindow {
         let root = SettingsRootView(model: model, services: services, pluginSections: pluginSections)
-        let w = NSWindow(contentRect: NSRect(origin: .zero, size: Self.size),
+        let w = AppSettingsWindow(contentRect: NSRect(origin: .zero, size: Self.size),
                          styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                          backing: .buffered, defer: false)
         w.title = "PlatyNotch Settings"

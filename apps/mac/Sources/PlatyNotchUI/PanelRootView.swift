@@ -35,6 +35,10 @@ final class PanelViewModel {
     var appearance: AppearanceSettings = AppearanceSettings()
     /// Settings › Notifications: kinds the pill leaves out (never approvals).
     var hiddenKinds: Set<NotificationKind> = []
+    /// Existing users' one-time tour card at the top of Now (spec 14).
+    var tourOffer: TourOffer?
+    /// The first run's "Try it" sample ("This is Now") in Now's deck.
+    var tourSample: LiveActivity?
 }
 
 /// Places the mode's content inside the fixed-size panel window.
@@ -197,6 +201,7 @@ struct PanelRootView: View {
                           deck: Binding(get: { model.heroDeck }, set: { model.heroDeck = $0 }),
                           agentsVisible: today.agentActivity.agentsVisibility.isVisible,
                           onConnectAgent: model.onConnectAgent,
+                          tourOffer: model.tourOffer, tourSample: model.tourSample,
                           onDecide: decide, onOpenTerminal: onOpenTerminal)
             }
             .transition(ChromeSettle<EmptyView>.transition)

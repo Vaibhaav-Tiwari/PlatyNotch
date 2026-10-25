@@ -132,6 +132,21 @@ final class NowViewTests: DefaultsTestCase {
         XCTAssertEqual(height(now(rig(longTitles: true))), h, accuracy: 0.5)
     }
 
+    /// The existing-user tour card at the top of Now: everything on, four glances, three
+    /// live items, and it still fits a 38 pt notch with no quiet line.
+    func testTourCardFitsWithoutScrolling() {
+        let r = rig()
+        let offer = TourOffer(onTake: {}, onDismiss: {})
+        let view = NowView(store: r.store, widgets: r.registry, today: r.today, deck: .constant(HeroDeck()),
+                           glanceDefaults: defaults(), onOpenTool: { _ in }, onOpenAgents: {}, onOpenTerminal: { _ in },
+                           tourOffer: offer)
+        let h = height(view)
+        let full: CGFloat = NowMetrics.tourCard + NowMetrics.gap + NowMetrics.hero + NowMetrics.gap + NowMetrics.glance
+        XCTAssertEqual(h, full, accuracy: 0.5, "card, hero, four glances; the quiet line hides")
+        XCTAssertLessThanOrEqual(NowMetrics.nav + NowMetrics.gap + h, NowMetrics.available(in: notched38))
+        XCTAssertLessThanOrEqual(NowMetrics.required(tourCard: true), NowMetrics.available(in: notched38))
+    }
+
     func testIdleSummaryFits() {
         let store = AppStore()
         let client = CoreClient(socketPath: "/nonexistent")

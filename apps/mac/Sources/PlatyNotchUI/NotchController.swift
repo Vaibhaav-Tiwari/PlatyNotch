@@ -67,6 +67,9 @@ public final class NotchController {
     var graceSleep: @MainActor (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     /// The clock approval arming notes cards against (tests move it).
     var armingClock: () -> Date = { Date() }
+    /// Called each time the panel opens (the first run's "Try it").
+    var onExpanded: () -> Void = {}
+    private var lastExpandedCheck: PanelMode?
     /// The open panel's gear (the menu bar icon may be hidden): the app shows Settings.
     var onOpenSettings: () -> Void = {}
     /// The Agents empty state's "Connect an agent": the app shows Settings › Agents.
@@ -199,6 +202,12 @@ public final class NotchController {
         handle(.click)
     }
 
+    /// Closes the open panel (the first run's "Meet Platy" demo).
+    public func collapse() {
+        guard machine.mode == .expanded else { return }
+        handle(.click)
+    }
+
     /// Escape: an open Library tool goes back to the grid first; otherwise the state
     /// machine's `.escape` (the open panel closes).
     func escapePressed() {
@@ -263,6 +272,8 @@ public final class NotchController {
     /// the window. Without a window (tests) only the view model.
     private func apply() {
         defer { surfaces.sinkStateChanged() }   // the media-key tap's view of where a HUD would show
+        if machine.mode == .expanded, lastExpandedCheck != .expanded { onExpanded() }
+        lastExpandedCheck = machine.mode
         guard let layout else { return }
         cursor = cursorLocation()   // never decide pass-through from a stale position
         let mode = machine.mode

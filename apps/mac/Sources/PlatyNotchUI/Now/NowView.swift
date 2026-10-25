@@ -23,12 +23,18 @@ struct NowView: View {
     var heroOnly = false
     /// Settings › Now › hero cycling: false shows only the top item, with no ‹ ›.
     var cycling = true
+    /// Existing users' one-time "Take the 30-second tour" card (spec 14); the quiet line
+    /// hides while it shows.
+    var tourOffer: TourOffer?
+    /// The first run's "Try it" sample ("This is Now"), first in the deck until it ends.
+    var tourSample: LiveActivity?
     @Environment(\.platyMood) private var platyMood
 
     init(store: AppStore, widgets: WidgetRegistry, today: TodayServices, deck: Binding<HeroDeck>,
          glanceDefaults: UserDefaults = .standard, onOpenTool: @escaping (String) -> Void,
          onOpenAgents: @escaping () -> Void, onOpenTerminal: @escaping (Session) -> Void, fixedNow: Date? = nil,
-         heroOnly: Bool = false, cycling: Bool = true) {
+         heroOnly: Bool = false, cycling: Bool = true, tourOffer: TourOffer? = nil,
+         tourSample: LiveActivity? = nil) {
         self.store = store
         self.widgets = widgets
         self.today = today
@@ -40,6 +46,14 @@ struct NowView: View {
         self.fixedNow = fixedNow
         self.heroOnly = heroOnly
         self.cycling = cycling
+        self.tourOffer = tourOffer
+        self.tourSample = tourSample
+    }
+
+    /// The deck with the "Try it" sample first; never while an approval holds Now.
+    static func withTourSample(_ ranked: [LiveItem], sample: LiveActivity?, approvals: Int) -> [LiveItem] {
+        guard let sample, approvals == 0 else { return ranked }
+        return PriorityModel.rank([sample], agents: nil, now: Date()) + ranked
     }
 
     /// The deck's item to show: the deck's choice while cycling, else the top one.
@@ -53,7 +67,9 @@ struct NowView: View {
     var body: some View {
         let now: Date = Date()
         let agents: AgentsLive? = agentsLive(now: now)
-        let items: [LiveItem] = HeroDeck.items(widgets.rankedLive(agents: agents, now: now))
+        let ranked: [LiveItem] = widgets.rankedLive(agents: agents, now: now)
+        let items: [LiveItem] = HeroDeck.items(Self.withTourSample(ranked, sample: tourSample,
+                                                                   approvals: store.approvals.count))
         let mode: NowMode = NowMode.resolve(approvals: store.approvals.count, deck: items, now: now)
         switch mode {
         case .approvalsPending(let line):
@@ -61,6 +77,7 @@ struct NowView: View {
         case .live:
             let heroID: String = items[Self.heroIndex(deck: deck, items: items, cycling: cycling)].id
             VStack(alignment: .leading, spacing: NowMetrics.gap) {
+                tourCard
                 liveHero(items, agents: agents)
                 rows
             }
@@ -68,12 +85,17 @@ struct NowView: View {
             .animation(.easeInOut(duration: MotionPreset.crossFade), value: heroID)
         case .summary:
             VStack(alignment: .leading, spacing: NowMetrics.gap) {
+                tourCard
                 HeroFrame(keyline: nil, position: nil, onStep: nil) {
                     TodaySummaryHero(calendar: today.calendar, fixedNow: fixedNow)
                 }
                 rows
             }
         }
+    }
+
+    @ViewBuilder private var tourCard: some View {
+        if !heroOnly, let tourOffer { TourCard(offer: tourOffer).panelChrome() }
     }
 
     /// The glance row (when any glance has something to show) and the quiet line.
@@ -88,7 +110,7 @@ struct NowView: View {
         }
         let quiet: [QuietLineItem] = QuietLine.items(openLoops: openLoops, tasks: tasksDue,
                                                      glanceIDs: entries.map(\.id))
-        if !quiet.isEmpty {
+        if !quiet.isEmpty, tourOffer == nil {
             QuietLineView(items: quiet, onOpen: onOpenTool)
         }
     }
@@ -222,5 +244,56 @@ enum GlanceSlotsCache {
         let slots = GlanceSlots.resolve(from: defaults, glanceCapable: glanceCapable)
         if let data = defaults.data(forKey: GlanceSlots.key) { last = (data, slots) }
         return slots
+    }
+}
+
+/// What the tour card does (spec 14): take the tour, or dismiss it for good.
+struct TourOffer {
+    let onTake: () -> Void
+    let onDismiss: () -> Void
+}
+
+/// Existing users' one-time card at the top of Now: "Take the 30-second tour", Dismiss.
+struct TourCard: View {
+    let offer: TourOffer
+
+    var body: some View {
+        HStack(spacing: Space.s) {
+            Image(systemName: "sparkles")
+                .symbolRenderingMode(.monochrome)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(DS.dynamicColor(.working))
+                .frame(width: 26, height: 26)
+                .background(DS.dynamicColor(.working, alpha: 0.14), in: RoundedRectangle(cornerRadius: Radius.chip))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("PlatyNotch has a new look")
+                    .font(DS.font(TypeStyle(size: TypeScale.body.size, weight: .semibold)))
+                    .lineLimit(1)
+                Text("Now, Agents and Library, one click apart.")
+                    .font(DS.font(TypeScale.caption))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: Space.s)
+            Button("Take the 30-second tour", action: offer.onTake)
+                .buttonStyle(ToolPrimaryButtonStyle())
+                .controlSize(.small)
+            Button(action: offer.onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help("Dismiss")
+            .accessibilityLabel("Dismiss the tour")
+        }
+        .padding(.horizontal, Space.m)
+        .frame(maxWidth: .infinity)
+        .frame(height: NowMetrics.tourCard)
+        .dsCard()
+        .accessibilityElement(children: .contain)
     }
 }

@@ -7,6 +7,9 @@ struct GeneralSection: View {
     let services: SettingsServices
     @State private var loginEnabled = SMAppService.mainApp.status == .enabled
     @State private var loginNote: String?
+    /// A setup that would turn widgets off, waiting for a yes.
+    @State private var pending: SetupPreset?
+    @State private var applied: SetupPreset?
 
     var body: some View {
         SettingsPage("General") {
@@ -21,6 +24,22 @@ struct GeneralSection: View {
                     }
                 }
                 Section("Updates") { updateRows }
+                Section {
+                    HStack(spacing: 8) {
+                        ForEach(SetupPreset.allCases, id: \.self) { p in
+                            Button(p.title) { choose(p) }
+                                .help(p.summary)
+                        }
+                        Spacer(minLength: 0)
+                        if let applied {
+                            Label("\(applied.title) applied", systemImage: "checkmark.circle.fill")
+                                .font(DS.font(TypeScale.caption))
+                                .foregroundStyle(SettingsTint.accent)
+                        }
+                    }
+                } header: {
+                    SettingLabel("Setup", info: "Everyday, Developer or Minimal turn widgets on or off and choose the four glances. You are asked before anything is turned off.")
+                }
                 Section("Getting started") {
                     LabeledContent {
                         Button("Start") { services.showOnboarding() }
@@ -33,6 +52,15 @@ struct GeneralSection: View {
             .settingsForm()
         }
         .onAppear(perform: readLogin)
+        .confirmationDialog(confirmTitle, isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
+                            titleVisibility: .visible) {
+            Button("Turn Off and Apply", role: .destructive) {
+                if let p = pending { apply(p) }
+            }
+            Button("Cancel", role: .cancel) { pending = nil }
+        } message: {
+            Text(verbatim: confirmMessage)
+        }
     }
 
     @ViewBuilder private var updateRows: some View {
@@ -55,6 +83,28 @@ struct GeneralSection: View {
                              info: "This build does not update itself. New versions are on GitHub Releases.")
             }
         }
+    }
+
+    /// Applies `p`, asking first when it would turn anything off (spec 14).
+    private func choose(_ p: SetupPreset) {
+        if services.presetChange(p).needsConfirmation { pending = p } else { apply(p) }
+    }
+
+    private func apply(_ p: SetupPreset) {
+        services.applyPreset(p)
+        applied = p
+        pending = nil
+    }
+
+    private var offTitles: [String] {
+        guard let p = pending else { return [] }
+        return services.presetChange(p).turnOff.compactMap { services.widgets.widget($0)?.title }
+    }
+
+    private var confirmTitle: String { "Turn off \(offTitles.count == 1 ? "1 widget" : "\(offTitles.count) widgets")?" }
+
+    private var confirmMessage: String {
+        "\(pending?.title ?? "") turns off \(offTitles.joined(separator: ", ")). You can turn them on again in Settings › Widgets."
     }
 
     private func readLogin() {
