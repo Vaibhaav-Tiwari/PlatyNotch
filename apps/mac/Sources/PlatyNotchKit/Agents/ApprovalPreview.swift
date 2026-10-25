@@ -32,13 +32,23 @@ public struct ApprovalPreview: Equatable, Sendable {
         path = (string("file_path", in: input) ?? string("notebook_path", in: input) ?? string("path", in: input))
             .map { visible($0, singleLine: true) }
 
+        func replacesAll(_ o: [String: JSONValue]) -> Bool {
+            if case .bool(true)? = o["replace_all"] { return true }
+            return false
+        }
         var lines: [DiffLine] = []
         if let old = string("old_string", in: input), let new = string("new_string", in: input) {
-            lines = LineDiff.unified(old: visible(old), new: visible(new))
+            lines = Self.labelled(LineDiff.unified(old: visible(old), new: visible(new)), "Edit",
+                                  replacesAll: replacesAll(input))
         } else if case .array(let edits)? = input["edits"] {
+            var pairs: [(String, String, Bool)] = []
             for case .object(let edit) in edits {
                 guard let old = string("old_string", in: edit), let new = string("new_string", in: edit) else { continue }
-                lines += LineDiff.unified(old: visible(old), new: visible(new))
+                pairs.append((old, new, replacesAll(edit)))
+            }
+            for (i, (old, new, all)) in pairs.enumerated() {
+                lines += Self.labelled(LineDiff.unified(old: visible(old), new: visible(new)),
+                                       "Edit \(i + 1) of \(pairs.count)", replacesAll: all)
             }
         } else if let added = string("content", in: input) ?? string("new_source", in: input) {
             lines = LineDiff.unified(old: "", new: visible(added))
@@ -66,6 +76,18 @@ public struct ApprovalPreview: Equatable, Sendable {
         while let last = head.last, last == " " || last == "\t" { head.removeLast() }
         guard !head.isEmpty, command.hasPrefix(head) else { return nil }
         return command
+    }
+
+    /// An Edit snippet's hunks: its "@@ -a,b +c,d @@" numbers count within the snippet,
+    /// not the file, so the first is labelled ("Edit 1 of 2", plus "Replaces every match"
+    /// for `replace_all`) and later ones in the same snippet are "⋯".
+    static func labelled(_ diff: [DiffLine], _ label: String, replacesAll: Bool) -> [DiffLine] {
+        var first = true
+        return diff.map { line in
+            guard line.kind == .hunk else { return line }
+            defer { first = false }
+            return DiffLine(kind: .hunk, text: first ? (replacesAll ? label + " · Replaces every match" : label) : "\u{22EF}")
+        }
     }
 
     /// The first `collapsedLines` lines, or all of them.

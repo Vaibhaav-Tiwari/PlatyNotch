@@ -12,6 +12,8 @@ struct GlanceChip: View {
     var tint: Color?
     /// An agent's icon instead of the symbol (the usage glance).
     var brand: AgentBrand?
+    /// A warning colour for the value itself (usage from 70 %); the label still says it.
+    var valueTint: Color?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -25,6 +27,7 @@ struct GlanceChip: View {
                 }
                 Text(verbatim: value)
                     .font(DS.font(TypeScale.headline, design: .rounded))
+                    .foregroundStyle(valueTint ?? Color.primary)
                     .monospacedDigit()
                     .lineLimit(1)
                     .contentTransition(.numericText())

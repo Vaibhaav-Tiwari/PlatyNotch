@@ -7,7 +7,7 @@ final class AgentBrandTests: DefaultsTestCase {
     func testBundleIDAllowlistAndMonograms() {
         let cases: [(String, String, String, [String])] = [
             ("claude-code", "Claude Code", "Cl", ["com.anthropic.claudefordesktop"]),
-            ("codex", "Codex", "Cx", ["com.openai.codex", "com.openai.chat"]),
+            ("codex", "Codex", "Cx", ["com.openai.codex"]),
             ("cursor", "Cursor", "Cu", ["com.todesktop.230313mzl4w4u92"]),
             ("gemini", "Gemini CLI", "Ge", []),
             ("opencode", "OpenCode", "OC", []),

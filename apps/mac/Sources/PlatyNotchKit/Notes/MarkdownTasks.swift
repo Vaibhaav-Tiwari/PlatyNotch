@@ -35,8 +35,8 @@ public struct MarkdownTask: Equatable, Sendable, Identifiable {
 
     public var id: String { file + ":" + String(line) }
 
-    /// `text` without the Tasks plugin's date markers, for display.
-    public var title: String { MarkdownTasks.stripMarkers(text) }
+    /// `text` without any of the Tasks plugin's markers, for display (`displayText`).
+    public var title: String { MarkdownTasks.displayText(text) }
 }
 
 /// Finds and ticks Markdown tasks. Pure, and byte-exact: a toggle changes the one byte
@@ -348,6 +348,26 @@ public enum MarkdownTasks {
         let back = calendar.dateComponents([.year, .month, .day], from: date)
         guard back.year == parts[0], back.month == parts[1], back.day == parts[2] else { return nil }
         return date
+    }
+
+    /// Every Tasks-plugin marker the UI must not show (fix round 1, M6): dated markers
+    /// (due, scheduled, start, created, done, cancelled) with their dates, recurrence (🔁)
+    /// with its rule up to the next marker, and priorities.
+    private static let dated = "\u{1F4C5}\u{1F4C6}\u{1F5D3}\u{23F3}\u{1F6EB}\u{2795}\u{2705}\u{274C}"
+    private static let priority = "\u{23EB}\u{1F53C}\u{1F53D}\u{23EC}\u{1F53A}"
+    private static let displayRegex: NSRegularExpression? = try? NSRegularExpression(
+        pattern: "\\s*(?:[\(dated)]\u{FE0F}?(?:\\s*\\d{4}-\\d{2}-\\d{2})?"
+            + "|\u{1F501}\u{FE0F}?[^\(dated)\(priority)\u{1F501}]*"
+            + "|[\(priority)]\u{FE0F}?)")
+
+    /// What the UI shows of a task: `text` without any Tasks-plugin marker, whitespace
+    /// collapsed; "Untitled task" when nothing else is left. Parsing and the file keep them.
+    public static func displayText(_ text: String) -> String {
+        guard let re = displayRegex else { return text }
+        let ns = text as NSString
+        let out = re.stringByReplacingMatches(in: text, range: NSRange(location: 0, length: ns.length), withTemplate: " ")
+        let words = out.split(whereSeparator: { $0 == " " || $0 == "\t" })
+        return words.isEmpty ? "Untitled task" : words.joined(separator: " ")
     }
 
     /// `text` without Tasks-plugin date markers (due, scheduled, start, created, done, cancelled).

@@ -10,8 +10,15 @@ import SwiftUI
 final class AgentIconSource: @unchecked Sendable {
     typealias Lookup = (String) -> NSImage?
 
-    /// The running app's: NSWorkspace, on this Mac.
-    static let installed = AgentIconSource(lookup: AgentIconSource.workspaceIcon)
+    /// The running app's: NSWorkspace, on this Mac. Misses are forgotten when any app
+    /// launches (an agent app installed and opened while PlatyNotch runs); nothing polls.
+    static let installed: AgentIconSource = {
+        let source = AgentIconSource(lookup: AgentIconSource.workspaceIcon)
+        source.launchObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: nil
+        ) { [weak source] _ in source?.clearMisses() }
+        return source
+    }()
     /// Monograms only (renders, so they are the same on every Mac).
     static let monogramsOnly = AgentIconSource(lookup: { _ in nil })
 
@@ -19,6 +26,7 @@ final class AgentIconSource: @unchecked Sendable {
     private let lock = NSLock()
     /// Guarded by `lock`: brand key → icon, or nil for "not installed".
     private var cache: [String: NSImage?] = [:]
+    private var launchObserver: NSObjectProtocol?
 
     init(lookup: @escaping Lookup) {
         self.lookup = lookup
@@ -35,6 +43,13 @@ final class AgentIconSource: @unchecked Sendable {
         }
         cache[brand.key] = .some(found)
         return found
+    }
+
+    /// Forgets the agents found missing, so the next visible view looks again.
+    func clearMisses() {
+        lock.lock()
+        defer { lock.unlock() }
+        cache = cache.filter { $0.value != nil }
     }
 
     private static func workspaceIcon(_ bundleID: String) -> NSImage? {

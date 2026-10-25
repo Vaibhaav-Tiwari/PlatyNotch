@@ -109,13 +109,13 @@ final class AgentsViewTests: DefaultsTestCase {
         var asked: [String] = []
         let source = AgentIconSource { id in
             asked.append(id)
-            return id == "com.openai.chat" ? fake : nil
+            return id == "com.openai.codex" ? fake : nil
         }
         let codex = AgentBrand(agent: "codex")
         XCTAssertTrue(source.icon(for: codex) === fake)
-        XCTAssertEqual(asked, ["com.openai.codex", "com.openai.chat"], "the allowlist, in order")
+        XCTAssertEqual(asked, ["com.openai.codex"], "the allowlist only (never ChatGPT's app)")
         _ = source.icon(for: codex)
-        XCTAssertEqual(asked.count, 2, "cached: looked up once per agent")
+        XCTAssertEqual(asked.count, 1, "cached: looked up once per agent")
         XCTAssertEqual(AgentBadge.face(for: codex, source: source), .app)
     }
 
@@ -175,5 +175,30 @@ final class AgentsViewTests: DefaultsTestCase {
                                     l.noteFailure(sessionKey: "b", at: t0); return l }(),
                              onOpenTerminal: { _ in }, onConnect: {})
         XCTAssertEqual(two.countsLine(now: t0), "2 sessions · 2 errors")
+    }
+
+    /// An agent app installed while PlatyNotch runs: misses are forgotten on a launch, hits kept.
+    func testMissesClearedWhenAnAppLaunches() {
+        var installed = false
+        let fake = NSImage(size: NSSize(width: 8, height: 8))
+        var asked = 0
+        let source = AgentIconSource { _ in asked += 1; return installed ? fake : nil }
+        let claude = AgentBrand(agent: "claude-code")
+        XCTAssertNil(source.icon(for: claude))
+        installed = true
+        XCTAssertNil(source.icon(for: claude), "cached miss")
+        source.clearMisses()
+        XCTAssertTrue(source.icon(for: claude) === fake)
+        source.clearMisses()
+        _ = source.icon(for: claude)
+        XCTAssertEqual(asked, 2, "a hit is kept")
+    }
+
+    /// Fix round 1, M1: the usage glance's value warns from 70 % (amber) and 90 % (coral).
+    func testUsageGlanceWarns() {
+        XCTAssertNil(UsageGlance.warning(69))
+        XCTAssertEqual(UsageGlance.warning(70), .needsYou)
+        XCTAssertEqual(UsageGlance.warning(89), .needsYou)
+        XCTAssertEqual(UsageGlance.warning(90), .error)
     }
 }

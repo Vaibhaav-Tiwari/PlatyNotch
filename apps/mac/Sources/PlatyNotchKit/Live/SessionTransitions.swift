@@ -160,6 +160,12 @@ public struct AgentFinishLog: Equatable, Sendable {
         failures[key].map { Self.within($0, now: now) } ?? false
     }
 
+    /// When `key` finished, while that is within the window.
+    public func finishedAt(_ key: String, now: Date) -> Date? {
+        guard let at = finishes[key], Self.within(at, now: now) else { return nil }
+        return at
+    }
+
     public func finished(_ key: String, now: Date) -> Bool {
         finishes[key].map { Self.within($0, now: now) } ?? false
     }

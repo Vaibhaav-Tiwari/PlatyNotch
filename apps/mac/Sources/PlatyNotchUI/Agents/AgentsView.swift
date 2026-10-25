@@ -79,7 +79,8 @@ struct AgentsView: View {
         out += UsageRings(usage: usage, hint: PanelFormat.claudeLimitsHint(usage: usage, sessions: sessions)).visibleTexts
         if sessions.isEmpty { return out + AgentsEmptyState.texts }
         for s in rows(now: now) {
-            out += AgentRow.texts(s, attention: AgentAttention.of(s, log: log, now: now), now: now)
+            out += AgentRow.texts(s, attention: AgentAttention.of(s, log: log, now: now), now: now,
+                                  finishedAt: log.finishedAt(s.key, now: now))
         }
         return out
     }
@@ -103,6 +104,7 @@ struct AgentsView: View {
             LazyVStack(spacing: 0) {
                 ForEach(rows(now: now)) { s in
                     AgentRow(session: s, attention: AgentAttention.of(s, log: log, now: now), now: now,
+                             finishedAt: log.finishedAt(s.key, now: now),
                              onOpenTerminal: onOpenTerminal)
                 }
             }

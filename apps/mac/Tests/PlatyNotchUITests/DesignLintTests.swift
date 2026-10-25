@@ -165,26 +165,119 @@ final class DesignLintTests: DefaultsTestCase {
         s.properties.isEmojiPresentation || s.value == 0xFE0F || (0x1F000...0x1FFFF).contains(s.value)
     }
 
-    /// No emoji in UI text or labels (user ruling, Phase 4): monochrome SF Symbols only.
+    /// No emoji in UI text or labels (user ruling, Phase 4): every string literal, single
+    /// or multi-line (`"""`), raw (`#"…"#`) or not, with `\u{…}` escapes decoded.
     func testNoEmojiInStringLiterals() throws {
         XCTAssertTrue(Self.isEmoji("\u{1F4C5}"))
         XCTAssertTrue(Self.isEmoji("\u{2705}"))
         XCTAssertFalse(Self.isEmoji("\u{21A9}"))
         XCTAssertFalse(Self.isEmoji("\u{2318}"))
-        let literal = try NSRegularExpression(pattern: #""(?:[^"\\]|\\.)*""#)
+        let root = Self.uiSources.standardizedFileURL
+        let walker = try XCTUnwrap(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
         var found: [String] = []
-        for line in try Self.sourceLines() where Self.emojiAllowlist[line.path] == nil {
-            let ns = line.text as NSString
-            for m in literal.matches(in: line.text, range: NSRange(location: 0, length: ns.length)) {
-                if ns.substring(with: m.range).unicodeScalars.contains(where: Self.isEmoji) {
-                    found.append("\(line.path):\(line.number): \(line.text.trimmingCharacters(in: .whitespaces))")
-                    break
-                }
+        var scanned = 0
+        for case let url as URL in walker where url.pathExtension == "swift" {
+            let path = String(url.standardizedFileURL.path.dropFirst(root.path.count + 1))
+            guard Self.emojiAllowlist[path] == nil else { continue }
+            let text = try String(contentsOf: url, encoding: .utf8)
+            for literal in Self.stringLiterals(in: text) {
+                scanned += 1
+                if literal.scalars.contains(where: Self.isEmoji) { found.append("\(path):\(literal.line)") }
             }
         }
+        XCTAssertGreaterThan(scanned, 1000, "the scan must find the UI's string literals")
         XCTAssertTrue(found.isEmpty, "emoji in UI strings (use an SF Symbol):\n" + found.joined(separator: "\n"))
         for (path, reason) in Self.emojiAllowlist {
             XCTAssertFalse(reason.trimmingCharacters(in: .whitespaces).isEmpty, "\(path) needs a reason")
         }
+    }
+
+    /// The scanner sees every literal form and skips comments.
+    func testLiteralScannerFindsEveryForm() {
+        let source = #"""
+        let a = "plain \u{1F4C5} escape"
+        // a comment with ✅ is not a string
+        let b = """
+            multi ⏫ line
+            """
+        let c = #"raw ✅ \(not) interpolation"#
+        let d = "safe ↩ \(value) and \u{21A9}"
+        /* block 📅 comment */
+        let e = "q\"uote ✅"
+        """#
+        let literals = Self.stringLiterals(in: source)
+        let flagged = literals.filter { $0.scalars.contains(where: Self.isEmoji) }.map(\.line)
+        XCTAssertEqual(flagged, [1, 3, 6, 9], "\(literals.map { ($0.line, String(String.UnicodeScalarView($0.scalars))) })")
+    }
+
+    /// String literals in Swift source with their first line and their scalars (escapes
+    /// `\u{…}` decoded; interpolations skipped). Comments are not literals.
+    static func stringLiterals(in text: String) -> [(line: Int, scalars: [Unicode.Scalar])] {
+        let chars = Array(text.unicodeScalars)
+        var out: [(line: Int, scalars: [Unicode.Scalar])] = []
+        var i = 0
+        var line = 1
+        func at(_ k: Int) -> Unicode.Scalar? { k < chars.count ? chars[k] : nil }
+        func starts(_ s: String, _ k: Int) -> Bool {
+            for (n, c) in s.unicodeScalars.enumerated() where at(k + n) != c { return false }
+            return true
+        }
+        while i < chars.count {
+            let c = chars[i]
+            if c == "\n" { line += 1; i += 1; continue }
+            if starts("//", i) {
+                while i < chars.count, chars[i] != "\n" { i += 1 }
+                continue
+            }
+            if starts("/*", i) {
+                i += 2
+                while i < chars.count, !starts("*/", i) { if chars[i] == "\n" { line += 1 }; i += 1 }
+                i += 2
+                continue
+            }
+            // Opening delimiter: n × "#", then """ or ".
+            var hashes = 0
+            while at(i + hashes) == "#" { hashes += 1 }
+            guard at(i + hashes) == "\"" else { i += max(hashes, 1); continue }
+            let multi = starts("\"\"\"", i + hashes)
+            let close = (multi ? "\"\"\"" : "\"") + String(repeating: "#", count: hashes)
+            let escape = "\\" + String(repeating: "#", count: hashes)
+            let startLine = line
+            var k = i + hashes + (multi ? 3 : 1)
+            var scalars: [Unicode.Scalar] = []
+            while k < chars.count, !starts(close, k) {
+                if chars[k] == "\n" { line += 1 }
+                if starts(escape, k) {
+                    let e = k + escape.unicodeScalars.count
+                    if at(e) == "u", at(e + 1) == "{" {
+                        var hex = ""
+                        var h = e + 2
+                        while let d = at(h), d != "}" { hex.unicodeScalars.append(d); h += 1 }
+                        if let v = UInt32(hex, radix: 16), let u = Unicode.Scalar(v) { scalars.append(u) }
+                        k = h + 1
+                        continue
+                    }
+                    if at(e) == "(" {
+                        var depth = 1
+                        var h = e + 1
+                        while h < chars.count, depth > 0 {
+                            if chars[h] == "(" { depth += 1 } else if chars[h] == ")" { depth -= 1 }
+                            if chars[h] == "\n" { line += 1 }
+                            h += 1
+                        }
+                        k = h
+                        continue
+                    }
+                    if let next = at(e) { scalars.append(next) }
+                    k = e + 1
+                    continue
+                }
+                scalars.append(chars[k])
+                k += 1
+            }
+            out.append((line: startLine, scalars: scalars))
+            i = k + close.unicodeScalars.count
+        }
+        return out
     }
 }

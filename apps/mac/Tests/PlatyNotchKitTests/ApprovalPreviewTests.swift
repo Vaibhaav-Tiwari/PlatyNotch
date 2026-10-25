@@ -17,7 +17,7 @@ final class ApprovalPreviewTests: DefaultsTestCase {
                                                             "new_string": .string("a\nB\nc")]))
         XCTAssertEqual(p.path, "/r/a.txt")
         XCTAssertNil(p.command)
-        XCTAssertEqual(p.diff, [DiffLine(kind: .hunk, text: "@@ -1,3 +1,3 @@"), DiffLine(kind: .context, text: "a"),
+        XCTAssertEqual(p.diff, [DiffLine(kind: .hunk, text: "Edit"), DiffLine(kind: .context, text: "a"),
                                 DiffLine(kind: .removed, text: "b"), DiffLine(kind: .added, text: "B"),
                                 DiffLine(kind: .context, text: "c")])
         XCTAssertFalse(p.hasMore)
@@ -51,7 +51,8 @@ final class ApprovalPreviewTests: DefaultsTestCase {
             .object(["old_string": .string("x\ny"), "new_string": .string("x\nz")]),
         ])
         let p = ApprovalPreview(approval: approval("MultiEdit", ["file_path": .string("/r/m.swift"), "edits": edits]))
-        XCTAssertEqual(p.diff.filter { $0.kind == .hunk }.count, 2, "one hunk group per edit")
+        XCTAssertEqual(p.diff.filter { $0.kind == .hunk }.map(\.text), ["Edit 1 of 2", "Edit 2 of 2"],
+                       "one labelled group per edit: snippet line numbers would mislead")
         XCTAssertEqual(p.diff.filter { $0.kind == .added }.map(\.text), ["ONE", "z"])
         XCTAssertEqual(p.diff.filter { $0.kind == .removed }.map(\.text), ["one", "y"])
     }
@@ -186,5 +187,28 @@ final class ApprovalPreviewTests: DefaultsTestCase {
         cache.keep(ids: [])
         _ = cache.preview(for: a)
         XCTAssertEqual(cache.buildCount, 3, "dropped when no longer pending")
+    }
+
+    /// Fix round 1, M3: replace_all is said; far-apart changes in one snippet get "⋯".
+    func testEditLabelsSayReplaceAllAndSplit() {
+        let all = ApprovalPreview(approval: approval("Edit", ["old_string": .string("a"), "new_string": .string("b"),
+                                                              "replace_all": .bool(true)]))
+        XCTAssertEqual(all.diff.first?.text, "Edit · Replaces every match")
+        let old = (1...20).map { "l\($0)" }
+        var new = old
+        new[1] = "X"
+        new[17] = "Y"
+        let split = ApprovalPreview(approval: approval("Edit", ["old_string": .string(old.joined(separator: "\n")),
+                                                                "new_string": .string(new.joined(separator: "\n"))]))
+        XCTAssertEqual(split.diff.filter { $0.kind == .hunk }.map(\.text), ["Edit", "⋯"])
+        let multi = ApprovalPreview(approval: approval("MultiEdit", ["edits": .array([
+            .object(["old_string": .string("a"), "new_string": .string("b"), "replace_all": .bool(true)]),
+            .object(["old_string": .string("c"), "new_string": .string("d")]),
+        ])]))
+        XCTAssertEqual(multi.diff.filter { $0.kind == .hunk }.map(\.text),
+                       ["Edit 1 of 2 · Replaces every match", "Edit 2 of 2"])
+        // Write is the whole file: its real line numbers stay.
+        XCTAssertEqual(ApprovalPreview(approval: approval("Write", ["content": .string("x")])).diff.first?.text,
+                       "@@ -0,0 +1,1 @@")
     }
 }

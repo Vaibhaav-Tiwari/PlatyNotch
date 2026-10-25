@@ -94,5 +94,6 @@ struct UsageChip: View {
         .help(hint)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Claude limits not available yet")
+        .accessibilityHint(hint)
     }
 }

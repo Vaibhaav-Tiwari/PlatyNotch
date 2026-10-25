@@ -116,7 +116,7 @@ struct ApprovalDiffBox: View {
         case .added: "Added: \(line.text)"
         case .removed: "Removed: \(line.text)"
         case .context: line.text
-        case .hunk: "Lines \(line.text)"
+        case .hunk: line.text
         }
     }
 }

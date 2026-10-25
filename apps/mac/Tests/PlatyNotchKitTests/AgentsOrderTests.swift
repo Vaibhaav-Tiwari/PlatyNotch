@@ -105,4 +105,17 @@ final class AgentsOrderTests: DefaultsTestCase {
         XCTAssertEqual(PanelDestination.shown(agentsVisible: false), [.now, .library])
         XCTAssertEqual(PanelDestination.shown(agentsVisible: true), [.now, .agents, .library])
     }
+
+    /// Fix round 1, M4: "Finished · n m ago" counts from the logged finish when known.
+    func testFinishedCountsFromTheLoggedFinish() {
+        let log = finishLog(["a"], at: t0.addingTimeInterval(60))
+        let now = t0.addingTimeInterval(6 * 60)
+        XCTAssertEqual(log.finishedAt("a", now: now), t0.addingTimeInterval(60))
+        XCTAssertNil(log.finishedAt("b", now: now))
+        XCTAssertNil(log.finishedAt("a", now: t0.addingTimeInterval(60 + 600)), "outside the window")
+        let s = session("a", .idle, updated: 300)   // a later update (e.g. a title change)
+        XCTAssertEqual(SessionStatusLine.text(s, attention: .finished, now: now, finishedAt: log.finishedAt("a", now: now)),
+                       "Finished · 5 m ago")
+        XCTAssertEqual(SessionStatusLine.text(s, attention: .finished, now: now), "Finished · 1 m ago")
+    }
 }

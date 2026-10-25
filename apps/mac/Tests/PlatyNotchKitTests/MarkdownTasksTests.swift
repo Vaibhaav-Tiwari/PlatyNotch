@@ -199,4 +199,28 @@ final class MarkdownTasksTests: DefaultsTestCase {
         XCTAssertEqual(MarkdownTasks.stripMarkers("a ⏳ 2026-01-01 b ✅ 2026-01-02"), "a b")
         XCTAssertEqual(MarkdownTasks.stripMarkers("📅 2026-01-01"), "📅 2026-01-01")
     }
+
+    /// Fix round 1, M6: what the UI shows of a task has none of the Tasks plugin's markers
+    /// (no emoji in the UI); the parsed `text` and the file stay as they are.
+    func testDisplayTextStripsEveryMarker() {
+        let cases: [(String, String)] = [
+            ("Pay rent 📅 2026-10-30", "Pay rent"),
+            ("Water plants 🔁 every week when done 📅 2026-10-30", "Water plants"),
+            ("Ship it ⏫ ⏳ 2026-10-28 🛫 2026-10-27", "Ship it"),
+            ("Low 🔽 and lower ⏬", "Low and lower"),
+            ("Medium 🔼 #work", "Medium #work"),
+            ("Done ✅ 2026-10-20 ➕ 2026-10-01", "Done"),
+            ("Dropped ❌ 2026-10-21", "Dropped"),
+            ("Selector 📅\u{FE0F} 2026-10-30", "Selector"),
+            ("📅 2026-01-01", "Untitled task"),
+            ("plain text", "plain text"),
+        ]
+        for (raw, shown) in cases {
+            XCTAssertEqual(MarkdownTasks.displayText(raw), shown, raw)
+        }
+        let task = MarkdownTasks.parse("- [ ] Water plants 🔁 every week 📅 2026-10-30\n", file: "f")[0]
+        XCTAssertEqual(task.title, "Water plants")
+        XCTAssertTrue(task.text.contains("🔁"), "parsing keeps the markers")
+        XCTAssertTrue(task.isRecurring)
+    }
 }

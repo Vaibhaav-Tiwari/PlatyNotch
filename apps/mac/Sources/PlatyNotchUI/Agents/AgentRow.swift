@@ -9,6 +9,8 @@ struct AgentRow: View {
     let session: Session
     let attention: AgentAttention
     let now: Date
+    /// When the session finished (`AgentFinishLog.finishedAt`), for "Finished · n m ago".
+    var finishedAt: Date? = nil
     let onOpenTerminal: (Session) -> Void
 
     var body: some View {
@@ -64,7 +66,7 @@ struct AgentRow: View {
     private var project: String { Self.project(session) }
 
     private var status: String {
-        SessionStatusLine.text(session, attention: attention, now: now)
+        SessionStatusLine.text(session, attention: attention, now: now, finishedAt: finishedAt)
     }
 
     /// The last action, unless the status line already says it ("Edit · 4 m" over "Edit").
@@ -79,8 +81,8 @@ struct AgentRow: View {
     }
 
     /// The row's visible text, top to bottom then the action (tests).
-    static func texts(_ s: Session, attention: AgentAttention, now: Date) -> [String] {
-        var out: [String] = [project(s), SessionStatusLine.text(s, attention: attention, now: now)]
+    static func texts(_ s: Session, attention: AgentAttention, now: Date, finishedAt: Date? = nil) -> [String] {
+        var out: [String] = [project(s), SessionStatusLine.text(s, attention: attention, now: now, finishedAt: finishedAt)]
         if let last = lastLine(s, attention: attention) { out.append(last) }
         out.append(AgentRowAction(attention).title)
         return out

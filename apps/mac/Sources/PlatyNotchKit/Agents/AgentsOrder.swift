@@ -16,14 +16,15 @@ public enum AgentsOrder {
 /// The words under a session's project name in the Agents list.
 public enum SessionStatusLine {
     /// "Waiting for approval", "Running tests · 4 m", "Finished · 3 m ago", "Idle", …
-    /// Working counts from `startedAt`; finished from `updatedAt` (the session's last
-    /// change is its finish). A clock that went backwards shows 0, never a negative time.
-    public static func text(_ s: Session, attention: AgentAttention, now: Date) -> String {
+    /// Working counts from `startedAt`; finished from `finishedAt` (`AgentFinishLog`) when
+    /// known, else `updatedAt` (the session's last change is its finish). A clock that went
+    /// backwards shows 0, never a negative time.
+    public static func text(_ s: Session, attention: AgentAttention, now: Date, finishedAt: Date? = nil) -> String {
         switch attention {
         case .needsYou: return s.state == .blocked ? "Waiting for approval" : "Needs your input"
         case .errored: return "Stopped with an error"
         case .working: return "\(s.title ?? s.tool ?? "Working") · \(minutes(from: s.startedAt, to: now)) m"
-        case .finished: return "Finished · \(minutes(from: s.updatedAt, to: now)) m ago"
+        case .finished: return "Finished · \(minutes(from: finishedAt ?? s.updatedAt, to: now)) m ago"
         case .idle: return "Idle"
         case .exited: return "Ended"
         }

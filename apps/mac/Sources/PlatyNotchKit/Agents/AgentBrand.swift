@@ -20,7 +20,7 @@ public struct AgentBrand: Hashable, Sendable {
         case "claude-code", "claude":
             key = "claude"; monogram = "Cl"; appBundleIDs = ["com.anthropic.claudefordesktop"]
         case "codex":
-            key = "codex"; monogram = "Cx"; appBundleIDs = ["com.openai.codex", "com.openai.chat"]
+            key = "codex"; monogram = "Cx"; appBundleIDs = ["com.openai.codex"]   // never ChatGPT's icon
         case "cursor", "cursor-agent":
             key = "cursor"; monogram = "Cu"; appBundleIDs = ["com.todesktop.230313mzl4w4u92"]
         case "gemini", "gemini-cli":
