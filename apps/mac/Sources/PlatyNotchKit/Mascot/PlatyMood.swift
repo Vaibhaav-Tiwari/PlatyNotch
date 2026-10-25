@@ -91,16 +91,17 @@ public enum PlatyMoodResolver {
     /// `.workingToMusic`); music playing → dancing; night → sleepy;
     /// else idle. `.thinking` is reserved for the voice assistant.
     ///
-    /// `sessions` are the store's session states as they are (AgentsLive, which kept only
-    /// active and blocked, was removed in Task 13).
+    /// `sessions` are the store's session states as they are, read through the one session
+    /// classifier (`AgentAttention`).
     public static func mood(sessions: [SessionState], approvalsPending: Int, musicPlaying: Bool, focusActive: Bool,
                             justFinished: Bool, hour: Int, celebrating: Bool = false) -> PlatyMood {
-        let needsYou = sessions.contains { $0 == .blocked || $0 == .waitingInput }
+        let attention = sessions.map(AgentAttention.init(state:))
+        let needsYou = attention.contains(.needsYou)
         if approvalsPending > 0 || needsYou { return .waiting }
         if celebrating { return .celebrating }
         if justFinished { return .done }
         if focusActive { return .focused }
-        if sessions.contains(.active) { return musicPlaying ? .workingToMusic : .working }
+        if attention.contains(.working) { return musicPlaying ? .workingToMusic : .working }
         if musicPlaying { return .dancing }
         if isNight(hour: hour) { return .sleepy }
         return .idle
@@ -108,19 +109,17 @@ public enum PlatyMoodResolver {
 }
 
 /// Spots a session that just finished: one that was active is now idle or exited.
+/// A thin wrapper over `SessionTransitions`, the one transition tracker.
 public struct PlatyFinishWatch: Sendable {
-    private var last: [String: SessionState]?
+    private var transitions = SessionTransitions()
 
     public init() {}
 
     /// Feeds the current states by session key; true when one went from active to idle
     /// or exited since the last call. The first call only takes a look.
     public mutating func update(_ states: [String: SessionState]) -> Bool {
-        defer { last = states }
-        guard let last else { return false }
-        return states.contains { key, state in
-            (state == .idle || state == .exited) && last[key] == .active
-        }
+        let pairs: [(String, SessionState)] = states.sorted { $0.key < $1.key }.map { ($0.key, $0.value) }
+        return !transitions.update(states: pairs).finished.isEmpty
     }
 }
 

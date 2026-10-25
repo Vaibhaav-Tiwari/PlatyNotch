@@ -106,12 +106,12 @@ public struct PillDots: Sendable, Equatable {
     public let overflow: Int
 
     public init(sessions: [Session], limit: Int = PillDots.limit) {
-        let rank: [AgentTone: Int] = [.attention: 0, .active: 1, .idle: 2]
+        // Ranked by the one session classifier: needs you, working, idle; exited left out.
         let live = sessions.enumerated()
             .compactMap { i, s -> (Int, Int, Dot)? in
-                let tone = AgentTone(s.state)
-                guard let r = rank[tone] else { return nil }
-                return (r, i, Dot(key: s.key, tone: tone))
+                let attention = AgentAttention(state: s.state)
+                guard attention != .exited else { return nil }
+                return (attention.rawValue, i, Dot(key: s.key, tone: AgentTone(s.state)))
             }
             .sorted { ($0.0, $0.1) < ($1.0, $1.1) }
             .map(\.2)
