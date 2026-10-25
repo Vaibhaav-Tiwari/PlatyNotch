@@ -106,20 +106,27 @@ struct NowView: View {
         }
     }
 
-    /// Platy at 96 pt beside the most urgent session (Task 10 adds the primary action).
+    /// Platy at 96 pt beside the most urgent session; its action opens that session's terminal.
     private func agentsHero(_ agents: AgentsLive) -> some View {
-        HStack(spacing: Space.l) {
-            if let platyMood { PlatyView(mood: platyMood, size: 96) }
-            VStack(alignment: .leading, spacing: Space.xs) {
-                Text(verbatim: agents.title).font(DS.font(TypeScale.title)).lineLimit(1)
-                if let subtitle = agents.subtitle {
-                    Text(verbatim: subtitle).font(DS.font(TypeScale.body)).foregroundStyle(.secondary).lineLimit(1)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        AgentsHero(agents: agents, action: AgentsHero.action(for: agents), mood: platyMood) {
+            if let lead = leadSession() { onOpenTerminal(lead) } else { onOpenAgents() }
         }
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onOpenAgents)
+    }
+
+    /// The most urgent session (the agents item's title): by attention, then the oldest.
+    private func leadSession() -> Session? {
+        let now = Date()
+        let log: AgentFinishLog = today.agentActivity.log
+        var best: (session: Session, attention: AgentAttention)?
+        for s in store.sessions {
+            let a: AgentAttention = AgentAttention.of(s, log: log, now: now)
+            guard a != .exited else { continue }
+            guard let current = best else { best = (s, a); continue }
+            if a < current.attention || (a == current.attention && s.startedAt < current.session.startedAt) {
+                best = (s, a)
+            }
+        }
+        return best?.session
     }
 
     private func keyline(_ item: LiveItem) -> Color? {
@@ -131,6 +138,10 @@ struct NowView: View {
             default: return DS.dynamicColor(.working, alpha: 0.7)
             }
         case .activity(let a):
+            // Music takes the album art's colour, like a Live Activity's tinted keyline.
+            if a.widgetID == MusicWidget.widgetID, let tint = today.nowPlaying.artworkTint {
+                return tint.opacity(0.8)
+            }
             return a.tint.keyline
         }
     }

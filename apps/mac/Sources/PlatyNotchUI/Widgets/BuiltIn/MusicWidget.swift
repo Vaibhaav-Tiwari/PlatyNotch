@@ -58,6 +58,9 @@ final class MusicWidget: NotchWidget {
         visualiser.setPlaying(false)
     }
 
+    /// Artwork, track and artist, and Play / Pause (the keyline takes the artwork's tint).
+    func heroView() -> AnyView? { AnyView(MusicHero(nowPlaying: nowPlaying)) }
+
     func tileView() -> AnyView {
         let nowPlaying = self.nowPlaying
         return AnyView(MusicTile(nowPlaying: nowPlaying, visualiser: visualiser)
@@ -95,5 +98,46 @@ struct MusicSettingsView: View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }
+    }
+}
+
+/// The music hero: artwork (or a note), the track, the artist and one Play / Pause.
+struct MusicHero: View {
+    let nowPlaying: NowPlaying
+
+    var body: some View {
+        let playing: Bool = nowPlaying.isPlaying
+        let title: String = HeroPrimary.title(rank: .music, playing: playing, hasLink: false) ?? "Play"
+        let np = nowPlaying
+        HeroLayout(title: nowPlaying.title ?? "Music", subtitle: subtitle,
+                   action: HeroAction(title: title, systemImage: playing ? "pause.fill" : "play.fill",
+                                      run: { np.playPause() })) {
+            artwork
+        } value: {
+            Label(playing ? "Playing" : "Paused", systemImage: playing ? "waveform" : "pause.circle")
+                .font(DS.font(TypeScale.caption))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var subtitle: String? {
+        [nowPlaying.artist, nowPlaying.appName].compactMap { $0 }.first
+    }
+
+    private var artwork: some View {
+        let side: CGFloat = 96
+        return Group {
+            if let image = nowPlaying.artwork {
+                Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
+            } else {
+                ZStack {
+                    Color.secondary.opacity(0.15)
+                    DS.icon("music.note", size: IconSize.hero).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(width: side, height: side)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+        .accessibilityHidden(true)
     }
 }

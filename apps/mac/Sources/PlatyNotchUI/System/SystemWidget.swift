@@ -624,6 +624,11 @@ final class SystemWidget: NotchWidget {
     /// "Battery 82%".
     func glanceView() -> AnyView? { AnyView(SystemGlance(widget: self)) }
 
+    /// Keep-awake, a download or low battery: no primary control (spec 6.4).
+    func heroView() -> AnyView? {
+        AnyView(TopActivityHero(activities: { [weak self] in self?.liveActivities ?? [] }, action: { _ in nil }))
+    }
+
     func tileView() -> AnyView { AnyView(SystemTile(widget: self)) }
 
     func settingsView() -> AnyView? { AnyView(SystemSettings(widget: self)) }

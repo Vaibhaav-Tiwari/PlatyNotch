@@ -216,6 +216,11 @@ final class MirrorWidget: NotchWidget {
                              title: "Mirror", subtitle: "Camera on")]
     }
 
+    /// "Mirror · Camera on" (the preview stays in its tool): no primary control.
+    func heroView() -> AnyView? {
+        AnyView(TopActivityHero(activities: { [weak self] in self?.liveActivities ?? [] }, action: { _ in nil }))
+    }
+
     func tileView() -> AnyView { AnyView(MirrorTileView(widget: self)) }
 
     func settingsView() -> AnyView? { AnyView(MirrorSettingsView()) }

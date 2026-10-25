@@ -86,6 +86,9 @@ final class MeetingWidget: NotchWidget {
 
     var hasContent: Bool { glanceMeeting != nil }
 
+    /// The next meeting: its title, start time, a countdown and Join when it has a link.
+    func heroView() -> AnyView? { AnyView(MeetingHero(widget: self)) }
+
     /// "10:30 Design".
     func glanceView() -> AnyView? {
         AnyView(MeetingGlance(widget: self))
@@ -239,5 +242,32 @@ private struct MeetingGlance: View {
         let m = widget.glanceMeeting
         GlanceChip(systemImage: "calendar", value: m.map { MeetingWidget.time($0.start) } ?? "—",
                    label: m?.title ?? "No meetings")
+    }
+}
+
+/// The meeting hero: the next meeting within 10 minutes (its live item).
+private struct MeetingHero: View {
+    let widget: MeetingWidget
+
+    var body: some View {
+        if let next = widget.calendar.access == .granted ? MeetingTimeline.next(widget.calendar.meetings, now: widget.now)
+                                                          : nil {
+            HeroLayout(title: next.title, subtitle: "Starts at \(MeetingWidget.time(next.start))",
+                       action: join(next)) {
+                HeroGlyph(glyph: .ring(progress: MeetingReminderSchedule.progress(start: next.start, now: widget.now)),
+                          tint: .warning)
+            } value: {
+                HeroClock(countdownTo: next.start, countUpFrom: nil)
+            }
+        }
+    }
+
+    private func join(_ m: CalendarMeeting) -> HeroAction? {
+        let hasLink: Bool = m.joinURL != nil
+        let rank: LiveRank = m.start.timeIntervalSince(widget.now) <= LiveRank.imminentWindow ? .meetingImminent : .meetingSoon
+        guard let title = HeroPrimary.title(rank: rank, playing: false, hasLink: hasLink), let url = m.joinURL else {
+            return nil
+        }
+        return HeroAction(title: title, systemImage: "video.fill", run: { NSWorkspace.shared.open(url) })
     }
 }

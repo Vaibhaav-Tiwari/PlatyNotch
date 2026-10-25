@@ -166,6 +166,11 @@ final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost, FileAct
         return out
     }
 
+    /// A file action in progress: its ring and title, no primary control.
+    func heroView() -> AnyView? {
+        AnyView(TopActivityHero(activities: { [weak self] in self?.liveActivities ?? [] }, action: { _ in nil }))
+    }
+
     func tileView() -> AnyView { AnyView(ShelfTile(host: self)) }
     func dropZoneView() -> AnyView? { isRunning ? AnyView(ShelfDropZone(shelf: self)) : nil }
     func dropTarget() -> PanelDropTarget? { isRunning ? drop : nil }
