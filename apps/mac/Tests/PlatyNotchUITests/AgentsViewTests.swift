@@ -153,4 +153,11 @@ final class AgentsViewTests: DefaultsTestCase {
         XCTAssertEqual(AgentRow.texts(ask, attention: .needsYou, now: t0),
                        ["q", "Needs your input", "AskUserQuestion", "Answer"])
     }
+
+    /// Approvals above leave little room: the header steps aside so a row still shows.
+    func testHeaderStepsAsideWhenTight() {
+        XCTAssertTrue(AgentsView.showsHeader(height: 300))
+        XCTAssertFalse(AgentsView.showsHeader(height: 80))
+        XCTAssertGreaterThanOrEqual(AgentsView.headerRoom, AgentRow.height)
+    }
 }

@@ -411,7 +411,70 @@ enum AgentsRenders {
             ("agents-twelve", NowRenders.panel(rig(twelve()), tab: BuiltinTab.agents), true),
             ("agents-empty", NowRenders.panel(rig([]), tab: BuiltinTab.agents), true),
             ("agents-app-icon", appIcon(), true),
+            ("approval-card-command", NowRenders.panel(approvals([bashApproval()]), tab: BuiltinTab.agents), true),
+            ("approval-card-diff", NowRenders.panel(approvals([editApproval("e1")]), tab: BuiltinTab.agents), true),
+            ("approval-cards-diff-3", NowRenders.panel(approvals([editApproval("e1"), writeApproval(),
+                                                                  editApproval("e3")]), tab: BuiltinTab.agents), true),
+            ("peek-show-changes", approvalPeek(approvals([editApproval("e1"), bashApproval()])), true),
         ]
+    }
+
+    // MARK: Approvals (Task 19)
+
+    static func approvals(_ list: [Approval]) -> NowRenders.Rig {
+        let r = rig(one())
+        r.store.apply(.connected)
+        for a in list { try? r.store.apply(Envelope.make(.approvalAdded, a)) }
+        return r
+    }
+
+    private static func make(_ id: String, tool: String, summary: String, input: [String: JSONValue],
+                             age: TimeInterval) -> Approval {
+        let created = Date().addingTimeInterval(-age)
+        return Approval(id: id, sessionKey: "a", agent: "claude-code", agentName: "Claude Code", project: "platynotch",
+                        tool: tool, summary: summary, input: RawJSON(.object(input)), createdAt: created,
+                        expiresAt: created.addingTimeInterval(300))
+    }
+
+    /// A long command with a zero-width space (the card says "Contains hidden characters").
+    static func bashApproval() -> Approval {
+        let command = "rm -rf ./build\u{200B} && swift build -c release \\\n  && swift test --filter ApprovalPreviewCardTests --parallel"
+        return make("bash", tool: "Bash", summary: "rm -rf ./build && swift build …",
+                    input: ["command": .string(command), "description": .string("Clean build and test")], age: 30)
+    }
+
+    static func editApproval(_ id: String) -> Approval {
+        let old = (1...30).map { "    let value\($0) = compute(\($0))" }.joined(separator: "\n")
+        var lines = old.components(separatedBy: "\n")
+        lines[3] = "    let value4 = compute(4) // checked"
+        lines[4] = "    // value5 removed"
+        lines.insert("    let total = values.reduce(0, +)", at: 10)
+        lines[20] = "    let value20 = try compute(20, strict: true, reportingProgressTo: progressHandler)"
+        return make(id, tool: "Edit", summary: "Edit Sources/PlatyNotchUI/Agents/AgentsView.swift",
+                    input: ["file_path": .string("/Users/me/src/platynotch/apps/mac/Sources/PlatyNotchUI/Agents/AgentsView.swift"),
+                            "old_string": .string(old), "new_string": .string(lines.joined(separator: "\n"))],
+                    age: id == "e1" ? 60 : 10)
+    }
+
+    static func writeApproval() -> Approval {
+        let content = "# Notes\n\n- one\n- two\n- three\n- four\n- five"
+        return make("write", tool: "Write", summary: "Write NOTES.md",
+                    input: ["file_path": .string("/Users/me/src/platynotch/NOTES.md"), "content": .string(content)], age: 40)
+    }
+
+    /// The approval peek beside the 38 pt camera housing, as `PanelRootView` lays it out.
+    static func approvalPeek(_ r: NowRenders.Rig) -> AnyView {
+        let layout = NowRenders.layout
+        let rect: CGRect = layout.contentRect(for: .peek(.approval))
+        let top: CGFloat = layout.contentInset(for: .peek(.approval))
+        let view = ApprovalPeek(store: r.store, responder: ApprovalResponder(client: r.client), arming: ApprovalArming(),
+                                onExpand: {}, onDecide: { _, _ in }, onOpenTerminal: { _ in })
+            .padding(EdgeInsets(top: top, leading: 12, bottom: 10, trailing: 12))
+            .frame(width: rect.width, height: rect.height, alignment: .top)
+            .background(alignment: .top) { Color(PanelPalette.darkSurface).frame(height: layout.anchor.height) }
+            .clipped()
+            .environment(\.panelTicking, false)
+        return AnyView(view)
     }
 
     static let start = Date().addingTimeInterval(-4 * 60 - 20)

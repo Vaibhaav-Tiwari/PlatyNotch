@@ -279,21 +279,32 @@ struct ApprovalPeek: View {
     let onDecide: (Approval, ApprovalBehavior) -> Void
     let onOpenTerminal: (Session) -> Void
 
+    /// The oldest approval's card: today's summary (no preview: the peek's size and
+    /// arming do not change), plus "Show changes" when the payload has a diff (spec 6.8).
+    func firstCard() -> ApprovalCard? {
+        guard let first = ApprovalFormat.ordered(store.approvals).first else { return nil }
+        return ApprovalCard(approval: first,
+                            session: store.sessions.first { $0.key == first.sessionKey },
+                            canAnswer: store.canAnswerApprovals,
+                            phase: responder.phase(for: first.id),
+                            arming: arming,
+                            maxLines: 6,
+                            shortcuts: true,
+                            onExpand: onExpand,
+                            showChanges: Self.showsChanges(first),
+                            onDecide: { onDecide(first, $0) },
+                            onOpenTerminal: onOpenTerminal)
+    }
+
+    /// The payload carries a diff to show in the open panel.
+    static func showsChanges(_ approval: Approval) -> Bool {
+        !ApprovalPreview(approval: approval).diff.isEmpty
+    }
+
     var body: some View {
         let ordered = ApprovalFormat.ordered(store.approvals)
         VStack(alignment: .leading, spacing: 4) {
-            if let first = ordered.first {
-                ApprovalCard(approval: first,
-                             session: store.sessions.first { $0.key == first.sessionKey },
-                             canAnswer: store.canAnswerApprovals,
-                             phase: responder.phase(for: first.id),
-                             arming: arming,
-                             maxLines: 6,
-                             shortcuts: true,
-                             onExpand: onExpand,
-                             onDecide: { onDecide(first, $0) },
-                             onOpenTerminal: onOpenTerminal)
-            }
+            if let card = firstCard() { card }
             if ordered.count > 1 {
                 ApprovalRow(approval: ordered[1], more: ordered.count - 2, onOpen: onExpand)
             }

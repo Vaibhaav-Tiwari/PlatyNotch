@@ -47,6 +47,8 @@ struct ExpandedPanel: View {
             if !store.approvals.isEmpty {
                 approvals
                     .frame(maxHeight: 240, alignment: .top)
+                    // Its own height up to 240, so the destination below keeps the rest.
+                    .fixedSize(horizontal: false, vertical: true)
                     .layoutPriority(1)
             }
             (tabs.first { $0.id == selectedTab } ?? tabs[0]).view
@@ -73,6 +75,8 @@ struct ExpandedPanel: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Theme.color(.attention))
             }
+            // At its own height when it fits (the destination gets the rest), else
+            // scrolling inside the 240 pt region. Cards never move: they sit at the top.
             ViewThatFits(in: .vertical) {
                 list
                 ScrollView(.vertical) { list }

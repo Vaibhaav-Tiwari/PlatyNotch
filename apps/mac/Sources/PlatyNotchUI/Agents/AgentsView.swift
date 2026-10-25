@@ -30,9 +30,22 @@ struct AgentsView: View {
         AgentsOrder.sorted(sessions, log: log, now: now)
     }
 
+    /// Below this height (approvals above take the room) the header steps aside so at
+    /// least one row shows; the usage chips come back when there is room.
+    static let headerRoom: CGFloat = 44 + Space.s + AgentRow.height
+
+    static func showsHeader(height: CGFloat) -> Bool { height >= headerRoom }
+
     var body: some View {
+        GeometryReader { g in
+            content(header: Self.showsHeader(height: g.size.height))
+                .frame(width: g.size.width, height: g.size.height, alignment: .top)
+        }
+    }
+
+    private func content(header showsHeader: Bool) -> some View {
         VStack(alignment: .leading, spacing: Space.s) {
-            header
+            if showsHeader { header }
             if sessions.isEmpty {
                 AgentsEmptyState(onConnect: onConnect)
             } else if let fixedNow {
