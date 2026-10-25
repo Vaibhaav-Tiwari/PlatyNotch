@@ -18,6 +18,7 @@ public enum NowMode: Equatable, Sendable {
 }
 
 /// The compact "Now: Design in 8 min · Music" line: the top two of the deck, in rank order.
+/// Only a meeting gets " in N min" (a timer's countdown is when it ends, not starts).
 public enum NowSummaryLine {
     /// Within this a countdown gets " in N min".
     public static let countdownWindow: TimeInterval = 60 * 60
@@ -25,7 +26,8 @@ public enum NowSummaryLine {
     public static func text(_ deck: [LiveItem], now: Date) -> String? {
         guard !deck.isEmpty else { return nil }
         let parts: [String] = deck.prefix(2).map { item in
-            guard let to = item.countdownTo else { return item.title }
+            let meeting: Bool = item.rank == .meetingImminent || item.rank == .meetingSoon
+            guard meeting, let to = item.countdownTo else { return item.title }
             let left: TimeInterval = to.timeIntervalSince(now)
             guard left > 0, left <= countdownWindow else { return item.title }
             let minutes = Int((left / 60).rounded(.up))

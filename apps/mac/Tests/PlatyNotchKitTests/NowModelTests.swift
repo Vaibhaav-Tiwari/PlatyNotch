@@ -126,6 +126,10 @@ final class NowModelTests: DefaultsTestCase {
         let partial = HeroDeck.items(ranked([act("meeting", LivePriority.meetingSoon, widget: "meeting", title: "Design",
                                                  countdown: now.addingTimeInterval(450))]))
         XCTAssertEqual(NowSummaryLine.text(partial, now: now), "Now: Design in 8 min")
+        // A timer's countdown is when it ends: no "in N min".
+        let timer = HeroDeck.items(ranked([act("t", LivePriority.timerRunning, widget: "time", title: "Tea",
+                                               countdown: now.addingTimeInterval(300))]))
+        XCTAssertEqual(NowSummaryLine.text(timer, now: now), "Now: Tea")
     }
 
     func testQuietLineHidesZeroAndChips() {
