@@ -6,10 +6,13 @@ import SwiftUI
 /// above) the grid scrolls, fading at the edge that has more.
 struct LibraryView: View {
     static let columnCount = 4
-    static let spacing: CGFloat = Space.s
+    /// Between tiles: a little more air than the 8 pt grid elsewhere.
+    static let spacing: CGFloat = 10
     /// The open panel's content width less the gaps, in four equal columns.
-    static let tileWidth: CGFloat = (PanelLayout.expandedSize.width - 2 * Space.panelMargin - 3 * Space.s) / 4
-    static let tileHeight: CGFloat = 84
+    static let tileWidth: CGFloat = (PanelLayout.expandedSize.width - 2 * Space.panelMargin - 3 * spacing) / 4
+    static let tileHeight: CGFloat = 80
+    /// The icon's rounded-square well.
+    static let iconWell: CGFloat = 28
     /// How far the edge fade reaches.
     static let fade: CGFloat = 24
 
@@ -134,7 +137,7 @@ enum LibraryCatalog {
             out.append(LibraryTool(item: LibraryItem(id: LibraryTools.plugin(tab.id), title: tab.title,
                                                      systemImage: tab.systemImage, liveLine: fallbackLine,
                                                      isSetUp: true),
-                                   tile: nil, view: { tab.view }))
+                                   tile: nil, view: { pluginView(tab) }))
         }
         return out
     }
@@ -154,7 +157,7 @@ enum LibraryCatalog {
         if let tab = extraTabs.first(where: { LibraryTools.plugin($0.id) == id }) {
             return LibraryTool(item: LibraryItem(id: id, title: tab.title, systemImage: tab.systemImage,
                                                  liveLine: fallbackLine, isSetUp: true),
-                               tile: nil, view: { tab.view })
+                               tile: nil, view: { pluginView(tab) })
         }
         let gamesID: String = id == LibraryTools.chase ? GamesWidget.widgetID : id
         guard let w = widgets.toolWidgets.first(where: { $0.id == gamesID }) else { return nil }
@@ -180,8 +183,16 @@ enum LibraryCatalog {
         let lines: LibraryLiveLine? = w as? LibraryLiveLine
         // Never empty: the widget's own line, else its top live item, else a calm word.
         let line: String = lines?.libraryLine ?? top?.title ?? Self.fallbackLine
+        // Live: something beyond the ambient band (playing, focusing, a timer running).
+        let now: Date = Date()
+        let live: Bool = w.liveActivities.contains { LiveRank(activity: $0, now: now) != .ambient }
         return LibraryItem(id: w.id, title: lines?.libraryTitle ?? w.title, systemImage: w.systemImage, liveLine: line,
-                           isSetUp: !w.needsSetup, setupTitle: lines?.setupTitle, isLive: top != nil)
+                           isSetUp: !w.needsSetup, setupTitle: lines?.setupTitle, isLive: live)
+    }
+
+    /// A plugin tab full-panel: centred in the room while it is shorter.
+    static func pluginView(_ tab: PanelTab) -> AnyView {
+        AnyView(ToolPage { tab.view })
     }
 
     /// Platy Chase keeps its own entry (spec 6.10): the games tool with Chase picked.

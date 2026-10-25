@@ -451,6 +451,18 @@ struct ClipCopiedPeek: View {
 
 /// One history row (tile and picker).
 struct ClipRow: View {
+    /// "Just now", "5 min ago", "2 hr ago", "3 days ago".
+    static func ago(_ date: Date, now: Date) -> String {
+        let seconds: Double = max(0, now.timeIntervalSince(date))
+        let minutes = Int(seconds / 60)
+        if minutes < 1 { return "Just now" }
+        if minutes < 60 { return "\(minutes) min ago" }
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours) hr ago" }
+        let days = hours / 24
+        return days == 1 ? "1 day ago" : "\(days) days ago"
+    }
+
     let item: ClipItem
     let imageURL: URL?
     var compact = false
@@ -464,9 +476,12 @@ struct ClipRow: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 if !compact {
-                    Text(item.copiedAt, style: .relative)
-                        .font(DS.font(TypeScale.caption))
-                        .foregroundStyle(.secondary)
+                    // "5 min ago", once a minute (never "5 min, 0 secs").
+                    TimelineView(.periodic(from: .now, by: 60)) { ctx in
+                        Text(verbatim: Self.ago(item.copiedAt, now: ctx.date))
+                            .font(DS.font(TypeScale.caption))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             Spacer(minLength: 0)

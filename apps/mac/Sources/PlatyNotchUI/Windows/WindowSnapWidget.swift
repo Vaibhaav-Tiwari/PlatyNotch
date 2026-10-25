@@ -212,13 +212,22 @@ struct WindowSnapSettingsView: View {
                     icon: { Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange) }
                 Button("Try Again") { widget.retryShortcuts() }.controlSize(.small)
             }
-            Picker("Gap", selection: Binding(get: { widget.gap }, set: { widget.setGap($0) })) {
-                ForEach(SnapLayout.gapPresets, id: \.self) { p in
-                    Text(verbatim: p == 0 ? "None" : "\(p) pt").tag(p)
+            if inTool {
+                HStack(spacing: Space.s) {
+                    Text("Gap").foregroundStyle(.secondary)
+                    CapsuleSegments(selection: Binding(get: { widget.gap }, set: { widget.setGap($0) }),
+                                    options: SnapLayout.gapPresets.map { ($0, $0 == 0 ? "None" : "\($0) pt") },
+                                    label: "Gap", size: 12)
                 }
+            } else {
+                Picker("Gap", selection: Binding(get: { widget.gap }, set: { widget.setGap($0) })) {
+                    ForEach(SnapLayout.gapPresets, id: \.self) { p in
+                        Text(verbatim: p == 0 ? "None" : "\(p) pt").tag(p)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 260)
             }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 260)
             if inTool {
                 // The Library tool: the shortcuts in two columns, so they fit without scrolling.
                 let all: [SnapTarget] = SnapTarget.allCases

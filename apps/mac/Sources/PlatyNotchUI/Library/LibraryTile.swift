@@ -16,7 +16,6 @@ struct LibraryTile: View {
     let custom: AnyView?
     let onTap: () -> Void
     @State private var hovering = false
-    @Environment(\.colorScheme) private var scheme
 
     static func action(for item: LibraryItem) -> Action { item.isSetUp ? .open : .setUp }
 
@@ -29,24 +28,20 @@ struct LibraryTile: View {
         let dimmed: Bool = !item.isSetUp
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 0) {
-                DS.icon(item.systemImage, size: IconSize.tile)
-                    .foregroundStyle(dimmed ? AnyShapeStyle(.secondary) : AnyShapeStyle(DS.dynamicColor(.working)))
-                    .frame(width: IconSize.tile + 4, height: IconSize.tile + 4, alignment: .leading)
-                Spacer(minLength: 0)
+                iconWell(dimmed: dimmed)
+                Spacer(minLength: 3)
                 Text(verbatim: item.title)
                     .font(DS.font(TypeStyle(size: TypeScale.body.size, weight: .semibold)))
                     .foregroundStyle(dimmed ? .secondary : .primary)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 footer(dimmed: dimmed)
-                    .frame(height: 16, alignment: .leading)
-                    .padding(.top, 2)
+                    .frame(height: 14, alignment: .leading)
+                    .padding(.top, 1)
             }
-            .padding(Space.m)
+            .padding(EdgeInsets(top: 10, leading: Space.m, bottom: 9, trailing: Space.m))
             .frame(width: LibraryView.tileWidth, height: LibraryView.tileHeight, alignment: .topLeading)
-            .background(hoverWash, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
-            .dsCard()
-            .opacity(dimmed ? 0.78 : 1)
+            .background { LibraryTileCard(hovering: hovering) }
             .contentShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -59,41 +54,71 @@ struct LibraryTile: View {
         .help(Self.accessibilityHint(for: item))
     }
 
+    /// The tool's symbol in a 28 pt well: monochrome teal on a 12% teal tint, the same
+    /// weight for every tool; secondary on a neutral well while it needs setup.
+    private func iconWell(dimmed: Bool) -> some View {
+        let teal: Color = DS.dynamicColor(.working)
+        let tint: Color = dimmed ? Color.primary.opacity(0.07) : DS.dynamicColor(.working, alpha: 0.12)
+        return Image(systemName: item.systemImage)
+            .symbolRenderingMode(.monochrome)
+            .font(.system(size: 15, weight: .medium))
+            .foregroundStyle(dimmed ? AnyShapeStyle(.secondary) : AnyShapeStyle(teal))
+            .frame(width: LibraryView.iconWell, height: LibraryView.iconWell)
+            .background(tint, in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
+    }
+
     @ViewBuilder private func footer(dimmed: Bool) -> some View {
         if dimmed {
-            Text(verbatim: item.setupTitle ?? "Set up")
+            Text(verbatim: (item.setupTitle ?? "Set up") + " \u{203A}")
                 .font(DS.font(TypeStyle(size: TypeScale.caption.size, weight: .semibold)))
                 .foregroundStyle(DS.dynamicColor(.working))
-                .padding(.horizontal, 7)
-                .frame(height: 16)
-                .background(DS.dynamicColor(.working, alpha: 0.14), in: Capsule())
+                .lineLimit(1)
         } else if let custom {
             custom
                 .font(DS.font(TypeScale.caption))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.tertiary)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .clipped()
-        } else if let line = item.liveLine, !line.isEmpty {
-            Text(verbatim: line)
-                .font(DS.font(TypeScale.caption))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
         } else {
-            Color.clear
+            HStack(spacing: 5) {
+                if item.isLive {
+                    Circle()
+                        .fill(DS.dynamicColor(.working))
+                        .frame(width: 6, height: 6)
+                        .accessibilityHidden(true)
+                }
+                Text(verbatim: item.liveLine ?? "")
+                    .font(DS.font(TypeScale.caption))
+                    .foregroundStyle(item.isLive ? AnyShapeStyle(DS.dynamicColor(.working)) : AnyShapeStyle(.tertiary))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
         }
-    }
-
-    /// A faint lift under the pointer (the card keeps its keyline).
-    private var hoverWash: Color {
-        guard hovering else { return .clear }
-        return (scheme == .light ? Color.black : Color.white).opacity(0.05)
     }
 
     private var accessibilityLabel: String {
         if !item.isSetUp { return "\(item.title), not set up" }
         if let line = item.liveLine, !line.isEmpty { return "\(item.title), \(line)" }
         return item.title
+    }
+}
+
+/// A tile's one edge treatment: a subtle fill with no keyline on the dark surface; a
+/// near-white card with a very soft shadow on the light one. A little brighter under the
+/// pointer.
+struct LibraryTileCard: View {
+    let hovering: Bool
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+        if scheme == .light {
+            shape
+                .fill(Color.white.opacity(hovering ? 1 : 0.86))
+                .shadow(color: .black.opacity(0.07), radius: 3, x: 0, y: 1)
+        } else {
+            shape.fill(Color.white.opacity(hovering ? 0.085 : 0.055))
+        }
     }
 }

@@ -9,13 +9,9 @@ struct TimeTile: View {
 
     var body: some View {
         let content = VStack(alignment: .leading, spacing: inTool ? Space.m : 6) {
-            Picker("Time", selection: $widget.section) {
-                ForEach(TimeWidget.Section.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .controlSize(inTool ? .regular : .small)
-            .fixedSize(horizontal: inTool, vertical: false)
+            CapsuleSegments(selection: $widget.section,
+                            options: TimeWidget.Section.allCases.map { ($0, $0.rawValue) },
+                            label: "Time", size: inTool ? TypeScale.body.size : TypeScale.caption.size)
             switch widget.section {
             case .timers: TimersSection(widget: widget)
             case .stopwatch: StopwatchSection(widget: widget)

@@ -132,13 +132,7 @@ struct MemoryTab: View {
         let search = memory.search
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Picker("View", selection: $mode) {
-                    ForEach(Mode.allCases, id: \.self) { Text(verbatim: $0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
-                .controlSize(.small)
+                CapsuleSegments(selection: $mode, options: Mode.allCases.map { ($0, $0.rawValue) }, label: "View")
                 switch mode {
                 case .search:
                     MemorySearchField(search: search)

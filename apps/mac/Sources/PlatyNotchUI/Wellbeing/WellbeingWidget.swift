@@ -462,6 +462,9 @@ final class WellbeingWidget: NotchWidget {
 
     func tileView() -> AnyView { AnyView(WellbeingTile(widget: self)) }
 
+    /// The Library tool: the water count and the nudges, centred.
+    func toolView() -> AnyView { AnyView(ToolPage { WellbeingTile(widget: self) }) }
+
     func settingsView() -> AnyView? { AnyView(WellbeingSettings(widget: self)) }
 }
 

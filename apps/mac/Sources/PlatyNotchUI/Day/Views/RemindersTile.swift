@@ -5,8 +5,39 @@ import SwiftUI
 /// The Reminders tile: quick add on top, then overdue and today's reminders with a tick box.
 struct RemindersTile: View {
     @Bindable var widget: RemindersWidget
+    @Environment(\.inLibraryTool) private var inTool
 
     var body: some View {
+        if inTool { tool } else { tile }
+    }
+
+    /// Full-panel: how many are due, large, above quick add and the list; access as a calm
+    /// empty state with its one action.
+    @ViewBuilder private var tool: some View {
+        let service = widget.reminders
+        switch service.access {
+        case .notAsked:
+            ToolEmptyState(systemImage: "checkmark.circle", title: "See today's reminders",
+                           detail: "Tick them off and add new ones from the notch.",
+                           action: ("Allow Reminders Access", { Task { await widget.allow() } }))
+        case .denied:
+            ToolEmptyState(systemImage: "exclamationmark.circle", title: "Reminders access is off",
+                           detail: "Turn it on in System Settings to see today's reminders here.",
+                           action: ("Open Settings", { service.openSettings() }))
+        case .unavailable:
+            ToolEmptyState(systemImage: "checkmark.circle", title: "Reminders needs the installed app",
+                           detail: "Reminders show when PlatyNotch runs from its app bundle.")
+        case .granted:
+            TimelineView(.periodic(from: .now, by: 60)) { ctx in
+                let n: Int = widget.shown(at: ctx.date).count
+                ToolPage(value: n == 0 ? "All clear" : "\(n)", label: n == 0 ? "Nothing due today" : "due today") {
+                    content(now: ctx.date)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var tile: some View {
         let service = widget.reminders
         switch service.access {
         case .notAsked:
@@ -61,7 +92,7 @@ struct RemindersTile: View {
             } else if let status = widget.status {
                 Text(verbatim: status).font(DS.font(TypeScale.caption)).foregroundStyle(.secondary).padding(.leading, 6)
             }
-            if items.isEmpty {
+            if items.isEmpty, !inTool {
                 Text("Nothing due today").font(.system(size: 11)).foregroundStyle(.secondary).padding(.leading, 6)
             }
             ForEach(items.prefix(RemindersWidget.shownLimit)) { item in

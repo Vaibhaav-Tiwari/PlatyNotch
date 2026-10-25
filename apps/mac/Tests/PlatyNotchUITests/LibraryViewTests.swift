@@ -185,7 +185,7 @@ final class LibraryViewTests: DefaultsTestCase {
 
     func testGridIsFourColumns() {
         XCTAssertEqual(LibraryView.columnCount, 4)
-        XCTAssertEqual(LibraryView.tileWidth, (528 - 3 * 8) / 4)
+        XCTAssertEqual(LibraryView.tileWidth, (528 - 3 * LibraryView.spacing) / 4)
         let items = (0..<12).map { LibraryItem(id: "t\($0)", title: "Tool \($0) with a very long name indeed",
                                                systemImage: "star", liveLine: String(repeating: "live ", count: 30),
                                                isSetUp: $0 % 3 != 0) }
@@ -501,5 +501,29 @@ final class LibraryViewTests: DefaultsTestCase {
         XCTAssertNil(p.libraryTool("nonsense"))
         r.registry.setEnabled("music", false)
         XCTAssertNil(p.libraryTool("music"))
+    }
+
+    // MARK: Fix round 1: design polish
+
+    /// "5 min ago", never "5 min, 0 secs".
+    func testClipboardAgo() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertEqual(ClipRow.ago(now.addingTimeInterval(-20), now: now), "Just now")
+        XCTAssertEqual(ClipRow.ago(now.addingTimeInterval(-300), now: now), "5 min ago")
+        XCTAssertEqual(ClipRow.ago(now.addingTimeInterval(-7_200), now: now), "2 hr ago")
+        XCTAssertEqual(ClipRow.ago(now.addingTimeInterval(-86_400), now: now), "1 day ago")
+        XCTAssertEqual(ClipRow.ago(now.addingTimeInterval(-3 * 86_400), now: now), "3 days ago")
+        XCTAssertEqual(ClipRow.ago(now.addingTimeInterval(60), now: now), "Just now", "a clock skew never goes negative")
+    }
+
+    /// A running timer marks its tile live (the teal dot); nothing running is not live.
+    func testLiveToolsAreMarked() throws {
+        let r = rig()
+        let time = try XCTUnwrap(r.registry.widget(TimeWidget.widgetID) as? TimeWidget)
+        XCTAssertFalse(LibraryCatalog.item(for: time).isLive)
+        XCTAssertEqual(LibraryCatalog.item(for: time).liveLine, "No timers")
+        XCTAssertTrue(time.addTimer("25m"))
+        XCTAssertTrue(LibraryCatalog.item(for: time).isLive)
+        XCTAssertEqual(LibraryCatalog.item(for: time).liveLine, "1 timer")
     }
 }

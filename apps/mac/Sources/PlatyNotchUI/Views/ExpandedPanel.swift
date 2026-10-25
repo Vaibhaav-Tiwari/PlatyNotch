@@ -91,6 +91,8 @@ struct ExpandedPanel: View {
                 .environment(\.openPanelRoute, { route = $0 })   // the games tile opens its tool
         }
         .coordinateSpace(name: Self.space)
+        // One accent: prominent buttons and controls in brand teal, never system blue.
+        .tint(DS.dynamicColor(.working))
     }
 
     @ViewBuilder private func header(tool: LibraryTool?) -> some View {

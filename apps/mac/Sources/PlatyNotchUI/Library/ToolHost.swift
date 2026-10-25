@@ -123,7 +123,8 @@ struct FadingScroll<Content: View>: View {
     }
 }
 
-/// The fade mask: solid, with `LibraryView.fade` of gradient at an edge that has more.
+/// The fade mask: solid, with `LibraryView.fade` of gradient at an edge that has more. Not
+/// animated: it follows the scroll, and an opened grid shows its fade at once.
 struct ScrollFade: View {
     let top: Bool
     let bottom: Bool
@@ -136,8 +137,6 @@ struct ScrollFade: View {
             LinearGradient(colors: [.black, .black.opacity(bottom ? 0 : 1)], startPoint: .top, endPoint: .bottom)
                 .frame(height: LibraryView.fade)
         }
-        .animation(.easeOut(duration: 0.15), value: top)
-        .animation(.easeOut(duration: 0.15), value: bottom)
     }
 }
 
@@ -204,5 +203,65 @@ struct ToolEmptyState: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .contain)
+    }
+}
+
+/// A tool page composed for the room: an optional summary (a large value and its label)
+/// above the tool's content in a readable column, the whole centred while it is shorter
+/// than the room (taller, it scrolls from the top like any tool).
+struct ToolPage<Content: View>: View {
+    var value: String?
+    var label: String?
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: Space.l) {
+            if let value {
+                VStack(spacing: 2) {
+                    Text(verbatim: value)
+                        .font(DS.font(TypeScale.display))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                    if let label {
+                        Text(verbatim: label)
+                            .font(DS.font(TypeScale.body))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+            content
+                .frame(maxWidth: Self.column, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// The content column: readable rows, not stretched across the panel.
+    static var column: CGFloat { 440 }
+}
+
+/// A tool's one primary action (Join): a teal capsule, the same whether the panel is key
+/// or not (a system prominent button turns grey in an inactive window). Text contrast:
+/// near-black on the bright dark-theme teal, white on the deeper light-theme teal.
+struct ToolPrimaryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        PrimaryCapsule(label: configuration.label, pressed: configuration.isPressed)
+    }
+
+    private struct PrimaryCapsule<Label: View>: View {
+        let label: Label
+        let pressed: Bool
+        @Environment(\.colorScheme) private var scheme
+
+        var body: some View {
+            label
+                .font(DS.font(TypeStyle(size: TypeScale.body.size, weight: .semibold)))
+                .foregroundStyle(scheme == .light ? Color.white : Color.black.opacity(0.85))
+                .padding(.horizontal, Space.l)
+                .frame(height: 30)
+                .background(DS.color(.working, scheme).opacity(pressed ? 0.75 : 1), in: Capsule())
+                .contentShape(Capsule())
+        }
     }
 }

@@ -32,6 +32,32 @@ final class LoopsWidget: NotchWidget {
     func tileView() -> AnyView {
         AnyView(LoopsTile(store: store, actions: actions))
     }
+
+    /// The Library tool: how many are open, large, above the list; a calm empty state at none.
+    func toolView() -> AnyView {
+        let store = self.store
+        let actions = self.actions
+        return AnyView(LoopsTool(store: store, actions: actions, open: { [weak self] in self?.openCount ?? 0 }))
+    }
+}
+
+/// Open loops full-panel.
+private struct LoopsTool: View {
+    let store: AppStore
+    let actions: LoopActions
+    let open: () -> Int
+
+    var body: some View {
+        let n: Int = open()
+        if n == 0 {
+            ToolEmptyState(systemImage: "checklist", title: "No open loops",
+                           detail: "Promises and follow-ups from what you write show here, to tick off or dismiss.")
+        } else {
+            ToolPage(value: "\(n)", label: n == 1 ? "open loop" : "open loops") {
+                LoopsList(loops: store.loops, memoryEnabled: store.memory.enabled, actions: actions)
+            }
+        }
+    }
 }
 
 private struct LoopsTile: View {

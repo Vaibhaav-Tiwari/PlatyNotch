@@ -93,15 +93,9 @@ struct MemoryGraphControls: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Picker("Range", selection: $model.range) {
-                ForEach(MemoryGraphFormat.Range.allCases) { r in
-                    Text(verbatim: r.title).tag(r).accessibilityLabel(Text(verbatim: r.spoken))
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-            .controlSize(.small)
+            CapsuleSegments(selection: $model.range,
+                            options: MemoryGraphFormat.Range.allCases.map { ($0, $0.title) }, label: "Range",
+                            size: TypeScale.caption.size)
             Button { model.refresh() } label: { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)

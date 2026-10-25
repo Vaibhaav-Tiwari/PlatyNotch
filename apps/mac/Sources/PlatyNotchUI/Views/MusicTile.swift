@@ -20,22 +20,23 @@ struct MusicTile: View {
         }
     }
 
-    /// Full-panel: large artwork; beside it the title, artist and source, then the
-    /// scrubber and the controls, the whole player centred in the tool's room.
+    /// Full-panel: large artwork beside the title, artist and source; under the whole
+    /// player the scrubber (always: a still bar while the player gives no position) and the
+    /// transport, centred; the player centred in the tool's room.
     @ViewBuilder private var tool: some View {
         if let title = nowPlaying.title {
-            VStack(alignment: .leading, spacing: Space.m) {
-                HStack(alignment: .top, spacing: Space.xl) {
+            VStack(spacing: Space.l) {
+                HStack(alignment: .center, spacing: Space.xl) {
                     artwork(size: Self.toolArtwork)
                     VStack(alignment: .leading, spacing: Space.xs) {
                         HStack(alignment: .center, spacing: Space.s) {
                             Text(verbatim: title)
                                 .font(DS.font(TypeScale.title))
-                                .lineLimit(2)
+                                .lineLimit(1)
                                 .truncationMode(.tail)
                             Spacer(minLength: Space.s)
                             if nowPlaying.isPlaying {
-                                MusicBars(color: nowPlaying.artworkTint ?? Theme.color(.active), count: 6, height: 18,
+                                MusicBars(color: nowPlaying.artworkTint ?? Theme.color(.active), count: 6, height: 16,
                                           barWidth: 3, spacing: 2)
                                     .environment(\.musicVisualiser, visualiser)
                             }
@@ -48,20 +49,20 @@ struct MusicTile: View {
                         }
                         source
                             .padding(.top, 2)
-                        Spacer(minLength: Space.s)
-                        controls(size: 15, playSize: 22, spacing: 22)
                     }
-                    .frame(height: Self.toolArtwork)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if nowPlaying.clock != nil {
                     MusicScrubber(nowPlaying: nowPlaying)
+                } else {
+                    MusicScrubberPlaceholder()
                 }
+                controls(size: 15, playSize: 22, spacing: 28)
                 if let message = nowPlaying.likeMessage {
                     LikeMessage(text: message, help: nowPlaying.likeHelp)
                 }
             }
             .padding(.horizontal, Space.xs)
-            // Centred in the tool's room, like a player, not a tile stuck to the top.
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ToolEmptyState(systemImage: "music.note", title: "Nothing playing",
@@ -252,5 +253,26 @@ struct MusicScrubber: View {
                 })
         }
         .frame(height: 12)
+    }
+}
+
+/// The scrubber's place while the player reports no position: a still, empty bar.
+struct MusicScrubberPlaceholder: View {
+    var body: some View {
+        HStack(spacing: 6) {
+            label
+            Capsule().fill(.secondary.opacity(0.3)).frame(height: 3)
+            label
+        }
+        .frame(height: 12)
+        .accessibilityHidden(true)
+    }
+
+    private var label: some View {
+        Text(verbatim: "--:--")
+            .font(DS.font(TypeScale.caption, design: .rounded).weight(.medium))
+            .monospacedDigit()
+            .foregroundStyle(.tertiary)
+            .frame(width: 34, alignment: .center)
     }
 }

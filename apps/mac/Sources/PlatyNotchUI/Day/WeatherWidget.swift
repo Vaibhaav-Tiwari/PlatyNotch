@@ -280,6 +280,15 @@ final class WeatherWidget: NotchWidget {
 
     func tileView() -> AnyView { AnyView(WeatherTile(widget: self)) }
 
+    /// The Library tool: the conditions centred; "Choose a city" as a calm empty state.
+    func toolView() -> AnyView {
+        if place == nil {
+            return AnyView(ToolEmptyState(systemImage: "cloud.sun", title: "Choose a city",
+                                          detail: "Pick your city in Settings › Widgets › Weather. No location access is used."))
+        }
+        return AnyView(ToolPage { WeatherTile(widget: self) })
+    }
+
     func settingsView() -> AnyView? { AnyView(WeatherSettings(widget: self)) }
 }
 
