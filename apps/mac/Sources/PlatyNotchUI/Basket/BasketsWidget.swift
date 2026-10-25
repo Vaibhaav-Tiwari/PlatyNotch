@@ -103,6 +103,72 @@ final class BasketsWidget: NotchWidget {
     func tileView() -> AnyView { AnyView(EmptyView()) }
 
     func settingsView() -> AnyView? { AnyView(BasketsSettingsView(widget: self)) }
+
+    /// Full-panel in the Library: a composed page, not the settings text.
+    func toolView() -> AnyView { AnyView(BasketsToolPage(widget: self)) }
+}
+
+/// Baskets as a Library tool: what it does in one line, its two controls on one card,
+/// and the rules a tooltip away. One teal accent; a taken shortcut is a plain note.
+struct BasketsToolPage: View {
+    let widget: BasketsWidget
+
+    static let detail = "Drag a file or link and shake the pointer: a basket appears there to drop it into."
+
+    var body: some View {
+        ToolIconPage(systemImage: "basket", title: "Shake while dragging", detail: Self.detail) {
+            VStack(spacing: Space.s) {
+                ToolControlCard {
+                    row("Shake sensitivity") {
+                        Picker("Shake sensitivity",
+                               selection: Binding(get: { widget.sensitivity }, set: { widget.setSensitivity($0) })) {
+                            ForEach(Array(ShakeDetector.sensitivityRange), id: \.self) { v in
+                                Text(verbatim: BasketsSettingsView.sensitivityName(v)).tag(v)
+                            }
+                        }
+                    }
+                    Divider().opacity(0.5)
+                    row("Switch baskets") {
+                        Picker("Switch baskets",
+                               selection: Binding(get: { widget.switcherCombo }, set: { widget.setSwitcherCombo($0) })) {
+                            ForEach(BasketSettings.switcherPresets, id: \.self) { c in
+                                Text(verbatim: c.display).tag(Optional(c))
+                            }
+                            Text("Off").tag(KeyCombo?.none)
+                        }
+                    }
+                }
+                if widget.controller.switcherTaken, let combo = widget.switcherCombo {
+                    Label {
+                        Text(verbatim: BasketsSettingsView.takenNote(combo, usedBy: widget.controller.switcherUsedBy))
+                    } icon: {
+                        Image(systemName: "info.circle")
+                    }
+                    .font(DS.font(TypeScale.caption))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: 360, alignment: .leading)
+                }
+                Text("Up to 6 baskets of 50 items. Cleared at quit unless pinned.")
+                    .font(DS.font(TypeScale.caption))
+                    .foregroundStyle(.secondary)
+                    .help("""
+                    Files you drop stay where they are; images and text are copied into PlatyNotch's \
+                    private folder and deleted with the basket. Pinned baskets come back at the next start.
+                    """)
+            }
+        }
+    }
+
+    private func row<C: View>(_ title: String, @ViewBuilder control: () -> C) -> some View {
+        HStack {
+            Text(verbatim: title).font(DS.font(TypeScale.body))
+            Spacer(minLength: Space.s)
+            control()
+                .labelsHidden()
+                .fixedSize()
+        }
+        .frame(height: 24)
+    }
 }
 
 struct BasketsSettingsView: View {

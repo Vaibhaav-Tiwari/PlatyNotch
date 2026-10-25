@@ -631,9 +631,11 @@ final class SystemWidget: NotchWidget {
 
     func tileView() -> AnyView { AnyView(SystemTile(widget: self)) }
 
-    /// The Library tool: the battery large (a laptop), then keep-awake and the rest, centred.
+    /// The Library tool: the battery large (a laptop), then keep-awake and the rest,
+    /// centred; on a desktop (no battery), an icon-led Keep awake page with Start.
     func toolView() -> AnyView {
-        AnyView(ToolPage(value: battery.map { "\($0.percent)%" }, label: battery?.statusText) { SystemTile(widget: self) })
+        if battery == nil { return AnyView(KeepAwakeToolPage(widget: self)) }
+        return AnyView(ToolPage(value: battery.map { "\($0.percent)%" }, label: battery?.statusText) { SystemTile(widget: self) })
     }
 
     func settingsView() -> AnyView? { AnyView(SystemSettings(widget: self)) }

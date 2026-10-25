@@ -8,8 +8,9 @@ import SwiftUI
 /// Inert models only: nothing is read, played or saved.
 @MainActor
 enum ThemeRenders {
-    /// Writes every render; returns the number written, or the first problem.
-    static func write(to dir: URL) -> Result<Int, RenderError> {
+    /// Writes every render (or, with `only`, those whose name starts with one of its
+    /// prefixes); returns the number written, or the first problem.
+    static func write(to dir: URL, only: [String]? = nil) -> Result<Int, RenderError> {
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         } catch {
@@ -17,7 +18,7 @@ enum ThemeRenders {
         }
         var count = 0
         for scheme in [ColorScheme.dark, .light] {
-            for (name, view, hosted) in views() {
+            for (name, view, hosted) in views() where only.map({ p in p.contains { name.hasPrefix($0) } }) ?? true {
                 let url = dir.appendingPathComponent("\(name)-\(scheme == .dark ? "dark" : "light").png")
                 let data = hosted ? renderHosted(view, scheme: scheme) : render(view, scheme: scheme)
                 guard let png = data else {
@@ -587,6 +588,7 @@ enum LibraryRenders {
         out.append(("library-setup", NowRenders.panel(setUp(), route: grid), true))
         out.append(("library-tool-focus", tool(FocusWidget.widgetID), true))
         out.append(("library-tool-time", tool(TimeWidget.widgetID, rig: NowRenders.timerHero()), true))
+        out.append(("library-tool-time-empty", tool(TimeWidget.widgetID), true))
         out.append(("library-tool-music", tool(MusicWidget.widgetID, rig: NowRenders.musicHero()), true))
         out.append(("library-tool-clipboard", tool(ClipboardWidget.widgetID, rig: samples()), true))
         out.append(("library-tool-shelf", tool(ShelfWidget.widgetID, rig: samples()), true))
