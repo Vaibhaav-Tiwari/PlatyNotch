@@ -129,7 +129,7 @@ struct ApprovalCard: View {
             HStack(spacing: 8) {
                 if let session {
                     Button("Open terminal") { onOpenTerminal(session) }
-                        .buttonStyle(.link)
+                        .buttonStyle(.panelLink)
                         .font(.system(size: 11))
                         .accessibilityHint("Shows the terminal running this session")
                 }
@@ -137,13 +137,13 @@ struct ApprovalCard: View {
                 // peek's footer keeps its width.
                 if showChanges, let onExpand {
                     Button("Show changes", action: onExpand)
-                        .buttonStyle(.link)
+                        .buttonStyle(.panelLink)
                         .font(.system(size: 11))
                         .accessibilityLabel("Show changes")
                         .accessibilityHint("Opens the panel with this request's changes")
                 } else if let onExpand {
                     Button("More", action: onExpand)
-                        .buttonStyle(.link)
+                        .buttonStyle(.panelLink)
                         .font(.system(size: 11))
                         .accessibilityLabel("Show all approvals")
                 }

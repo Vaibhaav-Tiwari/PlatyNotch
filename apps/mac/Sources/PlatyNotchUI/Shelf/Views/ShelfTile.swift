@@ -448,8 +448,8 @@ struct ShelfDropZone: View {
         let on = shelf.dropTargeted
         RoundedRectangle(cornerRadius: 12)
             .strokeBorder(style: StrokeStyle(lineWidth: on ? 2 : 1.5, dash: on ? [] : [6, 4]))
-            .foregroundStyle(on ? Color.accentColor : Color.secondary)
-            .background(RoundedRectangle(cornerRadius: 12).fill(Color.accentColor.opacity(on ? 0.15 : 0)))
+            .foregroundStyle(on ? DS.dynamicColor(.working) : Color.secondary)
+            .background(RoundedRectangle(cornerRadius: 12).fill(DS.dynamicColor(.working).opacity(on ? 0.15 : 0)))
             .overlay {
                 VStack(spacing: 6) {
                     Image(systemName: on ? "tray.and.arrow.down.fill" : "tray.and.arrow.down")

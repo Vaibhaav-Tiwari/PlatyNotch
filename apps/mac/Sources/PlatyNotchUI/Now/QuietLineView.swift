@@ -16,7 +16,7 @@ struct QuietLineView: View {
                 Button { onOpen(item.id) } label: {
                     Text(verbatim: item.text).lineLimit(1)
                 }
-                .buttonStyle(.link)
+                .buttonStyle(.panelLink)
                 .accessibilityLabel("Open \(item.text)")
             }
             Spacer(minLength: 0)

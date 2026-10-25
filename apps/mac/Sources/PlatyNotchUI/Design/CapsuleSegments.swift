@@ -37,3 +37,19 @@ struct CapsuleSegments<Value: Hashable>: View {
         .accessibilityLabel(label)
     }
 }
+
+/// A text link in the panel's one accent (brand teal, never system blue), a little dimmer
+/// while pressed.
+struct PanelLinkButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(DS.dynamicColor(.working))
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            .contentShape(Rectangle())
+    }
+}
+
+extension ButtonStyle where Self == PanelLinkButtonStyle {
+    /// `PanelLinkButtonStyle`.
+    static var panelLink: PanelLinkButtonStyle { PanelLinkButtonStyle() }
+}
