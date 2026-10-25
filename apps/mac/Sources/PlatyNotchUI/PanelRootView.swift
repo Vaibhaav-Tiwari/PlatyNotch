@@ -10,7 +10,9 @@ final class PanelViewModel {
     /// A full-screen app covers this panel's display (games pause).
     var fullScreen = false
     var layout: PanelLayout?
-    var selectedTab = BuiltinTab.agents
+    var selectedTab = BuiltinTab.now
+    /// Which live item Now's hero shows; back to the top one on every open.
+    var heroDeck = HeroDeck()
     /// Which approval cards have been on screen long enough to be answered (this window).
     var arming = ApprovalArming()
     /// Toggles expanded / collapsed (the state machine's `.click`).
@@ -73,7 +75,10 @@ struct PanelRootView: View {
                                                  fullScreen: model.fullScreen))
         .animation(modeAnimation, value: model.mode)
         .animation(.easeOut(duration: 0.15), value: model.visible)
-        .onChange(of: model.mode) { _, new in previousMode = new }
+        .onChange(of: model.mode) { old, new in
+            previousMode = new
+            if new == .expanded, old != .expanded { model.heroDeck.panelOpened() }
+        }
     }
 
     /// The mode's surface, with the pure-black band level with the camera housing on a
@@ -148,8 +153,9 @@ struct PanelRootView: View {
                           widgets: widgets, memory: memory, extraTabs: extraTabs,
                           selectedTab: Binding(get: { model.selectedTab }, set: { model.selectedTab = $0 }),
                           onCollapse: model.onClick, onOpenSettings: model.onOpenSettings,
+                          deck: Binding(get: { model.heroDeck }, set: { model.heroDeck = $0 }),
                           onDecide: decide, onOpenTerminal: onOpenTerminal)
-                .padding(EdgeInsets(top: top, leading: 12, bottom: 10, trailing: 12))
+                .padding(EdgeInsets(top: top, leading: Space.panelMargin, bottom: 10, trailing: Space.panelMargin))
                 .overlay(alignment: .bottom) { hudIndicator }
         case .peek(.widget(let id)):
             // A widget's peek (nudge, plug-in, AirPods). Never takes keyboard focus.

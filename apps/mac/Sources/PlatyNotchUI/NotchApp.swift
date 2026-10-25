@@ -175,6 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         events.start(client.events)
         today.platy.start(store: store)
+        today.agentActivity.start(store: store)
         Task { await client.start() }
 
         watchConfig()

@@ -157,12 +157,16 @@ public struct PanelLayout: Equatable, Sendable {
         }
     }
 
+    /// The approval peek's side margin; the open panel uses `Space.panelMargin` (Ruling 10).
+    public static let peekMargin: CGFloat = 12
+
     /// Where the approval cards sit (the approval peek, the open panel's column).
     public func approvalSlot(for mode: PanelMode) -> CGRect? {
         switch mode {
         case .peek(.approval), .expanded:
             let c = contentRect(for: mode)
-            return CGRect(x: c.minX + 12, y: c.minY + 10, width: c.width - 24,
+            let side: CGFloat = mode == .expanded ? Space.panelMargin : Self.peekMargin
+            return CGRect(x: c.minX + side, y: c.minY + 10, width: c.width - 2 * side,
                           height: c.height - 10 - contentInset(for: mode))
         default: return nil
         }
