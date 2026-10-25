@@ -89,6 +89,7 @@ struct ExpandedPanel: View {
                 .clipped(unless: shown.destination == .now)
                 .padding(.top, open == nil ? NowMetrics.gap : ToolHost.gap)
                 .environment(\.openPanelRoute, { route = $0 })   // the games tile opens its tool
+                .environment(\.openMemorySettings, { [memory] in memory.onOpenSettings() })   // empty states' one button
         }
         .coordinateSpace(name: Self.space)
         // One accent: prominent buttons and controls in brand teal, never system blue.

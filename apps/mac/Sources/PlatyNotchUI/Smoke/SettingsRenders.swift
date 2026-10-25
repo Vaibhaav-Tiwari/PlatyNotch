@@ -26,7 +26,7 @@ enum SettingsRenders {
 
     /// Every page, and the sub-pages worth seeing.
     static var pages: [(String, String?)] {
-        SettingsModel.builtIn.map { ($0.id, nil) } + [("agents", "approvals"), ("agents", "policy")]
+        SettingsModel.builtIn.map { ($0.id, nil) } + [("agents", "approvals"), ("agents", "policy"), ("widgets", "weather"), ("widgets", "baskets")]
     }
 
     static func makeServices() -> SettingsServices {

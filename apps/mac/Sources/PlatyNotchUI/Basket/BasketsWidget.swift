@@ -180,40 +180,40 @@ struct BasketsSettingsView: View {
         return "\(combo.display) is taken by another app. Choose another shortcut."
     }
 
+    /// What Baskets does and promises, behind the ⓘ (controls first).
+    static let about = """
+    While dragging a file or link, shake the pointer left and right: a basket appears there to drop it into. \
+    Drag items back out whenever you need them. Up to 6 baskets of 50 items each. Shaking while selecting text, \
+    drawing or moving a window never makes a basket, and a basket never covers the notch or an approval. Drag \
+    one basket onto another to merge them; right-click its title for Pin, Color, Rename, Actions, Move All to \
+    Shelf and Clear.
+    """
+
+    static let privacy = """
+    Files you drop stay where they are. Images, text and files from apps like Photos are copied into \
+    PlatyNotch's private folder. Baskets are cleared when PlatyNotch quits or Baskets is turned off, deleting \
+    those copies (never your own files), unless the basket or one of its items is pinned; pinned baskets come \
+    back at the next start, and their copies are deleted 7 days after you added them unless pinned.
+    """
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("""
-            While dragging a file or link, shake the pointer left and right: a basket appears \
-            there to drop it into. Drag items back out of a basket whenever you need them. \
-            Up to 6 baskets of 50 items each.
-            """)
-            .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 8) {
             sensitivityRow
             switcherRow
             if widget.controller.switcherTaken, let combo = widget.switcherCombo {
                 Label { Text(verbatim: Self.takenNote(combo, usedBy: widget.controller.switcherUsedBy)) }
-                    icon: { Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange) }
+                    icon: { Image(systemName: "info.circle") }
+                    .foregroundStyle(.secondary)
             }
-            Text("""
-            Shaking while selecting text, drawing or moving a window never makes a basket. \
-            A basket never covers the notch or an approval request. Drag one basket onto another \
-            to merge them; right-click its title for Pin, Color, Rename, Actions, Move All to \
-            Shelf and Clear.
-            """)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
             damagedRow
-            Text("""
-            Files you drop stay where they are. Images, text and files from apps like Photos are \
-            copied into PlatyNotch's private folder. Baskets are cleared when PlatyNotch quits or \
-            Baskets is turned off, deleting those copies (never your own files), unless the \
-            basket or one of its items is pinned; pinned baskets come back at the next start, and \
-            their copies are deleted 7 days after you added them unless pinned.
-            """)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 6) {
+                Text("How baskets work").foregroundStyle(.secondary)
+                InfoButton(Self.about)
+                Text("Where copies go").foregroundStyle(.secondary).padding(.leading, 8)
+                InfoButton(Self.privacy)
+            }
         }
-        .font(.system(size: 11))
+        .font(.system(size: 12))
     }
 
     /// Damaged basket indexes: the count, then Delete Kept Copies, then a confirming click.

@@ -190,6 +190,8 @@ struct SettingsRootView: View {
     let services: SettingsServices
     let pluginSections: [SettingsSection]
 
+    private var sectionIDs: [String] { SettingsModel.builtIn.map(\.id) + pluginSections.map(\.id) }
+
     var body: some View {
         HStack(spacing: 0) {
             SettingsSidebar(model: model, pluginSections: pluginSections)
@@ -223,10 +225,11 @@ struct SettingsRootView: View {
         case SettingsPageID.notch.rawValue: NotchSection()
         case SettingsPageID.now.rawValue: NowSection(widgets: services.widgets)
         case SettingsPageID.notifications.rawValue: NotificationsSection()
-        case SettingsPageID.widgets.rawValue: WidgetsSection(widgets: services.widgets)
+        case SettingsPageID.widgets.rawValue: WidgetsSection(widgets: services.widgets, detail: $model.detail)
         case SettingsPageID.agents.rawValue: AgentsSection(services: services, detail: $model.detail)
         case SettingsPageID.memory.rawValue: MemorySection(services: services)
-        case SettingsPageID.privacy.rawValue: PermissionsSection(services: services)
+        case SettingsPageID.privacy.rawValue:
+            PermissionsSection(services: services) { model.go(to: SettingsTarget.resolve($0), ids: sectionIDs) }
         case SettingsPageID.about.rawValue: AboutSection(updater: services.updater)
         default:
             if let s = pluginSections.first(where: { $0.id == model.selection }) {

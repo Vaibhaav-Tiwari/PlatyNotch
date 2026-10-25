@@ -1,92 +1,92 @@
 import PlatyNotchKit
 import SwiftUI
 
-/// Settings › Widgets: turn each widget on or off and set the Today tab's order (drag,
-/// or the arrow buttons). Everyday widgets come first; power features are listed in
-/// their own group under "Power features" (hidden while there are none, R1). Rows move
-/// only within their group. An enabled widget's own settings follow below. Stored in
-/// `UserDefaults.standard` (`widgets.layout`); turning a widget off stops all its work.
-struct WidgetsSection: View {
-    let widgets: WidgetRegistry
+/// Settings › Widgets' state: the filter, and the one way to reorder (drag a card onto
+/// another of its group; there are no up and down buttons).
+@MainActor @Observable
+final class WidgetsSettingsModel {
+    enum Filter: String, CaseIterable, Identifiable {
+        case all, everyday, power
+        var id: String { rawValue }
+        var title: String {
+            switch self {
+            case .all: "All"
+            case .everyday: "Everyday"
+            case .power: "Power"
+            }
+        }
+    }
 
-    static let rowHeight: CGFloat = 34
+    var filter: Filter = .all
+    @ObservationIgnored let widgets: WidgetRegistry
+
+    init(widgets: WidgetRegistry) {
+        self.widgets = widgets
+    }
+
+    /// The cards for `filter`: everyday widgets, then power features, each in the user's order.
+    func shown(_ filter: Filter) -> [any NotchWidget] {
+        switch filter {
+        case .all: WidgetCategory.allCases.flatMap { widgets.orderedWidgets(in: $0) }
+        case .everyday: widgets.orderedWidgets(in: .everyday)
+        case .power: widgets.orderedWidgets(in: .power)
+        }
+    }
+
+    /// Drops the card `from` onto the card `to`: it takes that place within its group.
+    /// Cards of different groups never swap (a widget stays in its group).
+    func move(from: String, to: String) {
+        guard from != to, let a = widgets.widget(from), let b = widgets.widget(to), a.category == b.category else { return }
+        var ids = widgets.orderedWidgets(in: a.category).map(\.id)
+        guard let source = ids.firstIndex(of: from), let target = ids.firstIndex(of: to) else { return }
+        ids.remove(at: source)
+        ids.insert(from, at: target)
+        widgets.reorder(ids, in: a.category)
+    }
+
+    /// The widget a "widgets/<id>" link names (case-insensitive: links are lowercased).
+    func widget(named id: String?) -> (any NotchWidget)? {
+        guard let id else { return nil }
+        return widgets.widget(id) ?? widgets.orderedWidgets.first { $0.id.lowercased() == id.lowercased() }
+    }
+}
+
+/// Settings › Widgets: a grid of cards with All / Everyday / Power at the top. A card's
+/// switch turns the widget on or off; clicking the card opens its page; dragging a card
+/// onto another reorders. Turning a widget off stops all its work.
+struct WidgetsSection: View {
+    @State private var model: WidgetsSettingsModel
+    @Binding var detail: String?
+
+    init(widgets: WidgetRegistry, detail: Binding<String?> = .constant(nil)) {
+        _model = State(initialValue: WidgetsSettingsModel(widgets: widgets))
+        _detail = detail
+    }
 
     var body: some View {
-        // In the order the groups show (everyday, then power features).
-        let ordered = WidgetCategory.allCases.flatMap { widgets.orderedWidgets(in: $0) }
-        SettingsPage("Widgets", subtitle: "Tiles in the Today tab, top to bottom. Widgets that are off do nothing.") {
-            ForEach(WidgetCategory.allCases, id: \.self) { category in
-                group(category)
-            }
-
-            let configurable = ordered.filter { widgets.isEnabled($0.id) }
-                .compactMap { w in w.settingsView().map { (id: w.id, title: w.title, view: $0) } }
-            ForEach(configurable, id: \.id) { item in
-                GroupBox(label: Text(verbatim: item.title).font(.headline)) {
-                    item.view.frame(maxWidth: .infinity, alignment: .leading).padding(4)
-                }
-            }
+        if let widget = model.widget(named: detail) {
+            WidgetDetail(widget: widget, widgets: model.widgets) { detail = nil }
+        } else {
+            grid
         }
     }
 
-    /// One category's list; nothing at all for an empty one (so no "Power features"
-    /// heading until a power feature exists).
-    @ViewBuilder
-    private func group(_ category: WidgetCategory) -> some View {
-        let listed = widgets.orderedWidgets(in: category)
-        if !listed.isEmpty {
-            if let heading = category.heading {
-                Text(heading).font(.headline).padding(.top, 8)
+    private var grid: some View {
+        SettingsPage("Widgets", subtitle: "Turn widgets on or off; click one for its settings. Drag to reorder.") {
+            Picker("Show", selection: $model.filter) {
+                ForEach(WidgetsSettingsModel.Filter.allCases) { Text(verbatim: $0.title).tag($0) }
             }
-            List {
-                ForEach(Array(listed.enumerated()), id: \.element.id) { index, w in
-                    row(w, index: index, count: listed.count)
-                }
-                .onMove { source, destination in
-                    var ids = listed.map(\.id)
-                    ids.move(fromOffsets: source, toOffset: destination)
-                    widgets.reorder(ids, in: category)
-                }
-            }
-            .listStyle(.bordered(alternatesRowBackgrounds: true))
-            .frame(height: CGFloat(listed.count) * Self.rowHeight + 8)
-            .accessibilityLabel(category.heading ?? "Widgets")
-        }
-    }
-
-    private func row(_ w: any NotchWidget, index: Int, count: Int) -> some View {
-        let id = w.id
-        let category = w.category
-        return HStack(spacing: 8) {
-            Image(systemName: "line.3.horizontal").foregroundStyle(.tertiary).accessibilityHidden(true)
-            Image(systemName: w.systemImage).frame(width: 18).foregroundStyle(.secondary).accessibilityHidden(true)
-            Text(verbatim: w.title)
-            Spacer()
-            Button { swap(index, index - 1, in: category) } label: { Image(systemName: "chevron.up") }
-                .buttonStyle(.borderless)
-                .disabled(index == 0)
-                .accessibilityLabel("Move \(w.title) up")
-            Button { swap(index, index + 1, in: category) } label: { Image(systemName: "chevron.down") }
-                .buttonStyle(.borderless)
-                .disabled(index >= count - 1)
-                .accessibilityLabel("Move \(w.title) down")
-            Toggle(isOn: Binding(get: { widgets.isEnabled(id) }, set: { widgets.setEnabled(id, $0) })) {
-                Text(verbatim: w.title)
-            }
+            .pickerStyle(.segmented)
             .labelsHidden()
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .accessibilityLabel("Show \(w.title)")
+            .fixedSize()
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: WidgetCard.minWidth), spacing: 10)], spacing: 10) {
+                ForEach(model.shown(model.filter), id: \.id) { w in
+                    WidgetCard(widget: w, isOn: model.widgets.isEnabled(w.id),
+                               setOn: { model.widgets.setEnabled(w.id, $0) },
+                               open: { detail = w.id },
+                               move: { model.move(from: $0, to: w.id) })
+                }
+            }
         }
-        .frame(height: Self.rowHeight - 6)
-    }
-
-    /// Swaps two rows of one group (positions among its listed widgets, not the stored
-    /// order, which also keeps ids of plugins that are not loaded).
-    private func swap(_ a: Int, _ b: Int, in category: WidgetCategory) {
-        var ids = widgets.orderedWidgets(in: category).map(\.id)
-        guard ids.indices.contains(a), ids.indices.contains(b) else { return }
-        ids.swapAt(a, b)
-        widgets.reorder(ids, in: category)
     }
 }
