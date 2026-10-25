@@ -55,7 +55,7 @@ struct PanelRootView: View {
                 content(layout)
                     .frame(width: r.width, height: r.height)
                     .overlay(alignment: .topLeading) { chip(layout) }
-                    .background(Theme.surface(scheme))
+                    .background(alignment: .topLeading) { surface(layout, scheme: scheme, content: r) }
                     .clipShape(Theme.panelShape(hasNotch: layout.hasNotch))
                     .offset(x: r.minX, y: r.minY)
                     .opacity(model.visible ? 1 : 0)
@@ -74,6 +74,20 @@ struct PanelRootView: View {
         .animation(modeAnimation, value: model.mode)
         .animation(.easeOut(duration: 0.15), value: model.visible)
         .onChange(of: model.mode) { _, new in previousMode = new }
+    }
+
+    /// The mode's surface, with the pure-black band level with the camera housing on a
+    /// notch (`PanelLayout.notchBand`) so the open panel meets the notch seamlessly.
+    @ViewBuilder private func surface(_ layout: PanelLayout, scheme: ColorScheme, content r: CGRect) -> some View {
+        let style: AppearanceSettings.SurfaceStyle = model.appearance.effectiveSurface(glassAvailable: Theme.glassAvailable)
+        ZStack(alignment: .topLeading) {
+            Theme.surface(scheme, mode: model.mode, hasNotch: layout.hasNotch, style: style)
+            if let band = layout.notchBand(for: model.mode) {
+                Color(PanelPalette.darkSurface)
+                    .frame(width: band.width, height: band.height)
+                    .offset(x: band.minX - r.minX, y: band.minY - r.minY)
+            }
+        }
     }
 
     /// Platy's mood from the store, music, focus and the timed inputs.

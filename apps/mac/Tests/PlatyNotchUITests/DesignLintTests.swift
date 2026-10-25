@@ -83,6 +83,44 @@ final class DesignLintTests: DefaultsTestCase {
                       + found.joined(separator: "\n"))
     }
 
+    /// Where tile containers live: the six tile directories and the two widget files that
+    /// draw their own tiles (relative to `Sources/PlatyNotchUI`).
+    static let tileDirectories = ["Views/", "Day/Views/", "Shelf/Views/", "System/Views/", "Launch/Views/",
+                                  "Wellbeing/Views/"]
+    static let tileFiles = ["Clipboard/ClipboardWidget.swift", "Notes/NotesWidget.swift"]
+
+    /// `path:line` → reason for literal radii outside the scale on shapes that are not
+    /// containers (progress tracks, bars). Starts empty; an entry needs a reason.
+    static let radiusAllowlist: [String: String] = [:]
+
+    func testTileContainersUseRadiusScale() throws {
+        let scale = Set(Radius.scale.map { Double($0) })
+        let regex = try NSRegularExpression(
+            pattern: #"(?:RoundedRectangle\(cornerRadius:|\.cornerRadius\()\s*([0-9]+(?:\.[0-9]+)?)\b"#)
+        var found: [String] = []
+        var scanned = 0
+        for line in try Self.sourceLines()
+        where Self.tileDirectories.contains(where: { line.path.hasPrefix($0) && !line.path.dropFirst($0.count).contains("/") })
+            || Self.tileFiles.contains(line.path) {
+            scanned += 1
+            let key = "\(line.path):\(line.number)"
+            guard Self.radiusAllowlist[key] == nil else { continue }
+            let ns = line.text as NSString
+            for m in regex.matches(in: line.text, range: NSRange(location: 0, length: ns.length)) {
+                let value = Double(ns.substring(with: m.range(at: 1))) ?? -1
+                if !scale.contains(value) {
+                    found.append("\(key): \(line.text.trimmingCharacters(in: .whitespaces))")
+                }
+            }
+        }
+        XCTAssertGreaterThan(scanned, 500, "the lint must find the tile sources")
+        for (key, reason) in Self.radiusAllowlist {
+            XCTAssertFalse(reason.trimmingCharacters(in: .whitespaces).isEmpty, "\(key) needs a reason")
+        }
+        XCTAssertTrue(found.isEmpty, "radii outside 6 / 12 / 20 (use dsCard or a Radius token):\n"
+                      + found.joined(separator: "\n"))
+    }
+
     func testStateToneMapping() {
         XCTAssertEqual(StateTone(AgentTone.active), .working)
         XCTAssertEqual(StateTone(AgentTone.attention), .needsYou)

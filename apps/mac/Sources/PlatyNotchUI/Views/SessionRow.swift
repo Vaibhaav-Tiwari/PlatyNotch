@@ -74,7 +74,7 @@ struct RowButtonStyle: ButtonStyle {
         var body: some View {
             configuration.label
                 .background(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    RoundedRectangle(cornerRadius: Radius.chip, style: .continuous)
                         .fill(Theme.card.opacity(configuration.isPressed ? 1 : hovering ? 0.7 : 0))
                 )
                 .onHover { hovering = $0 }

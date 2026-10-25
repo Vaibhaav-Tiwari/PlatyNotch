@@ -133,6 +133,5 @@ private struct LoopRow: View {
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }

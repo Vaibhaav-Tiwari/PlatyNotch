@@ -18,6 +18,34 @@ enum Theme {
         scheme == .light ? lightSurface : surface
     }
 
+    /// The open panel's dark surface (#0B0D0D, `PanelPalette.panelDark`).
+    static let panelDark = Color(PanelPalette.panelDark)
+
+    /// Whether the system glass effect exists (macOS 26 and later).
+    static var glassAvailable: Bool {
+        if #available(macOS 26, *) { return true }
+        return false
+    }
+
+    /// The surface behind a mode's content (spec 7.1): the pill (`.hidden` / `.compact`)
+    /// keeps `surface(scheme)`, which is pure black whenever it touches the notch; the open
+    /// panel and peeks are `panelDark` in dark and the light surface in light, or the
+    /// system glass when `style` is `.glass` (pass `effectiveSurface(glassAvailable:)`).
+    @ViewBuilder
+    static func surface(_ scheme: ColorScheme, mode: PanelMode, hasNotch: Bool,
+                        style: AppearanceSettings.SurfaceStyle) -> some View {
+        switch mode {
+        case .hidden, .compact:
+            surface(scheme)
+        default:
+            if style == .glass, #available(macOS 26, *) {
+                Rectangle().fill(Color.clear).glassEffect(.regular, in: Rectangle())
+            } else {
+                scheme == .light ? lightSurface : panelDark
+            }
+        }
+    }
+
     /// The Allow button's tint: systemGreen in dark, a darker green in light (4.5:1 on
     /// its tinted fill, `PanelPalette.allowLight`).
     static func allow(_ scheme: ColorScheme) -> Color {

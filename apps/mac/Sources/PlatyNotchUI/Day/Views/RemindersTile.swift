@@ -55,7 +55,7 @@ struct RemindersTile: View {
                 }
             }
             .padding(6)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .dsCard(radius: Radius.chip)
             if let preview = widget.draft.isEmpty ? nil : widget.preview(at: now) {
                 Text(verbatim: preview).font(DS.font(TypeScale.caption)).foregroundStyle(.secondary).padding(.leading, 6)
             } else if let status = widget.status {

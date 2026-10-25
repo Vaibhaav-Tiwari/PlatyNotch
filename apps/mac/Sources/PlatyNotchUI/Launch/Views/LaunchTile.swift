@@ -22,7 +22,7 @@ struct LaunchTile: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .dsCard()
     }
 
     private var header: some View {
@@ -199,7 +199,7 @@ private struct ShortcutPicker: View {
         }
         .padding(6)
         // A darker well in both schemes; its text is semantic, so it stays legible in light.
-        .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
     }
 }
 

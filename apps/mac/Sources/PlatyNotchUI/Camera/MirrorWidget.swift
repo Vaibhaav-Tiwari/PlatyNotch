@@ -244,7 +244,7 @@ struct MirrorTileView: View {
             }
         }
         .padding(6)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .dsCard()
         .onAppear { widget.tileAppeared(token, visible: shown) }
         .onDisappear { widget.tileDisappeared(token) }
         .onChange(of: shown) { widget.tileVisibility(token, visible: shown) }

@@ -20,6 +20,9 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     }
     /// The panel's color scheme.
     public enum Theme: String, Codable, CaseIterable, Sendable { case system, dark, light }
+    /// The open panel's material (spec 7.1): opaque near-black, or the system glass on
+    /// macOS 26 (opaque elsewhere). The pill and the notch band are black either way.
+    public enum SurfaceStyle: String, Codable, CaseIterable, Sendable { case opaque, glass }
 
     public var mode: Mode = .alwaysOn
     public var openOn: OpenTrigger = .hover
@@ -37,6 +40,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var spring: SpringParams = .standard
     /// Calm, Lively or Reduced (spec 9). Settings without it migrate from `spring`.
     public var motion: MotionPreset = .calm
+    public var surface: SurfaceStyle = .opaque
     /// Hide the pill over full-screen apps (top edge reveals it). Never hides a pending
     /// approval, a ringing alarm or timer, the open panel or the drop zone.
     public var hideInFullScreen = true
@@ -50,7 +54,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
                 hoverDelay: Double = HoverDebouncer.defaultEnterDelay, pillWidth: PillWidth = .standard,
                 liveSide: Side = .right, displays: DisplayChoice = .main, theme: Theme = .dark,
                 spring: SpringParams = .standard, hideInFullScreen: Bool = true, showPlaty: Bool = true,
-                motion: MotionPreset = .calm) {
+                motion: MotionPreset = .calm, surface: SurfaceStyle = .opaque) {
         self.mode = mode
         self.openOn = openOn
         self.hoverDelay = hoverDelay
@@ -62,10 +66,11 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         self.hideInFullScreen = hideInFullScreen
         self.showPlaty = showPlaty
         self.motion = motion
+        self.surface = surface
     }
 
     private enum CodingKeys: String, CodingKey {
-        case mode, openOn, hoverDelay, pillWidth, liveSide, displays, theme, spring, hideInFullScreen, showPlaty, motion
+        case mode, openOn, hoverDelay, pillWidth, liveSide, displays, theme, spring, hideInFullScreen, showPlaty, motion, surface
     }
 
     /// Missing keys and unknown cases keep the defaults, so `{}` (or a value from an older
@@ -86,6 +91,7 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         // No saved motion: an untouched spring becomes Calm, a changed one Lively.
         motion = (try? c.decodeIfPresent(MotionPreset.self, forKey: .motion))
             ?? (spring == .standard ? .calm : .lively)
+        surface = (try? c.decodeIfPresent(SurfaceStyle.self, forKey: .surface)) ?? d.surface
     }
 
     /// The spring and hover delay inside their ranges.
@@ -100,6 +106,13 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     /// the window geometry). Everything else is applied to the existing panels live.
     public func needsRebuild(from old: AppearanceSettings) -> Bool {
         displays != old.displays || pillWidth != old.pillWidth
+    }
+}
+
+extension AppearanceSettings {
+    /// The surface in effect: glass only where the system has it.
+    public func effectiveSurface(glassAvailable: Bool) -> SurfaceStyle {
+        surface == .glass && glassAvailable ? .glass : .opaque
     }
 }
 

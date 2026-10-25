@@ -36,7 +36,7 @@ struct MusicTile: View {
                 }
             }
             .padding(8)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .dsCard()
         } else {
             Label("Nothing playing", systemImage: "music.note")
                 .font(.system(size: 11))
@@ -55,7 +55,7 @@ struct MusicTile: View {
         }
         .frame(width: 44, height: 44)
         .background(Theme.codeBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.inner(outer: Radius.card, padding: Space.s), style: .continuous))
         .shadow(color: (tint ?? .clear).opacity(0.75), radius: 10)
         .animation(.easeOut(duration: 0.4), value: tint)
         .accessibilityHidden(true)

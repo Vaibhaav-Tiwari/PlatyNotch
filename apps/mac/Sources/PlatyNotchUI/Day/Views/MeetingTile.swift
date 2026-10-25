@@ -79,6 +79,8 @@ struct MeetingTile: View {
 }
 
 private struct MeetingCard: View {
+    /// The calendar-colour bar: fully rounded ends.
+    static let barHeight: CGFloat = 28
     let meeting: CalendarMeeting
     let color: Color
     let now: Date
@@ -87,9 +89,9 @@ private struct MeetingCard: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: Self.barHeight / 2)
                 .fill(color)
-                .frame(width: 3, height: 28)
+                .frame(width: 3, height: Self.barHeight)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(verbatim: meeting.title)
@@ -113,7 +115,7 @@ private struct MeetingCard: View {
             }
         }
         .padding(6)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .dsCard()
         .accessibilityElement(children: .contain)
     }
 

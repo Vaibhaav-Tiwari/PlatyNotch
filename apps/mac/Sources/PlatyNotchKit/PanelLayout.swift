@@ -144,6 +144,19 @@ public struct PanelLayout: Equatable, Sendable {
         }
     }
 
+    /// The pure-black band level with the camera housing (spec 7.1, Ruling 10): the top
+    /// `anchor.height` of the content rect, window-local with a top-left origin. Nil
+    /// without a notch, and for the pill (`.hidden` / `.compact`), which is all black.
+    public func notchBand(for mode: PanelMode) -> CGRect? {
+        guard hasNotch else { return nil }
+        switch mode {
+        case .hidden, .compact: return nil
+        default:
+            let content = Self.localRect(contentRect(for: mode), in: windowFrame)
+            return CGRect(x: content.minX, y: content.minY, width: content.width, height: anchor.height)
+        }
+    }
+
     /// Where the approval cards sit (the approval peek, the open panel's column).
     public func approvalSlot(for mode: PanelMode) -> CGRect? {
         switch mode {

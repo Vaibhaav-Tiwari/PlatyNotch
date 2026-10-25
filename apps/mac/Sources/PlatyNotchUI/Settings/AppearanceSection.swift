@@ -57,6 +57,15 @@ struct AppearanceSection: View {
         .pickerStyle(.segmented)
         Text("Dark by default: on a notch the panel joins the black camera housing. The resting pill there stays black in every theme.")
             .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
+        Picker("Surface", selection: $settings.surface) {
+            Text("Opaque").tag(AppearanceSettings.SurfaceStyle.opaque)
+            Text("Glass").tag(AppearanceSettings.SurfaceStyle.glass)
+        }
+        .pickerStyle(.segmented)
+        Text(Theme.glassAvailable
+             ? "Glass uses the system's glass material for the open panel. The pill and the band beside the camera stay black."
+             : "Glass needs macOS 26; until then the open panel stays opaque.")
+            .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
     }
 
     @ViewBuilder private var pillRows: some View {

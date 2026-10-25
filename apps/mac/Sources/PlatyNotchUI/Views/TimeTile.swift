@@ -23,7 +23,7 @@ struct TimeTile: View {
         }
         .font(.system(size: 11))
         .padding(6)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .dsCard()
     }
 }
 

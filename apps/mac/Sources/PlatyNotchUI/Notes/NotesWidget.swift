@@ -572,7 +572,7 @@ struct NotesTile: View {
                 }
             }
             .padding(6)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .dsCard(radius: Radius.chip)
             if let status = widget.status {
                 Text(verbatim: status).font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

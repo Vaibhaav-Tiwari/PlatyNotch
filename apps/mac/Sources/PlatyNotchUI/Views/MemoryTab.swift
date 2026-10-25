@@ -209,7 +209,7 @@ private struct MemorySearchField: View {
             }
         }
         .padding(6)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .dsCard(radius: Radius.chip)
     }
 }
 
@@ -235,7 +235,6 @@ private struct MemoryHitRow: View {
         .padding(.vertical, 4)
         .padding(.horizontal, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .accessibilityElement(children: .combine)
     }
 }

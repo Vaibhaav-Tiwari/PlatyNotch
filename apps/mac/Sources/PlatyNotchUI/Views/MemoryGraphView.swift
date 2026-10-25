@@ -181,7 +181,7 @@ private struct MemoryGraphBody: View {
             GeometryReader { geo in
                 canvas(size: geo.size)
             }
-            .background(Theme.card.opacity(0.5), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .dsCard()
             .opacity(shown ? 1 : 0)
             .onAppear {
                 // One short fade when the graph arrives; nothing moves after that.

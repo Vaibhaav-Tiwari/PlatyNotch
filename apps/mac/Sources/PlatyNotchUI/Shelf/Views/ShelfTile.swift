@@ -93,7 +93,7 @@ struct ShelfCard: View {
                 .font(DS.font(TypeScale.caption))
         }
         .frame(width: Self.size.width, height: Self.size.height)
-        .background(RoundedRectangle(cornerRadius: 8).fill(.background.opacity(0.85)))
+        .background(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).fill(.background.opacity(0.85)))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(run.title) \(item.title)")
     }
@@ -135,7 +135,7 @@ struct ShelfCard: View {
         }
         .padding(4)
         .frame(width: Self.size.width, height: Self.size.height)
-        .background(RoundedRectangle(cornerRadius: 8).fill(.primary.opacity(selected ? 0.18 : 0.06)))
+        .background(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).fill(.primary.opacity(selected ? 0.18 : 0.06)))
         .overlay {
             if !missing {
                 // Clicks, drags out and the menu (AppKit: a real NSDraggingSource with file URLs).

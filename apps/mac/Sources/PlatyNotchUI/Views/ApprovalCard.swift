@@ -42,7 +42,7 @@ struct ApprovalCard: View {
             }
         }
         .padding(8)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .dsCard()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(visible.agentName) asks to run \(visible.tool)")
     }
@@ -227,7 +227,7 @@ struct ApprovalRow: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .dsCard()
         .accessibilityElement(children: .contain)
     }
 }

@@ -118,7 +118,7 @@ struct GamesTile: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 10))
+        .dsCard()
     }
 
     private func label(_ kind: GameKind) -> some View {
