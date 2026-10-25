@@ -363,15 +363,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func wireSettingsEntryPoints() {
         memory.onOpenSettings = { [weak self] in self?.openSettings(section: "memory") }
-        today.calendar.onOpenSettings = { [weak self] in self?.openSettings(section: "permissions") }
+        today.calendar.onOpenSettings = { [weak self] in self?.openSettings(section: SettingsPageID.privacy.rawValue) }
         settingsServices.showOnboarding = { [weak self] in self?.onboarding.show() }
         settingsServices.restartCore = { [weak self] in self?.scheduleCoreRestart() }
-        // A widget's "Set up" asks for "widgets/<id>"; until the Settings detail pages
-        // (Task 24) this opens the Widgets section and ignores the detail.
-        widgets.openSettingsHandler = { [weak self] route in
-            let section: String = route.split(separator: "/").first.map(String.init) ?? "widgets"
-            self?.openSettings(section: section)
-        }
+        // A widget's "Set up" asks for "widgets/<id>": Settings opens that widget's page.
+        widgets.openSettingsHandler = { [weak self] route in self?.openSettings(section: route) }
     }
 
     private func openSettings(section: String?) {

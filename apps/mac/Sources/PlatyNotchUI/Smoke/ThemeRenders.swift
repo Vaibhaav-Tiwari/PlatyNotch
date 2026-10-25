@@ -29,6 +29,16 @@ enum ThemeRenders {
                 }
                 count += 1
             }
+            for (name, view, size) in SettingsRenders.windows() where only.map({ p in p.contains { name.hasPrefix($0) } }) ?? true {
+                let url = dir.appendingPathComponent("\(name)-\(scheme == .dark ? "dark" : "light").png")
+                guard let png = SettingsRenders.render(view, size: size, scheme: scheme) else {
+                    return .failure(RenderError(message: "\(name) did not render"))
+                }
+                do { try png.write(to: url) } catch {
+                    return .failure(RenderError(message: "cannot write \(url.path)"))
+                }
+                count += 1
+            }
         }
         return .success(count)
     }
@@ -111,6 +121,7 @@ enum ThemeRenders {
         out.append(("pill-platy-idle", PillRenders.pill(.idle, width: .standard, notch: true), true))
         out.append(("pill-agents-music", PillRenders.pill(.music, width: .standard, notch: true), true))
         out.append(("pill-indicators", PillRenders.pill(.timer, width: .wide, notch: true), true))
+        out.append(("settings-notch-preview", AnyView(NotchPreview(appearance: AppearanceSettings()).frame(width: 540)), true))
         return out
     }
 

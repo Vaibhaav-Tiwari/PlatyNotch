@@ -5,7 +5,7 @@ struct PermissionsSection: View {
     let services: SettingsServices
 
     var body: some View {
-        SettingsPage("Permissions", subtitle: "Each one is optional. PlatyNotch asks only when you click Allow.") {
+        SettingsPage("Privacy & Permissions", subtitle: "Each one is optional. PlatyNotch asks only when you click Allow.") {
             PermissionRows(permissions: services.permissions,
                            mailWidgetOn: services.widgets.isEnabled(MailWidget.widgetID))
             Divider()

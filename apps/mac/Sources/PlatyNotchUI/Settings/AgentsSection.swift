@@ -5,11 +5,45 @@ import SwiftUI
 /// per agent, and Claude Code's status line. The app never edits agent configs itself.
 struct AgentsSection: View {
     let services: SettingsServices
+    /// A sub-page: "approvals" or "policy" (Ruling 12); nil for Agents itself.
+    @Binding var detail: String?
+
+    init(services: SettingsServices, detail: Binding<String?> = .constant(nil)) {
+        self.services = services
+        _detail = detail
+    }
 
     var body: some View {
+        switch detail {
+        case "approvals": subPage { ApprovalsSection(config: services.config) }
+        case "policy": subPage { PolicySection(config: services.config) }
+        default: main
+        }
+    }
+
+    private func subPage<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SettingsBackHeader(parent: "Agents") { detail = nil }
+                .padding(EdgeInsets(top: 14, leading: 24, bottom: 0, trailing: 24))
+            content()
+        }
+    }
+
+    private var main: some View {
         let agents = services.agents
-        SettingsPage("Agents", subtitle: "PlatyNotch listens to your coding agents through their hooks.") {
+        return SettingsPage("Agents", subtitle: "PlatyNotch listens to your coding agents through their hooks.") {
             AgentList(services: services, compact: false)
+
+            GroupBox {
+                VStack(spacing: 10) {
+                    SettingsLinkRow(title: "Approvals", systemImage: "checkmark.shield",
+                                    value: services.config.config.approvals.enabled ? "On" : "Off") { detail = "approvals" }
+                    Divider()
+                    SettingsLinkRow(title: "Policy", systemImage: "list.bullet.rectangle",
+                                    value: Self.rulesCount(services.config.config.policy.rules.count)) { detail = "policy" }
+                }
+                .padding(6)
+            }
 
             GroupBox {
                 VStack(alignment: .leading, spacing: 6) {
@@ -44,6 +78,8 @@ struct AgentsSection: View {
         }
         .task { await agents.refresh() }
     }
+
+    static func rulesCount(_ n: Int) -> String { n == 1 ? "1 rule" : "\(n) rules" }
 }
 
 /// "Show Agents before an agent connects" (`AgentsVisibility.forcedOn`): the panel's

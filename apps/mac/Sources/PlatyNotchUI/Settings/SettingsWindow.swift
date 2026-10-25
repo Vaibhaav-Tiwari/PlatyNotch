@@ -85,21 +85,33 @@ final class AgentsModel {
     func clearOutput() { lastOutput = nil }
 }
 
-/// Which section the Settings window shows.
+/// The Kit's page list (named apart from the `SettingsPage` view below).
+typealias SettingsPageID = PlatyNotchKit.SettingsPage
+
+/// Which page (and sub-page) the Settings window shows.
 @MainActor @Observable
 final class SettingsModel {
-    static let builtIn: [(id: String, title: String, image: String)] = [
-        ("agents", "Agents", "terminal"),
-        ("approvals", "Approvals", "checkmark.shield"),
-        ("policy", "Policy", "list.bullet.rectangle"),
-        ("memory", "Memory", "brain"),
-        ("permissions", "Permissions", "hand.raised"),
-        ("widgets", "Widgets", "square.grid.2x2"),
-        ("appearance", "Appearance", "macwindow"),
-        ("about", "About", "info.circle"),
-    ]
+    /// The sidebar, top to bottom (an explicit list: plug-in sections follow under
+    /// "Extensions").
+    static let pages: [SettingsPageID] = [.general, .notch, .widgets, .agents, .memory, .privacy, .about]
 
-    var selection: String = "agents"
+    /// The built-in pages as (id, title, image).
+    static var builtIn: [(id: String, title: String, image: String)] {
+        pages.map { ($0.rawValue, $0.title, $0.systemImage) }
+    }
+
+    var selection: String = SettingsPageID.general.rawValue {
+        didSet { if selection != oldValue { detail = nil } }
+    }
+    /// A sub-page of `selection` ("approvals" under Agents, a widget id under Widgets).
+    var detail: String?
+
+    /// Goes to `target` when its page exists (`ids`); anything else keeps the current page.
+    func go(to target: SettingsTarget, ids: [String]) {
+        guard ids.contains(target.section) else { return }
+        selection = target.section
+        detail = target.detail
+    }
 }
 
 /// The Settings window (one instance, reused).
@@ -119,9 +131,11 @@ final class SettingsWindowController {
     var isVisible: Bool { window?.isVisible ?? false }
     var hostingView: NSView? { window?.contentView }
 
-    /// Shows the window at `section` (an unknown id keeps the current section).
+    /// Shows the window at `section`: a page id, an old id (`appearance`, `permissions`,
+    /// `approvals`, `policy`) or "<page>/<detail>" (`SettingsTarget.resolve`). Nil or an
+    /// unknown id keeps the current page.
     func show(section: String? = nil, activate: Bool = true) {
-        if let section, sectionIDs.contains(section) { model.selection = section }
+        if let section { model.go(to: SettingsTarget.resolve(section), ids: sectionIDs) }
         let w = window ?? makeWindow()
         window = w
         if activate {
@@ -145,18 +159,24 @@ final class SettingsWindowController {
         window?.setFrameOrigin(NSPoint(x: -10_000, y: 10_000))
     }
 
+    static let size = NSSize(width: 800, height: 580)
+    static let minSize = NSSize(width: 680, height: 460)
+
     private func makeWindow() -> NSWindow {
         let root = SettingsRootView(model: model, services: services, pluginSections: pluginSections)
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 540),
-                         styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        let w = NSWindow(contentRect: NSRect(origin: .zero, size: Self.size),
+                         styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                         backing: .buffered, defer: false)
         w.title = "PlatyNotch Settings"
+        w.titlebarAppearsTransparent = true
+        w.toolbarStyle = .unified
         w.identifier = AppWindowID.settings
         // The window, not the SwiftUI content's ideal size, decides the size (see onboarding).
-        let host = NSHostingController(rootView: root.frame(minWidth: 640, minHeight: 420))
+        let host = NSHostingController(rootView: root.frame(minWidth: Self.minSize.width, minHeight: Self.minSize.height))
         host.sizingOptions = []
         w.contentViewController = host
-        w.setContentSize(NSSize(width: 760, height: 540))
-        w.contentMinSize = NSSize(width: 640, height: 420)
+        w.setContentSize(Self.size)
+        w.contentMinSize = Self.minSize
         w.isReleasedWhenClosed = false
         w.center()
         w.setFrameAutosaveName("PlatyNotchSettings")
@@ -170,21 +190,10 @@ struct SettingsRootView: View {
     let pluginSections: [SettingsSection]
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: $model.selection) {
-                ForEach(SettingsModel.builtIn, id: \.id) { s in
-                    Label(s.title, systemImage: s.image).tag(s.id)
-                }
-                if !pluginSections.isEmpty {
-                    Section("Extensions") {
-                        ForEach(pluginSections) { s in
-                            Label { Text(verbatim: s.title) } icon: { Image(systemName: s.systemImage) }.tag(s.id)
-                        }
-                    }
-                }
-            }
-            .navigationSplitViewColumnWidth(min: 170, ideal: 180, max: 220)
-        } detail: {
+        HStack(spacing: 0) {
+            SettingsSidebar(model: model, pluginSections: pluginSections)
+                .frame(width: Self.sidebarWidth)
+            Divider()
             VStack(spacing: 0) {
                 if let error = services.config.loadError {
                     ConfigErrorBanner(title: "config.json cannot be read, so changes are not saved.",
@@ -195,26 +204,84 @@ struct SettingsRootView: View {
                 detail
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
+            .padding(.top, Self.titleBar)
         }
+        .background(Color(nsColor: .windowBackgroundColor))
+        .ignoresSafeArea()
+        // One accent: brand teal for switches, checkboxes and prominent buttons.
+        .tint(SettingsTint.accent)
     }
+
+    static let sidebarWidth: CGFloat = 228
+    /// The transparent title bar the content runs under (the traffic lights sit in the sidebar).
+    static let titleBar: CGFloat = 28
 
     @ViewBuilder private var detail: some View {
         switch model.selection {
-        case "agents": AgentsSection(services: services)
-        case "approvals": ApprovalsSection(config: services.config)
-        case "policy": PolicySection(config: services.config)
-        case "memory": MemorySection(services: services)
-        case "permissions": PermissionsSection(services: services)
-        case "widgets": WidgetsSection(widgets: services.widgets)
-        case "appearance": AppearanceSection()
-        case "about": AboutSection(updater: services.updater)
+        case SettingsPageID.general.rawValue: GeneralSection(services: services)
+        case SettingsPageID.notch.rawValue: NotchSection()
+        case SettingsPageID.widgets.rawValue: WidgetsSection(widgets: services.widgets)
+        case SettingsPageID.agents.rawValue: AgentsSection(services: services, detail: $model.detail)
+        case SettingsPageID.memory.rawValue: MemorySection(services: services)
+        case SettingsPageID.privacy.rawValue: PermissionsSection(services: services)
+        case SettingsPageID.about.rawValue: AboutSection(updater: services.updater)
         default:
             if let s = pluginSections.first(where: { $0.id == model.selection }) {
                 s.view
             } else {
-                AgentsSection(services: services)
+                GeneralSection(services: services)
             }
         }
+    }
+}
+
+/// The sidebar: each page's symbol in a tinted well, the selected row on a soft teal
+/// wash (never the system's blue selection); plug-in sections under "Extensions".
+private struct SettingsSidebar: View {
+    @Bindable var model: SettingsModel
+    let pluginSections: [SettingsSection]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(SettingsModel.builtIn, id: \.id) { page in
+                    row(id: page.id, title: page.title, image: page.image)
+                }
+                if !pluginSections.isEmpty {
+                    Text("Extensions")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(EdgeInsets(top: 14, leading: 10, bottom: 4, trailing: 0))
+                    ForEach(pluginSections) { s in row(id: s.id, title: s.title, image: s.systemImage) }
+                }
+            }
+            .padding(EdgeInsets(top: SettingsRootView.titleBar + 16, leading: 10, bottom: 12, trailing: 10))
+        }
+        .scrollIndicators(.never)
+        .background(Color.primary.opacity(0.035))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Settings pages")
+    }
+
+    private func row(id: String, title: String, image: String) -> some View {
+        let selected: Bool = model.selection == id
+        return Button { model.selection = id } label: {
+            HStack(spacing: 9) {
+                SymbolWell(systemImage: image, size: 24, filled: selected)
+                Text(verbatim: title)
+                    .font(.system(size: 13, weight: selected ? .semibold : .regular))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(EdgeInsets(top: 4, leading: 6, bottom: 4, trailing: 6))
+            .background(selected ? SettingsTint.well : .clear,
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 }
 
@@ -239,28 +306,52 @@ private struct ConfigErrorBanner: View {
     }
 }
 
-/// A titled scrolling page used by every section.
+/// A titled scrolling page used by every section: the page's symbol in a tinted well,
+/// its title and an optional one-line subtitle, then its controls.
 struct SettingsPage<Content: View>: View {
     let title: String
     let subtitle: String?
+    let systemImage: String?
     @ViewBuilder let content: () -> Content
 
-    init(_ title: String, subtitle: String? = nil, @ViewBuilder content: @escaping () -> Content) {
+    init(_ title: String, subtitle: String? = nil, systemImage: String? = nil,
+         @ViewBuilder content: @escaping () -> Content) {
         self.title = title; self.subtitle = subtitle; self.content = content
+        self.systemImage = systemImage ?? SettingsPageID.allCases.first { $0.title == title }?.systemImage
     }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(.title2.weight(.semibold))
-                    if let subtitle { Text(subtitle).font(.callout).foregroundStyle(.secondary) }
+                HStack(alignment: .center, spacing: 12) {
+                    if let systemImage { SymbolWell(systemImage: systemImage, size: 32) }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(verbatim: title).font(.system(size: 20, weight: .semibold))
+                            .accessibilityAddTraits(.isHeader)
+                        if let subtitle {
+                            Text(verbatim: subtitle).font(.system(size: 12)).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
+                .padding(.bottom, 2)
                 content()
             }
-            .padding(20)
+            .padding(EdgeInsets(top: 18, leading: 24, bottom: 24, trailing: 24))
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+extension View {
+    /// A grouped form laid out at its full height inside a `SettingsPage` (the page
+    /// scrolls, not the form), its rounded groups flush with the page's margins.
+    func settingsForm() -> some View {
+        formStyle(.grouped)
+            .scrollDisabled(true)
+            .scrollContentBackground(.hidden)
+            .padding(.horizontal, -20)
+            .padding(.vertical, -16)
     }
 }
 
