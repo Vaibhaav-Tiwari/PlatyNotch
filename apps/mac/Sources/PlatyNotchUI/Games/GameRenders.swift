@@ -253,7 +253,7 @@ private struct GameShotFrame: View {
     var body: some View {
         content
             .frame(width: GameLayout.boardArea.width, height: GameLayout.boardArea.height)
-            .background(Color.primary.opacity(0.02), in: RoundedRectangle(cornerRadius: 10))
+            .background(Color.primary.opacity(0.02), in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
             .padding(12)
             .background(Theme.surface(scheme))
     }

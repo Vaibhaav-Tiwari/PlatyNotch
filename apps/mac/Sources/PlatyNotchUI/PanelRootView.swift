@@ -79,7 +79,9 @@ struct PanelRootView: View {
     /// The mode's surface, with the pure-black band level with the camera housing on a
     /// notch (`PanelLayout.notchBand`) so the open panel meets the notch seamlessly.
     @ViewBuilder private func surface(_ layout: PanelLayout, scheme: ColorScheme, content r: CGRect) -> some View {
-        let style: AppearanceSettings.SurfaceStyle = model.appearance.effectiveSurface(glassAvailable: Theme.glassAvailable)
+        let approvals: Bool = !store.approvals.isEmpty
+        let style: AppearanceSettings.SurfaceStyle = model.appearance.effectiveSurface(
+            glassAvailable: Theme.glassAvailable, mode: model.mode, approvalsShowing: approvals)
         ZStack(alignment: .topLeading) {
             Theme.surface(scheme, mode: model.mode, hasNotch: layout.hasNotch, style: style)
             if let band = layout.notchBand(for: model.mode) {

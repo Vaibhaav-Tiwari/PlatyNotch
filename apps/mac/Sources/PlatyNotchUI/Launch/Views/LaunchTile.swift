@@ -121,7 +121,7 @@ struct SiteIcon: View {
                 .accessibilityHidden(true)
         } else {
             Text(verbatim: letter)
-                .font(.system(size: size * 0.5, weight: .bold, design: .rounded))
+                .font(.system(size: max(size * 0.5, TypeScale.minimum), weight: .bold, design: .rounded))
                 .foregroundStyle(.white)   // on the green letter tile, every theme
                 .frame(width: size, height: size)
                 .background(Theme.tint(.accent).opacity(0.7), in: RoundedRectangle(cornerRadius: 6, style: .continuous))

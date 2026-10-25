@@ -108,8 +108,15 @@ struct ShelfCard: View {
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.color(.attention))
                         .accessibilityLabel("Missing")
-                } else if item.pinned {
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if !missing, item.pinned {
+                    // Beside the thumbnail's top-right corner, not over it; an overlay, so
+                    // the thumbnail stays centred.
                     Image(systemName: "pin.fill").font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
+                        .fixedSize()
+                        .offset(x: TypeScale.caption.size + 1)
                 }
             }
             if missing {
@@ -124,16 +131,20 @@ struct ShelfCard: View {
                 .buttonStyle(.borderless)
                 .font(DS.font(TypeScale.caption))
             } else {
-                // One word ("example.com") truncates in the middle rather than breaking
-                // mid-word at 11 pt; names with spaces wrap to two lines.
+                // A one-word name ("example.com") takes one line in regular weight, tightened
+                // if need be, and truncates in the middle rather than breaking mid-word;
+                // names with spaces wrap to two lines.
+                let oneLine = !item.title.contains(" ")
                 Text(verbatim: item.title)
-                    .font(DS.font(TypeScale.caption))
-                    .lineLimit(item.title.contains(" ") ? 2 : 1)
+                    .font(DS.font(TypeScale.caption).weight(oneLine ? .regular : .medium))
+                    .allowsTightening(true)
+                    .lineLimit(oneLine ? 1 : 2)
                     .multilineTextAlignment(.center)
                     .truncationMode(.middle)
             }
         }
-        .padding(4)
+        .padding(.vertical, 4)
+        .padding(.horizontal, 2)
         .frame(width: Self.size.width, height: Self.size.height)
         .background(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).fill(.primary.opacity(selected ? 0.18 : 0.06)))
         .overlay {

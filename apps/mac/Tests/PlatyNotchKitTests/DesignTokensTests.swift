@@ -94,6 +94,13 @@ final class DesignTokensTests: DefaultsTestCase {
                 XCTAssertGreaterThanOrEqual(RGB.contrast(light, back), 4.5, "\(name) light on \(bName)")
             }
         }
+        // Black text on an amber fill (the pill's approval-count badge and the ringing chip's
+        // Stop) uses the dark amber in every scheme: the light amber is about 3.1:1.
+        let amberFill = StateTone.needsYou.rgb(dark: true)
+        for use in ["approval badge count", "ringing chip Stop"] {
+            XCTAssertGreaterThanOrEqual(RGB.contrast(black, amberFill), 4.5, "\(use): black on the amber fill")
+        }
+        XCTAssertLessThan(RGB.contrast(black, StateTone.needsYou.rgb(dark: false)), 4.5, "why the fill is the dark amber")
         XCTAssertGreaterThanOrEqual(RGB.contrast(Brand.teal, PanelPalette.panelDark), 4.5)
         XCTAssertGreaterThanOrEqual(RGB.contrast(Brand.cream, Brand.pond), 4.5)
         XCTAssertGreaterThanOrEqual(RGB.contrast(white, Brand.pond), 4.5)

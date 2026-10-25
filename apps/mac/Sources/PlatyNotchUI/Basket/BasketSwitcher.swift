@@ -75,7 +75,7 @@ struct BasketSwitcherView: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(RoundedRectangle(cornerRadius: 14).fill(.regularMaterial))
+        .background(RoundedRectangle(cornerRadius: Radius.hero, style: .continuous).fill(.regularMaterial))
     }
 
     private func chip(_ e: BasketSwitcherModel.Entry) -> some View {
@@ -85,7 +85,7 @@ struct BasketSwitcherView: View {
             Text(verbatim: e.name).font(DS.font(TypeScale.caption).weight(on ? .semibold : .regular)).lineLimit(1)
         }
         .frame(width: 88, height: 48)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(on ? 0.15 : 0)))
+        .background(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).fill(Color.primary.opacity(on ? 0.15 : 0)))
     }
 }
 

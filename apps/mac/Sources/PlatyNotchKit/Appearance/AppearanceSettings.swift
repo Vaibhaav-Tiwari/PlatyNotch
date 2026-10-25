@@ -88,9 +88,8 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         spring = (try? c.decodeIfPresent(SpringParams.self, forKey: .spring)) ?? d.spring
         hideInFullScreen = (try? c.decodeIfPresent(Bool.self, forKey: .hideInFullScreen)) ?? d.hideInFullScreen
         showPlaty = (try? c.decodeIfPresent(Bool.self, forKey: .showPlaty)) ?? d.showPlaty
-        // No saved motion: an untouched spring becomes Calm, a changed one Lively.
         motion = (try? c.decodeIfPresent(MotionPreset.self, forKey: .motion))
-            ?? (spring == .standard ? .calm : .lively)
+            ?? Self.migratedMotion(from: spring)
         surface = (try? c.decodeIfPresent(SurfaceStyle.self, forKey: .surface)) ?? d.surface
     }
 
@@ -113,6 +112,24 @@ extension AppearanceSettings {
     /// The surface in effect: glass only where the system has it.
     public func effectiveSurface(glassAvailable: Bool) -> SurfaceStyle {
         surface == .glass && glassAvailable ? .glass : .opaque
+    }
+
+    /// The surface for `mode`: glass only for the open panel (spec 7.1) and never while it
+    /// shows approvals; the approval peek and every other surface stay opaque, so an
+    /// approval is always read on a solid background.
+    public func effectiveSurface(glassAvailable: Bool, mode: PanelMode, approvalsShowing: Bool) -> SurfaceStyle {
+        guard mode == .expanded, !approvalsShowing else { return .opaque }
+        return effectiveSurface(glassAvailable: glassAvailable)
+    }
+
+    /// Settings saved before Motion: Lively only when the old sliders were set springier
+    /// or slower than the new Calm open (damping under 0.86 or response over 0.42).
+    /// An untouched spring, or one with only the blur changed, is Calm.
+    static func migratedMotion(from spring: SpringParams) -> MotionPreset {
+        let d = SpringParams.standard
+        if spring.response == d.response, spring.dampingFraction == d.dampingFraction { return .calm }
+        guard let calm = MotionPreset.calm.spring(.open) else { return .calm }
+        return spring.dampingFraction < calm.damping || spring.response > d.response ? .lively : .calm
     }
 }
 

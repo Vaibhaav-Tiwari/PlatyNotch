@@ -86,7 +86,7 @@ final class DesignLintTests: DefaultsTestCase {
     /// Where tile containers live: the six tile directories and the two widget files that
     /// draw their own tiles (relative to `Sources/PlatyNotchUI`).
     static let tileDirectories = ["Views/", "Day/Views/", "Shelf/Views/", "System/Views/", "Launch/Views/",
-                                  "Wellbeing/Views/"]
+                                  "Wellbeing/Views/", "Games/", "Games/Views/", "Camera/", "Basket/"]
     static let tileFiles = ["Clipboard/ClipboardWidget.swift", "Notes/NotesWidget.swift"]
 
     /// `path:line` → reason for literal radii outside the scale on shapes that are not
@@ -119,6 +119,31 @@ final class DesignLintTests: DefaultsTestCase {
         }
         XCTAssertTrue(found.isEmpty, "radii outside 6 / 12 / 20 (use dsCard or a Radius token):\n"
                       + found.joined(separator: "\n"))
+    }
+
+    /// `.controlSize(.mini)` draws a control's text at about 9 pt. Allowed only on controls
+    /// without text: a `ProgressView`, or a control whose label is hidden (`.labelsHidden()`
+    /// within the three lines above, as on a switch).
+    func testNoMiniTextControls() throws {
+        let lines = try Self.sourceLines()
+        var found: [String] = []
+        for (i, line) in lines.enumerated() where line.text.contains(".controlSize(.mini)") {
+            if line.text.contains("ProgressView") { continue }
+            let above = lines[max(0, i - 3)..<i].filter { $0.path == line.path }
+            if above.contains(where: { $0.text.contains(".labelsHidden()") }) { continue }
+            found.append("\(line.path):\(line.number): \(line.text.trimmingCharacters(in: .whitespaces))")
+        }
+        XCTAssertTrue(found.isEmpty, "mini controls with text (use .small):\n" + found.joined(separator: "\n"))
+    }
+
+    /// One `NSColor` per (tone, alpha): the agent dot compares colours with `!=`, so a new
+    /// instance per update would recolour its layer every time.
+    func testDynamicColoursAreCached() {
+        XCTAssertTrue(DS.dynamicNSColor(.working) === DS.dynamicNSColor(.working))
+        XCTAssertTrue(DS.dynamicNSColor(.idle, alpha: 0.35) === DS.dynamicNSColor(.idle, alpha: 0.35))
+        XCTAssertFalse(DS.dynamicNSColor(.idle) === DS.dynamicNSColor(.idle, alpha: 0.35))
+        XCTAssertTrue(Theme.nsColor(.active) === Theme.nsColor(.active))
+        XCTAssertTrue(Theme.nsColor(.off) === Theme.nsColor(.off))
     }
 
     func testStateToneMapping() {

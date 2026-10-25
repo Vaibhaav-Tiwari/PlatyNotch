@@ -276,7 +276,7 @@ struct CommandOutputView: View {
             }
             ScrollView {
                 Text(verbatim: output.text)
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(DS.font(TypeScale.caption, design: .monospaced).weight(.regular))
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }

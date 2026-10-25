@@ -253,7 +253,7 @@ private struct ClocksSection: View {
                             if widget.addClock(tz) { query = "" }
                         }
                         .buttonStyle(.bordered)
-                        .controlSize(.mini)
+                        .controlSize(.small)
                         .help(tz)
                     }
                 }

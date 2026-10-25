@@ -39,11 +39,17 @@ final class MotionPresetTests: DefaultsTestCase {
         let s = try decode(#"{"spring":{"response":0.42,"dampingFraction":0.78,"blur":8}}"#)
         XCTAssertEqual(s.motion, .calm)
         XCTAssertEqual(try decode("{}").motion, .calm)
+        // Only the blur changed: still Calm.
+        XCTAssertEqual(try decode(#"{"spring":{"response":0.42,"dampingFraction":0.78,"blur":0}}"#).motion, .calm)
+        // Snappier and less bouncy than Calm's open: Calm.
+        XCTAssertEqual(try decode(#"{"spring":{"response":0.3,"dampingFraction":0.95,"blur":8}}"#).motion, .calm)
     }
 
     func testMigratesChangedSpringToLively() throws {
-        let s = try decode(#"{"spring":{"response":0.6,"dampingFraction":0.78,"blur":8}}"#)
-        XCTAssertEqual(s.motion, .lively)
+        // Slower than Calm's open.
+        XCTAssertEqual(try decode(#"{"spring":{"response":0.6,"dampingFraction":0.9,"blur":8}}"#).motion, .lively)
+        // Bouncier than Calm's open.
+        XCTAssertEqual(try decode(#"{"spring":{"response":0.3,"dampingFraction":0.7,"blur":8}}"#).motion, .lively)
     }
 
     func testSavedMotionWins() throws {

@@ -99,7 +99,7 @@ struct GamesTab: View {
             overlay
                 .allowsHitTesting(false)
         }
-        .background(Color.primary.opacity(0.02), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.primary.opacity(0.02), in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
     }
 
     private func setFocused(_ on: Bool) {
@@ -187,6 +187,6 @@ struct GameOverlayCard: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(Theme.surface(scheme).opacity(0.85), in: RoundedRectangle(cornerRadius: 8))
+        .background(Theme.surface(scheme).opacity(0.85), in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
     }
 }

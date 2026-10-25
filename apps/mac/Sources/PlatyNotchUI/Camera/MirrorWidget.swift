@@ -224,7 +224,7 @@ struct MirrorTileView: View {
                 MirrorPreview(session: widget.session)
                     .frame(height: 150)
                     .frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: Radius.inner(outer: Radius.card, padding: 6), style: .continuous))
             } else if state == .live {
                 Label("The mirror shows on another display.", systemImage: "person.crop.square")
                     .font(.system(size: 11))

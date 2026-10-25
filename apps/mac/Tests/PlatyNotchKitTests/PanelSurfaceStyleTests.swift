@@ -23,6 +23,20 @@ final class PanelSurfaceStyleTests: DefaultsTestCase {
         XCTAssertEqual(s.effectiveSurface(glassAvailable: false), .opaque)
     }
 
+    /// Glass is for the open panel only (spec 7.1), and never while approvals show there:
+    /// an approval is always read on an opaque surface.
+    func testApprovalsStayOpaqueInGlassMode() {
+        let s = AppearanceSettings(surface: .glass)
+        XCTAssertEqual(s.effectiveSurface(glassAvailable: true, mode: .expanded, approvalsShowing: false), .glass)
+        XCTAssertEqual(s.effectiveSurface(glassAvailable: true, mode: .expanded, approvalsShowing: true), .opaque)
+        XCTAssertEqual(s.effectiveSurface(glassAvailable: false, mode: .expanded, approvalsShowing: false), .opaque)
+        let others: [PanelMode] = [.peek(.approval), .peek(.notice), .peek(.widget(id: "w")), .peek(.ringing(id: "r")),
+                                   .peek(.hud(.volume)), .peek(.drop), .compact, .hidden]
+        for mode in others {
+            XCTAssertEqual(s.effectiveSurface(glassAvailable: true, mode: mode, approvalsShowing: false), .opaque, "\(mode)")
+        }
+    }
+
     func testMissingSurfaceKeyDecodesOpaque() throws {
         let old = try JSONDecoder().decode(AppearanceSettings.self, from: Data(#"{"theme":"light"}"#.utf8))
         XCTAssertEqual(old.surface, .opaque)

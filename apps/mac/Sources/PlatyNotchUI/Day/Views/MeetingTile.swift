@@ -56,7 +56,7 @@ struct MeetingTile: View {
                 ForEach(ahead.dropFirst().prefix(Self.laterCount)) { m in
                     HStack(spacing: 6) {
                         Text(m.start.formatted(date: .omitted, time: .shortened))
-                            .font(.system(size: 11, design: .monospaced))
+                            .font(DS.font(TypeScale.caption, design: .monospaced).weight(.regular))
                             .foregroundStyle(.secondary)
                         Text(verbatim: m.title).font(.system(size: 11)).lineLimit(1)
                         Spacer(minLength: 0)

@@ -95,7 +95,7 @@ struct RingingChip: View {
             }
             .foregroundStyle(.black)   // on the orange chip in every theme
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Theme.color(.attention), in: Capsule())
+            .background(Theme.needsYouFill, in: Capsule())
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)

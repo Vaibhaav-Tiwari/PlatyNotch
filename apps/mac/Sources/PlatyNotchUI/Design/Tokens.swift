@@ -11,6 +11,12 @@ enum DS {
         return .system(size: t.size, weight: weight(t.weight), design: design)
     }
 
+    /// A type-scale step's size and weight in another design (the pill's rounded counts,
+    /// monospaced commands at the caption size).
+    static func font(_ t: TypeStyle, design: Font.Design) -> Font {
+        .system(size: t.size, weight: weight(t.weight), design: design)
+    }
+
     static func nsFont(_ t: TypeStyle) -> NSFont {
         let w: NSFont.Weight = switch t.weight {
         case .regular: .regular
@@ -40,13 +46,30 @@ enum DS {
         NSColor(tone.rgb(dark: dark))
     }
 
-    /// A state colour that follows the drawing appearance (layer-backed views).
+    /// A state colour that follows the drawing appearance (layer-backed views). One
+    /// instance per (tone, alpha), so `AgentDotNSView.configure` sees an unchanged colour
+    /// as equal and does not recolour on every update.
     static func dynamicNSColor(_ tone: StateTone, alpha: Double = 1) -> NSColor {
-        NSColor(name: nil) { appearance in
+        let key = ColorKey(tone: tone, alpha: alpha)
+        colorLock.lock()
+        defer { colorLock.unlock() }
+        if let cached = colorCache[key] { return cached }
+        let color = NSColor(name: nil) { appearance in
             let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) != .aqua
             return NSColor(tone.rgb(dark: dark)).withAlphaComponent(CGFloat(alpha))
         }
+        colorCache[key] = color
+        return color
     }
+
+    private struct ColorKey: Hashable {
+        let tone: StateTone
+        let alpha: Double
+    }
+
+    private static let colorLock = NSLock()
+    /// Guarded by `colorLock`; a handful of entries (five tones, two alphas).
+    nonisolated(unsafe) private static var colorCache: [ColorKey: NSColor] = [:]
 
     /// A state colour that follows the environment's scheme (no scheme to hand).
     static func dynamicColor(_ tone: StateTone, alpha: Double = 1) -> Color {

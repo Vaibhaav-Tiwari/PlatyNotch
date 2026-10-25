@@ -160,6 +160,8 @@ public struct PlatyEarFit: Equatable, Sendable {
     public static let dot: CGFloat = 7 + 4
     /// The "+n" label (two digits at the 11 pt floor) and the space before it.
     public static let overflowLabel: CGFloat = 22
+    /// The "+n" badge's horizontal padding, each side.
+    public static let badgePadding: CGFloat = 2
 
     /// Dots drawn.
     public let dots: Int
@@ -182,11 +184,21 @@ public struct PlatyEarFit: Equatable, Sendable {
             self.init(dots: dots, overflowCount: overflow, badge: false)
             return
         }
-        let withLabel = room >= Self.overflowLabel
-        let dotRoom: CGFloat = withLabel ? room - Self.overflowLabel : room
+        guard room >= Self.overflowLabel else {
+            // No room for the label: no dots either, so the badge gets all of the room.
+            self.init(dots: 0, overflowCount: dots + overflow, badge: true)
+            return
+        }
+        let dotRoom: CGFloat = room - Self.overflowLabel
         let fitting: Int = dotRoom > 0 ? Int((dotRoom / Self.dot).rounded(.down)) : 0
         let shown = min(dots, fitting)
-        self.init(dots: shown, overflowCount: dots - shown + overflow, badge: !withLabel)
+        self.init(dots: shown, overflowCount: dots - shown + overflow, badge: false)
+    }
+
+    /// The width a badge may take: it starts at Platy's horizontal centre (Platy at the
+    /// ear's leading edge) and runs to the end of the ear.
+    public static func badgeRoom(earWidth: CGFloat) -> CGFloat {
+        platy / 2 + max(0, earWidth - platy)
     }
 
     /// The width this fit draws (the badge takes none).

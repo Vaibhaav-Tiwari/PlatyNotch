@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import XCTest
 @testable import PlatyNotchKit
@@ -268,8 +269,9 @@ final class PlatyMoodTests: XCTestCase {
         XCTAssertEqual(PlatyEarFit(earWidth: 56, dots: 3, overflow: 0), PlatyEarFit(dots: 3, overflowCount: 0, badge: false))
         XCTAssertEqual(PlatyEarFit(earWidth: 56, dots: 3, overflow: 4), PlatyEarFit(dots: 1, overflowCount: 6, badge: false))
         XCTAssertEqual(PlatyEarFit(earWidth: 52, dots: 3, overflow: 0), PlatyEarFit(dots: 0, overflowCount: 3, badge: false))
-        // Compact beside a notch (40 - 6): no room for the label, so "+n" is a badge on Platy.
-        XCTAssertEqual(PlatyEarFit(earWidth: 34, dots: 3, overflow: 0), PlatyEarFit(dots: 1, overflowCount: 2, badge: true))
+        // Compact beside a notch (40 - 6): no room for the label, so "+n" is a badge on Platy
+        // and no dots are drawn, leaving the ear's room to the badge.
+        XCTAssertEqual(PlatyEarFit(earWidth: 34, dots: 3, overflow: 0), PlatyEarFit(dots: 0, overflowCount: 3, badge: true))
         XCTAssertEqual(PlatyEarFit(earWidth: 10, dots: 3, overflow: 1), PlatyEarFit(dots: 0, overflowCount: 4, badge: true))
         for w in stride(from: 0.0, through: 120.0, by: 1) {
             for dots in 0...3 {
@@ -279,6 +281,27 @@ final class PlatyMoodTests: XCTestCase {
                     XCTAssertEqual(fit.dots + fit.overflowCount, dots + overflow, "every session is counted, w=\(w)")
                 }
             }
+        }
+    }
+
+    /// The Compact pill's "+n" badge (11 pt bold rounded, `badgePadding` each side) fits
+    /// from Platy's centre to the end of the 34 pt ear (`badgeRoom`).
+    func testBadgeFitsCompactEar() throws {
+        let base = NSFont.systemFont(ofSize: 11, weight: .bold)
+        let descriptor = try XCTUnwrap(base.fontDescriptor.withDesign(.rounded))
+        let font = try XCTUnwrap(NSFont(descriptor: descriptor, size: 11))
+        func width(_ s: String) -> CGFloat {
+            NSAttributedString(string: s, attributes: [.font: font]).size().width.rounded(.up)
+                + 2 * PlatyEarFit.badgePadding
+        }
+        let room = PlatyEarFit.badgeRoom(earWidth: 34)
+        XCTAssertEqual(room, 23)
+        XCTAssertLessThanOrEqual(width("+9"), room, "one digit fits")
+        // Two digits do not fit at 11 pt: "+11" needs 24, "+40" 28 (measured), against 23.
+        // Recorded for the coordinator rather than shrinking the font below 11.
+        XCTExpectFailure("two-digit badge is wider than the Compact ear's badge room at 11 pt")
+        for n in [11, 40, 99] {
+            XCTAssertLessThanOrEqual(width("+\(n)"), room, "+\(n)")
         }
     }
 

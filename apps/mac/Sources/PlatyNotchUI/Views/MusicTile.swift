@@ -158,7 +158,7 @@ struct MusicScrubber: View {
 
     private func time(_ seconds: TimeInterval?) -> some View {
         Text(verbatim: seconds.map { $0 < 0 ? "-" + TodayFormat.clock(-$0) : TodayFormat.clock($0) } ?? "")
-            .font(.system(size: 11, weight: .medium, design: .rounded))
+            .font(DS.font(TypeScale.caption, design: .rounded).weight(.medium))
             .monospacedDigit()
             .foregroundStyle(.secondary)
             .frame(width: 34, alignment: .center)

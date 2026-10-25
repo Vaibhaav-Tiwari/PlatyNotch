@@ -46,17 +46,24 @@ struct CompactPill: View {
         return HStack(spacing: 4) {
             if let platy {
                 PlatyView(mood: platy, size: PlatyEarFit.platy)
-                    .overlay(alignment: .bottomTrailing) {
-                        if badge, count > 0 { OverflowBadge(count: count) }
+                    .overlay(alignment: .bottomLeading) {
+                        // From Platy's centre rightward into the ear's free room (no dots
+                        // are drawn with a badge), never over Platy's face.
+                        if badge, count > 0 {
+                            OverflowBadge(count: count)
+                                .alignmentGuide(.leading) { _ in -PlatyEarFit.platy / 2 }
+                        }
                     }
             }
             ForEach(dots.dots.prefix(shown), id: \.key) { AgentDot(tone: $0.tone) }
             if count > 0, !badge {
                 Text("+\(count)")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .font(DS.font(TypeScale.caption, design: .rounded).weight(.semibold))
                     .foregroundStyle(.secondary)
             }
         }
+        // With a badge, Platy sits at the ear's leading edge so the badge has the rest.
+        .frame(width: badge && count > 0 ? earWidth : nil, alignment: .leading)
     }
 
     @ViewBuilder private var liveEar: some View {
@@ -66,10 +73,10 @@ struct CompactPill: View {
                 .foregroundStyle(Theme.color(.attention))
         } else if approvalCount > 0 {
             Text("\(approvalCount)")
-                .font(.system(size: 11, weight: .bold, design: .rounded))
-                .foregroundStyle(.black)   // on the orange badge
+                .font(DS.font(TypeScale.caption, design: .rounded).weight(.bold))
+                .foregroundStyle(.black)   // on the amber badge, every scheme
                 .frame(minWidth: 14, minHeight: 14)
-                .background(Theme.color(.attention), in: Capsule())
+                .background(Theme.needsYouFill, in: Capsule())
         } else if let primary {
             let fit = LiveEarFit(earWidth: earWidth, hasTrailing: Self.hasTrailing(primary), hasBubble: bubble != nil)
             HStack(spacing: LiveEarFit.spacing) {
@@ -114,11 +121,12 @@ private struct OverflowBadge: View {
 
     var body: some View {
         Text("+\(count)")
-            .font(.system(size: 11, weight: .bold, design: .rounded))
+            .font(DS.font(TypeScale.caption, design: .rounded).weight(.bold))
+            .fixedSize()
             .foregroundStyle(.white)
-            .padding(.horizontal, 2)
+            .padding(.horizontal, PlatyEarFit.badgePadding)
             .background(Color(white: 0.25), in: Capsule())
-            .offset(x: 3, y: 2)
+            .offset(y: 2)
     }
 }
 
@@ -149,7 +157,7 @@ struct LiveGlyphView: View {
                 }
                 .frame(width: 10, height: 10)
             case .text(let s):
-                Text(verbatim: s).font(.system(size: 11, weight: .semibold, design: .rounded))
+                Text(verbatim: s).font(DS.font(TypeScale.caption, design: .rounded).weight(.semibold))
             }
         }
         .foregroundStyle(Theme.tint(tint))
@@ -186,7 +194,7 @@ private struct LiveTrailing: View {
 
     private func label(_ s: String) -> some View {
         Text(verbatim: s)
-            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .font(DS.font(TypeScale.caption, design: .rounded).weight(.semibold))
             .monospacedDigit()
             .truncationMode(.tail)
             .foregroundStyle(.secondary)
