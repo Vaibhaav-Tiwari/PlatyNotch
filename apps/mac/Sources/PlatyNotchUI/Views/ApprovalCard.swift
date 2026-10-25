@@ -21,6 +21,15 @@ struct ApprovalCard: View {
     var shortcuts = false
     /// Set in the peek: the header and a "More" button open the full panel.
     var onExpand: (() -> Void)?
+    /// Open panel only: the full command, path and diff (Task 17). The peek passes none
+    /// and keeps today's summary (spec 6.8).
+    var preview: ApprovalPreview? = nil
+    /// Cards showing at once: one gets an 8-line diff box, several get 4 (Ruling 11).
+    var cards: Int = 1
+    /// The diff starts with every line shown (tests and renders).
+    var diffExpanded: Bool = false
+    /// The peek's "Show changes" link (calls `onExpand`), when the payload has a diff.
+    var showChanges: Bool = false
     let onDecide: (ApprovalBehavior) -> Void
     let onOpenTerminal: (Session) -> Void
     @Environment(\.colorScheme) private var scheme
@@ -32,12 +41,15 @@ struct ApprovalCard: View {
             let lookFirst = status.canAnswer && arming.showsLookFirst(approval.id, at: ctx.date)
             VStack(alignment: .leading, spacing: 6) {
                 header(visible, status, lookFirst: lookFirst)
-                if visible.hadHidden {
+                if hasHidden {
                     Label("Contains hidden characters", systemImage: "exclamationmark.triangle.fill")
                         .font(DS.font(TypeScale.caption).weight(.medium))
                         .foregroundStyle(Theme.warning(scheme))
                 }
-                SummaryView(summary: visible.summary, maxLines: maxLines)
+                SummaryView(summary: summaryText, maxLines: maxLines)
+                if let preview, preview.path != nil || !preview.diff.isEmpty {
+                    ApprovalDiffBox(preview: preview, cards: cards, expanded: diffExpanded)
+                }
                 footer(status)
             }
         }
@@ -45,6 +57,18 @@ struct ApprovalCard: View {
         .dsCard()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(visible.agentName) asks to run \(visible.tool)")
+    }
+
+    /// What the summary box shows: in the open panel, a plain Bash command in full when it
+    /// hides nothing (`ApprovalPreview.fullCommand`), else the core's summary; hidden
+    /// characters spelled out either way.
+    var summaryText: String {
+        preview?.command ?? VisibleApproval(approval).summary
+    }
+
+    /// Anything shown on the card had hidden characters.
+    var hasHidden: Bool {
+        VisibleApproval(approval).hadHidden || (preview?.hadHidden ?? false)
     }
 
     private func header(_ visible: VisibleApproval, _ status: ApprovalCardStatus, lookFirst: Bool) -> some View {
@@ -109,7 +133,15 @@ struct ApprovalCard: View {
                         .font(.system(size: 11))
                         .accessibilityHint("Shows the terminal running this session")
                 }
-                if let onExpand {
+                // "Show changes" takes "More"'s place (both open the panel), so the
+                // peek's footer keeps its width.
+                if showChanges, let onExpand {
+                    Button("Show changes", action: onExpand)
+                        .buttonStyle(.link)
+                        .font(.system(size: 11))
+                        .accessibilityLabel("Show changes")
+                        .accessibilityHint("Opens the panel with this request's changes")
+                } else if let onExpand {
                     Button("More", action: onExpand)
                         .buttonStyle(.link)
                         .font(.system(size: 11))
@@ -253,9 +285,19 @@ struct ApprovalList: View {
                              arming: arming,
                              maxLines: maxLines,
                              shortcuts: index == 0,
+                             preview: ApprovalPreviewCache.shared.preview(for: approval),
+                             cards: approvals.count,
                              onDecide: { onDecide(approval, $0) },
                              onOpenTerminal: onOpenTerminal)
+                .background(GeometryReader { g in
+                    Color.clear.preference(key: ApprovalCardFramesKey.self,
+                                           value: [approval.id: g.frame(in: .named(ExpandedPanel.space))])
+                })
             }
+        }
+        // Previews of answered approvals go (each is built once, `ApprovalPreviewCache`).
+        .onChange(of: approvals.map(\.id), initial: true) { _, ids in
+            ApprovalPreviewCache.shared.keep(ids: Set(ids))
         }
     }
 }

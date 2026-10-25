@@ -30,6 +30,11 @@ struct ExpandedPanel: View {
     var fixedNow: Date?
     /// Where Now's chosen glances are saved (renders and tests pass their own).
     var glanceDefaults: UserDefaults = .standard
+    /// The Agents destination shows (`AgentsVisibility.isVisible`, via
+    /// `PanelDestination.shown`); hidden until an agent first connects.
+    var agentsVisible: Bool = true
+    /// The Agents empty state's "Connect an agent": Settings › Agents.
+    var onConnectAgent: () -> Void = {}
     let onDecide: (Approval, ApprovalBehavior) -> Void
     let onOpenTerminal: (Session) -> Void
 
@@ -42,6 +47,11 @@ struct ExpandedPanel: View {
             if !store.approvals.isEmpty {
                 approvals
                     .frame(maxHeight: 240, alignment: .top)
+                    // Its own height up to 240, so the destination below keeps the rest.
+                    .fixedSize(horizontal: false, vertical: true)
+                    .background(GeometryReader { g in
+                        Color.clear.preference(key: ApprovalsRegionFrameKey.self, value: g.frame(in: .named(Self.space)))
+                    })
                     .layoutPriority(1)
             }
             (tabs.first { $0.id == selectedTab } ?? tabs[0]).view
@@ -52,7 +62,11 @@ struct ExpandedPanel: View {
                 .clipped(unless: selectedTab == BuiltinTab.now)
                 .environment(\.selectPanelTab, { selectedTab = $0 })   // the games tile opens its tab
         }
+        .coordinateSpace(name: Self.space)
     }
+
+    /// The coordinate space the approvals region and cards report their frames in (tests).
+    static var space: String { "expandedPanel" }
 
     /// Pending approvals, oldest first. With several, summaries are shorter (each still
     /// scrolls to its full text) so more cards fit, and the list scrolls.
@@ -68,6 +82,8 @@ struct ExpandedPanel: View {
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Theme.color(.attention))
             }
+            // At its own height when it fits (the destination gets the rest), else
+            // scrolling inside the 240 pt region. Cards never move: they sit at the top.
             ViewThatFits(in: .vertical) {
                 list
                 ScrollView(.vertical) { list }
@@ -85,6 +101,7 @@ struct ExpandedPanel: View {
         let deck = self.deck
         let fixedNow = self.fixedNow
         let glanceDefaults = self.glanceDefaults
+        let connect = onConnectAgent
         let select: (String) -> Void = { [selectedTab = $selectedTab] in selectedTab.wrappedValue = $0 }
         var tabs = [
             PanelTab(id: BuiltinTab.now, title: "Now", systemImage: "sparkles") {
@@ -93,7 +110,8 @@ struct ExpandedPanel: View {
                         onOpenAgents: { select(BuiltinTab.agents) }, onOpenTerminal: open, fixedNow: fixedNow)
             },
             PanelTab(id: BuiltinTab.agents, title: "Agents", systemImage: "terminal") {
-                AgentsTab(sessions: store.sessions, usage: store.usage, onOpenTerminal: open)
+                AgentsView(sessions: store.sessions, usage: store.usage, log: today.agentActivity.log,
+                           onOpenTerminal: open, onConnect: connect, fixedNow: fixedNow)
             },
             PanelTab(id: BuiltinTab.today, title: "Today", systemImage: "calendar") {
                 TodayTab(widgets: widgets)
@@ -116,6 +134,8 @@ struct ExpandedPanel: View {
                 GamesTab(host: host)
             })
         }
+        let shown: [PanelDestination] = PanelDestination.shown(agentsVisible: agentsVisible)
+        if !shown.contains(.agents) { tabs.removeAll { $0.id == BuiltinTab.agents } }
         return tabs + extraTabs
     }
 
@@ -193,5 +213,19 @@ extension View {
     /// `clipped()` unless `skip`.
     @ViewBuilder func clipped(unless skip: Bool) -> some View {
         if skip { self } else { clipped() }
+    }
+}
+
+/// The approvals region's frame in `ExpandedPanel.space` (layout tests).
+struct ApprovalsRegionFrameKey: PreferenceKey {
+    static let defaultValue: CGRect? = nil
+    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) { value = nextValue() ?? value }
+}
+
+/// Each approval card's frame in `ExpandedPanel.space`, by approval id (layout tests).
+struct ApprovalCardFramesKey: PreferenceKey {
+    static let defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue()) { $1 }
     }
 }

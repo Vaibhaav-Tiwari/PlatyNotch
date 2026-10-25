@@ -180,6 +180,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         events.start(client.events)
         today.platy.start(store: store)
+        // Agents shows from the first session on (saved; never in smoke runs), with a
+        // one-time notice.
+        if !options.smoke, !options.smokeSettings { today.agentActivity.loadVisibility(from: .standard) }
+        today.agentActivity.onAgentsFirstShown = { [weak store] in
+            store?.postLocalNotice(Notice(kind: "agents-visible", title: "Agents is in your notch now",
+                                          body: "Your coding agents' sessions and approvals live here."))
+        }
         today.agentActivity.start(store: store)
         Task { await client.start() }
 
@@ -381,6 +388,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Settings › Appearance changed (any UserDefaults write lands here): new displays or
     /// pill width rebuild the panels; everything else is applied to them live.
     private func appearanceMayHaveChanged() {
+        today.agentActivity.reloadVisibility()   // Settings › Agents: "Show Agents before an agent connects"
         let now = AppearanceStore.load(from: .standard)
         guard now != appearance else { return }
         let rebuild = now.needsRebuild(from: appearance)
@@ -435,6 +443,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                     appearance: appearance,
                                     carryOver: state)
             c.onOpenSettings = { [weak self] in self?.openSettings(section: nil) }
+            c.onOpenAgentSettings = { [weak self] in self?.openSettings(section: "agents") }
             c.attach(to: screen)
             return c
         }

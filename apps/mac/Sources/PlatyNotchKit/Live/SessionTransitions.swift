@@ -58,7 +58,7 @@ public enum AgentRowAction: Sendable, Equatable {
 
     public init(_ a: AgentAttention) {
         switch a {
-        case .needsYou, .errored: self = .answer
+        case .needsYou: self = .answer
         default: self = .openTerminal
         }
     }
@@ -158,6 +158,12 @@ public struct AgentFinishLog: Equatable, Sendable {
 
     public func failed(_ key: String, now: Date) -> Bool {
         failures[key].map { Self.within($0, now: now) } ?? false
+    }
+
+    /// When `key` finished, while that is within the window.
+    public func finishedAt(_ key: String, now: Date) -> Date? {
+        guard let at = finishes[key], Self.within(at, now: now) else { return nil }
+        return at
     }
 
     public func finished(_ key: String, now: Date) -> Bool {

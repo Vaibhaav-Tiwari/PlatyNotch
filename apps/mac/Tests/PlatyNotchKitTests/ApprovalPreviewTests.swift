@@ -1,0 +1,214 @@
+import Foundation
+import XCTest
+@testable import PlatyNotchKit
+
+/// Task 17: what an approval card previews, built only from what the hook payload carries.
+final class ApprovalPreviewTests: DefaultsTestCase {
+    private func approval(_ tool: String, _ input: [String: JSONValue]?, summary: String = "summary") -> Approval {
+        let t = Date(timeIntervalSince1970: 1_800_000_000)
+        return Approval(id: "ap", sessionKey: "s", agent: "claude-code", agentName: "Claude Code", tool: tool,
+                        summary: summary, input: input.map { RawJSON(.object($0)) }, createdAt: t,
+                        expiresAt: t.addingTimeInterval(60))
+    }
+
+    func testEditMakesUnifiedDiff() {
+        let p = ApprovalPreview(approval: approval("Edit", ["file_path": .string("/r/a.txt"),
+                                                            "old_string": .string("a\nb\nc"),
+                                                            "new_string": .string("a\nB\nc")]))
+        XCTAssertEqual(p.path, "/r/a.txt")
+        XCTAssertNil(p.command)
+        XCTAssertEqual(p.diff, [DiffLine(kind: .hunk, text: "Edit"), DiffLine(kind: .context, text: "a"),
+                                DiffLine(kind: .removed, text: "b"), DiffLine(kind: .added, text: "B"),
+                                DiffLine(kind: .context, text: "c")])
+        XCTAssertFalse(p.hasMore)
+    }
+
+    func testContextIsThreeLinesAndFarChangesSplit() {
+        let old = (1...20).map { "l\($0)" }
+        var new = old
+        new[1] = "X2"
+        new[17] = "X18"
+        let d = LineDiff.unified(old: old.joined(separator: "\n"), new: new.joined(separator: "\n"))
+        XCTAssertEqual(d.filter { $0.kind == .hunk }.map(\.text), ["@@ -1,5 +1,5 @@", "@@ -15,6 +15,6 @@"])
+        XCTAssertEqual(LineDiff.unified(old: "same", new: "same"), [])
+    }
+
+    func testCollapsedToTwelve() {
+        let content = (1...40).map { "line \($0)" }.joined(separator: "\n")
+        let p = ApprovalPreview(approval: approval("Write", ["file_path": .string("/r/new.txt"),
+                                                             "content": .string(content)]))
+        XCTAssertEqual(p.diff.first, DiffLine(kind: .hunk, text: "@@ -0,0 +1,40 @@"))
+        XCTAssertTrue(p.diff.dropFirst().allSatisfy { $0.kind == .added })
+        XCTAssertEqual(p.lines(expanded: false).count, ApprovalPreview.collapsedLines)
+        XCTAssertEqual(p.lines(expanded: false).count, 12)
+        XCTAssertTrue(p.hasMore)
+        XCTAssertEqual(p.lines(expanded: true).count, 41)
+    }
+
+    func testMultiEdit() {
+        let edits: JSONValue = .array([
+            .object(["old_string": .string("one"), "new_string": .string("ONE")]),
+            .object(["old_string": .string("x\ny"), "new_string": .string("x\nz")]),
+        ])
+        let p = ApprovalPreview(approval: approval("MultiEdit", ["file_path": .string("/r/m.swift"), "edits": edits]))
+        XCTAssertEqual(p.diff.filter { $0.kind == .hunk }.map(\.text), ["Edit 1 of 2", "Edit 2 of 2"],
+                       "one labelled group per edit: snippet line numbers would mislead")
+        XCTAssertEqual(p.diff.filter { $0.kind == .added }.map(\.text), ["ONE", "z"])
+        XCTAssertEqual(p.diff.filter { $0.kind == .removed }.map(\.text), ["one", "y"])
+    }
+
+    func testNotebookEditIsAllAdded() {
+        let p = ApprovalPreview(approval: approval("NotebookEdit", ["notebook_path": .string("/r/n.ipynb"),
+                                                                    "new_source": .string("print(1)\nprint(2)")]))
+        XCTAssertEqual(p.path, "/r/n.ipynb")
+        XCTAssertEqual(p.diff.map(\.kind), [.hunk, .added, .added])
+    }
+
+    func testBashHasCommandNoDiff() {
+        let p = ApprovalPreview(approval: approval("Bash", ["command": .string("git status &&\nmake test")],
+                                                   summary: "git status &&\nmake test"))
+        XCTAssertEqual(p.command, "git status &&\nmake test", "newlines kept: the full command")
+        XCTAssertNil(p.path)
+        XCTAssertEqual(p.diff, [])
+        XCTAssertFalse(p.hasMore)
+    }
+
+    func testHiddenCharactersStayVisible() {
+        let p = ApprovalPreview(approval: approval("Edit", ["file_path": .string("/r/a\u{202E}txt"),
+                                                            "old_string": .string("x"),
+                                                            "new_string": .string("x\u{200B}\u{1B}[2J")]))
+        XCTAssertTrue(p.hadHidden)
+        XCTAssertEqual(p.path, "/r/a⟨U+202E⟩txt")
+        XCTAssertEqual(p.diff.filter { $0.kind == .added }.map(\.text), ["x⟨U+200B⟩⟨ESC⟩[2J"])
+        let bash = ApprovalPreview(approval: approval("Bash", ["command": .string("ls\u{2066}")], summary: "ls\u{2066}"))
+        XCTAssertEqual(bash.command, "ls⟨U+2066⟩")
+        XCTAssertTrue(bash.hadHidden)
+        XCTAssertFalse(ApprovalPreview(approval: approval("Bash", ["command": .string("ls")], summary: "ls")).hadHidden)
+    }
+
+    func testHugeInputUsesFallback() {
+        XCTAssertTrue(LineDiff.usesFallback(oldLines: 2000, newLines: 2000))
+        XCTAssertFalse(LineDiff.usesFallback(oldLines: 500, newLines: 500))
+        let old = (0..<2000).map { "o\($0)" }.joined(separator: "\n")
+        let new = (0..<2000).map { "n\($0)" }.joined(separator: "\n")
+        let d = LineDiff.unified(old: old, new: new)
+        XCTAssertEqual(d.count, 4001)
+        XCTAssertEqual(d.filter { $0.kind == .hunk }.map(\.text), ["@@ -1,2000 +1,2000 @@"])
+        XCTAssertEqual(d.filter { $0.kind == .removed }.count, 2000)
+        XCTAssertEqual(d.filter { $0.kind == .added }.count, 2000)
+    }
+
+    func testBoxLines() {
+        XCTAssertEqual(ApprovalPreview.boxLines(diffCount: 40, cards: 1), 8)
+        XCTAssertEqual(ApprovalPreview.boxLines(diffCount: 40, cards: 3), 4)
+        XCTAssertEqual(ApprovalPreview.boxLines(diffCount: 40, cards: 2), 4)
+        // Only "several or one" matters, like `ApprovalPlacement.expanded(header:)`.
+        for cards in 2...6 {
+            XCTAssertEqual(ApprovalPreview.boxLines(diffCount: 40, cards: cards), ApprovalPreview.boxLines(diffCount: 40, cards: 2))
+            XCTAssertEqual(ApprovalPlacement(mode: .expanded, count: cards), .expanded(header: true))
+        }
+        XCTAssertEqual(ApprovalPlacement(mode: .expanded, count: 1), .expanded(header: false))
+        XCTAssertEqual(ApprovalPreview.boxLines(diffCount: 3, cards: 1), 3)
+        XCTAssertEqual(ApprovalPreview.boxLines(diffCount: 0, cards: 2), 0)
+    }
+
+    func testNoInputMeansSummaryOnly() {
+        let p = ApprovalPreview(approval: approval("WebFetch", nil))
+        XCTAssertNil(p.command)
+        XCTAssertNil(p.path)
+        XCTAssertEqual(p.diff, [])
+        XCTAssertFalse(p.hadHidden)
+        // Strings of the wrong type are ignored, never guessed at.
+        let odd = ApprovalPreview(approval: approval("Edit", ["file_path": .int(3), "old_string": .string("a")]))
+        XCTAssertNil(odd.path)
+        XCTAssertEqual(odd.diff, [])
+    }
+
+    // MARK: Fix round 1, C1: the command replaces the summary only when it hides nothing.
+
+    func testBashWithAnExtraKeyKeepsTheSummary() {
+        let a = approval("Bash", ["command": .string("ls"), "dangerouslyDisableSandbox": .bool(true)], summary: "ls")
+        XCTAssertNil(ApprovalPreview(approval: a).command, "an extra argument: the core's summary stays")
+        XCTAssertNil(ApprovalPreview.fullCommand(for: a))
+        let allowed = approval("Bash", ["command": .string("ls"), "description": .string("List"),
+                                        "timeout": .int(5000), "run_in_background": .bool(false)], summary: "ls")
+        XCTAssertEqual(ApprovalPreview(approval: allowed).command, "ls")
+    }
+
+    func testOtherToolsWithACommandKeepTheSummary() {
+        let mcp = approval("mcp__shell__run", ["command": .string("ls"), "host": .string("prod")], summary: "ls")
+        XCTAssertNil(ApprovalPreview(approval: mcp).command)
+        let mcpOnly = approval("mcp__shell__run", ["command": .string("ls")], summary: "ls")
+        XCTAssertNil(ApprovalPreview(approval: mcpOnly).command, "only Bash")
+    }
+
+    func testSummaryMustMatchTheCommand() {
+        let other = approval("Bash", ["command": .string("rm -rf /")], summary: "ls")
+        XCTAssertNil(ApprovalPreview(approval: other).command, "a summary that is not this command stays")
+        let long = String(repeating: "a", count: 590) + " && make"
+        XCTAssertEqual(long.count, 598)
+        let truncated = approval("Bash", ["command": .string(long)], summary: String(long.prefix(120)) + "…")
+        XCTAssertEqual(ApprovalPreview(approval: truncated).command, long, "a 600-character command shows in full")
+        let wrongPrefix = approval("Bash", ["command": .string(long)], summary: "b" + String(long.prefix(119)) + "…")
+        XCTAssertNil(ApprovalPreview(approval: wrongPrefix).command)
+        let noEllipsis = approval("Bash", ["command": .string(long)], summary: String(long.prefix(120)))
+        XCTAssertNil(ApprovalPreview(approval: noEllipsis).command, "a shorter summary without … is not a truncation")
+    }
+
+    // MARK: Fix round 1, I4
+
+    func testHasDiffMatchesTheBuiltDiff() {
+        let cases: [Approval] = [
+            approval("Edit", ["old_string": .string("a"), "new_string": .string("b")]),
+            approval("Edit", ["old_string": .string("a"), "new_string": .string("a")]),
+            approval("MultiEdit", ["edits": .array([.object(["old_string": .string("x"), "new_string": .string("x")])])]),
+            approval("MultiEdit", ["edits": .array([.object(["old_string": .string("x"), "new_string": .string("y")])])]),
+            approval("Write", ["content": .string("hello")]),
+            approval("Write", ["content": .string("")]),
+            approval("NotebookEdit", ["new_source": .string("print(1)")]),
+            approval("Bash", ["command": .string("ls")]),
+            approval("WebFetch", nil),
+        ]
+        for a in cases {
+            XCTAssertEqual(ApprovalPreview.hasDiff(a), !ApprovalPreview(approval: a).diff.isEmpty, "\(a.input as Any)")
+        }
+    }
+
+    func testPreviewCacheBuildsOncePerApproval() {
+        let cache = ApprovalPreviewCache()
+        let a = approval("Write", ["content": .string("one\ntwo")])
+        let first = cache.preview(for: a)
+        XCTAssertEqual(cache.preview(for: a), first)
+        XCTAssertEqual(cache.buildCount, 1)
+        var changed = a
+        changed.input = RawJSON(.object(["content": .string("three")]))
+        XCTAssertNotEqual(cache.preview(for: changed), first, "different content under the same id is rebuilt")
+        XCTAssertEqual(cache.buildCount, 2)
+        cache.keep(ids: [])
+        _ = cache.preview(for: a)
+        XCTAssertEqual(cache.buildCount, 3, "dropped when no longer pending")
+    }
+
+    /// Fix round 1, M3: replace_all is said; far-apart changes in one snippet get "⋯".
+    func testEditLabelsSayReplaceAllAndSplit() {
+        let all = ApprovalPreview(approval: approval("Edit", ["old_string": .string("a"), "new_string": .string("b"),
+                                                              "replace_all": .bool(true)]))
+        XCTAssertEqual(all.diff.first?.text, "Edit · Replaces every match")
+        let old = (1...20).map { "l\($0)" }
+        var new = old
+        new[1] = "X"
+        new[17] = "Y"
+        let split = ApprovalPreview(approval: approval("Edit", ["old_string": .string(old.joined(separator: "\n")),
+                                                                "new_string": .string(new.joined(separator: "\n"))]))
+        XCTAssertEqual(split.diff.filter { $0.kind == .hunk }.map(\.text), ["Edit", "⋯"])
+        let multi = ApprovalPreview(approval: approval("MultiEdit", ["edits": .array([
+            .object(["old_string": .string("a"), "new_string": .string("b"), "replace_all": .bool(true)]),
+            .object(["old_string": .string("c"), "new_string": .string("d")]),
+        ])]))
+        XCTAssertEqual(multi.diff.filter { $0.kind == .hunk }.map(\.text),
+                       ["Edit 1 of 2 · Replaces every match", "Edit 2 of 2"])
+        // Write is the whole file: its real line numbers stay.
+        XCTAssertEqual(ApprovalPreview(approval: approval("Write", ["content": .string("x")])).diff.first?.text,
+                       "@@ -0,0 +1,1 @@")
+    }
+}

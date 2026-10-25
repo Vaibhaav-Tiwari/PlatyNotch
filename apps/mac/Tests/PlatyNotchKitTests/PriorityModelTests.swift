@@ -231,7 +231,7 @@ final class PriorityModelTests: DefaultsTestCase {
 
     func testRowActions() {
         XCTAssertEqual(AgentRowAction(.needsYou), .answer)
-        XCTAssertEqual(AgentRowAction(.errored), .answer)
+        XCTAssertEqual(AgentRowAction(.errored), .openTerminal, "an error is looked at in the terminal (Phase 4 ruling)")
         XCTAssertEqual(AgentRowAction(.working), .openTerminal)
         XCTAssertEqual(AgentRowAction(.finished), .openTerminal)
         XCTAssertEqual(AgentRowAction(.idle), .openTerminal)

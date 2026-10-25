@@ -124,12 +124,9 @@ enum Theme {
         }
     }
 
+    /// Usage in the state palette (Task 18): working teal, needs-you amber, error coral.
     static func color(_ level: UsageLevel) -> Color {
-        switch level {
-        case .normal: Color(nsColor: .systemGreen)
-        case .high: Color(nsColor: .systemOrange)
-        case .critical: Color(nsColor: .systemRed)
-        }
+        DS.dynamicColor(level.tone)
     }
 
     /// SF Symbol for an agent id ("claude-code", "codex", ...).

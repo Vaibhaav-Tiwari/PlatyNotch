@@ -10,15 +10,24 @@ struct GlanceChip: View {
     let label: String
     /// A state or accent colour for the icon (never the only carrier: the label says it).
     var tint: Color?
+    /// An agent's icon instead of the symbol (the usage glance).
+    var brand: AgentBrand?
+    /// A warning colour for the value itself (usage from 70 %); the label still says it.
+    var valueTint: Color?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 6) {
-                DS.icon(systemImage, size: IconSize.row)
-                    .foregroundStyle(tint ?? .secondary)
-                    .accessibilityHidden(true)
+                if let brand {
+                    AgentBadge(brand: brand, tone: nil, size: IconSize.tile)
+                } else {
+                    DS.icon(systemImage, size: IconSize.row)
+                        .foregroundStyle(tint ?? .secondary)
+                        .accessibilityHidden(true)
+                }
                 Text(verbatim: value)
                     .font(DS.font(TypeScale.headline, design: .rounded))
+                    .foregroundStyle(valueTint ?? Color.primary)
                     .monospacedDigit()
                     .lineLimit(1)
                     .contentTransition(.numericText())

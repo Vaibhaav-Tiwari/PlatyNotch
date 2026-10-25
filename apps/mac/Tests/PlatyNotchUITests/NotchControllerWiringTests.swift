@@ -70,6 +70,23 @@ final class NotchControllerWiringTests: DefaultsTestCase {
         XCTAssertEqual(r.controller.mode, .compact)
     }
 
+    /// A ring over the hover peek hands the peek back when it stops; the debouncer must
+    /// still count the cursor as hovering it, so moving away closes it (Phase 3 review:
+    /// the reset counts `.peek(.hover)` as hovering, not only `.expanded`).
+    func testRingOverHoverPeekThenLeaveCollapses() {
+        let r = rig(AppearanceSettings(openOn: .peekOnHover))
+        r.controller.hoverSample(inside: true, at: 0)
+        r.controller.hoverSample(inside: true, at: 1)
+        XCTAssertEqual(r.controller.mode, .peek(.hover))
+        r.controller.receive(.ring(id: "wire.ring"))
+        XCTAssertEqual(r.controller.mode, .peek(.ringing(id: "wire.ring")))
+        r.controller.receive(.stopRinging(id: "wire.ring"))
+        XCTAssertEqual(r.controller.mode, .peek(.hover))
+        r.controller.hoverSample(inside: false, at: 2)
+        r.controller.hoverSample(inside: false, at: 3)
+        XCTAssertEqual(r.controller.mode, .compact)
+    }
+
     /// Changing Open on while running reaches the machine too.
     func testPeekOnHoverAppliesLive() {
         let r = rig(AppearanceSettings())

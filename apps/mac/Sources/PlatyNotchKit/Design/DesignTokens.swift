@@ -103,11 +103,11 @@ public enum StateTone: String, CaseIterable, Sendable {
     /// The SF Symbol that carries the state alongside its colour.
     public var symbol: String {
         switch self {
-        case .working: "arrow.triangle.2.circlepath"
+        case .working: "bolt.fill"
         case .needsYou: "hand.raised.fill"
         case .error: "exclamationmark.triangle.fill"
-        case .done: "checkmark.circle.fill"
-        case .idle: "moon.zzz.fill"
+        case .done: "checkmark"
+        case .idle: "moon.fill"
         }
     }
 
