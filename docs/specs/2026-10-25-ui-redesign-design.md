@@ -129,7 +129,7 @@ What separates the top of that list from the bottom:
 
 | Kind | Meaning | Members today | Where it shows |
 |---|---|---|---|
-| **Live** | Has a beginning and an end | Agents (one aggregate item, see 6.8), approvals, music playing or paused in the last 10 min, running timer/stopwatch, ringing alarm, focus session, meeting within 10 min, file action in progress, camera mirror on, Platy Chase in play | Pill trailing slot (top one), Now hero, indicator dots |
+| **Live** | Has a beginning and an end | Agents (one aggregate item, see 6.7), approvals, music playing or paused in the last 10 min, running timer/stopwatch, ringing alarm, focus session, meeting within 10 min, file action in progress, camera mirror on, Platy Chase in play | Pill trailing slot (top one), Now hero, indicator dots |
 | **Glance** | Small, always-true facts | Next meeting, weather, battery, water progress, Claude/Codex usage, unread mail count, open loops count, today's tasks count | Now glance row (four slots, user-chosen) |
 | **Tool** | Something you open to use | Music (player, last played, source picker), timers, clipboard, shelf/baskets, notes, games, sites & shortcuts, mirror, memory search & graph, focus, file actions, window snapping settings, and every plugin panel tab | Library grid; each opens full-panel |
 
@@ -143,7 +143,7 @@ tile with one "Set up" action that opens their settings.
 
 Highest first; ties go to whichever started first (Apple's relevance rule):
 
-1. Approval pending (always visible, always auto-peeks; never part of the hero, see 6.9)
+1. Approval pending (always visible, always auto-peeks; never part of the hero, see 6.8)
 2. Ringing alarm or timer at zero
 3. Meeting starting within 2 minutes
 4. Agent needs input / errored
@@ -210,7 +210,7 @@ A 4-column grid of tool tiles (icon, name, one live line such as "2 timers" or "
 Clicking opens the tool full-panel with a back chevron. Power features are ordinary tools
 here, tagged "Power" only in Settings. Order: recently used first **[call]**.
 
-### 6.8 Agents in the pill **[call]**
+### 6.7 Agents in the pill **[call]**
 
 All agent sessions together are **one** Live item ("Agents"), ranked by its most urgent
 session (needs input → rank 4, finished → 5, working → 9). In the pill, Platy is the leading
@@ -226,7 +226,7 @@ first time a hook connects (with a one-time notice) or when turned on in Setting
 Platy's mood then follows the rest of the priority model (music, timers, night) as it
 already can.
 
-### 6.9 Approvals with the panel open **[call]**
+### 6.8 Approvals with the panel open **[call]**
 
 Approvals keep today's behaviour and safety rules exactly: they sit in the approvals region
 at the top of the open panel (up to 240 pt), above whichever destination is selected, and
@@ -239,7 +239,7 @@ The richer preview (full command, path, up to 12 diff lines with "Show all") app
 open panel's approval cards only. The 420×236 peek keeps today's summary and gains a "Show
 changes" link that opens the panel; peek size and arming do not change.
 
-### 6.10 Plugins **[call]**
+### 6.9 Plugins **[call]**
 
 The public Swift API (`NotchWidget`, `NotchPlugin`) changes only additively, so existing
 widgets and the private Pro plugins keep compiling and working:
@@ -250,7 +250,7 @@ widgets and the private Pro plugins keep compiling and working:
 - Plugin `panelTabs()` become Library tools (one tile each); there is no fourth destination.
 - `tileView()` is deprecated in docs but not removed in this redesign.
 
-### 6.7 What happens to today's tabs
+### 6.10 What happens to today's tabs
 
 | Today | Becomes |
 |---|---|
@@ -404,7 +404,7 @@ Part of done, because "nothing visual to demonstrate" was a complaint:
   included).
 - No `isolated deinit`; explicit continuations for completion-handler APIs (CI-enforced).
 
-## 13b. Existing users **[call]**
+## 14. Existing users **[call]**
 
 - No forced first run. After the update, a one-time card at the top of Now offers "Take
   the 30-second tour" (the first run's steps 1, 3 and 4; presets skipped).
@@ -417,7 +417,7 @@ Part of done, because "nothing visual to demonstrate" was a complaint:
 - `platynotch://` tab links keep working: `today` → Now, `agents` → Agents, `focus`,
   `memory`, `games` → that Library tool.
 
-## 14. Success measures
+## 15. Success measures
 
 - With every feature on: Now shows ≤ 1 hero + 4 glances + 1 quiet line; zero scrolling.
 - No text below 11 pt; one radius scale; one card style (lint/test for literal values in
@@ -427,7 +427,7 @@ Part of done, because "nothing visual to demonstrate" was a complaint:
 - The user, with everything on, no longer feels things are "thrown at" them (subjective
   check on a real MacBook).
 
-## 15. Suggested phases
+## 16. Suggested phases
 
 1. **Foundation**: tokens (type, color, space, radius, motion), one card style, Platy
    palette; apply to existing screens without layout changes.
@@ -441,7 +441,7 @@ Part of done, because "nothing visual to demonstrate" was a complaint:
    permission table, try-it step.
 7. **Platy and polish**: idle pond scene, moments, optional sound; showcase assets.
 
-## 16. Left to the builder
+## 17. Left to the builder
 
 - Hero layout per Live kind (music, timer, meeting, agents, file action, mirror, game),
   within the hero frame and token set.
