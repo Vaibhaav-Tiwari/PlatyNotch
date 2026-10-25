@@ -60,21 +60,25 @@ public struct ApprovalPreview: Equatable, Sendable {
     /// Bash's input keys that say nothing beyond the command itself.
     public static let plainBashKeys: Set<String> = ["command", "description", "timeout", "run_in_background"]
 
+    /// The core's summary length before it adds "…" (`summaryMax` in core/agents/summarize.go,
+    /// counted in runes, which are Unicode scalars).
+    public static let coreSummaryMax = 500
+
     /// The raw command to show in place of the core's summary, only when that hides
     /// nothing (fix round 1, C1): the tool is Bash, the input has no key beyond
     /// `plainBashKeys` (so `dangerouslyDisableSandbox` and the like keep the summary), and
-    /// the summary is the command or a "…"-truncated prefix of it. Otherwise nil: the card
-    /// keeps the core's summary.
+    /// the summary is the command or the core's `truncate` of it: exactly `coreSummaryMax`
+    /// scalars of the command followed by "…". Otherwise nil: the card keeps the summary.
     public static func fullCommand(for approval: Approval) -> String? {
         guard approval.tool == "Bash", case .object(let input)? = approval.input?.value,
               case .string(let command)? = input["command"],
               Set(input.keys).isSubset(of: plainBashKeys) else { return nil }
         let summary = approval.summary
         if summary == command { return command }
-        guard summary.hasSuffix("…") else { return nil }
-        var head = String(summary.dropLast())
-        while let last = head.last, last == " " || last == "\t" { head.removeLast() }
-        guard !head.isEmpty, command.hasPrefix(head) else { return nil }
+        let scalars = Array(summary.unicodeScalars)
+        guard scalars.count == coreSummaryMax + 1, scalars.last == "\u{2026}" else { return nil }
+        let full = Array(command.unicodeScalars)
+        guard full.count > coreSummaryMax, Array(full.prefix(coreSummaryMax)) == Array(scalars.prefix(coreSummaryMax)) else { return nil }
         return command
     }
 

@@ -147,9 +147,9 @@ final class ApprovalPreviewTests: DefaultsTestCase {
         XCTAssertNil(ApprovalPreview(approval: other).command, "a summary that is not this command stays")
         let long = String(repeating: "a", count: 590) + " && make"
         XCTAssertEqual(long.count, 598)
-        let truncated = approval("Bash", ["command": .string(long)], summary: String(long.prefix(120)) + "…")
+        let truncated = approval("Bash", ["command": .string(long)], summary: String(long.prefix(500)) + "…")
         XCTAssertEqual(ApprovalPreview(approval: truncated).command, long, "a 600-character command shows in full")
-        let wrongPrefix = approval("Bash", ["command": .string(long)], summary: "b" + String(long.prefix(119)) + "…")
+        let wrongPrefix = approval("Bash", ["command": .string(long)], summary: "b" + String(long.prefix(499)) + "…")
         XCTAssertNil(ApprovalPreview(approval: wrongPrefix).command)
         let noEllipsis = approval("Bash", ["command": .string(long)], summary: String(long.prefix(120)))
         XCTAssertNil(ApprovalPreview(approval: noEllipsis).command, "a shorter summary without … is not a truncation")
@@ -185,6 +185,24 @@ final class ApprovalPreviewTests: DefaultsTestCase {
         XCTAssertEqual(ApprovalPreview.hasDiff(multi), !ApprovalPreview(approval: multi).diff.isEmpty)
         let write = approval("Write", ["content": .string("\n")])
         XCTAssertEqual(ApprovalPreview.hasDiff(write), !ApprovalPreview(approval: write).diff.isEmpty)
+    }
+
+    /// Phase 4 carry-over: "…" is the core's `truncate` only when the head is exactly 500
+    /// Unicode scalars (`summaryMax`); any other length is not that truncation.
+    func testTruncatedSummaryHeadIsExactly500Scalars() {
+        let long = String(repeating: "é", count: 700)   // one scalar each when precomposed
+        XCTAssertEqual(long.unicodeScalars.count, 700)
+        let exact = approval("Bash", ["command": .string(long)], summary: String(long.unicodeScalars.prefix(500)) + "…")
+        XCTAssertEqual(ApprovalPreview.fullCommand(for: exact), long)
+        let short = approval("Bash", ["command": .string(long)], summary: String(long.unicodeScalars.prefix(499)) + "…")
+        XCTAssertNil(ApprovalPreview.fullCommand(for: short))
+        let longer = approval("Bash", ["command": .string(long)], summary: String(long.unicodeScalars.prefix(501)) + "…")
+        XCTAssertNil(ApprovalPreview.fullCommand(for: longer))
+        // Scalars, not characters: "e" + combining acute is two scalars, one Character.
+        let combining = String(repeating: "e\u{301}", count: 400)
+        let head = String(String.UnicodeScalarView(combining.unicodeScalars.prefix(500)))
+        let scalarCut = approval("Bash", ["command": .string(combining)], summary: head + "…")
+        XCTAssertEqual(ApprovalPreview.fullCommand(for: scalarCut), combining)
     }
 
     func testPreviewCacheBuildsOncePerApproval() {
