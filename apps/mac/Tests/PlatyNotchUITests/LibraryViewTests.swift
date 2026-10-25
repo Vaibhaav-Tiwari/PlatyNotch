@@ -230,11 +230,21 @@ final class LibraryViewTests: DefaultsTestCase {
         XCTAssertEqual(route, PanelRoute(destination: .library))
     }
 
-    /// Glances and the quiet line open their tool directly.
+    /// Glances and the quiet line open their tool directly (through Now's `onOpenTool`).
     func testGlanceLinksOpenTheirTool() {
         XCTAssertEqual(ExpandedPanel.route(forTool: "loops"), PanelRoute(destination: .library, tool: "loops"))
-        XCTAssertEqual(ExpandedPanel.route(forTool: FocusWidget.widgetID),
-                       PanelRoute(destination: .library, tool: FocusWidget.widgetID))
+        let r = rig()
+        var route = PanelRoute(destination: .now)
+        let p = ExpandedPanel(store: r.store, responder: ApprovalResponder(client: r.client), arming: ApprovalArming(),
+                              today: r.today, widgets: r.registry, memory: MemoryServices(client: r.client),
+                              extraTabs: [], route: Binding(get: { route }, set: { route = $0 }),
+                              onCollapse: {}, glanceDefaults: defaults(), onDecide: { _, _ in }, onOpenTerminal: { _ in })
+        p.nowView.onOpenTool(LoopsWidget.widgetID)
+        XCTAssertEqual(route, PanelRoute(destination: .library, tool: LoopsWidget.widgetID))
+        p.nowView.onOpenTool(FocusWidget.widgetID)
+        XCTAssertEqual(route, PanelRoute(destination: .library, tool: FocusWidget.widgetID))
+        XCTAssertEqual(LibraryRecents.load(from: defaults()).lastOpened(FocusWidget.widgetID) != nil, true,
+                       "a glance counts as using the tool")
     }
 
     /// The tool header: back chevron with its VoiceOver name, and the tool's title.
@@ -356,5 +366,140 @@ final class LibraryViewTests: DefaultsTestCase {
         XCTAssertEqual(record.tokens.count, 1, "the tool kept its state through fits and scrolls")
         XCTAssertFalse(record.inTool.isEmpty)
         XCTAssertTrue(record.inTool.allSatisfy { $0 }, "ToolBody tells the tool it is full-panel")
+    }
+
+    // MARK: Fix round 1: needsSetup, setup actions and the Chase entry
+
+    /// Calendar and Reminders: only "not asked" and "refused" are setup; "unavailable"
+    /// (no usage description, EventKit off) is not something the user can set up.
+    func testNeedsSetupForCalendarAndReminders() {
+        let table: [(CalendarService.Access, Bool)] = [(.notAsked, true), (.denied, true), (.granted, false),
+                                                       (.unavailable, false)]
+        for (access, expected) in table {
+            XCTAssertEqual(MeetingWidget.needsSetup(access: access), expected, "\(access)")
+            let calendar = CalendarService(eventKit: false)
+            calendar.setForTesting(access: access, meetings: [])
+            let meeting = MeetingWidget(calendar: calendar)
+            XCTAssertEqual(meeting.needsSetup, expected, "meeting \(access)")
+            XCTAssertEqual(LibraryCatalog.item(for: meeting).isSetUp, !expected, "meeting tile \(access)")
+            let reminders = RemindersService(eventKit: false, defaults: defaults())
+            reminders.setForTesting(access: access, items: [])
+            let widget = RemindersWidget(reminders: reminders, calendar: CalendarService(eventKit: false))
+            XCTAssertEqual(widget.needsSetup, expected, "reminders \(access)")
+            XCTAssertEqual(LibraryCatalog.item(for: widget).isSetUp, !expected, "reminders tile \(access)")
+        }
+    }
+
+    func testNeedsSetupForAccessibilityFeatures() {
+        XCTAssertTrue(HUDWidget.needsSetup(status: .needsAccessibility))
+        for status: HUDWidget.Status in [.on, .stopped, .tapRefused] {
+            XCTAssertFalse(HUDWidget.needsSetup(status: status), "\(status)")
+        }
+        XCTAssertTrue(WindowSnapWidget.needsSetup(status: .needsAccessibility))
+        XCTAssertFalse(WindowSnapWidget.needsSetup(status: .on))
+        XCTAssertFalse(WindowSnapWidget.needsSetup(status: .stopped))
+        // The real widgets without Accessibility (trust: never) once running.
+        let r = rig()
+        r.registry.setEnabled(HUDWidget.widgetID, true)
+        r.registry.setEnabled(WindowSnapWidget.widgetID, true)
+        let hud = r.registry.widget(HUDWidget.widgetID) as! HUDWidget
+        let snap = r.registry.widget(WindowSnapWidget.widgetID) as! WindowSnapWidget
+        XCTAssertEqual(hud.status, .needsAccessibility)
+        XCTAssertTrue(hud.needsSetup)
+        XCTAssertEqual(snap.status, .needsAccessibility)
+        XCTAssertTrue(snap.needsSetup)
+        let items = Dictionary(uniqueKeysWithValues: panel(r).libraryTools.map { ($0.item.id, $0.item) })
+        XCTAssertEqual(items[HUDWidget.widgetID]?.isSetUp, false)
+        XCTAssertEqual(items[WindowSnapWidget.widgetID]?.isSetUp, false)
+        // Stopped (turned off) is not "needs setup".
+        XCTAssertFalse(HUDWidget.inert().needsSetup)
+        XCTAssertFalse(WindowSnapWidget.inert().needsSetup)
+    }
+
+    /// Mail: never allowed asks macOS ("Allow"), refused opens Settings, anything else needs nothing.
+    func testMailSetup() {
+        let table: [(MailWidget.Phase, MailWidget.SetupStep?)] = [
+            (.needsAllow, .allow), (.denied(.never), .openSettings), (.denied(.otherBuild), .openSettings),
+            (.notOpen, nil), (.off, nil), (.loading, nil), (.failed("x"), nil),
+            (.inbox(MailInbox(unread: 0, latest: [])), nil),
+        ]
+        for (phase, step) in table {
+            XCTAssertEqual(MailWidget.setupStep(phase: phase), step, "\(phase)")
+        }
+        let mail = MailWidget.inert()
+        XCTAssertFalse(mail.needsSetup, "not running: nothing to set up")
+        XCTAssertNil(mail.setupTitle)
+        guard case .run = mail.setupAction else { return XCTFail("Mail's setup is its own action, not Settings") }
+        mail.runSetup()   // in .off: does nothing, never a prompt
+        XCTAssertEqual(mail.phase, .off)
+    }
+
+    /// Mirror: only a refusal (or a restriction) is setup; never asked is the tool's Show Mirror.
+    func testMirrorSetup() {
+        let table: [(MirrorTileState, Bool)] = [
+            (.allow, false), (.ready, false), (.live, false), (.turnOnAgain, false), (.noCamera, false),
+            (.denied(rebuilt: false), true), (.denied(rebuilt: true), true), (.restricted, true),
+        ]
+        for (state, expected) in table {
+            XCTAssertEqual(MirrorWidget.needsSetup(state: state), expected, "\(state)")
+        }
+        let mirror = MirrorWidget.inert()
+        XCTAssertEqual(mirror.tileState, .allow)
+        XCTAssertFalse(mirror.needsSetup)
+        XCTAssertEqual(LibraryCatalog.item(for: mirror).liveLine, "Click to show")
+        guard case .run = mirror.setupAction else { return XCTFail("Mirror's setup opens Camera settings itself") }
+    }
+
+    /// Notes always works (quick notes go to "PlatyNotch notes"); Weather without a city does not.
+    func testNotesAndWeatherSetup() {
+        let notes = NotesWidget.inert()
+        XCTAssertNil(notes.vault)
+        XCTAssertFalse(notes.needsSetup)
+        XCTAssertEqual(LibraryCatalog.item(for: notes).liveLine, "Quick notes")
+        let weather = WeatherWidget.inert()
+        XCTAssertTrue(weather.needsSetup)
+        XCTAssertEqual(LibraryCatalog.item(for: weather).isSetUp, false)
+    }
+
+    /// Platy Chase's own entry opens the games on Chase.
+    func testChaseEntrySelectsChase() throws {
+        let r = rig()
+        let games = try XCTUnwrap(r.registry.widget(GamesWidget.widgetID) as? GamesWidget)
+        games.host.select(.snake)
+        let chase = try XCTUnwrap(panel(r).libraryTool(LibraryTools.chase))
+        XCTAssertEqual(chase.item.title, "Platy Chase")
+        let host = NSHostingView(rootView: chase.view())
+        let window = NSWindow(contentRect: CGRect(x: -10_000, y: 10_000, width: 528, height: 300),
+                              styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        defer { window.orderOut(nil) }
+        host.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        XCTAssertEqual(games.host.session.kind, .chase)
+    }
+
+    /// Esc with a tool whose widget was turned off: the panel shows the grid, so Esc closes it
+    /// and the route is written back to the grid.
+    func testEscapeWithAToolThatIsGone() {
+        let r = rig()
+        let c = NotchController(store: r.store, client: r.client, plugins: [], today: r.today, widgets: r.registry)
+        c.expand(tab: "music")
+        XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .library, tool: "music"))
+        r.registry.setEnabled("music", false)
+        c.escapePressed()
+        XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .library))
+        XCTAssertNotEqual(c.mode, .expanded)
+    }
+
+    /// One tool by id resolves alone, and an unknown or turned-off one is nil.
+    func testToolResolvesById() {
+        let r = rig(extra: [])
+        let p = panel(r, tabs: [pluginTab])
+        XCTAssertEqual(p.libraryTool("music")?.item.id, "music")
+        XCTAssertEqual(p.libraryTool(LibraryTools.memory)?.item.title, "Memory")
+        XCTAssertEqual(p.libraryTool(LibraryTools.plugin("fake.tab"))?.item.title, "Fake")
+        XCTAssertNil(p.libraryTool("nonsense"))
+        r.registry.setEnabled("music", false)
+        XCTAssertNil(p.libraryTool("music"))
     }
 }

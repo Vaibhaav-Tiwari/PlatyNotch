@@ -29,7 +29,13 @@ extension MeetingWidget: LibraryLiveLine {
     }
 
     /// Without calendar access there is nothing it can show.
-    var needsSetup: Bool { calendar.access == .notAsked || calendar.access == .denied }
+    var needsSetup: Bool { Self.needsSetup(access: calendar.access) }
+
+    /// Not asked yet or refused; `unavailable` (no usage description, EventKit off) is not
+    /// something the user can set up.
+    static func needsSetup(access: CalendarService.Access) -> Bool {
+        access == .notAsked || access == .denied
+    }
 }
 
 extension FocusWidget: LibraryLiveLine {
@@ -61,7 +67,9 @@ extension HUDWidget: LibraryLiveLine {
 
     var libraryTitle: String? { "Volume HUD" }
     /// Without Accessibility the system HUD shows: Settings has the one path to it.
-    var needsSetup: Bool { status == .needsAccessibility }
+    var needsSetup: Bool { Self.needsSetup(status: status) }
+
+    static func needsSetup(status: Status) -> Bool { status == .needsAccessibility }
 }
 
 extension ShelfWidget: LibraryLiveLine {
@@ -83,7 +91,7 @@ extension RemindersWidget: LibraryLiveLine {
     }
 
     /// Without Reminders access there is nothing it can list or add.
-    var needsSetup: Bool { reminders.access == .notAsked || reminders.access == .denied }
+    var needsSetup: Bool { MeetingWidget.needsSetup(access: reminders.access) }
 }
 
 extension WeatherWidget: LibraryLiveLine {
@@ -140,8 +148,10 @@ extension MirrorWidget: LibraryLiveLine {
 
     /// The camera was refused: only System Settings can turn it back on. Never asked yet is
     /// not this: the tool's Show Mirror button is where macOS asks.
-    var needsSetup: Bool {
-        switch tileState {
+    var needsSetup: Bool { Self.needsSetup(state: tileState) }
+
+    static func needsSetup(state: MirrorTileState) -> Bool {
+        switch state {
         case .denied, .restricted: true
         default: false
         }
@@ -162,18 +172,31 @@ extension MailWidget: LibraryLiveLine {
     }
 
     /// Automation never allowed (or refused): it cannot read Mail until it is.
-    var needsSetup: Bool {
+    var needsSetup: Bool { Self.setupStep(phase: phase) != nil }
+
+    /// What "Set up" does in `phase`: ask macOS (never asked; the only place the prompt
+    /// appears), open System Settings (refused), or nothing (no setup needed).
+    enum SetupStep: Equatable { case allow, openSettings }
+
+    static func setupStep(phase: Phase) -> SetupStep? {
         switch phase {
-        case .needsAllow, .denied: true
-        default: false
+        case .needsAllow: .allow
+        case .denied: .openSettings
+        default: nil
         }
     }
 
-    /// Allow asks macOS (the only place the prompt appears); a refusal opens System Settings.
-    var setupAction: WidgetSetupAction {
-        .run { [weak self] in
-            guard let self else { return }
-            if case .denied = self.phase { self.openAutomationSettings() } else { Task { await self.allow() } }
+    /// The tile's action label: "Allow" when it brings up macOS's own prompt.
+    var setupTitle: String? { Self.setupStep(phase: phase) == .allow ? "Allow" : nil }
+
+    var setupAction: WidgetSetupAction { .run { [weak self] in self?.runSetup() } }
+
+    /// "Set up": the step for the current phase (nothing when none is needed).
+    func runSetup() {
+        switch Self.setupStep(phase: phase) {
+        case .allow: Task { await self.allow() }
+        case .openSettings: openAutomationSettings()
+        case nil: break
         }
     }
 }
@@ -182,7 +205,9 @@ extension WindowSnapWidget: LibraryLiveLine {
     var libraryLine: String? { "\u{2303}\u{2325} arrows" }
     var libraryTitle: String? { "Snapping" }
     /// The shortcuts do nothing without Accessibility.
-    var needsSetup: Bool { status == .needsAccessibility }
+    var needsSetup: Bool { Self.needsSetup(status: status) }
+
+    static func needsSetup(status: Status) -> Bool { status == .needsAccessibility }
 }
 
 extension FileActionsWidget: LibraryLiveLine {

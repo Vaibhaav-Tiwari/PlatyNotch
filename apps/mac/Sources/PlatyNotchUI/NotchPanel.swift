@@ -88,7 +88,8 @@ final class NotchPanel: NSPanel {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        if let digit = Self.commandDigit(event), onCommandDigit?(digit) == true { return true }
+        // Only while this panel has the keyboard (never a shortcut another window was sent).
+        if isKeyWindow, let digit = Self.commandDigit(event), onCommandDigit?(digit) == true { return true }
         return super.performKeyEquivalent(with: event)
     }
 

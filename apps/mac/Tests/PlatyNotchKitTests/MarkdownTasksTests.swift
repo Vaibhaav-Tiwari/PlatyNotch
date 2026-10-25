@@ -235,9 +235,7 @@ final class MarkdownTasksTests: DefaultsTestCase {
 
     /// A title that is nothing but a recurrence rule keeps its words; only the glyphs go.
     func testDisplayTextRecurrenceOnlyKeepsGlyphFreeTitle() {
-        let shown = MarkdownTasks.displayText("🔁 every week water plants")
-        XCTAssertTrue(shown == "water plants" || shown == "every week water plants", shown)
-        XCTAssertFalse(shown.contains("🔁"))
+        XCTAssertEqual(MarkdownTasks.displayText("🔁 every week water plants"), "every week water plants")
         XCTAssertEqual(MarkdownTasks.displayText("🔁 every week 📅 2026-10-30"), "every week")
         XCTAssertEqual(MarkdownTasks.displayText("🔁"), "Untitled task")
     }

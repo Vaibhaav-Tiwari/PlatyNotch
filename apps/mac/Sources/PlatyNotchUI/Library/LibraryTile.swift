@@ -22,7 +22,7 @@ struct LibraryTile: View {
 
     /// What VoiceOver says the tile does.
     static func accessibilityHint(for item: LibraryItem) -> String {
-        action(for: item) == .setUp ? "Set up \(item.title)" : "Open \(item.title)"
+        action(for: item) == .setUp ? "\(item.setupTitle ?? "Set up") \(item.title)" : "Open \(item.title)"
     }
 
     var body: some View {
@@ -61,7 +61,7 @@ struct LibraryTile: View {
 
     @ViewBuilder private func footer(dimmed: Bool) -> some View {
         if dimmed {
-            Text("Set up")
+            Text(verbatim: item.setupTitle ?? "Set up")
                 .font(DS.font(TypeStyle(size: TypeScale.caption.size, weight: .semibold)))
                 .foregroundStyle(DS.dynamicColor(.working))
                 .padding(.horizontal, 7)

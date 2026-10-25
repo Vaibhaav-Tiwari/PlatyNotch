@@ -60,9 +60,12 @@ struct ExpandedPanel: View {
     }
 
     var body: some View {
-        let tools: [LibraryTool] = route.destination == .library ? libraryTools : []
-        let shown: PanelRoute = visibleRoute(tools: tools)
-        let open: LibraryTool? = shown.tool.flatMap { id in tools.first { $0.item.id == id } }
+        // An open tool is resolved alone (it redraws often); the grid builds the catalog.
+        let normal: PanelRoute = route.normalized(agentsVisible: agentsVisible)
+        let open: LibraryTool? = normal.destination == .library ? normal.tool.flatMap { libraryTool($0) } : nil
+        let tools: [LibraryTool] = normal.destination == .library && open == nil ? libraryTools : []
+        // A tool that is not in the Library now (its widget turned off) shows the grid.
+        let shown: PanelRoute = open == nil ? PanelRoute(destination: normal.destination) : normal
         VStack(alignment: .leading, spacing: 0) {
             header(tool: open)
                 .frame(height: NowMetrics.nav)
@@ -90,14 +93,6 @@ struct ExpandedPanel: View {
         .coordinateSpace(name: Self.space)
     }
 
-    /// The route as shown: Agents falls back to Now while hidden, and a tool that is not
-    /// in the Library right now (its widget turned off) shows the grid.
-    private func visibleRoute(tools: [LibraryTool]) -> PanelRoute {
-        var r: PanelRoute = route.normalized(agentsVisible: agentsVisible)
-        if let id = r.tool, !tools.contains(where: { $0.item.id == id }) { r.tool = nil }
-        return r
-    }
-
     @ViewBuilder private func header(tool: LibraryTool?) -> some View {
         if let tool {
             ToolHeader(title: tool.item.title, onBack: goBack, trailing: AnyView(controls))
@@ -113,10 +108,7 @@ struct ExpandedPanel: View {
     @ViewBuilder private func destination(_ shown: PanelRoute, tool: LibraryTool?, tools: [LibraryTool]) -> some View {
         switch shown.destination {
         case .now:
-            NowView(store: store, widgets: widgets, today: today, deck: deck, glanceDefaults: glanceDefaults,
-                    onOpenTool: { openTool($0) },
-                    onOpenAgents: { route = PanelRoute(destination: .agents) }, onOpenTerminal: onOpenTerminal,
-                    fixedNow: fixedNow)
+            nowView
         case .agents:
             AgentsView(sessions: store.sessions, usage: store.usage, log: today.agentActivity.log,
                        onOpenTerminal: onOpenTerminal, onConnect: onConnectAgent, fixedNow: fixedNow)
@@ -131,7 +123,24 @@ struct ExpandedPanel: View {
         }
     }
 
+    /// Now; its glances and quiet line open their tool directly.
+    var nowView: NowView {
+        NowView(store: store, widgets: widgets, today: today, deck: deck, glanceDefaults: glanceDefaults,
+                onOpenTool: { openTool($0) },
+                onOpenAgents: { route = PanelRoute(destination: .agents) }, onOpenTerminal: onOpenTerminal,
+                fixedNow: fixedNow)
+    }
+
     // MARK: - Library
+
+    /// One tool by id, or nil when it is not in the Library now.
+    func libraryTool(_ id: String) -> LibraryTool? {
+        let store = self.store
+        let memory = self.memory
+        let mode = memoryMode
+        return LibraryCatalog.tool(id, widgets: widgets, extraTabs: extraTabs,
+                                   memory: { AnyView(MemoryTab(store: store, memory: memory, mode: mode)) })
+    }
 
     /// The Library's tools in input order (`LibraryCatalog`): widget tools, Platy Chase,
     /// Memory, plugin tabs.
@@ -147,7 +156,7 @@ struct ExpandedPanel: View {
     func sortedLibraryItems() -> [LibraryItem] { sortedItems(libraryTools) }
 
     private func sortedItems(_ tools: [LibraryTool]) -> [LibraryItem] {
-        LibraryOrder.sorted(tools.map(\.item), recents: LibraryRecents.load(from: glanceDefaults))
+        LibraryOrder.sorted(tools.map(\.item), recents: LibraryRecentsCache.resolve(from: glanceDefaults))
     }
 
     /// Opens a tool full-panel and notes it for the grid's order.
@@ -289,5 +298,19 @@ struct ApprovalCardFramesKey: PreferenceKey {
     static let defaultValue: [String: CGRect] = [:]
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue()) { $1 }
+    }
+}
+
+/// The saved Library recents, decoded once per saved value (the grid reads them on every draw).
+@MainActor
+enum LibraryRecentsCache {
+    private static var last: (data: Data, recents: LibraryRecents)?
+
+    static func resolve(from defaults: UserDefaults) -> LibraryRecents {
+        guard let data = defaults.data(forKey: LibraryRecents.key) else { return LibraryRecents() }
+        if let last, last.data == data { return last.recents }
+        let recents = LibraryRecents.decode(data)
+        last = (data, recents)
+        return recents
     }
 }

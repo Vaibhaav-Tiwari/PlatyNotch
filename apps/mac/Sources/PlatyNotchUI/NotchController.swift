@@ -202,9 +202,11 @@ public final class NotchController {
     /// Escape: an open Library tool goes back to the grid first; otherwise the state
     /// machine's `.escape` (the open panel closes).
     func escapePressed() {
-        if machine.mode == .expanded, model.route.destination == .library, model.route.tool != nil {
+        if machine.mode == .expanded, model.route.destination == .library, let tool = model.route.tool {
+            // Back only from a tool that shows: one whose widget was turned off already
+            // shows the grid, so Esc closes (and the route is written back to the grid).
             model.route = model.route.back()
-            return
+            if LibraryCatalog.ids(widgets: widgets, extraTabs: extraTabs).contains(tool) { return }
         }
         handle(.escape)
     }

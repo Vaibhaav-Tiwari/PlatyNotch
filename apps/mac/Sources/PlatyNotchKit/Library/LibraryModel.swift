@@ -8,13 +8,22 @@ public struct LibraryItem: Identifiable, Equatable, Sendable {
     public let systemImage: String
     public let liveLine: String?
     public let isSetUp: Bool
+    /// The dimmed tile's action when it is not "Set up" (e.g. "Allow", which brings up
+    /// macOS's own prompt).
+    public let setupTitle: String?
+    /// Something is going on (playing, focusing, a timer running): the line is tinted and a
+    /// dot shows.
+    public let isLive: Bool
 
-    public init(id: String, title: String, systemImage: String, liveLine: String?, isSetUp: Bool) {
+    public init(id: String, title: String, systemImage: String, liveLine: String?, isSetUp: Bool,
+                setupTitle: String? = nil, isLive: Bool = false) {
         self.id = id
         self.title = title
         self.systemImage = systemImage
         self.liveLine = liveLine
         self.isSetUp = isSetUp
+        self.setupTitle = setupTitle
+        self.isLive = isLive
     }
 }
 
@@ -36,9 +45,13 @@ public struct LibraryRecents: Codable, Equatable, Sendable {
 
     /// The saved recents; empty when none are saved or the value is damaged.
     public static func load(from defaults: UserDefaults) -> LibraryRecents {
-        guard let data = defaults.data(forKey: key),
-              let decoded = try? JSONDecoder().decode(LibraryRecents.self, from: data) else { return LibraryRecents() }
-        return decoded
+        guard let data = defaults.data(forKey: key) else { return LibraryRecents() }
+        return decode(data)
+    }
+
+    /// The recents in `data`; empty when it is damaged.
+    public static func decode(_ data: Data) -> LibraryRecents {
+        (try? JSONDecoder().decode(LibraryRecents.self, from: data)) ?? LibraryRecents()
     }
 
     public func save(to defaults: UserDefaults) {

@@ -49,26 +49,24 @@ struct ToolHeader: View {
     var body: some View {
         HStack(spacing: Space.xs) {
             Button(action: onBack) {
-                HStack(spacing: Space.xs) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 22, height: 22)
-                        .background(hovering ? wash : .clear, in: Circle())
-                    Text(verbatim: title)
-                        .font(DS.font(TypeScale.headline))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                .contentShape(Rectangle())
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24, height: 24)
+                    .background(hovering ? wash : .clear, in: Circle())
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .onHover { hovering = $0 }
             .help(ToolHost.backLabel + " (Esc)")
             .accessibilityLabel(ToolHost.backLabel)
-            .accessibilityHint("\(title) is open")
-            .layoutPriority(1)
+            Text(verbatim: title)
+                .font(DS.font(TypeScale.headline))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .accessibilityAddTraits(.isHeader)
+                .layoutPriority(1)
             Spacer(minLength: Space.s)
             if let trailing { trailing }
         }

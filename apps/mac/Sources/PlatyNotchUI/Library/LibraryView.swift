@@ -50,6 +50,8 @@ struct LibraryView: View {
             empty
         } else {
             FadingScroll(fillsRoom: false) { grid }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Library, \(items.count) \(items.count == 1 ? "tool" : "tools")")
         }
     }
 
@@ -93,10 +95,13 @@ struct ScrollEdges: Equatable {
 protocol LibraryLiveLine {
     var libraryLine: String? { get }
     var libraryTitle: String? { get }
+    /// The dimmed tile's action when it is not "Set up".
+    var setupTitle: String? { get }
 }
 
 extension LibraryLiveLine {
     var libraryTitle: String? { nil }
+    var setupTitle: String? { nil }
 }
 
 /// One Library tool: its tile and the full-panel view it opens.
@@ -137,6 +142,28 @@ enum LibraryCatalog {
     /// The line of a tool that has nothing more specific to say (plugin widgets and tabs).
     static let fallbackLine = "Plug-in"
 
+    /// One tool by id without building the others (an open tool redraws often); nil when it
+    /// is not in the Library now (its widget was turned off).
+    static func tool(_ id: String, widgets: WidgetRegistry, extraTabs: [PanelTab],
+                     memory: @escaping () -> AnyView) -> LibraryTool? {
+        if id == LibraryTools.memory {
+            return LibraryTool(item: LibraryItem(id: LibraryTools.memory, title: "Memory", systemImage: "brain",
+                                                 liveLine: "Search and graph", isSetUp: true),
+                               tile: nil, view: memory)
+        }
+        if let tab = extraTabs.first(where: { LibraryTools.plugin($0.id) == id }) {
+            return LibraryTool(item: LibraryItem(id: id, title: tab.title, systemImage: tab.systemImage,
+                                                 liveLine: fallbackLine, isSetUp: true),
+                               tile: nil, view: { tab.view })
+        }
+        let gamesID: String = id == LibraryTools.chase ? GamesWidget.widgetID : id
+        guard let w = widgets.toolWidgets.first(where: { $0.id == gamesID }) else { return nil }
+        if id == LibraryTools.chase, let games = w as? GamesWidget { return chase(games) }
+        return LibraryTool(item: item(for: w), tile: w.libraryTile(), view: { [weak w] in
+            w?.toolView() ?? AnyView(EmptyView())
+        })
+    }
+
     /// Every tool id (`PanelRoute.legacy`), without building any view.
     static func ids(widgets: WidgetRegistry, extraTabs: [PanelTab]) -> Set<String> {
         var ids: Set<String> = [LibraryTools.memory]
@@ -154,7 +181,7 @@ enum LibraryCatalog {
         // Never empty: the widget's own line, else its top live item, else a calm word.
         let line: String = lines?.libraryLine ?? top?.title ?? Self.fallbackLine
         return LibraryItem(id: w.id, title: lines?.libraryTitle ?? w.title, systemImage: w.systemImage, liveLine: line,
-                           isSetUp: !w.needsSetup)
+                           isSetUp: !w.needsSetup, setupTitle: lines?.setupTitle, isLive: top != nil)
     }
 
     /// Platy Chase keeps its own entry (spec 6.10): the games tool with Chase picked.
