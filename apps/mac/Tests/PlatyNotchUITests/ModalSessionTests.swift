@@ -75,6 +75,6 @@ final class ModalSessionTests: XCTestCase {
     }
 
     func testNotchPanelWorksWhenModal() {
-        XCTAssertTrue(NotchPanel(frame: .zero).worksWhenModal, "a modal session never blocks approvals")
+        XCTAssertTrue(NotchPanel(frame: CGRect(x: -10_000, y: 10_000, width: 10, height: 10)).worksWhenModal, "a modal session never blocks approvals")
     }
 }

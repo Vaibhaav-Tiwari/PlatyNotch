@@ -6,22 +6,27 @@ import XCTest
 /// which put the notch panel one menu-bar height below the camera housing.
 @MainActor
 final class NotchPanelFrameTests: XCTestCase {
+    /// Every panel these tests make sits here, never where the user works.
+    static let offScreen = CGRect(x: -10_000, y: 10_000, width: 10, height: 10)
+
     func testPanelKeepsFrameAtScreenTop() throws {
         let screen = try XCTUnwrap(NSScreen.screens.first)
         let frame = NSRect(x: screen.frame.midX - 280, y: screen.frame.maxY - 380, width: 560, height: 380)
-        let panel = NotchPanel(frame: .zero)
-        // Through AppKit's own path: ordering a window in constrains its frame to the
-        // screen (clear and click-through, so nothing visible happens).
-        panel.setFrame(frame, display: false)
+        let panel = NotchPanel(frame: Self.offScreen)
+        // AppKit's own constraint, asked for the top of the real screen without ever
+        // showing the panel there.
+        XCTAssertEqual(panel.constrainFrameRect(frame, to: screen), frame, "panel was pushed below the menu bar")
+        // And ordered in (off screen, never where the user works) it keeps exactly its frame.
+        let away = NSRect(x: -10_000, y: 10_000, width: 560, height: 380)
+        panel.setFrame(away, display: false)
         panel.orderFrontRegardless()
         defer { panel.orderOut(nil) }
-        XCTAssertEqual(panel.frame.maxY, screen.frame.maxY, "panel was pushed below the menu bar")
-        XCTAssertEqual(panel.frame, frame)
+        XCTAssertEqual(panel.frame, away)
     }
 
     /// Regression (Task 6 fix round 1): `isFloatingPanel` reset `.statusBar` to `.floating`.
     func testPanelSitsAtStatusBarLevel() {
-        let panel = NotchPanel(frame: .zero)
+        let panel = NotchPanel(frame: Self.offScreen)
         XCTAssertEqual(panel.level, .statusBar)
         XCTAssertTrue(panel.isFloatingPanel)
     }
@@ -31,7 +36,7 @@ final class NotchPanelFrameTests: XCTestCase {
     /// Final re-review A4: a click while the mode cannot take the keyboard (the compact
     /// pill, a notice) must not linger until an approval peek shows.
     func testClickOutsideAKeyModeIsForgotten() {
-        let panel = NotchPanel(frame: .zero)
+        let panel = NotchPanel(frame: Self.offScreen)
         panel.allowsKey = false
         panel.noteMouseDown()                       // a click on the pill
         panel.allowsKey = true                      // later: the approval peek
@@ -40,7 +45,7 @@ final class NotchPanelFrameTests: XCTestCase {
 
     /// Leaving the key mode forgets a click.
     func testLeavingTheKeyModeForgetsTheClick() {
-        let panel = NotchPanel(frame: .zero)
+        let panel = NotchPanel(frame: Self.offScreen)
         panel.allowsKey = true
         panel.noteMouseDown()
         XCTAssertTrue(panel.canBecomeKey)
@@ -50,7 +55,7 @@ final class NotchPanelFrameTests: XCTestCase {
     }
 
     func testKeyOnlyAfterAClickInThePanel() {
-        let panel = NotchPanel(frame: .zero)
+        let panel = NotchPanel(frame: Self.offScreen)
         panel.allowsKey = true
         XCTAssertFalse(panel.canBecomeKey, "no click yet: Settings closing must not hand it key")
         panel.noteMouseDown()

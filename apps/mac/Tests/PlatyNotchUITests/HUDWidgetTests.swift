@@ -510,7 +510,7 @@ final class HUDWidgetTests: DefaultsTestCase {
         let on = await eventually { r.widget.status == .on }
         XCTAssertTrue(on)
         r.trusted = false
-        let settings = NSWindow(contentRect: .init(x: 0, y: 0, width: 10, height: 10), styleMask: [.titled],
+        let settings = NSWindow(contentRect: .init(x: -10_000, y: 10_000, width: 10, height: 10), styleMask: [.titled],
                                 backing: .buffered, defer: true)
         settings.isReleasedWhenClosed = false
         settings.identifier = AppWindowID.settings
@@ -522,7 +522,7 @@ final class HUDWidgetTests: DefaultsTestCase {
 
     /// Only the Settings and onboarding windows count; panels, pickers and alerts do not.
     func testOnlySettingsLikeWindowsCount() {
-        let w = NSWindow(contentRect: .init(x: 0, y: 0, width: 10, height: 10), styleMask: [.titled],
+        let w = NSWindow(contentRect: .init(x: -10_000, y: 10_000, width: 10, height: 10), styleMask: [.titled],
                          backing: .buffered, defer: true)
         w.isReleasedWhenClosed = false
         XCTAssertFalse(AppWindowID.isSettingsLike(w))
