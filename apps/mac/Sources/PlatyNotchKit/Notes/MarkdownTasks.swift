@@ -352,22 +352,36 @@ public enum MarkdownTasks {
 
     /// Every Tasks-plugin marker the UI must not show (fix round 1, M6): dated markers
     /// (due, scheduled, start, created, done, cancelled) with their dates, recurrence (🔁)
-    /// with its rule up to the next marker, and priorities.
+    /// with its rule, and priorities. The rule is the plugin's grammar only: "every …" right
+    /// after the glyph, up to the next marker or the end of the line. A 🔁 not followed by
+    /// "every" loses just the glyph, so a title that merely contains it keeps its words.
     private static let dated = "\u{1F4C5}\u{1F4C6}\u{1F5D3}\u{23F3}\u{1F6EB}\u{2795}\u{2705}\u{274C}"
     private static let priority = "\u{23EB}\u{1F53C}\u{1F53D}\u{23EC}\u{1F53A}"
+    private static func markerPattern(withRule: Bool) -> String {
+        let rule = withRule ? "(?:\\s*(?i:every)\\b[^\(dated)\(priority)\u{1F501}\\r\\n]*)?" : ""
+        return "\\s*(?:[\(dated)]\u{FE0F}?(?:\\s*\\d{4}-\\d{2}-\\d{2})?"
+            + "|\u{1F501}\u{FE0F}?" + rule
+            + "|[\(priority)]\u{FE0F}?)"
+    }
     private static let displayRegex: NSRegularExpression? = try? NSRegularExpression(
-        pattern: "\\s*(?:[\(dated)]\u{FE0F}?(?:\\s*\\d{4}-\\d{2}-\\d{2})?"
-            + "|\u{1F501}\u{FE0F}?[^\(dated)\(priority)\u{1F501}]*"
-            + "|[\(priority)]\u{FE0F}?)")
+        pattern: markerPattern(withRule: true))
+    /// The fallback when stripping rules leaves nothing: the glyphs go, the words stay.
+    private static let glyphOnlyRegex: NSRegularExpression? = try? NSRegularExpression(
+        pattern: markerPattern(withRule: false))
 
     /// What the UI shows of a task: `text` without any Tasks-plugin marker, whitespace
-    /// collapsed; "Untitled task" when nothing else is left. Parsing and the file keep them.
+    /// collapsed. When removing the recurrence rule would leave nothing, only the glyphs go
+    /// ("🔁 every week water plants" stays readable); "Untitled task" when even that is empty.
+    /// Parsing and the file keep the markers.
     public static func displayText(_ text: String) -> String {
-        guard let re = displayRegex else { return text }
-        let ns = text as NSString
-        let out = re.stringByReplacingMatches(in: text, range: NSRange(location: 0, length: ns.length), withTemplate: " ")
-        let words = out.split(whereSeparator: { $0 == " " || $0 == "\t" })
-        return words.isEmpty ? "Untitled task" : words.joined(separator: " ")
+        for re in [displayRegex, glyphOnlyRegex] {
+            guard let re else { continue }
+            let ns = text as NSString
+            let out = re.stringByReplacingMatches(in: text, range: NSRange(location: 0, length: ns.length), withTemplate: " ")
+            let words = out.split(whereSeparator: { $0 == " " || $0 == "\t" })
+            if !words.isEmpty { return words.joined(separator: " ") }
+        }
+        return "Untitled task"
     }
 
     /// `text` without Tasks-plugin date markers (due, scheduled, start, created, done, cancelled).

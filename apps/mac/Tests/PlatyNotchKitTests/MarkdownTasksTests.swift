@@ -223,4 +223,22 @@ final class MarkdownTasksTests: DefaultsTestCase {
         XCTAssertTrue(task.text.contains("🔁"), "parsing keeps the markers")
         XCTAssertTrue(task.isRecurring)
     }
+
+    /// Phase 4 carry-over: 🔁 removes only the Tasks plugin's recurrence rule ("every …" up to
+    /// the next marker or the end), never the words of a title that merely contains the glyph.
+    func testDisplayTextKeepsWordsAfterAStrayRecurrenceGlyph() {
+        XCTAssertEqual(MarkdownTasks.displayText("Fix 🔁 loop bug in parser"), "Fix loop bug in parser")
+        XCTAssertEqual(MarkdownTasks.displayText("Fix 🔁\u{FE0F} loop"), "Fix loop")
+        XCTAssertEqual(MarkdownTasks.displayText("Water 🔁 every day 📅 2026-10-30 #home"), "Water #home")
+        XCTAssertEqual(MarkdownTasks.displayText("Water 🔁 Every 2 weeks on Monday"), "Water")
+    }
+
+    /// A title that is nothing but a recurrence rule keeps its words; only the glyphs go.
+    func testDisplayTextRecurrenceOnlyKeepsGlyphFreeTitle() {
+        let shown = MarkdownTasks.displayText("🔁 every week water plants")
+        XCTAssertTrue(shown == "water plants" || shown == "every week water plants", shown)
+        XCTAssertFalse(shown.contains("🔁"))
+        XCTAssertEqual(MarkdownTasks.displayText("🔁 every week 📅 2026-10-30"), "every week")
+        XCTAssertEqual(MarkdownTasks.displayText("🔁"), "Untitled task")
+    }
 }
