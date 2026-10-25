@@ -196,6 +196,40 @@ public struct PlatyEarFit: Equatable, Sendable {
         self.init(dots: shown, overflowCount: dots - shown + overflow, badge: false)
     }
 
+    /// The pill's fit, which knows the pill's outer padding beside the ear. When the dots
+    /// and the "+n" label do not both fit, it keeps as many dots as it can (all three
+    /// where possible: "Platy, three dots and +9") and puts "+n" on Platy as a badge, if
+    /// the badge fits from Platy's centre outward across the free room and the padding
+    /// (`badgeWidthEstimate`). Otherwise it falls back to `init(earWidth:dots:overflow:)`.
+    public init(earWidth: CGFloat, dots: Int, overflow: Int, outerPadding: CGFloat) {
+        let room: CGFloat = earWidth - Self.platy
+        let label: CGFloat = overflow > 0 ? Self.overflowLabel : 0
+        if CGFloat(dots) * Self.dot + label <= room {
+            self.init(dots: dots, overflowCount: overflow, badge: false)
+            return
+        }
+        if dots > 0 {
+            for kept in stride(from: dots, through: 1, by: -1) {
+                let dotsWidth: CGFloat = CGFloat(kept) * Self.dot
+                guard dotsWidth <= room else { continue }
+                let count: Int = dots - kept + overflow
+                let badgeRoom: CGFloat = Self.platy / 2 + (room - dotsWidth) + outerPadding
+                if count > 0, Self.badgeWidthEstimate(count) <= badgeRoom {
+                    self.init(dots: kept, overflowCount: count, badge: true)
+                    return
+                }
+            }
+        }
+        self.init(earWidth: earWidth, dots: dots, overflow: overflow)
+    }
+
+    /// A width the badge never exceeds: 8 pt per character of `badgeText` (11 pt bold
+    /// rounded measures 7.7 at most), rounded up, plus `badgePadding` each side.
+    public static func badgeWidthEstimate(_ count: Int) -> CGFloat {
+        let chars: CGFloat = CGFloat(badgeText(count).count)
+        return (chars * 8).rounded(.up) + 2 * badgePadding
+    }
+
     /// The badge's text: "+n", or "99+" above `badgeMaxCount`.
     public static func badgeText(_ count: Int) -> String {
         count > badgeMaxCount ? "\(badgeMaxCount)+" : "+\(count)"
@@ -213,8 +247,16 @@ public struct PlatyEarFit: Equatable, Sendable {
     /// the ear: at Platy's centre, moved toward the notch only if it would otherwise cross
     /// the pill's outer edge, and never past the notch edge (0).
     public static func badgeOffset(earWidth: CGFloat, outerPadding: CGFloat, badgeWidth: CGFloat) -> CGFloat {
-        let outerEdge: CGFloat = max(earWidth, platy) + outerPadding
-        return max(0, min(platy / 2, outerEdge - badgeWidth))
+        badgeOffset(earWidth: earWidth, outerPadding: outerPadding, badgeWidth: badgeWidth, dotsWidth: 0)
+    }
+
+    /// The same with dots between Platy and the notch (`dotsWidth`, `dots × dot`): Platy's
+    /// notch-side edge is then `dotsWidth` from the notch edge, and the badge never moves
+    /// over a dot.
+    public static func badgeOffset(earWidth: CGFloat, outerPadding: CGFloat, badgeWidth: CGFloat,
+                                   dotsWidth: CGFloat) -> CGFloat {
+        let outerEdge: CGFloat = max(earWidth, dotsWidth + platy) + outerPadding
+        return max(dotsWidth, min(dotsWidth + platy / 2, outerEdge - badgeWidth))
     }
 
     /// The width this fit draws (the badge takes none).
