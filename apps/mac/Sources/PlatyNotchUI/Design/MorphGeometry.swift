@@ -45,7 +45,7 @@ struct ChromeSettle<Content: View>: View {
 
     /// Appears at once (its chrome fades in on its own), goes quickly.
     static var transition: AnyTransition {
-        .asymmetric(insertion: .identity, removal: .opacity.animation(.easeIn(duration: removalFade)))
+        .asymmetric(insertion: .identity, removal: .opacity.animation(.easeOut(duration: removalFade)))
     }
 }
 
