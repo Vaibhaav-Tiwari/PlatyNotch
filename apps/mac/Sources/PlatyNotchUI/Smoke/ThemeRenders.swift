@@ -56,7 +56,7 @@ enum ThemeRenders {
     /// draws as a placeholder: an off-screen hosting view's own drawing instead.
     /// `settle`: seconds the run loop turns before the capture, so a symbol or text that
     /// fades in on first appearance is drawn settled (the pill gallery).
-    static func renderHosted(_ view: AnyView, scheme: ColorScheme, settle: TimeInterval = 0) -> Data? {
+    static func renderHosted(_ view: AnyView, scheme: ColorScheme, settle: TimeInterval = 0.02) -> Data? {
         let host = NSHostingView(rootView: framed(view, scheme: scheme))
         host.appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
         host.frame = CGRect(origin: .zero, size: host.fittingSize)
@@ -653,11 +653,16 @@ enum LibraryRenders {
         return rig
     }
 
-    /// Every built-in on and nothing seeded: the ones without data are dimmed with "Set up".
+    /// Every built-in on and nothing seeded, with calendar and Reminders access never asked:
+    /// the widgets that need setup (meetings, reminders, weather, the HUD, snapping) are
+    /// dimmed with "Set up"; the rest show their calm lines.
     private static func setUp() -> NowRenders.Rig {
         let rig = NowRenders.Rig()
         BuiltInWidgets.register(in: rig.registry, store: rig.store, today: rig.today, persist: false)
         rig.startAll()
+        rig.today.calendar.setForTesting(access: .notAsked, meetings: [])
+        (rig.registry.widget(RemindersWidget.widgetID) as? RemindersWidget)?.reminders
+            .setForTesting(access: .notAsked, items: [])
         return rig
     }
 
