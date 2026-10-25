@@ -56,13 +56,19 @@ public struct AgentsLive: Equatable, Sendable {
                         working: working.count, total: total)
         }
         if let finishedAt = log.lastFinish(now: now) {
+            // Only a session that still rests after its finish counts (one that resumed is
+            // working again). With none listed and nothing working, the core already dropped
+            // the finished session: "Agent finished" with no lead.
             let finished = rated.filter { $0.1 == .finished }
-            guard let (s, _) = finished.min(by: { $0.0.startedAt < $1.0.startedAt }) else {
-                return AgentsLive(rank: .agentFinished, title: "Agent finished", subtitle: "Finished", startedAt: finishedAt,
-                                  needsYou: 0, working: working.count, total: total, leadKey: "", leadAttention: .finished)
+            if let (s, _) = finished.min(by: { $0.0.startedAt < $1.0.startedAt }) {
+                return AgentsLive(rank: .agentFinished, title: title(of: s), subtitle: "Finished", startedAt: finishedAt,
+                                  needsYou: 0, working: working.count, total: total, leadKey: s.key,
+                                  leadAttention: .finished)
             }
-            return AgentsLive(rank: .agentFinished, title: title(of: s), subtitle: "Finished", startedAt: finishedAt,
-                              needsYou: 0, working: working.count, total: total, leadKey: s.key, leadAttention: .finished)
+            if working.isEmpty {
+                return AgentsLive(rank: .agentFinished, title: "Agent finished", subtitle: "Finished", startedAt: finishedAt,
+                                  needsYou: 0, working: 0, total: total, leadKey: "", leadAttention: .finished)
+            }
         }
         if !working.isEmpty {
             return lead(working, rank: .agentsWorking, needsYou: 0, working: working.count, total: total)

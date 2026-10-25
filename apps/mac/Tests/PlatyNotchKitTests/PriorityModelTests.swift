@@ -146,6 +146,20 @@ final class PriorityModelTests: DefaultsTestCase {
         XCTAssertEqual(AgentsLive.make(sessions: sessions, log: log, now: now.addingTimeInterval(600))?.rank, .agentsWorking)
     }
 
+    /// The finish log is log-wide: a session that finished and resumed is working, not
+    /// "Agent finished".
+    func testResumedSessionIsWorking() {
+        let log = finishLog("a", at: now.addingTimeInterval(-30))
+        let live = AgentsLive.make(sessions: [session("a", .active)], log: log, now: now)
+        XCTAssertEqual(live?.rank, .agentsWorking)
+        XCTAssertEqual(live?.leadKey, "a")
+        XCTAssertEqual(live?.leadAttention, .working)
+        // The finished session gone from the list and nothing working: the no-lead fallback.
+        let gone = AgentsLive.make(sessions: [], log: log, now: now)
+        XCTAssertEqual(gone?.rank, .agentFinished)
+        XCTAssertEqual(gone?.leadKey, "")
+    }
+
     func testLeadSessionAndAttention() {
         var log = AgentFinishLog()
         log.noteFailure(sessionKey: "err", at: now)
