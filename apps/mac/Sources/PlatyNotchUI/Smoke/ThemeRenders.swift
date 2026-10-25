@@ -41,6 +41,8 @@ enum ThemeRenders {
             .padding(12)
             .background(Theme.surface(scheme))
             .environment(\.colorScheme, scheme)
+            // Monograms, so renders look the same on every Mac (one render passes a fake app icon).
+            .environment(\.agentIcons, .monogramsOnly)
     }
 
     private static func render(_ view: AnyView, scheme: ColorScheme) -> Data? {
@@ -196,6 +198,7 @@ enum NowRenders {
         out.append(("hero-meeting", panel(meetingHero()), true))
         out.append(("hero-agents", panel(agentsHero()), true))
         out.append(("peek-hover", hoverPeek(agentsHero()), true))
+        out += AgentsRenders.views()
         return out
     }
 
@@ -288,10 +291,10 @@ enum NowRenders {
 
     /// The open panel as `PanelRootView` lays it out: 16 pt margins, content below the
     /// camera housing, 10 pt at the bottom; clipped, so anything too tall shows.
-    static func panel(_ rig: Rig) -> AnyView {
+    static func panel(_ rig: Rig, tab: String = BuiltinTab.now) -> AnyView {
         let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelMargin
         let height: CGFloat = NowMetrics.available(in: layout)
-        var selected = BuiltinTab.now
+        var selected = tab
         let view = ExpandedPanel(store: rig.store, responder: ApprovalResponder(client: rig.client), arming: ApprovalArming(),
                                  today: rig.today, widgets: rig.registry, memory: MemoryServices(client: rig.client),
                                  extraTabs: [], selectedTab: Binding(get: { selected }, set: { selected = $0 }),
@@ -394,4 +397,106 @@ private final class RenderLiveWidget: NotchWidget {
     }
 
     func tileView() -> AnyView { AnyView(EmptyView()) }
+}
+
+/// The Agents destination in the open panel (Task 18): one session, four in mixed states,
+/// twelve over four agents, none, and one row with a stand-in "installed app" icon passed
+/// through the icon seam (a plain drawn tile, never a real logo).
+@MainActor
+enum AgentsRenders {
+    static func views() -> [(String, AnyView, Bool)] {
+        [
+            ("agents-one", NowRenders.panel(rig(one()), tab: BuiltinTab.agents), true),
+            ("agents-mixed", NowRenders.panel(mixed(), tab: BuiltinTab.agents), true),
+            ("agents-twelve", NowRenders.panel(rig(twelve()), tab: BuiltinTab.agents), true),
+            ("agents-empty", NowRenders.panel(rig([]), tab: BuiltinTab.agents), true),
+            ("agents-app-icon", appIcon(), true),
+        ]
+    }
+
+    static let start = Date().addingTimeInterval(-4 * 60 - 20)
+
+    static func session(_ key: String, _ agent: String, _ name: String, project: String, _ state: SessionState,
+                        title: String? = nil, tool: String? = nil, message: String? = nil,
+                        updated: TimeInterval = 0) -> Session {
+        Session(key: key, agent: agent, agentName: name, sessionID: key, project: project, state: state, title: title,
+                tool: tool, message: message, startedAt: start, updatedAt: Date().addingTimeInterval(-updated))
+    }
+
+    static func one() -> [Session] {
+        [session("a", "claude-code", "Claude Code", project: "platynotch", .active, title: "Running tests",
+                 tool: "Bash", message: "swift test --filter AgentsViewTests")]
+    }
+
+    static func twelve() -> [Session] {
+        let agents: [(String, String)] = [("claude-code", "Claude Code"), ("codex", "Codex"), ("cursor", "Cursor"),
+                                          ("gemini", "Gemini CLI")]
+        let projects = ["platynotch", "api", "web", "infra", "docs", "mobile", "billing", "search", "auth", "design",
+                        "a-very-long-project-name-that-keeps-going-and-going-until-it-has-to-truncate", "cli"]
+        return (0..<12).map { i in
+            let (agent, name) = agents[i % 4]
+            return session("s\(i)", agent, name, project: projects[i], i == 7 ? .waitingInput : .active,
+                           title: i % 3 == 0 ? "Refactoring the panel layout" : nil, tool: "Edit",
+                           message: i % 2 == 0 ? "Edit Sources/PlatyNotchUI/Agents/AgentsView.swift" : nil,
+                           updated: TimeInterval(i * 20))
+        }
+    }
+
+    /// Needs you, errored, working and just finished.
+    static func mixed() -> NowRenders.Rig {
+        let ask = session("ask", "claude-code", "Claude Code", project: "platynotch", .waitingInput, tool: "AskUserQuestion",
+                          message: "Which colour should the badge use?")
+        let err = session("err", "codex", "Codex", project: "api", .idle, tool: "Bash", message: "go test ./... (exit 1)",
+                          updated: 30)
+        let work = session("work", "cursor", "Cursor", project: "web", .active, title: "Fixing the login form",
+                           tool: "Edit", message: "Edit src/login.tsx", updated: 10)
+        var done = session("done", "opencode", "OpenCode", project: "docs", .active, tool: "Write", updated: 120)
+        let r = rig([ask, err, work, done])
+        r.today.agentActivity.sessionsChanged([ask, err, work, done], now: Date())
+        done.state = .idle
+        r.today.agentActivity.sessionsChanged([ask, err, work, done], now: Date())
+        r.today.agentActivity.notice(Notice(kind: "session-failed", title: "Codex stopped", sessionKey: "err"), now: Date())
+        try? r.store.apply(Envelope.make(.snapshot, Snapshot(sessions: [ask, err, work, done], usage: r.store.usage)))
+        return r
+    }
+
+    static func rig(_ sessions: [Session]) -> NowRenders.Rig {
+        var r = NowRenders.Rig()
+        r.mood = sessions.isEmpty ? .idle : .working
+        let json = #"{"claude":{"five_hour":{"used_percent":62},"weekly":{"used_percent":31},"updated_at":"2026-10-25T09:00:00Z"},"codex":{"weekly":{"used_percent":91},"updated_at":"2026-10-25T09:00:00Z"}}"#
+        let usage: Usage = (try? JSONCoding.decoder.decode(Usage.self, from: Data(json.utf8))) ?? Usage()
+        try? r.store.apply(Envelope.make(.snapshot, Snapshot(sessions: sessions, usage: usage)))
+        return r
+    }
+
+    /// A stand-in for an installed app's icon: a plain gradient tile with a symbol.
+    static func fakeAppIcon() -> NSImage {
+        let size = NSSize(width: 64, height: 64)
+        return NSImage(size: size, flipped: false) { rect in
+            let path = NSBezierPath(roundedRect: rect.insetBy(dx: 4, dy: 4), xRadius: 13, yRadius: 13)
+            NSGradient(starting: NSColor(white: 0.32, alpha: 1), ending: NSColor(white: 0.12, alpha: 1))?
+                .draw(in: path, angle: -90)
+            let config = NSImage.SymbolConfiguration(pointSize: 26, weight: .semibold)
+                .applying(.init(paletteColors: [.white]))
+            if let symbol = NSImage(systemSymbolName: "terminal", accessibilityDescription: nil)?
+                .withSymbolConfiguration(config) {
+                let s = symbol.size
+                symbol.draw(in: CGRect(x: (rect.width - s.width) / 2, y: (rect.height - s.height) / 2,
+                                       width: s.width, height: s.height))
+            }
+            return true
+        }
+    }
+
+    static func appIcon() -> AnyView {
+        let icon = fakeAppIcon()
+        let source = AgentIconSource { $0 == "com.anthropic.claudefordesktop" ? icon : nil }
+        let r = rig(one() + [session("b", "codex", "Codex", project: "api", .idle, updated: 400)])
+        let view = AgentsView(sessions: r.store.sessions, usage: r.store.usage, log: AgentFinishLog(),
+                              onOpenTerminal: { _ in }, onConnect: {})
+            .frame(width: PanelLayout.expandedSize.width - 2 * Space.panelMargin, height: 170, alignment: .top)
+            .environment(\.agentIcons, source)
+            .environment(\.panelTicking, false)
+        return AnyView(view)
+    }
 }

@@ -30,6 +30,11 @@ struct ExpandedPanel: View {
     var fixedNow: Date?
     /// Where Now's chosen glances are saved (renders and tests pass their own).
     var glanceDefaults: UserDefaults = .standard
+    /// The Agents destination shows (`AgentsVisibility.isVisible`, via
+    /// `PanelDestination.shown`); hidden until an agent first connects.
+    var agentsVisible: Bool = true
+    /// The Agents empty state's "Connect an agent": Settings › Agents.
+    var onConnectAgent: () -> Void = {}
     let onDecide: (Approval, ApprovalBehavior) -> Void
     let onOpenTerminal: (Session) -> Void
 
@@ -85,6 +90,7 @@ struct ExpandedPanel: View {
         let deck = self.deck
         let fixedNow = self.fixedNow
         let glanceDefaults = self.glanceDefaults
+        let connect = onConnectAgent
         let select: (String) -> Void = { [selectedTab = $selectedTab] in selectedTab.wrappedValue = $0 }
         var tabs = [
             PanelTab(id: BuiltinTab.now, title: "Now", systemImage: "sparkles") {
@@ -93,7 +99,8 @@ struct ExpandedPanel: View {
                         onOpenAgents: { select(BuiltinTab.agents) }, onOpenTerminal: open, fixedNow: fixedNow)
             },
             PanelTab(id: BuiltinTab.agents, title: "Agents", systemImage: "terminal") {
-                AgentsTab(sessions: store.sessions, usage: store.usage, onOpenTerminal: open)
+                AgentsView(sessions: store.sessions, usage: store.usage, log: today.agentActivity.log,
+                           onOpenTerminal: open, onConnect: connect, fixedNow: fixedNow)
             },
             PanelTab(id: BuiltinTab.today, title: "Today", systemImage: "calendar") {
                 TodayTab(widgets: widgets)
@@ -116,6 +123,8 @@ struct ExpandedPanel: View {
                 GamesTab(host: host)
             })
         }
+        let shown: [PanelDestination] = PanelDestination.shown(agentsVisible: agentsVisible)
+        if !shown.contains(.agents) { tabs.removeAll { $0.id == BuiltinTab.agents } }
         return tabs + extraTabs
     }
 

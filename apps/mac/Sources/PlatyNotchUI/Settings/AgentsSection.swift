@@ -29,6 +29,8 @@ struct AgentsSection: View {
                 .padding(4)
             }
 
+            ShowAgentsToggle()
+
             HStack {
                 Button("Run diagnostics") { Task { await agents.run("notch doctor", ["doctor"]) } }
                     .disabled(agents.busy)
@@ -41,6 +43,35 @@ struct AgentsSection: View {
             }
         }
         .task { await agents.refresh() }
+    }
+}
+
+/// "Show Agents before an agent connects" (`AgentsVisibility.forcedOn`): the panel's
+/// Agents destination otherwise appears the first time a hook connects (spec 6.7).
+private struct ShowAgentsToggle: View {
+    @State private var visibility = AgentsVisibility.load(from: .standard)
+
+    var body: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle(isOn: Binding(
+                    get: { visibility.forcedOn },
+                    set: { on in
+                        var v = AgentsVisibility.load(from: .standard)
+                        v.forcedOn = on
+                        v.save(to: .standard)
+                        visibility = v
+                    })) {
+                    Text("Show Agents before an agent connects")
+                }
+                Text(visibility.everConnected
+                     ? "An agent has connected, so Agents is in the panel."
+                     : "Agents appears in the panel the first time an agent connects.")
+                    .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(4)
+        }
     }
 }
 
@@ -60,7 +91,7 @@ struct AgentList: View {
                 Text("No agents known to this core.").foregroundStyle(.secondary)
             }
             ForEach(sorted(agents.rows)) { row in
-                AgentRow(row: row, services: services, compact: compact)
+                AgentHookRow(row: row, services: services, compact: compact)
                 Divider()
             }
         }
@@ -72,7 +103,7 @@ struct AgentList: View {
     }
 }
 
-private struct AgentRow: View {
+private struct AgentHookRow: View {
     let row: AgentHookStatus
     let services: SettingsServices
     let compact: Bool

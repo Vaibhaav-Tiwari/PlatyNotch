@@ -46,8 +46,11 @@ struct UsageGlance: View {
 
     var body: some View {
         if let (label, used) = Self.reading(usage) {
+            // The provider's icon (installed app or monogram) beside the big percent.
+            let agent: String = label.hasPrefix("Codex") ? "codex" : "claude-code"
             GlanceChip(systemImage: "gauge.with.dots.needle.67percent", value: PanelFormat.usagePercent(used),
-                       label: label, tint: used >= 90 ? DS.dynamicColor(.error) : nil)
+                       label: label, tint: DS.dynamicColor(UsageLevel(usedPercent: used).tone),
+                       brand: AgentBrand(agent: agent))
         }
     }
 

@@ -8,12 +8,17 @@ struct AgentsHero: View {
     let agents: AgentsLive
     let action: AgentRowAction
     let mood: PlatyMood?
+    /// The lead session's agent: its icon with the state badge leads the counts line
+    /// (user change: agent icons). nil when the core no longer lists that session.
+    let lead: AgentBrand?
     let onPrimary: () -> Void
 
-    init(agents: AgentsLive, action: AgentRowAction, mood: PlatyMood?, onPrimary: @escaping () -> Void) {
+    init(agents: AgentsLive, action: AgentRowAction, mood: PlatyMood?, lead: AgentBrand? = nil,
+         onPrimary: @escaping () -> Void) {
         self.agents = agents
         self.action = action
         self.mood = mood
+        self.lead = lead
         self.onPrimary = onPrimary
     }
 
@@ -49,18 +54,34 @@ struct AgentsHero: View {
         .accessibilityElement(children: .contain)
     }
 
-    private func countsLabel(_ text: String) -> some View {
-        Label {
-            Text(verbatim: text)
-                .contentTransition(.numericText())
-                .lineLimit(1)
-                .fixedSize()
-        } icon: {
-            Image(systemName: tone.symbol).foregroundStyle(DS.dynamicColor(tone))
+    @ViewBuilder private func countsLabel(_ text: String) -> some View {
+        if let lead {
+            HStack(spacing: Space.s) {
+                AgentBadge(brand: lead, tone: tone, size: Self.leadIconSize)
+                    .help(agents.title)
+                Text(verbatim: text)
+                    .contentTransition(.numericText())
+                    .lineLimit(1)
+                    .fixedSize()
+                    .font(DS.font(TypeScale.caption))
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            Label {
+                Text(verbatim: text)
+                    .contentTransition(.numericText())
+                    .lineLimit(1)
+                    .fixedSize()
+            } icon: {
+                Image(systemName: tone.symbol).foregroundStyle(DS.dynamicColor(tone))
+            }
+            .font(DS.font(TypeScale.caption))
+            .foregroundStyle(.secondary)
         }
-        .font(DS.font(TypeScale.caption))
-        .foregroundStyle(.secondary)
     }
+
+    /// The lead session's icon in the counts line.
+    static let leadIconSize: CGFloat = 28
 
     /// The lead state only: "1 needs you", "2 working", else the state word.
     var shortCounts: String {

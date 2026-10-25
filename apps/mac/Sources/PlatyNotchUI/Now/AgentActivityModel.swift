@@ -19,6 +19,13 @@ final class AgentActivityModel {
     @ObservationIgnored private var store: AppStore?
     @ObservationIgnored private var lastNotice = 0
     @ObservationIgnored private var clockObservers: [(NotificationCenter, NSObjectProtocol)] = []
+    /// Whether the Agents destination shows (spec 6.7): hidden until a session first
+    /// appears or Settings › Agents turns it on.
+    private(set) var agentsVisibility = AgentsVisibility()
+    /// Where `agentsVisibility` is saved (nil: kept in memory, as in smoke runs and renders).
+    @ObservationIgnored private var visibilityDefaults: UserDefaults?
+    /// Called once, the first time a session appears (the one-time notice).
+    @ObservationIgnored var onAgentsFirstShown: (@MainActor () -> Void)?
 
     init() {}
 
@@ -60,8 +67,27 @@ final class AgentActivityModel {
         clockObservers = [(workspace, wake), (center, change)]
     }
 
+    /// Reads the saved visibility and keeps saving it there.
+    func loadVisibility(from defaults: UserDefaults) {
+        visibilityDefaults = defaults
+        agentsVisibility = AgentsVisibility.load(from: defaults)
+    }
+
+    /// Settings › Agents changed the saved visibility ("Show Agents before an agent connects").
+    func reloadVisibility() {
+        guard let visibilityDefaults else { return }
+        let saved = AgentsVisibility.load(from: visibilityDefaults)
+        if saved != agentsVisibility { agentsVisibility = saved }
+    }
+
     /// The store's sessions now: finishes are logged; a session active again loses its failure.
     func sessionsChanged(_ sessions: [Session], now: Date) {
+        var visibility = agentsVisibility
+        if visibility.noteSessions(count: sessions.count) {
+            agentsVisibility = visibility
+            if let visibilityDefaults { visibility.save(to: visibilityDefaults) }
+            onAgentsFirstShown?()
+        }
         let changes = transitions.update(sessions)
         for s in sessions where s.state == .active && log.failed(s.key, now: now) {
             log.clearFailure(sessionKey: s.key)

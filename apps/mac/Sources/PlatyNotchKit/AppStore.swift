@@ -67,12 +67,18 @@ public final class AppStore {
             if let m: MemoryStatus = try? env.decode() { memory = m }
         case .notice:
             guard let n: Notice = try? env.decode() else { return }
-            notices.append(n)
-            noticeSequence += 1
-            if notices.count > Self.maxNotices { notices.removeFirst(notices.count - Self.maxNotices) }
+            postLocalNotice(n)
         default:
             break
         }
+    }
+
+    /// A notice from the app itself (e.g. "Agents is in your notch now"), shown like a
+    /// core notice. Not part of the plugin API (package access).
+    package func postLocalNotice(_ n: Notice) {
+        notices.append(n)
+        noticeSequence += 1
+        if notices.count > Self.maxNotices { notices.removeFirst(notices.count - Self.maxNotices) }
     }
 
     private static func oldestFirst(_ a: Approval, _ b: Approval) -> Bool {

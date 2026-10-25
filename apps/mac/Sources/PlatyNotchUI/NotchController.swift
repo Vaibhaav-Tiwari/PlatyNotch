@@ -69,6 +69,8 @@ public final class NotchController {
     var armingClock: () -> Date = { Date() }
     /// The open panel's gear (the menu bar icon may be hidden): the app shows Settings.
     var onOpenSettings: () -> Void = {}
+    /// The Agents empty state's "Connect an agent": the app shows Settings › Agents.
+    var onOpenAgentSettings: () -> Void = {}
     /// What the panel's views read (tests press its buttons through it).
     var panelModel: PanelViewModel { model }
     private var workspaceObservers: [NSObjectProtocol] = []
@@ -118,6 +120,7 @@ public final class NotchController {
         model.onClick = { [weak self] in self?.handle(.click) }
         model.onStopRinging = { [weak self] id in self?.surfaces.stopRinging(id: id) }
         model.onOpenSettings = { [weak self] in self?.onOpenSettings() }
+        model.onConnectAgent = { [weak self] in self?.onOpenAgentSettings() }
         tracker.onMove = { [weak self] _ in self?.sampleCursor() }
         self.surfaces.attach(self)   // replays rings, a current peek / HUD and the drag session
     }

@@ -27,6 +27,8 @@ final class PanelViewModel {
     var onStopRinging: (String) -> Void = { _ in }
     /// The open panel's Settings gear (never in the approval peek, no keyboard shortcut).
     var onOpenSettings: () -> Void = {}
+    /// The Agents empty state's "Connect an agent" (Settings › Agents).
+    var onConnectAgent: () -> Void = {}
     /// Settings › Appearance, clamped (live side, theme, motion).
     var appearance: AppearanceSettings = AppearanceSettings()
 }
@@ -190,6 +192,8 @@ struct PanelRootView: View {
                           selectedTab: Binding(get: { model.selectedTab }, set: { model.selectedTab = $0 }),
                           onCollapse: model.onClick, onOpenSettings: model.onOpenSettings,
                           deck: Binding(get: { model.heroDeck }, set: { model.heroDeck = $0 }),
+                          agentsVisible: today.agentActivity.agentsVisibility.isVisible,
+                          onConnectAgent: model.onConnectAgent,
                           onDecide: decide, onOpenTerminal: onOpenTerminal)
             }
             .transition(ChromeSettle<EmptyView>.transition)

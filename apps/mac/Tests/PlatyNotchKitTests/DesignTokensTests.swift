@@ -35,11 +35,11 @@ final class DesignTokensTests: DefaultsTestCase {
             ("keylineAlpha", PanelPalette.keylineAlpha, 0.08),
         ]
         let states: [(StateTone, String, String, String, String)] = [
-            (.working, "2FB8A6", "0B6B5F", "arrow.triangle.2.circlepath", "Working"),
+            (.working, "2FB8A6", "0B6B5F", "bolt.fill", "Working"),
             (.needsYou, "F5A524", "845000", "hand.raised.fill", "Needs you"),
             (.error, "F2685B", "A3352B", "exclamationmark.triangle.fill", "Error"),
-            (.done, "4CC38A", "17693F", "checkmark.circle.fill", "Done"),
-            (.idle, "9AA0A6", "585D62", "moon.zzz.fill", "Idle"),
+            (.done, "4CC38A", "17693F", "checkmark", "Done"),
+            (.idle, "9AA0A6", "585D62", "moon.fill", "Idle"),
         ]
         let agents: [(AgentIdentity, String, String)] = [
             (.claude, "E8833A", "904410"),

@@ -152,4 +152,39 @@ final class DesignLintTests: DefaultsTestCase {
         XCTAssertEqual(StateTone(AgentTone.idle), .idle)
         XCTAssertEqual(StateTone(AgentTone.off), .idle)
     }
+
+    /// Files (relative to `Sources/PlatyNotchUI`) whose string literals may hold emoji, each
+    /// with its reason. The Tasks plugin's markers (📅, 🔁) are parsed in PlatyNotchKit
+    /// (`Notes/MarkdownTasks.swift`, `Notes/TaskFileWriter.swift`), outside this scan; a UI
+    /// file that ever has to name a marker goes here.
+    static let emojiAllowlist: [String: String] = [:]
+
+    /// A scalar drawn as a colour emoji: emoji presentation, the emoji variation selector or
+    /// the supplementary emoji planes. Text-style glyphs (↩, ⌘, ↔) are fine.
+    static func isEmoji(_ s: Unicode.Scalar) -> Bool {
+        s.properties.isEmojiPresentation || s.value == 0xFE0F || (0x1F000...0x1FFFF).contains(s.value)
+    }
+
+    /// No emoji in UI text or labels (user ruling, Phase 4): monochrome SF Symbols only.
+    func testNoEmojiInStringLiterals() throws {
+        XCTAssertTrue(Self.isEmoji("\u{1F4C5}"))
+        XCTAssertTrue(Self.isEmoji("\u{2705}"))
+        XCTAssertFalse(Self.isEmoji("\u{21A9}"))
+        XCTAssertFalse(Self.isEmoji("\u{2318}"))
+        let literal = try NSRegularExpression(pattern: #""(?:[^"\\]|\\.)*""#)
+        var found: [String] = []
+        for line in try Self.sourceLines() where Self.emojiAllowlist[line.path] == nil {
+            let ns = line.text as NSString
+            for m in literal.matches(in: line.text, range: NSRange(location: 0, length: ns.length)) {
+                if ns.substring(with: m.range).unicodeScalars.contains(where: Self.isEmoji) {
+                    found.append("\(line.path):\(line.number): \(line.text.trimmingCharacters(in: .whitespaces))")
+                    break
+                }
+            }
+        }
+        XCTAssertTrue(found.isEmpty, "emoji in UI strings (use an SF Symbol):\n" + found.joined(separator: "\n"))
+        for (path, reason) in Self.emojiAllowlist {
+            XCTAssertFalse(reason.trimmingCharacters(in: .whitespaces).isEmpty, "\(path) needs a reason")
+        }
+    }
 }
