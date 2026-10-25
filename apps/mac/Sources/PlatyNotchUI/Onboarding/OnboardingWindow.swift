@@ -48,6 +48,8 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
         show(activate: false)
         window?.alphaValue = 0
         window?.ignoresMouseEvents = true
+        // Off screen as well as invisible: a smoke run never puts a window where the user works.
+        window?.setFrameOrigin(NSPoint(x: -10_000, y: 10_000))
     }
 
     func close() {
