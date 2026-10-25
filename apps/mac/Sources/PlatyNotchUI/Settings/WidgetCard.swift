@@ -24,7 +24,7 @@ struct WidgetCard: View {
                 SymbolWell(systemImage: widget.systemImage, size: 30, filled: false)
                     .opacity(isOn ? 1 : 0.55)
                 Spacer(minLength: 4)
-                Toggle(isOn: Binding(get: { isOn }, set: setOn)) { Text(verbatim: widget.title) }
+                Toggle(isOn: Binding(get: { isOn }, set: { setOn($0) })) { Text(verbatim: widget.title) }
                     .toggleStyle(.switch)
                     .controlSize(.small)
                     .labelsHidden()
