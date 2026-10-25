@@ -5,26 +5,35 @@ import SwiftUI
 /// Platy, the platypus mascot, drawn in code (`PlatyArt`, the master is
 /// design/platy/platy.svg) in `mood`, `size` points square.
 ///
-/// The loop (`PlatyPoseValues.loop`: at most 12 fps, waiting 6 fps with one frame held
-/// through its still half, sleepy 1 fps) is drawn once into images and played by Core
+/// The loop (`PlatyPoseValues.loop`: at most 12 fps, waiting 6 fps, sleepy 1 fps) is drawn
+/// once into images and played by Core
 /// Animation as a discrete keyframe animation of a layer's contents: the render server
 /// steps the frames, the app does no work per frame. It plays only while the panel is
 /// really shown (`panelTicking`), Reduce Motion is off and the mood moves; otherwise the
 /// still frame (`PlatyPose.rest`), which keeps the mood's cue. Idle and focused are still.
+/// Waiting and done (`PlatyMood.playsOnce`) play their loop once, then hold the still
+/// frame; entering the mood again plays it again.
 struct PlatyView: View {
     let mood: PlatyMood
     let size: CGFloat
+    /// The open/close morph id (`MorphID.platy` in the pill and the hero): Platy scales
+    /// and moves between them (no effect under reduced motion).
+    var morphID: String?
     @Environment(\.panelTicking) private var ticking
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    init(mood: PlatyMood, size: CGFloat) {
+    init(mood: PlatyMood, size: CGFloat, morphID: String? = nil) {
         self.mood = mood
         self.size = size
+        self.morphID = morphID
     }
 
     var body: some View {
         let animates = Self.frameInterval(mood: mood, ticking: ticking, reduceMotion: reduceMotion) != nil
+        // Square and flexible inside the matched geometry, so a morph scales Platy.
         PlatyLayerView(mood: mood, size: size, animates: animates)
+            .aspectRatio(1, contentMode: .fit)
+            .morph(morphID)
             .frame(width: size, height: size)
             .accessibilityElement()
             .accessibilityLabel(mood.accessibilityLabel)
@@ -99,6 +108,16 @@ final class PlatyLayerNSView: NSView {
     /// Whether the loop is playing (tests).
     var isPlaying: Bool { platy.animation(forKey: Self.animationKey) != nil }
 
+    /// The loop's repeat count (tests): 1 for a `playsOnce` mood, else infinity.
+    var loopRepeatCount: Float? { platy.animation(forKey: Self.animationKey)?.repeatCount }
+
+    /// After a `playsOnce` loop the layer shows its still frame (tests).
+    var holdsStillAfterLoop: Bool {
+        guard let config, let a = platy.animation(forKey: Self.animationKey),
+              let still = PlatyFrames.still(config.mood, size: config.size, scale: appliedScale) else { return false }
+        return a.isRemovedOnCompletion && (platy.contents as AnyObject?) === still
+    }
+
     private func apply() {
         guard let config else { return }
         let scale: CGFloat = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
@@ -111,14 +130,17 @@ final class PlatyLayerNSView: NSView {
             platy.contents = PlatyFrames.still(config.mood, size: config.size, scale: scale)
             return
         }
-        platy.contents = frames.images.first
+        let once: Bool = config.mood.playsOnce
+        // A once-only loop leaves the still frame behind when it ends (removed on
+        // completion, so nothing runs afterwards); a looping one starts on its first frame.
+        platy.contents = once ? PlatyFrames.still(config.mood, size: config.size, scale: scale) : frames.images.first
         let animation = CAKeyframeAnimation(keyPath: "contents")
         animation.values = frames.images
         animation.keyTimes = frames.keyTimes
         animation.calculationMode = .discrete
         animation.duration = config.mood.period
-        animation.repeatCount = .infinity
-        animation.isRemovedOnCompletion = false
+        animation.repeatCount = once ? 1 : .infinity
+        animation.isRemovedOnCompletion = once
         platy.add(animation, forKey: Self.animationKey)
     }
 }

@@ -12,6 +12,11 @@ public enum NotchApp {
         let options = LaunchOptions(arguments: CommandLine.arguments, env: ProcessInfo.processInfo.environment)
         if let dir = options.renderIconDir { finishRender("RENDER ICON", PlatyRenders.writeIconset(to: url(dir))) }
         if let dir = options.platyGalleryDir { finishRender("PLATY GALLERY", PlatyRenders.writeGallery(to: url(dir))) }
+        if let dir = options.pillGalleryDir {
+            let pills = PillRenders.writeGallery(to: url(dir))
+            let morph = pills.flatMap { n in MorphRenders.write(to: url(dir)).map { n + $0 } }
+            finishRender("PILL GALLERY", morph)
+        }
         if options.smokePower { finishPowerSmoke() }
         let delegate = AppDelegate(coreBinary: coreBinary, plugins: plugins, options: options)
         app.delegate = delegate
@@ -53,7 +58,7 @@ public enum NotchApp {
         return .success(list.count)
     }
 
-    /// `--render-icon` / `--platy-gallery`: report and exit before anything starts.
+    /// `--render-icon` / `--platy-gallery` / `--pill-gallery`: report and exit before anything starts.
     @MainActor
     private static func finishRender(_ label: String, _ result: Result<Int, PlatyRenders.Failure>) -> Never {
         switch result {

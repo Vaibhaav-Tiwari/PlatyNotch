@@ -6,7 +6,9 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     /// Always on: the pill always shows. Minimal: hidden while nothing is live.
     public enum Mode: String, Codable, CaseIterable, Sendable { case alwaysOn, minimal }
     /// What opens the panel from the pill.
-    public enum OpenTrigger: String, Codable, CaseIterable, Sendable { case hover, click }
+    /// Open on hover (default), on click only, or peek on hover (Now's hero, a fixed
+    /// card) and open on click (spec 9).
+    public enum OpenTrigger: String, Codable, CaseIterable, Sendable { case hover, click, peekOnHover }
     /// The compact pill's ears (beside a notch) or its width (without one).
     public enum PillWidth: String, Codable, CaseIterable, Sendable { case compact, standard, wide }
     public typealias Side = LiveSide

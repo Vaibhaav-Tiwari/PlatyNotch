@@ -12,12 +12,18 @@ public enum PlatyMood: String, CaseIterable, Sendable {
         case .idle, .focused: 1
         case .working, .workingToMusic: 0.8
         case .thinking: 3
-        case .waiting: 1.2
+        case .waiting: 2
         case .done: 1.6
         case .dancing: 1.2
         case .sleepy: 4
         case .celebrating: 1
         }
+    }
+
+    /// Waiting and done play their loop once and then hold the still frame (spec 8.1:
+    /// "a single 2-second wave, then still with the flag up"; "check, once"). The others loop.
+    public var playsOnce: Bool {
+        self == .waiting || self == .done
     }
 
     /// Whether the pose changes over time (idle and focused are still: they cost nothing).
@@ -26,9 +32,9 @@ public enum PlatyMood: String, CaseIterable, Sendable {
     }
 
     /// Seconds between redraws while animating; nil = never redrawn (a static frame).
-    /// The pill's budget is 12 fps (as MusicBars). Waiting can last hours while an approval
-    /// sits unanswered: 6 fps, and nothing at all in the still half of its loop
-    /// (`nextFrame`). Sleepy is what Platy shows at night with nothing live: 1 fps.
+    /// The pill's budget is 12 fps (as MusicBars). Waiting waves at 6 fps, once (it then
+    /// holds a still frame however long an approval waits). Sleepy is what Platy shows at
+    /// night with nothing live: 1 fps.
     public var frameInterval: TimeInterval? {
         switch self {
         case .idle, .focused: nil
@@ -38,11 +44,9 @@ public enum PlatyMood: String, CaseIterable, Sendable {
         }
     }
 
-    /// The fraction of the loop, from its start, in which the pose moves (waiting: the two
-    /// taps, then the tail rests).
-    public var movingFraction: Double {
-        self == .waiting ? 0.5 : 1
-    }
+    /// The fraction of the loop, from its start, in which the pose moves (every loop moves
+    /// throughout; a `playsOnce` mood holds still after its one loop instead).
+    public var movingFraction: Double { 1 }
 
     /// When the next frame is due after time `t` (seconds since the reference date): the
     /// next tick of a grid of `frameInterval` steps from that epoch while the pose moves
@@ -86,7 +90,7 @@ public enum PlatyMoodResolver {
     public static func isNight(hour: Int) -> Bool { hour >= 23 || hour <= 5 }
 
     /// Priority: an approval pending or any session blocked / waiting for input → waiting;
-    /// a game's new best → celebrating; a session just finished → done; a focus session →
+    /// a game's new best → celebrating; a session just finished (`showsDone`) → done; a focus session →
     /// focused; any session active → working (with headphones while music plays,
     /// `.workingToMusic`); music playing → dancing; night → sleepy;
     /// else idle. `.thinking` is reserved for the voice assistant.
@@ -105,6 +109,20 @@ public enum PlatyMoodResolver {
         if musicPlaying { return .dancing }
         if isNight(hour: hour) { return .sleepy }
         return .idle
+    }
+}
+
+extension PlatyMoodResolver {
+    /// The resolver's `justFinished` (Ruling 14): for 4 s after a finish (`flags`), or while
+    /// an agent finished in the last 10 minutes (`log`) and no session works or needs you.
+    public static func showsDone(flags: PlatyMoodFlags, log: AgentFinishLog, sessions: [SessionState],
+                                 now: Date) -> Bool {
+        if flags.justFinished(at: now) { return true }
+        guard log.lastFinish(now: now) != nil else { return false }
+        return !sessions.contains { s in
+            let a = AgentAttention(state: s)
+            return a == .working || a == .needsYou
+        }
     }
 }
 
@@ -196,6 +214,40 @@ public struct PlatyEarFit: Equatable, Sendable {
         self.init(dots: shown, overflowCount: dots - shown + overflow, badge: false)
     }
 
+    /// The pill's fit, which knows the pill's outer padding beside the ear. When the dots
+    /// and the "+n" label do not both fit, it keeps as many dots as it can (all three
+    /// where possible: "Platy, three dots and +9") and puts "+n" on Platy as a badge, if
+    /// the badge fits from Platy's centre outward across the free room and the padding
+    /// (`badgeWidthEstimate`). Otherwise it falls back to `init(earWidth:dots:overflow:)`.
+    public init(earWidth: CGFloat, dots: Int, overflow: Int, outerPadding: CGFloat) {
+        let room: CGFloat = earWidth - Self.platy
+        let label: CGFloat = overflow > 0 ? Self.overflowLabel : 0
+        if CGFloat(dots) * Self.dot + label <= room {
+            self.init(dots: dots, overflowCount: overflow, badge: false)
+            return
+        }
+        if dots > 0 {
+            for kept in stride(from: dots, through: 1, by: -1) {
+                let dotsWidth: CGFloat = CGFloat(kept) * Self.dot
+                guard dotsWidth <= room else { continue }
+                let count: Int = dots - kept + overflow
+                let badgeRoom: CGFloat = Self.platy / 2 + (room - dotsWidth) + outerPadding
+                if count > 0, Self.badgeWidthEstimate(count) <= badgeRoom {
+                    self.init(dots: kept, overflowCount: count, badge: true)
+                    return
+                }
+            }
+        }
+        self.init(earWidth: earWidth, dots: dots, overflow: overflow)
+    }
+
+    /// A width the badge never exceeds: 8 pt per character of `badgeText` (11 pt bold
+    /// rounded measures 7.7 at most), rounded up, plus `badgePadding` each side.
+    public static func badgeWidthEstimate(_ count: Int) -> CGFloat {
+        let chars: CGFloat = CGFloat(badgeText(count).count)
+        return (chars * 8).rounded(.up) + 2 * badgePadding
+    }
+
     /// The badge's text: "+n", or "99+" above `badgeMaxCount`.
     public static func badgeText(_ count: Int) -> String {
         count > badgeMaxCount ? "\(badgeMaxCount)+" : "+\(count)"
@@ -213,8 +265,16 @@ public struct PlatyEarFit: Equatable, Sendable {
     /// the ear: at Platy's centre, moved toward the notch only if it would otherwise cross
     /// the pill's outer edge, and never past the notch edge (0).
     public static func badgeOffset(earWidth: CGFloat, outerPadding: CGFloat, badgeWidth: CGFloat) -> CGFloat {
-        let outerEdge: CGFloat = max(earWidth, platy) + outerPadding
-        return max(0, min(platy / 2, outerEdge - badgeWidth))
+        badgeOffset(earWidth: earWidth, outerPadding: outerPadding, badgeWidth: badgeWidth, dotsWidth: 0)
+    }
+
+    /// The same with dots between Platy and the notch (`dotsWidth`, `dots × dot`): Platy's
+    /// notch-side edge is then `dotsWidth` from the notch edge, and the badge never moves
+    /// over a dot.
+    public static func badgeOffset(earWidth: CGFloat, outerPadding: CGFloat, badgeWidth: CGFloat,
+                                   dotsWidth: CGFloat) -> CGFloat {
+        let outerEdge: CGFloat = max(earWidth, dotsWidth + platy) + outerPadding
+        return max(dotsWidth, min(dotsWidth + platy / 2, outerEdge - badgeWidth))
     }
 
     /// The width this fit draws (the badge takes none).

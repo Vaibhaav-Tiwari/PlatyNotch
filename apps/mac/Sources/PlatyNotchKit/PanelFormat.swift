@@ -97,6 +97,17 @@ public struct PillDots: Sendable, Equatable {
     public struct Dot: Sendable, Equatable {
         public var key: String
         public var tone: AgentTone
+        /// Whose session it is: the dot's colour (spec 6.7).
+        public var agent: AgentIdentity
+        /// The session's state as the dot's motion (pulse, solid, hollow).
+        public var style: AgentDotStyle
+
+        public init(key: String, tone: AgentTone, agent: AgentIdentity = .other, style: AgentDotStyle = .hollow) {
+            self.key = key
+            self.tone = tone
+            self.agent = agent
+            self.style = style
+        }
     }
 
     public static let limit = 3
@@ -111,7 +122,8 @@ public struct PillDots: Sendable, Equatable {
             .compactMap { i, s -> (Int, Int, Dot)? in
                 let attention = AgentAttention(state: s.state)
                 guard attention != .exited else { return nil }
-                return (attention.rawValue, i, Dot(key: s.key, tone: AgentTone(s.state)))
+                return (attention.rawValue, i, Dot(key: s.key, tone: AgentTone(s.state), agent: AgentIdentity(agent: s.agent),
+                                                   style: AgentDotStyle(attention)))
             }
             .sorted { ($0.0, $0.1) < ($1.0, $1.1) }
             .map(\.2)

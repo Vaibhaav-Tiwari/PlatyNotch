@@ -53,6 +53,32 @@ final class PlatyTests: DefaultsTestCase {
         model.stop()
     }
 
+    /// Followed, the model hears finishes from the app's one tracker, and shows done while
+    /// the finish is under 10 minutes old and nothing works (Ruling 14).
+    func testFollowsTheOneTracker() throws {
+        var now = Date(timeIntervalSince1970: 1_000_000)   // 13:46 UTC: not night
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let model = PlatyMoodModel(now: { now }, calendar: utc)
+        let activity = AgentActivityModel()
+        model.follow(activity)
+        activity.sessionsChanged([session("a", .active)], now: now)
+        activity.sessionsChanged([session("a", .idle)], now: now)
+        XCTAssertTrue(model.justFinished)
+        now = now.addingTimeInterval(PlatyMoodFlags.doneLength + 60)
+        model.refresh()
+        XCTAssertFalse(model.justFinished)
+        XCTAssertEqual(model.mood(sessions: [session("a", .idle)], approvals: 0, musicPlaying: false, focusActive: false),
+                       .done, "still done: the finish is a minute old")
+        XCTAssertEqual(model.mood(sessions: [session("a", .idle), session("b", .active)], approvals: 0,
+                                  musicPlaying: false, focusActive: false), .working)
+        now = now.addingTimeInterval(AgentFinishLog.window)
+        XCTAssertEqual(model.mood(sessions: [session("a", .idle)], approvals: 0, musicPlaying: false, focusActive: false),
+                       .idle)
+        model.stop()
+        activity.stop()
+    }
+
     /// The hour comes from the injected calendar and follows a time zone change.
     func testHourFollowsCalendarAndTimeZone() throws {
         var utc = Calendar(identifier: .gregorian)
@@ -82,6 +108,21 @@ final class PlatyTests: DefaultsTestCase {
         XCTAssertEqual(waiting.keyTimes.count, waiting.images.count + 1)
         XCTAssertEqual(try XCTUnwrap(waiting.keyTimes.last).doubleValue, 1)
         XCTAssertEqual(try XCTUnwrap(waiting.images.first).width, 44)
+    }
+
+    /// Waiting and done play their loop once (repeatCount 1), then hold the still frame;
+    /// re-entering the mood plays it again. Other moods loop.
+    func testPlaysOnceLoopEndsStill() throws {
+        let view = PlatyLayerNSView(frame: NSRect(x: 0, y: 0, width: 22, height: 22))
+        view.configure(.init(mood: .waiting, size: 22, animates: true))
+        XCTAssertEqual(try XCTUnwrap(view.loopRepeatCount), 1)
+        XCTAssertTrue(view.holdsStillAfterLoop)
+        view.configure(.init(mood: .working, size: 22, animates: true))
+        XCTAssertEqual(try XCTUnwrap(view.loopRepeatCount), .infinity)
+        view.configure(.init(mood: .waiting, size: 22, animates: true))
+        XCTAssertEqual(try XCTUnwrap(view.loopRepeatCount), 1, "the wave plays again")
+        view.configure(.init(mood: .done, size: 22, animates: true))
+        XCTAssertEqual(try XCTUnwrap(view.loopRepeatCount), 1)
     }
 
     func testDotPulsesOnlyWhenAsked() {

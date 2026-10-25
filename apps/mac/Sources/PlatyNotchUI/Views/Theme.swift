@@ -37,19 +37,25 @@ enum Theme {
     /// system glass when `style` is `.glass` (pass `effectiveSurface(glassAvailable:mode:
     /// approvalsShowing:)`, which keeps every approval on an opaque surface). `hasNotch` is
     /// reserved: the notch band is drawn separately (`PanelLayout.notchBand`).
+    ///
+    /// The opaque surfaces are one shape whose colour changes, so opening and closing
+    /// resize (and recolour) the same surface with the panel instead of cross-fading two
+    /// surfaces at their own sizes (a seam around the pill while closing).
     @ViewBuilder
     static func surface(_ scheme: ColorScheme, mode: PanelMode, hasNotch: Bool,
                         style: AppearanceSettings.SurfaceStyle) -> some View {
-        switch mode {
-        case .hidden, .compact:
-            surface(scheme)
-        default:
-            if style == .glass, #available(macOS 26, *) {
-                Rectangle().fill(Color.clear).glassEffect(.regular, in: Rectangle())
-            } else {
-                scheme == .light ? lightSurface : panelDark
-            }
+        let pill: Bool = mode == .hidden || mode == .compact
+        if !pill, style == .glass, #available(macOS 26, *) {
+            Rectangle().fill(Color.clear).glassEffect(.regular, in: Rectangle())
+        } else {
+            Rectangle().fill(surfaceColor(scheme, pill: pill))
         }
+    }
+
+    /// The opaque surface's colour: the pill's (black on a notch) or the open panel's.
+    static func surfaceColor(_ scheme: ColorScheme, pill: Bool) -> Color {
+        if pill { return surface(scheme) }
+        return scheme == .light ? lightSurface : panelDark
     }
 
     /// The Allow button's tint: systemGreen in dark, a darker green in light (4.5:1 on
@@ -106,6 +112,18 @@ enum Theme {
         }
     }
 
+    /// `tint(_:)` resolved for `scheme` up front. A dynamic colour resolves against the
+    /// drawing appearance, which under a clip (the pill's shape) can be the wrong one; the
+    /// pill reads the environment's scheme instead.
+    static func tint(_ tint: LiveTint, scheme: ColorScheme) -> Color {
+        switch tint {
+        case .neutral: Color(nsColor: .labelColor)
+        case .accent: DS.color(.working, scheme)
+        case .warning: DS.color(.needsYou, scheme)
+        case .critical: DS.color(.error, scheme)
+        }
+    }
+
     static func color(_ level: UsageLevel) -> Color {
         switch level {
         case .normal: Color(nsColor: .systemGreen)
@@ -139,19 +157,36 @@ enum Theme {
     }
 }
 
-/// A session state dot; working sessions pulse (1 → 0.45 → 1, 1.8 s). The pulse is a
-/// Core Animation opacity animation played by the render server: the app does no work
-/// per frame. (It was a SwiftUI repeat-forever animation, redrawn by the app at the
-/// display's refresh rate: about 2.4% CPU with one working session.) It plays only while
-/// the panel ticks and Reduce Motion is off.
+/// A session dot. A `.pulse` dot (working) pulses (1 → 0.45 → 1, 1.8 s) as a Core
+/// Animation opacity animation played by the render server: the app does no work per
+/// frame. It plays only while the panel ticks and Reduce Motion is off; otherwise it
+/// draws solid. `.hollow` is a ring (idle, finished) and never animates.
 struct AgentDot: View {
-    let tone: AgentTone
+    let color: NSColor
+    let style: AgentDotStyle
     var size: CGFloat = 7
     @Environment(\.panelTicking) private var ticking
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    init(color: NSColor, style: AgentDotStyle, size: CGFloat = 7) {
+        self.color = color
+        self.style = style
+        self.size = size
+    }
+
+    /// A state dot in the state palette: working pulses, the rest are solid.
+    init(tone: AgentTone, size: CGFloat = 7) {
+        self.init(color: Theme.nsColor(tone), style: tone.pulses ? .pulse : .solid, size: size)
+    }
+
+    /// What is drawn for `style`: a pulse only while ticking without Reduce Motion.
+    static func drawn(_ style: AgentDotStyle, ticking: Bool, reduceMotion: Bool) -> AgentDotStyle {
+        guard style == .pulse else { return style }
+        return ticking && !reduceMotion ? .pulse : .solid
+    }
+
     var body: some View {
-        AgentDotLayer(color: Theme.nsColor(tone), pulses: tone.pulses && ticking && !reduceMotion)
+        AgentDotLayer(color: color, style: Self.drawn(style, ticking: ticking, reduceMotion: reduceMotion))
             .frame(width: size, height: size)
             .accessibilityHidden(true)
     }
@@ -159,25 +194,28 @@ struct AgentDot: View {
 
 private struct AgentDotLayer: NSViewRepresentable {
     let color: NSColor
-    let pulses: Bool
+    let style: AgentDotStyle
 
     func makeNSView(context: Context) -> AgentDotNSView { AgentDotNSView() }
 
     func updateNSView(_ view: AgentDotNSView, context: Context) {
-        view.configure(color: color, pulses: pulses)
+        view.configure(color: color, style: style)
     }
 }
 
 final class AgentDotNSView: NSView {
     static let pulseKey = "dot.pulse"
+    /// A hollow dot's ring.
+    static let ringWidth: CGFloat = 1.5
     private let dot = CALayer()
     private var color: NSColor = .systemGray
-    private var pulses = false
+    private var style: AgentDotStyle = .solid
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        dot.actions = ["bounds": NSNull(), "position": NSNull(), "backgroundColor": NSNull(), "cornerRadius": NSNull()]
+        dot.actions = ["bounds": NSNull(), "position": NSNull(), "backgroundColor": NSNull(), "cornerRadius": NSNull(),
+                       "borderColor": NSNull(), "borderWidth": NSNull()]
         layer?.addSublayer(dot)
     }
 
@@ -198,13 +236,18 @@ final class AgentDotNSView: NSView {
         applyColor()
     }
 
+    /// The old form: `true` pulses, `false` is a solid dot.
     func configure(color: NSColor, pulses: Bool) {
-        if color != self.color {
-            self.color = color
-            applyColor()
-        }
-        guard pulses != self.pulses || (pulses && !isPulsing) else { return }
-        self.pulses = pulses
+        configure(color: color, style: pulses ? .pulse : .solid)
+    }
+
+    func configure(color: NSColor, style: AgentDotStyle) {
+        let recolour: Bool = color != self.color || style != self.style
+        self.color = color
+        self.style = style
+        if recolour { applyColor() }
+        let pulses: Bool = style == .pulse
+        guard pulses != isPulsing else { return }
         dot.removeAnimation(forKey: Self.pulseKey)
         guard pulses else { return }
         let pulse = CABasicAnimation(keyPath: "opacity")
@@ -219,11 +262,22 @@ final class AgentDotNSView: NSView {
     }
 
     var isPulsing: Bool { dot.animation(forKey: Self.pulseKey) != nil }
+    var isHollow: Bool { style == .hollow }
 
     private func applyColor() {
         var cg: CGColor = color.cgColor
         effectiveAppearance.performAsCurrentDrawingAppearance { cg = self.color.cgColor }
-        dot.backgroundColor = cg
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if style == .hollow {
+            dot.backgroundColor = CGColor.clear
+            dot.borderColor = cg
+            dot.borderWidth = Self.ringWidth
+        } else {
+            dot.backgroundColor = cg
+            dot.borderWidth = 0
+        }
+        CATransaction.commit()
     }
 }
 

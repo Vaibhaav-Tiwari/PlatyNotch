@@ -110,6 +110,7 @@ public final class NotchController {
             feed = PanelFeed(noticeSequence: store.noticeSequence)
         }
         machine.openOnHover = settings.openOn == .hover
+        machine.peekOnHover = settings.openOn == .peekOnHover
         debouncer = HoverDebouncer(enterDelay: settings.hoverDelay)
         model.appearance = settings
         // An open panel must still close when the cursor is away after a rebuild.
@@ -144,6 +145,7 @@ public final class NotchController {
         let settings = appearance.clamped()
         machine.minimal = settings.mode == .minimal
         machine.openOnHover = settings.openOn == .hover
+        machine.peekOnHover = settings.openOn == .peekOnHover
         if debouncer.enterDelay != settings.hoverDelay {
             let hovering = debouncer.isHovering
             debouncer = HoverDebouncer(enterDelay: settings.hoverDelay)
@@ -291,7 +293,10 @@ public final class NotchController {
         // debouncer saw the cursor arrive. When that surface goes, start over so hovering
         // the pill afterwards opens the panel.
         // A drop that gives back the open panel counts as hovering it, so moving away closes it.
-        if before != machine.mode, Self.isNonOpening(before) { debouncer.reset(hovering: machine.mode == .expanded) }
+        if before != machine.mode, Self.isNonOpening(before) {
+            let mode: PanelMode = machine.mode
+            debouncer.reset(hovering: mode == .expanded || mode == .peek(.hover))
+        }
         apply()
         scheduleExpiry()
     }
@@ -446,7 +451,11 @@ public final class NotchController {
 
     private func syncFromStore() {
         responder.sync(store: store)
-        machine.setLive(PanelMode.hasLive(sessions: store.sessions, activities: widgets.liveActivities, now: Date()))
+        // What the pill shows keeps Minimal up (approvals, sessions working or waiting,
+        // non-ambient live items), from the same `PillContent` the pill draws.
+        let pill = PillContent(activities: widgets.liveActivities, sessions: store.sessions,
+                               approvals: store.approvals.count, hiddenKinds: [], now: Date())
+        machine.setLive(pill.keepsMinimalUp)
         // During focus, notices are consumed without peeking; approvals still peek.
         // A session left running while the focus widget is off holds nothing.
         let holdNotices = today.focus.focusActive && widgets.isEnabled(FocusWidget.widgetID)
@@ -556,6 +565,9 @@ extension NotchController: PanelSurfaceSink {
         case setFullScreen(Bool)
         case layout(PanelLayout)
         case display(CGDirectDisplayID)
+        /// Re-reads the store and live activities now (the store observer's work; tests
+        /// have no window, so nothing observes the store).
+        case syncStore
     }
 
     func debugHandle(_ input: DebugInput) {
@@ -571,6 +583,8 @@ extension NotchController: PanelSurfaceSink {
         case .display(let id):
             displayID = id
             surfaces.sinkStateChanged()
+        case .syncStore:
+            syncFromStore()
         }
     }
 

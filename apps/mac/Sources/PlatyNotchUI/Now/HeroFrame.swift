@@ -12,12 +12,17 @@ struct HeroFrame<Content: View>: View {
     let keyline: Color?
     let position: String?
     let onStep: ((Int) -> Void)?
+    /// The live item shown (its glyph takes part in the open/close morph); nil for the
+    /// Today summary.
+    var itemID: String?
     let content: Content
 
-    init(keyline: Color?, position: String?, onStep: ((Int) -> Void)?, @ViewBuilder content: () -> Content) {
+    init(keyline: Color?, position: String?, onStep: ((Int) -> Void)?, itemID: String? = nil,
+         @ViewBuilder content: () -> Content) {
         self.keyline = keyline
         self.position = position
         self.onStep = onStep
+        self.itemID = itemID
         self.content = content()
     }
 
@@ -27,11 +32,13 @@ struct HeroFrame<Content: View>: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             if let position, let onStep {
                 HeroControls(position: position, onStep: onStep)
+                    .panelChrome()
                     .frame(width: Self.controlsWidth)
                     .layoutPriority(1)
             }
         }
         .environment(\.heroPosition, position)
+        .environment(\.heroItemID, itemID)
         .padding(Space.heroPadding)
         .frame(maxWidth: .infinity)
         .frame(height: NowMetrics.hero)

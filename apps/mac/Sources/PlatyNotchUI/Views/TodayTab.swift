@@ -29,6 +29,7 @@ public final class TodayServices {
         loops = LoopActions(client: client)
         self.platy = platy
         agentActivity = AgentActivityModel()
+        platy.follow(agentActivity)
     }
 }
 

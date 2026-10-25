@@ -32,14 +32,20 @@ public struct PlatyPoseValues: Equatable, Sendable {
     /// A water line at Platy's feet (working: paddling along). Drawn at every size, so
     /// working reads at 22 pt and in still frames.
     public var water = false
+    /// The amber flag Platy holds up (waiting: needs you).
+    public var flag = false
+    /// The flag's swing in degrees about the bottom of its pole (0 = upright).
+    public var flagAngle: Double = 0
     public var tint: Tint = .none
 
     public init() {}
 
-    /// The pose at `time` seconds; repeats every `mood.period`. Values are rounded to a
-    /// millionth so `at(t)` and `at(t + period)` compare equal.
+    /// The pose at `time` seconds; repeats every `mood.period`, except a `playsOnce` mood,
+    /// which is `rest` from `period` on (and before 0). Values are rounded to a millionth so
+    /// `at(t)` and `at(t + period)` compare equal.
     public static func at(_ mood: PlatyMood, time: TimeInterval) -> PlatyPoseValues {
         guard mood.animates else { return rest(mood) }
+        if mood.playsOnce, time < 0 || time >= mood.period { return rest(mood) }
         let period: Double = mood.period
         var phase: Double = time.truncatingRemainder(dividingBy: period) / period
         if phase < 0 { phase += 1 }
@@ -70,7 +76,7 @@ public struct PlatyPoseValues: Equatable, Sendable {
         case .working: p.paddle = 0.6; p.water = true
         case .workingToMusic: p.paddle = 0.6; p.water = true; p.headphones = true
         case .thinking: p.lean = -6; p.billAngle = -4; p.eyesOpen = 0.85
-        case .waiting: p.tint = .amber; p.tailWag = 0.6
+        case .waiting: p.tint = .amber; p.tailWag = 0.6; p.flag = true
         case .done: p.check = true; p.sparkle = 0.5
         case .dancing: p.headphones = true; p.lean = 6; p.eyesOpen = 0
         case .focused: p.eyesOpen = 0.45
@@ -98,9 +104,13 @@ public struct PlatyPoseValues: Equatable, Sendable {
             p.lean = -6 + 3 * wave(phase)
             p.billAngle = -4 * wave(phase)
         case .waiting:
-            // Two quick taps, then the tail rests (`PlatyMood.movingFraction`: no frames).
-            let tap: Double = phase < 0.5 ? abs(wave(phase, 2)) : 0
-            p.tailWag = 1.6 * tap - 0.4
+            // One 2 s wave: the flag swings twice, dying away to upright, and the tail
+            // taps with it; then the still frame (`playsOnce`).
+            let fade: Double = 1 - phase
+            // Toward Platy's head only, so the pennant stays inside Platy's square.
+            p.flagAngle = -16 * abs(wave(phase, 2)) * fade
+            p.tailWag = 0.6 + 0.6 * wave(phase, 2) * fade
+            p.bounce = 0.02 * abs(wave(phase, 2)) * fade
         case .done:
             p.sparkle = 0.5 + 0.15 * wave(phase)
             p.bounce = 0.015 * abs(wave(phase))
@@ -135,6 +145,7 @@ public struct PlatyPoseValues: Equatable, Sendable {
         p.paddle = Self.round6(paddle)
         p.lean = Self.round6(lean)
         p.sparkle = Self.round6(sparkle)
+        p.flagAngle = Self.round6(flagAngle)
         return p
     }
 }

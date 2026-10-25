@@ -29,6 +29,18 @@ public enum AgentAttention: Int, Comparable, Sendable {
 
     public static func < (lhs: AgentAttention, rhs: AgentAttention) -> Bool { lhs.rawValue < rhs.rawValue }
 
+    /// How VoiceOver names the state in counts ("2 working").
+    public var word: String {
+        switch self {
+        case .needsYou: "needs you"
+        case .errored: "errored"
+        case .working: "working"
+        case .finished: "finished"
+        case .idle: "idle"
+        case .exited: "exited"
+        }
+    }
+
     public var tone: StateTone {
         switch self {
         case .needsYou: .needsYou

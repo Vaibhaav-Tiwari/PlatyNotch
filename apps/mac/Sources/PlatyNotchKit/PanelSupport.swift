@@ -11,6 +11,7 @@ extension PanelMode: CustomStringConvertible {
         case .peek(.hud(let kind)): "peek(hud:\(kind.rawValue))"
         case .peek(.ringing(let id)): "peek(ringing:\(id))"
         case .peek(.drop): "peek(drop)"
+        case .peek(.hover): "peek(hover)"
         case .expanded: "expanded"
         }
     }
@@ -41,7 +42,9 @@ extension PanelMode {
     }
 
     /// Sessions, or any widget live activity above ambient priority (music, focus, timers).
-    /// Ambient ones (shelf, weather) never keep the pill up in Minimal mode.
+    /// Ambient ones (shelf, weather) never keep the pill up in Minimal mode. The
+    /// plugin-compatible form: the app itself uses `PillContent.keepsMinimalUp`, which
+    /// also counts approvals and sessions waiting for you, and leaves out hidden kinds.
     public static func hasLive(sessions: [Session], activities: [LiveActivity], now: Date) -> Bool {
         hasLive(sessions: sessions) || LiveArbiter.hasLive(activities, now: now)
     }

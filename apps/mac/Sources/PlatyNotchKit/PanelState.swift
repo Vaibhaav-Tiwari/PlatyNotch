@@ -14,6 +14,9 @@ public enum PeekReason: Equatable, Sendable {
     case ringing(id: String)
     /// The drop zone while a drag is near the notch.
     case drop
+    /// Now's hero only, while the cursor rests on the pill (Appearance › Open on: Peek on
+    /// hover, open on click). Never takes keyboard focus, never holds approval cards.
+    case hover
 }
 
 public enum HUDKind: String, Equatable, Sendable, CaseIterable {
@@ -79,6 +82,8 @@ public struct PanelSurfaceState: Equatable, Sendable {
     public var hud: HUDState?
     public var notice = false
     public var widgetPeek: WidgetPeek?
+    /// The cursor rests on the pill with "Peek on hover, open on click" on.
+    public var hoverPeek = false
     public var fullScreen = false
     /// `.hidden` or `.compact`: where the panel rests with nothing to show.
     public var idle: PanelMode
@@ -98,16 +103,18 @@ public struct PanelSurfaceState: Equatable, Sendable {
 ///    approval, the open panel or the drop zone it is a fixed ringing chip with Stop in
 ///    the header (`ringingChip`), so the alarm never pressures an answer, never moves an
 ///    approval card and never covers the panel a drag opened.
-/// 5. A HUD (dropped over full screen; a tiny indicator under an approval or the open panel).
-/// 6. An agent notice.
-/// 7. A widget peek such as a nudge (held, not shown, over full screen).
-/// 8. Idle: compact, or hidden in Minimal mode.
+/// 5. The hover peek (Peek on hover, open on click).
+/// 6. A HUD (dropped over full screen; a tiny indicator under an approval or the open panel).
+/// 7. An agent notice.
+/// 8. A widget peek such as a nudge (held, not shown, over full screen).
+/// 9. Idle: compact, or hidden in Minimal mode.
 public enum PanelPrecedence {
     public static func resolve(_ s: PanelSurfaceState) -> PanelMode {
         if s.approvals > 0 { return s.open ? .expanded : .peek(.approval) }
         if s.open { return .expanded }
         if s.dragging { return .peek(.drop) }
         if let ring = s.ringing.first { return .peek(.ringing(id: ring)) }
+        if s.hoverPeek { return .peek(.hover) }
         if let hud = s.hud, !s.fullScreen { return .peek(.hud(hud.kind)) }
         if s.notice { return .peek(.notice) }
         if let peek = s.widgetPeek, !s.fullScreen { return .peek(.widget(id: peek.id)) }
@@ -154,6 +161,9 @@ public struct PanelStateMachine: Sendable {
     /// Hovering the pill opens the panel (Appearance › Open on: hover). Off (click mode),
     /// only a click opens it; moving away still closes it.
     public var openOnHover = true
+    /// Hovering the pill shows Now's hero as a peek (`.peek(.hover)`) and a click opens the
+    /// panel (Appearance › Open on: Peek on hover). Used only while `openOnHover` is off.
+    public var peekOnHover = false
     public private(set) var mode: PanelMode
     private var hasLive = false
     private var state: PanelSurfaceState
@@ -208,9 +218,14 @@ public struct PanelStateMachine: Sendable {
                 state.openBeforeDrag = false
             }
         case .hoverEnter:
-            if openOnHover, isIdle || mode.isHUD { open() }
+            if openOnHover, isIdle || mode.isHUD {
+                open()
+            } else if !openOnHover, peekOnHover, isIdle || mode.isHUD {
+                state.hoverPeek = true
+            }
         case .hoverExit:
             state.open = false   // also when ringing covers the open panel
+            state.hoverPeek = false
         case .click:
             // From anywhere, ringing and the drop zone included (menu "Open PlatyNotch",
             // `expand(tab:)`); the ringing card and drop zone themselves never send it.
@@ -221,6 +236,7 @@ public struct PanelStateMachine: Sendable {
             case .peek(.notice): state.notice = false
             case .peek(.hud): state.hud = nil
             case .peek(.widget): state.widgetPeek = nil
+            case .peek(.hover): state.hoverPeek = false
             case .peek(.approval): break  // stays until answered or expired
             case .peek(.ringing), .peek(.drop): break   // the widget / the drag ends them
             case .hidden, .compact: break
@@ -228,7 +244,9 @@ public struct PanelStateMachine: Sendable {
         case .notice:
             // Shown unless something above a notice is up (else dropped, as before).
             switch mode {
-            case .hidden, .compact, .peek(.hud), .peek(.widget), .peek(.notice): state.notice = true
+            // Held under the hover peek, as under the open panel's precedence: it shows
+            // once the peek ends.
+            case .hidden, .compact, .peek(.hud), .peek(.widget), .peek(.notice), .peek(.hover): state.notice = true
             default: break
             }
         case .noticeTimeout:
@@ -248,6 +266,7 @@ public struct PanelStateMachine: Sendable {
             state.ringing.removeAll { $0 == id }
         case .dragBegan:
             state.dragging = true
+            state.hoverPeek = false   // after the drag, only a new hover shows it again
             // A drag near the open panel turns it into the drop zone (remembered, so a
             // drop gives it back). With an approval pending the panel stays as it is (rule 1).
             if state.approvals == 0 {
@@ -270,6 +289,7 @@ public struct PanelStateMachine: Sendable {
     /// Opening the panel consumes the notice and widget peek it covers; a HUD stays (as an indicator).
     private mutating func open() {
         state.open = true
+        state.hoverPeek = false
         state.notice = false
         state.widgetPeek = nil
     }

@@ -47,6 +47,8 @@ struct PanelRootView: View {
     /// The mode before the current one: picks the open or the close spring. Updated after
     /// each change, so the body that animates a change still sees the old mode here.
     @State private var previousMode: PanelMode = .compact
+    /// The open/close morph's matched geometry (spec 9).
+    @Namespace private var morphSpace
 
     var body: some View {
         let scheme = Theme.scheme(model.appearance.theme, system: systemScheme, mode: model.mode,
@@ -54,12 +56,18 @@ struct PanelRootView: View {
         ZStack(alignment: .topLeading) {
             if let layout = model.layout {
                 let r = PanelLayout.localRect(layout.contentRect(for: model.mode), in: layout.windowFrame)
-                content(layout)
+                // One container around the mode's content: modifiers on the bare switch would
+                // be copied into each branch, so a mode change cross-faded two whole panels
+                // (surface and clip at their own sizes) instead of growing one.
+                ZStack(alignment: .topLeading) { content(layout) }
                     .frame(width: r.width, height: r.height)
                     .overlay(alignment: .topLeading) { chip(layout) }
                     .background(alignment: .topLeading) { surface(layout, scheme: scheme, content: r) }
                     .clipShape(Theme.panelShape(hasNotch: layout.hasNotch))
                     .offset(x: r.minX, y: r.minY)
+                    // Reduced motion (and Reduce Motion): each mode is its own panel, so a
+                    // change cross-fades the two instead of resizing one (spec 9).
+                    .id(crossFadeKey)
                     .opacity(model.visible ? 1 : 0)
             }
         }
@@ -70,6 +78,7 @@ struct PanelRootView: View {
         .environment(\.panelTicking, model.visible)
         .environment(\.musicVisualiser, today.visualiser)
         .environment(\.platyMood, model.appearance.showPlaty ? platyMood : nil)
+        .environment(\.morph, morphContext)
         // The games tab pauses unless the panel is open, on screen and not over full screen.
         .environment(\.gamePanel, GamePanelState(expanded: model.mode == .expanded, visible: model.visible,
                                                  fullScreen: model.fullScreen))
@@ -107,6 +116,30 @@ struct PanelRootView: View {
         return today.platy.mood(sessions: sessions, approvals: approvals, musicPlaying: music, focusActive: focus)
     }
 
+    /// What identifies the panel container: one for every mode while it morphs, the mode
+    /// itself under reduced motion (a cross-fade, no resizing).
+    private var crossFadeKey: String {
+        let preset: MotionPreset = model.appearance.effectiveMotion(reduceMotion: reduceMotion)
+        return Morph.morphsPlaty(motion: preset) ? "panel" : model.mode.description
+    }
+
+    /// The morph (spec 9): Platy always, and the pill's trailing glyph when Now's hero shows
+    /// the same live item; nil under reduced motion (cross-fades only, no morph).
+    private var morphContext: MorphContext? {
+        let preset: MotionPreset = model.appearance.effectiveMotion(reduceMotion: reduceMotion)
+        guard Morph.morphsPlaty(motion: preset) else { return nil }
+        let now: Date = Date()
+        let activities: [LiveActivity] = widgets.liveActivities
+        let pill = PillContent(activities: activities, sessions: store.sessions, approvals: store.approvals.count,
+                               hiddenKinds: [], now: now)
+        guard let trailing: String = pill.trailing?.id else { return MorphContext(namespace: morphSpace, liveID: nil) }
+        let agents: AgentsLive? = AgentsLive.make(sessions: store.sessions, log: today.agentActivity.log, now: now)
+        let items: [LiveItem] = HeroDeck.items(widgets.rankedLive(agents: agents, now: now))
+        let hero: String? = items.isEmpty ? nil : items[model.heroDeck.current(in: items) ?? 0].id
+        let live: String? = Morph.matches(pillTrailingID: trailing, heroTopID: hero, motion: preset) ? trailing : nil
+        return MorphContext(namespace: morphSpace, liveID: live)
+    }
+
     /// Appearance › Motion: the open or close spring of the preset (no blur in any preset);
     /// a short ease for Reduced and with Reduce Motion.
     private var modeAnimation: Animation {
@@ -126,11 +159,12 @@ struct PanelRootView: View {
         case .hidden:
             Color.clear
         case .compact:
-            let live = LiveArbiter.pick(widgets.liveActivities, now: Date())
-            CompactPill(dots: PillDots(sessions: store.sessions), approvalCount: store.approvals.count,
-                        connection: store.connection, hasNotch: layout.hasNotch,
+            // `hiddenKinds` stays empty until Settings › Notifications (Task 22).
+            let pill = PillContent(activities: widgets.liveActivities, sessions: store.sessions,
+                                   approvals: store.approvals.count, hiddenKinds: [],
+                                   log: today.agentActivity.log, now: Date())
+            CompactPill(content: pill, connection: store.connection, hasNotch: layout.hasNotch,
                         notchWidth: layout.hasNotch ? layout.anchor.width : 0,
-                        primary: live.primary, bubble: live.bubble,
                         liveSide: model.appearance.liveSide, earWidth: layout.liveEarWidth,
                         platy: model.appearance.showPlaty ? platyMood : nil)
                 .contentShape(Rectangle())
@@ -149,12 +183,16 @@ struct PanelRootView: View {
             .contentShape(Rectangle())
             .onTapGesture { model.onClick() }
         case .expanded:
+            // Approval cards are not chrome: they show at once (arming counts from then).
+            ChromeSettle {
             ExpandedPanel(store: store, responder: responder, arming: model.arming, today: today,
                           widgets: widgets, memory: memory, extraTabs: extraTabs,
                           selectedTab: Binding(get: { model.selectedTab }, set: { model.selectedTab = $0 }),
                           onCollapse: model.onClick, onOpenSettings: model.onOpenSettings,
                           deck: Binding(get: { model.heroDeck }, set: { model.heroDeck = $0 }),
                           onDecide: decide, onOpenTerminal: onOpenTerminal)
+            }
+            .transition(ChromeSettle<EmptyView>.transition)
                 .padding(EdgeInsets(top: top, leading: Space.panelMargin, bottom: 10, trailing: Space.panelMargin))
                 .overlay(alignment: .bottom) { hudIndicator }
         case .peek(.widget(let id)):
@@ -173,6 +211,21 @@ struct PanelRootView: View {
                                     bottom: 6, trailing: 14))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .allowsHitTesting(false)
+        case .peek(.hover):
+            // Peek on hover, open on click: Now's hero alone; a click anywhere else opens
+            // the panel. No approval card is ever drawn here (an approval replaces it).
+            ChromeSettle {
+            NowView(store: store, widgets: widgets, today: today,
+                    deck: Binding(get: { model.heroDeck }, set: { model.heroDeck = $0 }),
+                    onOpenTool: { _ in model.onClick() }, onOpenAgents: model.onClick,
+                    onOpenTerminal: onOpenTerminal, heroOnly: true)
+            }
+            .transition(ChromeSettle<EmptyView>.transition)
+                // 6 at the bottom: the 160 pt hero fits the 176 pt peek without a notch too.
+                .padding(EdgeInsets(top: top, leading: 12, bottom: 6, trailing: 12))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .contentShape(Rectangle())
+                .onTapGesture { model.onClick() }
         case .peek(.drop):
             (widgets.dropZoneView() ?? AnyView(DropZonePlaceholder()))
                 .padding(EdgeInsets(top: top, leading: 12, bottom: 10, trailing: 12))

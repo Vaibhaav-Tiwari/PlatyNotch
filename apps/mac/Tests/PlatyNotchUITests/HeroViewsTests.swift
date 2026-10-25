@@ -188,4 +188,29 @@ final class HeroViewsTests: DefaultsTestCase {
                                   action: .openTerminal, mood: .working, onPrimary: {})
         assertFits(AnyView(longHero.environment(\.panelTicking, false)), "agents (long)")
     }
+
+    /// Fix round 1: the agents hero's counts never truncate. At the hover peek's width
+    /// (420 − 2 × 12) the lead state alone shows; at Now's width the full counts.
+    func testAgentsCountsFitTheHoverPeek() {
+        let agents = AgentsLive(rank: .agentsWorking, title: "Claude Code · platynotch", subtitle: "Running tests",
+                                startedAt: Date(), needsYou: 0, working: 2, total: 2)
+        func shown(width: CGFloat) -> AgentsCountsShown? {
+            var found: AgentsCountsShown?
+            let framed = HeroFrame(keyline: nil, position: nil, onStep: nil) {
+                AgentsHero(agents: agents, action: .openTerminal, mood: .working) {}
+            }
+            let view = framed.frame(width: width)
+                .onPreferenceChange(AgentsCountsShownKey.self) { found = $0 }
+                .environment(\.colorScheme, .dark).environment(\.panelTicking, false)
+            let host = NSHostingView(rootView: view)
+            host.frame = CGRect(origin: .zero, size: host.fittingSize)
+            host.layoutSubtreeIfNeeded()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            return found
+        }
+        XCTAssertEqual(shown(width: PanelLayout.peekSize.width - 24), .short)
+        XCTAssertEqual(shown(width: width), .full)
+        let hero = AgentsHero(agents: agents, action: .openTerminal, mood: nil) {}
+        XCTAssertEqual(hero.shortCounts, "2 working")
+    }
 }

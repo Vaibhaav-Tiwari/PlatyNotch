@@ -42,9 +42,14 @@ struct AppearanceSection: View {
         Picker("Open on", selection: $settings.openOn) {
             Text("Hover").tag(AppearanceSettings.OpenTrigger.hover)
             Text("Click").tag(AppearanceSettings.OpenTrigger.click)
+            Text("Peek, then click").tag(AppearanceSettings.OpenTrigger.peekOnHover)
         }
         .pickerStyle(.segmented)
-        if settings.openOn == .hover {
+        if settings.openOn == .peekOnHover {
+            Text("Hovering the pill shows what is live now; a click opens the panel.")
+                .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
+        }
+        if settings.openOn != .click {
             LabeledSlider(title: "Hover delay", value: $settings.hoverDelay,
                           range: AppearanceSettings.hoverDelayRange, step: 0.01,
                           format: Self.seconds)

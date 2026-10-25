@@ -1,23 +1,22 @@
 import PlatyNotchKit
 import SwiftUI
 
-/// The resting panel. One ear holds the agent dots; the other (the live ear) holds the
-/// approval badge, which always wins, else the arbiter's primary live activity (glyph and
-/// trailing text) with the second activity as a small bubble. `liveSide` says which ear
-/// is the live one. On a notch the ears sit beside the camera housing.
+/// The resting panel (spec 6.1, 6.7). The agents ear holds Platy (the aggregate mood) at
+/// its outer edge and the agent dots toward the notch, coloured by each session's agent
+/// with the state as the dot's motion, then "+n" (a badge on Platy when the label has no
+/// room, `PlatyEarFit`). The live ear holds the connection glyph, else the approval badge,
+/// else the top live item's glyph and text, then up to two indicator dots for the next
+/// live items (`PillContent`, `LiveEarFit`). `liveSide` says which ear is the live one.
+/// On a notch the ears sit beside the camera housing.
 struct CompactPill: View {
-    let dots: PillDots
-    let approvalCount: Int
+    let content: PillContent
     let connection: ConnectionState
     let hasNotch: Bool
     /// Width of the physical notch (0 without one).
     let notchWidth: CGFloat
-    /// `LiveArbiter.pick` of the running widgets' activities (agents have the other ear).
-    var primary: LiveActivity?
-    var bubble: LiveActivity?
     var liveSide: LiveSide = .right
-    /// Room for the live ear's content (`PanelLayout.liveEarWidth`); what does not fit is
-    /// dropped or truncated (`LiveEarFit`), never drawn past the ear.
+    /// Room for each ear's content (`PanelLayout.liveEarWidth`); what does not fit is
+    /// dropped or truncated, never drawn past the ear.
     var earWidth: CGFloat = .infinity
     /// Platy's mood, drawn first in the agents ear with the dots that fit beside it
     /// (`PlatyEarFit`); nil = the plain look (Appearance › Show Platy off).
@@ -31,7 +30,7 @@ struct CompactPill: View {
         }
         .padding(.horizontal, PanelLayout.pillPadding(hasNotch: hasNotch))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilitySummary)
+        .accessibilityLabel(Self.accessibilitySummary(content: content, connection: connection, platy: platy))
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("Opens the PlatyNotch panel")
     }
@@ -51,91 +50,141 @@ struct CompactPill: View {
         }
     }
 
+    private var liveEar: some View {
+        LiveEarView(content: content, connection: connection, earWidth: earWidth)
+    }
+
     private var agentsEar: some View {
-        let fit = platy.map { _ in PlatyEarFit(earWidth: earWidth, dots: dots.dots.count, overflow: dots.overflow) }
+        let dots: PillDots = content.dots
+        let pad: CGFloat = PanelLayout.pillPadding(hasNotch: hasNotch)
+        let fit: PlatyEarFit? = platy.map { _ in
+            PlatyEarFit(earWidth: earWidth, dots: dots.dots.count, overflow: dots.overflow, outerPadding: pad)
+        }
         let shown: Int = fit?.dots ?? dots.dots.count
         let count: Int = fit?.overflowCount ?? dots.overflow
-        let badge: Bool = fit?.badge ?? false
-        // The agents ear is left of the notch when the live ear is on the right.
+        let badge: Bool = (fit?.badge ?? false) && count > 0
+        // The agents ear is left of the notch when the live ear is on the right. Platy sits
+        // at the ear's outer edge, the dots run toward the notch (mirrored on the right).
         let earOnLeft: Bool = liveSide == .right
-        return HStack(spacing: 4) {
-            if let platy {
-                PlatyView(mood: platy, size: PlatyEarFit.platy)
-                    .overlay(alignment: earOnLeft ? .bottomTrailing : .bottomLeading) {
-                        // From Platy's centre outward, across the ear's free room (no dots
-                        // are drawn with a badge) and the pill's outer padding; never over
-                        // the notch or past the pill's edge (`PlatyEarFit.badgeOffset`).
-                        if badge, count > 0 {
-                            let start: CGFloat = badgeStart(count)
-                            OverflowBadge(count: count)
-                                .offset(x: earOnLeft ? -start : start)
-                        }
-                    }
-            }
-            ForEach(dots.dots.prefix(shown), id: \.key) { AgentDot(tone: $0.tone) }
-            if count > 0, !badge {
-                Text("+\(count)")
-                    .font(DS.font(TypeScale.caption, design: .rounded).weight(.semibold))
-                    .foregroundStyle(.secondary)
+        let kept: [PillDots.Dot] = Array(dots.dots.prefix(shown))
+        let ordered: [PillDots.Dot] = earOnLeft ? kept : kept.reversed()
+        return HStack(spacing: PlatyEarFit.spacing) {
+            if earOnLeft {
+                platyGlyph(count: count, badge: badge, dots: shown, earOnLeft: true)
+                dotViews(ordered)
+                overflowLabel(count, badge: badge)
+            } else {
+                overflowLabel(count, badge: badge)
+                dotViews(ordered)
+                platyGlyph(count: count, badge: badge, dots: shown, earOnLeft: false)
             }
         }
-        // With a badge, Platy sits against the notch so the badge has the rest.
-        .frame(width: badge && count > 0 ? earWidth : nil, alignment: earOnLeft ? .trailing : .leading)
+        // With a badge, the content sits against the notch so the badge has the rest.
+        .frame(width: badge ? earWidth : nil, alignment: earOnLeft ? .trailing : .leading)
     }
 
-    /// The badge's start, outward from the notch edge (Platy's notch-side edge).
-    private func badgeStart(_ count: Int) -> CGFloat {
+    private func dotViews(_ dots: [PillDots.Dot]) -> some View {
+        ForEach(dots, id: \.key) { dot in
+            AgentDot(color: DS.agentNSColor(dot.agent), style: dot.style)
+        }
+    }
+
+    @ViewBuilder private func overflowLabel(_ count: Int, badge: Bool) -> some View {
+        if count > 0, !badge {
+            Text("+\(count)")
+                .font(DS.font(TypeScale.caption, design: .rounded).weight(.semibold))
+                .foregroundStyle(.secondary)
+                .fixedSize()
+        }
+    }
+
+    @ViewBuilder private func platyGlyph(count: Int, badge: Bool, dots: Int, earOnLeft: Bool) -> some View {
+        if let platy {
+            PlatyView(mood: platy, size: PlatyEarFit.platy, morphID: MorphID.platy)
+                .overlay(alignment: earOnLeft ? .bottomTrailing : .bottomLeading) {
+                    // From Platy's centre outward, across the ear's free room and the
+                    // pill's outer padding; never over a dot, the notch or past the pill's
+                    // edge (`PlatyEarFit.badgeOffset`).
+                    if badge {
+                        let start: CGFloat = badgeStart(count, dots: dots)
+                        OverflowBadge(count: count)
+                            .offset(x: earOnLeft ? -start : start)
+                    }
+                }
+        }
+    }
+
+    /// The badge's start outward from Platy's notch-side edge.
+    private func badgeStart(_ count: Int, dots: Int) -> CGFloat {
         let pad: CGFloat = PanelLayout.pillPadding(hasNotch: hasNotch)
         let width: CGFloat = OverflowBadge.width(count)
-        return PlatyEarFit.badgeOffset(earWidth: earWidth, outerPadding: pad, badgeWidth: width)
+        let dotsWidth: CGFloat = CGFloat(dots) * PlatyEarFit.dot
+        let start: CGFloat = PlatyEarFit.badgeOffset(earWidth: earWidth, outerPadding: pad, badgeWidth: width,
+                                                     dotsWidth: dotsWidth)
+        return start - dotsWidth
     }
 
-    @ViewBuilder private var liveEar: some View {
+    /// What VoiceOver reads for the pill: the sessions, Platy's mood, approvals, the
+    /// connection, the top live item and every indicator.
+    static func accessibilitySummary(content: PillContent, connection: ConnectionState, platy: PlatyMood?) -> String {
+        var parts: [String] = []
+        parts.append(content.sessionsSummary)
+        if let platy { parts.append(platy.accessibilityLabel) }
+        if content.approvalCount > 0 { parts.append("\(content.approvalCount) waiting for approval") }
+        if connection != .connected { parts.append("reconnecting to core") }
+        let items: [LiveActivity] = [content.trailing].compactMap { $0 } + content.indicators
+        for a in items {
+            parts.append(a.accessibilityLabel ?? a.title ?? a.trailing ?? a.widgetID)
+        }
+        return parts.joined(separator: ", ")
+    }
+}
+
+/// The live ear: the connection glyph, else the approval badge (it always wins), else the
+/// top live item's glyph and trailing text, then up to two 6 pt indicator dots tinted by
+/// each next item's tint. Never wider than `earWidth` (`LiveEarFit`).
+struct LiveEarView: View {
+    let content: PillContent
+    let connection: ConnectionState
+    let earWidth: CGFloat
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.morph) private var morph
+
+    var body: some View {
         if connection != .connected {
             Image(systemName: "bolt.horizontal.circle")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Theme.color(.attention))
-        } else if approvalCount > 0 {
-            Text("\(approvalCount)")
+        } else if content.approvalCount > 0 {
+            Text("\(content.approvalCount)")
                 .font(DS.font(TypeScale.caption, design: .rounded).weight(.bold))
                 .foregroundStyle(.black)   // on the amber badge, every scheme
                 .frame(minWidth: 14, minHeight: 14)
                 .background(Theme.needsYouFill, in: Capsule())
-        } else if let primary {
-            let fit = LiveEarFit(earWidth: earWidth, hasTrailing: Self.hasTrailing(primary), hasBubble: bubble != nil)
+        } else if let top = content.trailing {
+            let fit = LiveEarFit(earWidth: earWidth, hasTrailing: Self.hasTrailing(top),
+                                 indicators: content.indicators.count)
             HStack(spacing: LiveEarFit.spacing) {
-                LiveGlyphView(glyph: primary.glyph, tint: primary.tint)
+                LiveGlyphView(glyph: top.glyph, tint: top.tint)
+                    // Grows into the hero's glyph when the hero shows the same item.
+                    .morph(morph?.liveID == top.id ? MorphID.live(top.id) : nil)
                     .frame(maxWidth: LiveEarFit.glyph)
                 if fit.trailingWidth > 0 {
-                    LiveTrailing(activity: primary)
+                    LiveTrailing(activity: top)
                         .frame(maxWidth: fit.trailingWidth, alignment: .leading)
                 }
-                if fit.showsBubble, let bubble {
-                    LiveGlyphView(glyph: bubble.glyph, tint: bubble.tint)
-                        .scaleEffect(0.75)
-                        .frame(width: LiveEarFit.bubble, height: LiveEarFit.bubble)
-                        .background(Theme.card, in: Circle())
+                ForEach(content.indicators.prefix(fit.indicatorsShown), id: \.id) { item in
+                    Circle()
+                        .fill(Theme.tint(item.tint, scheme: scheme))
+                        .frame(width: LiveEarFit.indicator, height: LiveEarFit.indicator)
                 }
             }
             .lineLimit(1)
         }
     }
 
-    private static func hasTrailing(_ a: LiveActivity) -> Bool {
+    static func hasTrailing(_ a: LiveActivity) -> Bool {
         a.countdownTo != nil || a.countUpFrom != nil || a.trailing != nil
-    }
-
-    private var accessibilitySummary: String {
-        var parts: [String] = []
-        let live = dots.dots.count + dots.overflow
-        parts.append(live == 1 ? "1 agent session" : "\(live) agent sessions")
-        if let platy { parts.append(platy.accessibilityLabel) }
-        if approvalCount > 0 { parts.append("\(approvalCount) waiting for approval") }
-        if connection != .connected { parts.append("reconnecting to core") }
-        for a in [primary, bubble].compactMap({ $0 }) {
-            if let label = a.accessibilityLabel { parts.append(label) }
-        }
-        return parts.joined(separator: ", ")
     }
 }
 
@@ -162,7 +211,8 @@ private struct OverflowBadge: View {
             .foregroundStyle(.white)
             .padding(.horizontal, PlatyEarFit.badgePadding)
             .background(Color(white: 0.25), in: Capsule())
-            .offset(y: 2)
+            // Level with Platy's bottom (not below it), so the mood's cue still reads.
+            .offset(y: 0)
     }
 }
 
@@ -170,6 +220,7 @@ private struct OverflowBadge: View {
 struct LiveGlyphView: View {
     let glyph: LiveGlyph
     let tint: LiveTint
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         Group {
@@ -177,7 +228,7 @@ struct LiveGlyphView: View {
             case .symbol(let name):
                 Image(systemName: name).font(DS.font(TypeScale.caption).weight(.semibold))
             case .musicBars:
-                MusicBars(color: Theme.tint(tint))
+                MusicBars(color: Theme.tint(tint, scheme: scheme))
             case .agentDots(let states):
                 HStack(spacing: 2) {
                     ForEach(Array(states.prefix(3).enumerated()), id: \.offset) { _, s in
@@ -196,7 +247,7 @@ struct LiveGlyphView: View {
                 Text(verbatim: s).font(DS.font(TypeScale.caption, design: .rounded).weight(.semibold))
             }
         }
-        .foregroundStyle(Theme.tint(tint))
+        .foregroundStyle(Theme.tint(tint, scheme: scheme))
         .accessibilityHidden(true)
     }
 }

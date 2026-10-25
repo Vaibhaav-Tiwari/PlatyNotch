@@ -103,6 +103,8 @@ struct HeroLayout<Leading: View, Value: View>: View {
     let leading: Leading
     let value: Value
     @Environment(\.heroPosition) private var position
+    @Environment(\.morph) private var morph
+    @Environment(\.heroItemID) private var heroItemID
 
     init(title: String, subtitle: String?, action: HeroAction?, hasValue: Bool = true,
          @ViewBuilder leading: () -> Leading, @ViewBuilder value: () -> Value) {
@@ -117,6 +119,8 @@ struct HeroLayout<Leading: View, Value: View>: View {
     var body: some View {
         HStack(alignment: .center, spacing: Space.l) {
             leading
+                // The pill's trailing glyph grows into this one (same live item).
+                .morph(heroItemID.flatMap { id in morph?.liveID == id ? MorphID.live(id) : nil })
             VStack(alignment: .leading, spacing: Space.xs) {
                 Text(verbatim: title)
                     .font(DS.font(TypeScale.title))
@@ -139,6 +143,7 @@ struct HeroLayout<Leading: View, Value: View>: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .panelChrome()
         }
         .coordinateSpace(name: Self.space)
         .accessibilityElement(children: .contain)

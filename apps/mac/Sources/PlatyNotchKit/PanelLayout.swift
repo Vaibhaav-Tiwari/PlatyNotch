@@ -46,6 +46,9 @@ public struct PanelLayout: Equatable, Sendable {
     public static let surfaceWidth: CGFloat = 380
     /// A widget peek below the notch: icon, a line or two and one or two buttons (nudge, plug-in, AirPods).
     public static let widgetPeekHeight: CGFloat = 92
+    /// The hover peek below the notch (Peek on hover, open on click): Now's hero, at the
+    /// approval peek's width.
+    public static let hoverPeekHeight: CGFloat = 176
     /// A ringing alarm or timer: pulsing ring, label, Snooze and Stop.
     public static let ringingHeight: CGFloat = 128
     /// A slim level HUD that grows out of the pill.
@@ -119,6 +122,10 @@ public struct PanelLayout: Equatable, Sendable {
         case .peek(.notice):
             NotchGeometry.panelFrame(anchor: anchor, size: CGSize(width: Self.peekSize.width,
                                                                   height: (hasNotch ? anchor.height : 0) + Self.noticeHeight),
+                                     screenFrame: usable)
+        case .peek(.hover):
+            NotchGeometry.panelFrame(anchor: anchor, size: CGSize(width: Self.peekSize.width,
+                                                                  height: (hasNotch ? anchor.height : 0) + Self.hoverPeekHeight),
                                      screenFrame: usable)
         case .expanded, .peek(.drop):
             NotchGeometry.panelFrame(anchor: anchor, size: expandedSize, screenFrame: usable)

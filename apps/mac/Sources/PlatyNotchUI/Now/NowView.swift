@@ -19,11 +19,14 @@ struct NowView: View {
     /// Renders only: the Today summary's clock at a fixed time (live items always rank
     /// against the real clock).
     var fixedNow: Date?
+    /// The hover peek: the hero alone (no glances, no quiet line).
+    var heroOnly = false
     @Environment(\.platyMood) private var platyMood
 
     init(store: AppStore, widgets: WidgetRegistry, today: TodayServices, deck: Binding<HeroDeck>,
          glanceDefaults: UserDefaults = .standard, onOpenTool: @escaping (String) -> Void,
-         onOpenAgents: @escaping () -> Void, onOpenTerminal: @escaping (Session) -> Void, fixedNow: Date? = nil) {
+         onOpenAgents: @escaping () -> Void, onOpenTerminal: @escaping (Session) -> Void, fixedNow: Date? = nil,
+         heroOnly: Bool = false) {
         self.store = store
         self.widgets = widgets
         self.today = today
@@ -33,6 +36,7 @@ struct NowView: View {
         self.onOpenAgents = onOpenAgents
         self.onOpenTerminal = onOpenTerminal
         self.fixedNow = fixedNow
+        self.heroOnly = heroOnly
     }
 
     var body: some View {
@@ -44,10 +48,13 @@ struct NowView: View {
         case .approvalsPending(let line):
             compactLine(line)
         case .live:
+            let heroID: String = items[deck.current(in: items) ?? 0].id
             VStack(alignment: .leading, spacing: NowMetrics.gap) {
                 liveHero(items, agents: agents)
                 rows
             }
+            // Stepping or a new top item cross-fades (spec 9: ≤ 0.2 s).
+            .animation(.easeInOut(duration: MotionPreset.crossFade), value: heroID)
         case .summary:
             VStack(alignment: .leading, spacing: NowMetrics.gap) {
                 HeroFrame(keyline: nil, position: nil, onStep: nil) {
@@ -60,6 +67,10 @@ struct NowView: View {
 
     /// The glance row (when any glance has something to show) and the quiet line.
     @ViewBuilder private var rows: some View {
+        if !heroOnly { glanceAndQuietRows.panelChrome() }
+    }
+
+    @ViewBuilder private var glanceAndQuietRows: some View {
         let entries: [GlanceEntry] = glances
         if !entries.isEmpty {
             GlanceRow(entries: entries, onOpen: openGlance)
@@ -86,7 +97,7 @@ struct NowView: View {
         let item: LiveItem = items[index]
         let count: Int = items.count
         HeroFrame(keyline: keyline(item), position: HeroDeck.position(index, of: count),
-                  onStep: count > 1 ? { delta in deck.step(delta, in: items) } : nil) {
+                  onStep: count > 1 ? { delta in deck.step(delta, in: items) } : nil, itemID: item.id) {
             heroContent(item)
         }
         .id(item.id)

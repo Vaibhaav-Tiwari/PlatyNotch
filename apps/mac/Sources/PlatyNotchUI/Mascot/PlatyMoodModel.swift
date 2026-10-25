@@ -3,7 +3,8 @@ import Observation
 import PlatyNotchKit
 
 /// The timed inputs of Platy's mood, shared by every display: "just finished" (a session
-/// went from active to idle or exited, `PlatyFinishWatch`), "celebrating" (a game's new
+/// went from working to idle or exited: from the app's one `AgentActivityModel` once
+/// `follow` is called, else its own `PlatyFinishWatch`), "celebrating" (a game's new
 /// best, `GamesWidget.onNewBest`) and the hour (night is sleepy). Each wakes once when it
 /// changes (a sleeping task, no timer while nothing is pending), so the pill re-reads the
 /// mood only then.
@@ -21,6 +22,8 @@ public final class PlatyMoodModel {
     @ObservationIgnored private var store: AppStore?
     @ObservationIgnored private var calendar: Calendar
     @ObservationIgnored private var zoneObserver: NSObjectProtocol?
+    /// The app's one session tracker, once followed.
+    @ObservationIgnored private var activity: AgentActivityModel?
 
     /// `calendar` gives the hour (tests pass a fixed time zone); a system time zone change
     /// re-reads it.
@@ -30,10 +33,23 @@ public final class PlatyMoodModel {
         hour = calendar.component(.hour, from: now())
     }
 
+    /// Takes session changes from the app's one tracker instead of its own watch, and its
+    /// finish log for the done pose (Ruling 14: done while an agent finished in the last
+    /// 10 minutes and nothing works or needs you).
+    func follow(_ activity: AgentActivityModel) {
+        guard self.activity == nil else { return }
+        self.activity = activity
+        activity.observe { [weak self] changes in
+            guard let self, !changes.finished.isEmpty else { return }
+            self.flags.finish(at: self.now())
+            self.refresh()
+        }
+    }
+
     /// Follows the store's sessions and the clock (the app calls this once at launch).
     public func start(store: AppStore) {
         self.store = store
-        observeSessions()
+        if activity == nil { observeSessions() }
         scheduleHour()
         zoneObserver = NotificationCenter.default.addObserver(
             forName: .NSSystemTimeZoneDidChange, object: nil, queue: .main
@@ -65,9 +81,15 @@ public final class PlatyMoodModel {
     /// Platy's mood now. Reads the store and the other inputs, so a view calling it
     /// redraws when any of them changes.
     public func mood(sessions: [Session], approvals: Int, musicPlaying: Bool, focusActive: Bool) -> PlatyMood {
-        PlatyMoodResolver.mood(sessions: sessions.map(\.state), approvalsPending: approvals, musicPlaying: musicPlaying,
-                               focusActive: focusActive, justFinished: justFinished, hour: hour,
-                               celebrating: celebrating)
+        let states: [SessionState] = sessions.map(\.state)
+        var done: Bool = justFinished
+        if !done, let activity {
+            _ = activity.revision   // re-read when a 10-minute window runs out
+            done = PlatyMoodResolver.showsDone(flags: PlatyMoodFlags(), log: activity.log, sessions: states, now: now())
+        }
+        return PlatyMoodResolver.mood(sessions: states, approvalsPending: approvals, musicPlaying: musicPlaying,
+                                      focusActive: focusActive, justFinished: done, hour: hour,
+                                      celebrating: celebrating)
     }
 
     /// Feeds session states (the store observer; tests call it directly).
