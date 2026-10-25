@@ -37,17 +37,27 @@ final class CompactPillTests: DefaultsTestCase {
         }
     }
 
-    func testHollowDotNeverAnimates() {
-        let view = AgentDotNSView(frame: NSRect(x: 0, y: 0, width: 7, height: 7))
-        view.configure(color: .systemTeal, style: .hollow)
-        XCTAssertFalse(view.isPulsing)
-        XCTAssertTrue(view.isHollow)
-        view.configure(color: .systemTeal, style: .pulse)
-        XCTAssertTrue(view.isPulsing)
-        XCTAssertFalse(view.isHollow)
+    /// Hotfix: every dot is a filled circle with no outline. Idle (`.dim`) rests at 35%
+    /// opacity and never animates; errored is filled coral, not the agent's colour.
+    func testDotsAreSolidIdleDimmedErroredCoral() {
+        let view = AgentDotNSView(frame: NSRect(x: 0, y: 0, width: 6, height: 6))
+        view.appearance = NSAppearance(named: .darkAqua)
+        for style in AgentDotStyle.allCases {
+            view.configure(color: .systemTeal, style: style)
+            XCTAssertEqual(view.outlineWidth, 0, "\(style)")
+            XCTAssertNotNil(view.fill, "\(style)")
+            XCTAssertGreaterThan(view.fill?.alpha ?? 0, 0, "\(style) is filled")
+            XCTAssertEqual(view.isPulsing, style == .pulse, "\(style)")
+        }
+        view.configure(color: .systemTeal, style: .dim)
+        XCTAssertEqual(view.restingOpacity, 0.35, accuracy: 0.001)
         view.configure(color: .systemTeal, style: .solid)
-        XCTAssertFalse(view.isPulsing)
-        XCTAssertFalse(view.isHollow)
+        XCTAssertEqual(view.restingOpacity, 1)
+        view.configure(color: .systemTeal, style: .errored)
+        XCTAssertEqual(view.restingOpacity, 1)
+        var coral: CGColor = DS.dynamicNSColor(.error).cgColor
+        view.effectiveAppearance.performAsCurrentDrawingAppearance { coral = DS.dynamicNSColor(.error).cgColor }
+        XCTAssertEqual(view.fill, coral, "errored is coral, not the agent's colour")
     }
 
     func testOldConfigureStillWorks() {
@@ -56,7 +66,7 @@ final class CompactPillTests: DefaultsTestCase {
         XCTAssertTrue(view.isPulsing)
         view.configure(color: .systemTeal, pulses: false)
         XCTAssertFalse(view.isPulsing)
-        XCTAssertFalse(view.isHollow, "false is a solid dot")
+        XCTAssertEqual(view.restingOpacity, 1, "false is a solid dot")
     }
 
     /// The pill's dot style: a pulse draws solid unless the panel ticks and Reduce Motion is off.
@@ -64,7 +74,7 @@ final class CompactPillTests: DefaultsTestCase {
         XCTAssertEqual(AgentDot.drawn(.pulse, ticking: true, reduceMotion: false), .pulse)
         XCTAssertEqual(AgentDot.drawn(.pulse, ticking: false, reduceMotion: false), .solid)
         XCTAssertEqual(AgentDot.drawn(.pulse, ticking: true, reduceMotion: true), .solid)
-        XCTAssertEqual(AgentDot.drawn(.hollow, ticking: true, reduceMotion: false), .hollow)
+        XCTAssertEqual(AgentDot.drawn(.dim, ticking: true, reduceMotion: false), .dim)
     }
 
     func testAccessibilitySummaryNamesIndicators() {

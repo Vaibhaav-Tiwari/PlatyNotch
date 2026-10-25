@@ -225,7 +225,11 @@ All agent sessions together are **one** Live item ("Agents"), ranked by its most
 session (needs input → rank 4, finished → 5, working → 9). In the pill, Platy is the leading
 glyph and shows the aggregate mood; the existing per-session dots stay next to Platy (up to
 three plus `+n`), now coloured by each session's agent colour (8.3) with the state shown by
-the dot's motion (pulse = working, solid = waiting, hollow = idle). The trailing side shows
+the dot's motion (pulse = working, solid = waiting, solid at 35% = idle or finished; errored
+is solid coral). Every dot is a solid 6 pt circle; `+n` is plain secondary text after the
+dots, and nothing ever overlaps Platy. When the ear is short of room the pill shows fewer
+dots (down to one) and keeps `+n`, then drops `+n`, then shows Platy alone (pill-cleanup
+hotfix). The trailing side shows
 the top non-agent Live item, plus up to two indicator dots for further live items. The
 existing `liveSide` setting stays and still swaps the two sides.
 
