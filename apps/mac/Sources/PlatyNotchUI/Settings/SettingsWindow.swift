@@ -93,7 +93,8 @@ typealias SettingsPageID = PlatyNotchKit.SettingsPage
 final class SettingsModel {
     /// The sidebar, top to bottom (an explicit list: plug-in sections follow under
     /// "Extensions").
-    static let pages: [SettingsPageID] = [.general, .notch, .widgets, .agents, .memory, .privacy, .about]
+    static let pages: [SettingsPageID] = [.general, .notch, .now, .notifications, .widgets, .agents, .memory, .privacy,
+                                          .about]
 
     /// The built-in pages as (id, title, image).
     static var builtIn: [(id: String, title: String, image: String)] {
@@ -220,6 +221,8 @@ struct SettingsRootView: View {
         switch model.selection {
         case SettingsPageID.general.rawValue: GeneralSection(services: services)
         case SettingsPageID.notch.rawValue: NotchSection()
+        case SettingsPageID.now.rawValue: NowSection(widgets: services.widgets)
+        case SettingsPageID.notifications.rawValue: NotificationsSection()
         case SettingsPageID.widgets.rawValue: WidgetsSection(widgets: services.widgets)
         case SettingsPageID.agents.rawValue: AgentsSection(services: services, detail: $model.detail)
         case SettingsPageID.memory.rawValue: MemorySection(services: services)

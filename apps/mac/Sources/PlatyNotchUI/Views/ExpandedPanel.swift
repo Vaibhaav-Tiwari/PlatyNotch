@@ -130,7 +130,7 @@ struct ExpandedPanel: View {
         NowView(store: store, widgets: widgets, today: today, deck: deck, glanceDefaults: glanceDefaults,
                 onOpenTool: { openTool($0) },
                 onOpenAgents: { route = PanelRoute(destination: .agents) }, onOpenTerminal: onOpenTerminal,
-                fixedNow: fixedNow)
+                fixedNow: fixedNow, cycling: NowSettings.load(from: glanceDefaults).heroCycling)
     }
 
     // MARK: - Library

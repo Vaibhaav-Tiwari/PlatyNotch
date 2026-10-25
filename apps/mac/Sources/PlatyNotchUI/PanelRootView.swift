@@ -225,7 +225,8 @@ struct PanelRootView: View {
             NowView(store: store, widgets: widgets, today: today,
                     deck: Binding(get: { model.heroDeck }, set: { model.heroDeck = $0 }),
                     onOpenTool: { _ in model.onClick() }, onOpenAgents: model.onClick,
-                    onOpenTerminal: onOpenTerminal, heroOnly: true)
+                    onOpenTerminal: onOpenTerminal, heroOnly: true,
+                    cycling: NowSettings.load(from: .standard).heroCycling)
             }
             .transition(ChromeSettle<EmptyView>.transition)
                 // 6 at the bottom: the 160 pt hero fits the 176 pt peek without a notch too.

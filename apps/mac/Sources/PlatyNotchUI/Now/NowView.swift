@@ -21,12 +21,14 @@ struct NowView: View {
     var fixedNow: Date?
     /// The hover peek: the hero alone (no glances, no quiet line).
     var heroOnly = false
+    /// Settings › Now › hero cycling: false shows only the top item, with no ‹ ›.
+    var cycling = true
     @Environment(\.platyMood) private var platyMood
 
     init(store: AppStore, widgets: WidgetRegistry, today: TodayServices, deck: Binding<HeroDeck>,
          glanceDefaults: UserDefaults = .standard, onOpenTool: @escaping (String) -> Void,
          onOpenAgents: @escaping () -> Void, onOpenTerminal: @escaping (Session) -> Void, fixedNow: Date? = nil,
-         heroOnly: Bool = false) {
+         heroOnly: Bool = false, cycling: Bool = true) {
         self.store = store
         self.widgets = widgets
         self.today = today
@@ -37,7 +39,16 @@ struct NowView: View {
         self.onOpenTerminal = onOpenTerminal
         self.fixedNow = fixedNow
         self.heroOnly = heroOnly
+        self.cycling = cycling
     }
+
+    /// The deck's item to show: the deck's choice while cycling, else the top one.
+    static func heroIndex(deck: HeroDeck, items: [LiveItem], cycling: Bool) -> Int {
+        cycling ? (deck.current(in: items) ?? 0) : 0
+    }
+
+    /// Whether the hero shows ‹ "2 of 3" › (and takes swipes).
+    static func showsSteps(count: Int, cycling: Bool) -> Bool { cycling && count > 1 }
 
     var body: some View {
         let now: Date = Date()
@@ -48,7 +59,7 @@ struct NowView: View {
         case .approvalsPending(let line):
             compactLine(line)
         case .live:
-            let heroID: String = items[deck.current(in: items) ?? 0].id
+            let heroID: String = items[Self.heroIndex(deck: deck, items: items, cycling: cycling)].id
             VStack(alignment: .leading, spacing: NowMetrics.gap) {
                 liveHero(items, agents: agents)
                 rows
@@ -93,11 +104,12 @@ struct NowView: View {
     // MARK: - Hero
 
     @ViewBuilder private func liveHero(_ items: [LiveItem], agents: AgentsLive?) -> some View {
-        let index: Int = deck.current(in: items) ?? 0
+        let index: Int = Self.heroIndex(deck: deck, items: items, cycling: cycling)
         let item: LiveItem = items[index]
         let count: Int = items.count
-        HeroFrame(keyline: keyline(item), position: HeroDeck.position(index, of: count),
-                  onStep: count > 1 ? { delta in deck.step(delta, in: items) } : nil, itemID: item.id) {
+        let steps: Bool = Self.showsSteps(count: count, cycling: cycling)
+        HeroFrame(keyline: keyline(item), position: steps ? HeroDeck.position(index, of: count) : nil,
+                  onStep: steps ? { delta in deck.step(delta, in: items) } : nil, itemID: item.id) {
             heroContent(item)
         }
         .id(item.id)
