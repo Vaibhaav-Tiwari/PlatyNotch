@@ -109,4 +109,18 @@ final class PanelLayoutTests: XCTestCase {
         XCTAssertFalse(PanelLayout.contains(hold, CGPoint(x: 960, y: 1000)))
         XCTAssertEqual(mbp.fullScreenHoldRect(for: .compact), mbp.contentRect(for: .compact))
     }
+
+    func testHoverPeekRect() {
+        let l = mbp
+        XCTAssertEqual(PanelLayout.hoverPeekHeight, 176)
+        let r = l.contentRect(for: .peek(.hover))
+        XCTAssertEqual(r.width, PanelLayout.peekSize.width)
+        XCTAssertEqual(r.width, 420)
+        XCTAssertEqual(r.height, l.anchor.height + 176)
+        XCTAssertEqual(r.maxY, l.anchor.maxY, "grows down from the notch")
+        XCTAssertEqual(r.midX, l.anchor.midX)
+        XCTAssertTrue(l.windowFrame.contains(r))
+        XCTAssertEqual(l.hitRect(for: .peek(.hover)), r)
+        XCTAssertEqual(ext.contentRect(for: .peek(.hover)).height, 176)
+    }
 }

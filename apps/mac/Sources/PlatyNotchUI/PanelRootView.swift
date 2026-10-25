@@ -206,6 +206,18 @@ struct PanelRootView: View {
                                     bottom: 6, trailing: 14))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .allowsHitTesting(false)
+        case .peek(.hover):
+            // Peek on hover, open on click: Now's hero alone; a click anywhere else opens
+            // the panel. No approval card is ever drawn here (an approval replaces it).
+            NowView(store: store, widgets: widgets, today: today,
+                    deck: Binding(get: { model.heroDeck }, set: { model.heroDeck = $0 }),
+                    onOpenTool: { _ in model.onClick() }, onOpenAgents: model.onClick,
+                    onOpenTerminal: onOpenTerminal, heroOnly: true)
+                // 6 at the bottom: the 160 pt hero fits the 176 pt peek without a notch too.
+                .padding(EdgeInsets(top: top, leading: 12, bottom: 6, trailing: 12))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .contentShape(Rectangle())
+                .onTapGesture { model.onClick() }
         case .peek(.drop):
             (widgets.dropZoneView() ?? AnyView(DropZonePlaceholder()))
                 .padding(EdgeInsets(top: top, leading: 12, bottom: 10, trailing: 12))

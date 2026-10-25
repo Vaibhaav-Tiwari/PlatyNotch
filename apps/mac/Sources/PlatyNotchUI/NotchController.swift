@@ -110,6 +110,7 @@ public final class NotchController {
             feed = PanelFeed(noticeSequence: store.noticeSequence)
         }
         machine.openOnHover = settings.openOn == .hover
+        machine.peekOnHover = settings.openOn == .peekOnHover
         debouncer = HoverDebouncer(enterDelay: settings.hoverDelay)
         model.appearance = settings
         // An open panel must still close when the cursor is away after a rebuild.
@@ -144,6 +145,7 @@ public final class NotchController {
         let settings = appearance.clamped()
         machine.minimal = settings.mode == .minimal
         machine.openOnHover = settings.openOn == .hover
+        machine.peekOnHover = settings.openOn == .peekOnHover
         if debouncer.enterDelay != settings.hoverDelay {
             let hovering = debouncer.isHovering
             debouncer = HoverDebouncer(enterDelay: settings.hoverDelay)

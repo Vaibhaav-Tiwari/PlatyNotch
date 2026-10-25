@@ -11,6 +11,7 @@ extension PanelMode: CustomStringConvertible {
         case .peek(.hud(let kind)): "peek(hud:\(kind.rawValue))"
         case .peek(.ringing(let id)): "peek(ringing:\(id))"
         case .peek(.drop): "peek(drop)"
+        case .peek(.hover): "peek(hover)"
         case .expanded: "expanded"
         }
     }

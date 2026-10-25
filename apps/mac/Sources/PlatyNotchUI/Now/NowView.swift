@@ -19,11 +19,14 @@ struct NowView: View {
     /// Renders only: the Today summary's clock at a fixed time (live items always rank
     /// against the real clock).
     var fixedNow: Date?
+    /// The hover peek: the hero alone (no glances, no quiet line).
+    var heroOnly = false
     @Environment(\.platyMood) private var platyMood
 
     init(store: AppStore, widgets: WidgetRegistry, today: TodayServices, deck: Binding<HeroDeck>,
          glanceDefaults: UserDefaults = .standard, onOpenTool: @escaping (String) -> Void,
-         onOpenAgents: @escaping () -> Void, onOpenTerminal: @escaping (Session) -> Void, fixedNow: Date? = nil) {
+         onOpenAgents: @escaping () -> Void, onOpenTerminal: @escaping (Session) -> Void, fixedNow: Date? = nil,
+         heroOnly: Bool = false) {
         self.store = store
         self.widgets = widgets
         self.today = today
@@ -33,6 +36,7 @@ struct NowView: View {
         self.onOpenAgents = onOpenAgents
         self.onOpenTerminal = onOpenTerminal
         self.fixedNow = fixedNow
+        self.heroOnly = heroOnly
     }
 
     var body: some View {
@@ -63,6 +67,10 @@ struct NowView: View {
 
     /// The glance row (when any glance has something to show) and the quiet line.
     @ViewBuilder private var rows: some View {
+        if !heroOnly { glanceAndQuietRows }
+    }
+
+    @ViewBuilder private var glanceAndQuietRows: some View {
         let entries: [GlanceEntry] = glances
         if !entries.isEmpty {
             GlanceRow(entries: entries, onOpen: openGlance)

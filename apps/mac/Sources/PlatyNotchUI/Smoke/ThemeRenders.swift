@@ -195,6 +195,7 @@ enum NowRenders {
         out.append(("hero-timer", panel(timerHero()), true))
         out.append(("hero-meeting", panel(meetingHero()), true))
         out.append(("hero-agents", panel(agentsHero()), true))
+        out.append(("peek-hover", hoverPeek(agentsHero()), true))
         return out
     }
 
@@ -296,6 +297,25 @@ enum NowRenders {
                                  extraTabs: [], selectedTab: Binding(get: { selected }, set: { selected = $0 }),
                                  onCollapse: {}, fixedNow: fixedNow, glanceDefaults: rig.glances, onDecide: { _, _ in }, onOpenTerminal: { _ in })
             .frame(width: width, height: height, alignment: .top)
+            .clipped()
+            .environment(\.platyMood, rig.mood)
+            .environment(\.panelTicking, false)
+        return AnyView(view)
+    }
+
+    /// The hover peek (Peek on hover, open on click) as `PanelRootView` lays it out beside
+    /// the 38 pt camera housing: Now's hero alone in 420 × (housing + 176).
+    static func hoverPeek(_ rig: Rig) -> AnyView {
+        let rect: CGRect = layout.contentRect(for: .peek(.hover))
+        let top: CGFloat = layout.contentInset(for: .peek(.hover))
+        var deck = HeroDeck()
+        let view = NowView(store: rig.store, widgets: rig.registry, today: rig.today,
+                           deck: Binding(get: { deck }, set: { deck = $0 }), glanceDefaults: rig.glances,
+                           onOpenTool: { _ in }, onOpenAgents: {}, onOpenTerminal: { _ in }, fixedNow: fixedNow,
+                           heroOnly: true)
+            .padding(EdgeInsets(top: top, leading: 12, bottom: 6, trailing: 12))
+            .frame(width: rect.width, height: rect.height, alignment: .top)
+            .background(alignment: .top) { Color(PanelPalette.darkSurface).frame(height: layout.anchor.height) }
             .clipped()
             .environment(\.platyMood, rig.mood)
             .environment(\.panelTicking, false)
