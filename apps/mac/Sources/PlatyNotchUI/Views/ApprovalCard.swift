@@ -59,8 +59,9 @@ struct ApprovalCard: View {
         .accessibilityLabel("\(visible.agentName) asks to run \(visible.tool)")
     }
 
-    /// What the summary box shows: the payload's full command when there is one (open
-    /// panel), else the core's summary; hidden characters spelled out either way.
+    /// What the summary box shows: in the open panel, a plain Bash command in full when it
+    /// hides nothing (`ApprovalPreview.fullCommand`), else the core's summary; hidden
+    /// characters spelled out either way.
     var summaryText: String {
         preview?.command ?? VisibleApproval(approval).summary
     }

@@ -4,10 +4,10 @@ import XCTest
 
 /// Task 17: what an approval card previews, built only from what the hook payload carries.
 final class ApprovalPreviewTests: DefaultsTestCase {
-    private func approval(_ tool: String, _ input: [String: JSONValue]?) -> Approval {
+    private func approval(_ tool: String, _ input: [String: JSONValue]?, summary: String = "summary") -> Approval {
         let t = Date(timeIntervalSince1970: 1_800_000_000)
         return Approval(id: "ap", sessionKey: "s", agent: "claude-code", agentName: "Claude Code", tool: tool,
-                        summary: "summary", input: input.map { RawJSON(.object($0)) }, createdAt: t,
+                        summary: summary, input: input.map { RawJSON(.object($0)) }, createdAt: t,
                         expiresAt: t.addingTimeInterval(60))
     }
 
@@ -64,7 +64,8 @@ final class ApprovalPreviewTests: DefaultsTestCase {
     }
 
     func testBashHasCommandNoDiff() {
-        let p = ApprovalPreview(approval: approval("Bash", ["command": .string("git status &&\nmake test")]))
+        let p = ApprovalPreview(approval: approval("Bash", ["command": .string("git status &&\nmake test")],
+                                                   summary: "git status &&\nmake test"))
         XCTAssertEqual(p.command, "git status &&\nmake test", "newlines kept: the full command")
         XCTAssertNil(p.path)
         XCTAssertEqual(p.diff, [])
@@ -78,10 +79,10 @@ final class ApprovalPreviewTests: DefaultsTestCase {
         XCTAssertTrue(p.hadHidden)
         XCTAssertEqual(p.path, "/r/a⟨U+202E⟩txt")
         XCTAssertEqual(p.diff.filter { $0.kind == .added }.map(\.text), ["x⟨U+200B⟩⟨ESC⟩[2J"])
-        let bash = ApprovalPreview(approval: approval("Bash", ["command": .string("ls\u{2066}")]))
+        let bash = ApprovalPreview(approval: approval("Bash", ["command": .string("ls\u{2066}")], summary: "ls\u{2066}"))
         XCTAssertEqual(bash.command, "ls⟨U+2066⟩")
         XCTAssertTrue(bash.hadHidden)
-        XCTAssertFalse(ApprovalPreview(approval: approval("Bash", ["command": .string("ls")])).hadHidden)
+        XCTAssertFalse(ApprovalPreview(approval: approval("Bash", ["command": .string("ls")], summary: "ls")).hadHidden)
     }
 
     func testHugeInputUsesFallback() {
@@ -113,5 +114,36 @@ final class ApprovalPreviewTests: DefaultsTestCase {
         let odd = ApprovalPreview(approval: approval("Edit", ["file_path": .int(3), "old_string": .string("a")]))
         XCTAssertNil(odd.path)
         XCTAssertEqual(odd.diff, [])
+    }
+
+    // MARK: Fix round 1, C1: the command replaces the summary only when it hides nothing.
+
+    func testBashWithAnExtraKeyKeepsTheSummary() {
+        let a = approval("Bash", ["command": .string("ls"), "dangerouslyDisableSandbox": .bool(true)], summary: "ls")
+        XCTAssertNil(ApprovalPreview(approval: a).command, "an extra argument: the core's summary stays")
+        XCTAssertNil(ApprovalPreview.fullCommand(for: a))
+        let allowed = approval("Bash", ["command": .string("ls"), "description": .string("List"),
+                                        "timeout": .int(5000), "run_in_background": .bool(false)], summary: "ls")
+        XCTAssertEqual(ApprovalPreview(approval: allowed).command, "ls")
+    }
+
+    func testOtherToolsWithACommandKeepTheSummary() {
+        let mcp = approval("mcp__shell__run", ["command": .string("ls"), "host": .string("prod")], summary: "ls")
+        XCTAssertNil(ApprovalPreview(approval: mcp).command)
+        let mcpOnly = approval("mcp__shell__run", ["command": .string("ls")], summary: "ls")
+        XCTAssertNil(ApprovalPreview(approval: mcpOnly).command, "only Bash")
+    }
+
+    func testSummaryMustMatchTheCommand() {
+        let other = approval("Bash", ["command": .string("rm -rf /")], summary: "ls")
+        XCTAssertNil(ApprovalPreview(approval: other).command, "a summary that is not this command stays")
+        let long = String(repeating: "a", count: 590) + " && make"
+        XCTAssertEqual(long.count, 598)
+        let truncated = approval("Bash", ["command": .string(long)], summary: String(long.prefix(120)) + "…")
+        XCTAssertEqual(ApprovalPreview(approval: truncated).command, long, "a 600-character command shows in full")
+        let wrongPrefix = approval("Bash", ["command": .string(long)], summary: "b" + String(long.prefix(119)) + "…")
+        XCTAssertNil(ApprovalPreview(approval: wrongPrefix).command)
+        let noEllipsis = approval("Bash", ["command": .string(long)], summary: String(long.prefix(120)))
+        XCTAssertNil(ApprovalPreview(approval: noEllipsis).command, "a shorter summary without … is not a truncation")
     }
 }

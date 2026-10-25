@@ -11,9 +11,10 @@ import XCTest
 final class ApprovalPreviewCardTests: DefaultsTestCase {
     private let t0 = Date()
 
-    private func approval(_ tool: String, _ input: [String: JSONValue]?, id: String = "ap") -> Approval {
+    private func approval(_ tool: String, _ input: [String: JSONValue]?, id: String = "ap",
+                          summary: String = "Write notes.txt") -> Approval {
         Approval(id: id, sessionKey: "s", agent: "claude-code", agentName: "Claude Code", project: "platynotch",
-                 tool: tool, summary: "Write notes.txt", input: input.map { RawJSON(.object($0)) }, createdAt: t0,
+                 tool: tool, summary: summary, input: input.map { RawJSON(.object($0)) }, createdAt: t0,
                  expiresAt: t0.addingTimeInterval(300))
     }
 
@@ -100,15 +101,30 @@ final class ApprovalPreviewCardTests: DefaultsTestCase {
         XCTAssertNil(ApprovalDiffBox.tone(.context))
     }
 
-    /// The card shows the payload's full command (not a shortened summary) and its path.
+    /// The card shows the payload's full command (not a shortened summary) and its path,
+    /// but only when the command hides nothing (fix round 1, C1).
     func testCardShowsCommandAndPath() {
-        let bash = approval("Bash", ["command": .string("git status &&\nmake test\u{200B}")])
+        let command = "git status &&\nmake test\u{200B}"
+        let bash = approval("Bash", ["command": .string(command)], summary: "git status &&…")
         let c = card(bash)
         XCTAssertEqual(c.summaryText, "git status &&\nmake test⟨U+200B⟩")
-        XCTAssertTrue(c.hasHidden)
+        XCTAssertTrue(c.hasHidden, "hidden characters still marked")
         let plain = ApprovalCard(approval: bash, session: nil, canAnswer: true, phase: nil, arming: ApprovalArming(),
                                  onDecide: { _ in }, onOpenTerminal: { _ in })
-        XCTAssertEqual(plain.summaryText, "Write notes.txt", "no preview: today's summary")
+        XCTAssertEqual(plain.summaryText, "git status &&…", "no preview: today's summary")
         XCTAssertEqual(card(write(lines: 2)).preview?.path, "/r/notes.txt")
+        let long = String(repeating: "x", count: 600)
+        XCTAssertEqual(card(approval("Bash", ["command": .string(long)], summary: String(long.prefix(80)) + "…")).summaryText,
+                       long, "a 600-character command in full")
+    }
+
+    func testCardKeepsTheSummaryWhenTheCommandWouldHideArguments() {
+        let sandbox = approval("Bash", ["command": .string("ls"), "dangerouslyDisableSandbox": .bool(true)],
+                               summary: "ls (sandbox off)")
+        XCTAssertEqual(card(sandbox).summaryText, "ls (sandbox off)")
+        let mcp = approval("mcp__ssh__exec", ["command": .string("ls"), "host": .string("prod\u{200B}")],
+                           summary: "ssh prod\u{200B}: ls")
+        XCTAssertEqual(card(mcp).summaryText, "ssh prod⟨U+200B⟩: ls")
+        XCTAssertTrue(card(mcp).hasHidden)
     }
 }

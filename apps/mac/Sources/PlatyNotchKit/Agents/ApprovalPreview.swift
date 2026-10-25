@@ -1,7 +1,7 @@
 import Foundation
 
 /// What an open-panel approval card shows beyond its summary (spec 6.5, 6.8): the full
-/// command, the file path and a unified diff, built only from what the hook payload
+/// command (Bash only, when it hides nothing: `fullCommand`), the file path and a unified diff, built only from what the hook payload
 /// carries in `approval.input`. Every string goes through `SummarySanitizer` first, so
 /// hidden characters stay visible (newlines are kept in commands and diffs).
 public struct ApprovalPreview: Equatable, Sendable {
@@ -28,7 +28,7 @@ public struct ApprovalPreview: Equatable, Sendable {
             if case .string(let s)? = object[key] { return s }
             return nil
         }
-        command = string("command", in: input).map { visible($0) }
+        command = Self.fullCommand(for: approval).map { visible($0) }
         path = (string("file_path", in: input) ?? string("notebook_path", in: input) ?? string("path", in: input))
             .map { visible($0, singleLine: true) }
 
@@ -45,6 +45,27 @@ public struct ApprovalPreview: Equatable, Sendable {
         }
         diff = lines
         hadHidden = hidden
+    }
+
+    /// Bash's input keys that say nothing beyond the command itself.
+    public static let plainBashKeys: Set<String> = ["command", "description", "timeout", "run_in_background"]
+
+    /// The raw command to show in place of the core's summary, only when that hides
+    /// nothing (fix round 1, C1): the tool is Bash, the input has no key beyond
+    /// `plainBashKeys` (so `dangerouslyDisableSandbox` and the like keep the summary), and
+    /// the summary is the command or a "…"-truncated prefix of it. Otherwise nil: the card
+    /// keeps the core's summary.
+    public static func fullCommand(for approval: Approval) -> String? {
+        guard approval.tool == "Bash", case .object(let input)? = approval.input?.value,
+              case .string(let command)? = input["command"],
+              Set(input.keys).isSubset(of: plainBashKeys) else { return nil }
+        let summary = approval.summary
+        if summary == command { return command }
+        guard summary.hasSuffix("…") else { return nil }
+        var head = String(summary.dropLast())
+        while let last = head.last, last == " " || last == "\t" { head.removeLast() }
+        guard !head.isEmpty, command.hasPrefix(head) else { return nil }
+        return command
     }
 
     /// The first `collapsedLines` lines, or all of them.

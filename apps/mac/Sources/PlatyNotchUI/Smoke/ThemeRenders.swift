@@ -439,7 +439,7 @@ enum AgentsRenders {
     /// A long command with a zero-width space (the card says "Contains hidden characters").
     static func bashApproval() -> Approval {
         let command = "rm -rf ./build\u{200B} && swift build -c release \\\n  && swift test --filter ApprovalPreviewCardTests --parallel"
-        return make("bash", tool: "Bash", summary: "rm -rf ./build && swift build …",
+        return make("bash", tool: "Bash", summary: String(command.prefix(40)) + "…",
                     input: ["command": .string(command), "description": .string("Clean build and test")], age: 30)
     }
 
