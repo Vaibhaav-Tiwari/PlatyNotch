@@ -377,12 +377,12 @@ public struct GameSession: Equatable, Sendable {
 /// must never size the panel's window). Checked against `PanelLayout.expandedSize` in tests.
 public enum GameLayout {
     /// Game picker, score and best.
-    public static let headerHeight: CGFloat = 22
-    public static let spacing: CGFloat = 6
-    /// Where a board (and its overlay) sits: all the room the expanded panel's tab has
-    /// below its header (`PanelLayout.expandedSize` less the notch inset, padding and the
-    /// tab bar; checked in tests).
-    public static let boardArea = CGSize(width: 528, height: 270)
+    public static let headerHeight: CGFloat = 20
+    public static let spacing: CGFloat = 4
+    /// Where a board (and its overlay) sits: all the room the Games tool has below its
+    /// picker (`PanelLayout.expandedSize` less the notch inset, padding, the tool header
+    /// and its gap; checked in tests). 264 fits Platy Chase's 263.5 pt maze.
+    public static let boardArea = CGSize(width: 528, height: 264)
     public static var tabSize: CGSize {
         let h: CGFloat = headerHeight + spacing + boardArea.height
         return CGSize(width: boardArea.width, height: h)
@@ -395,7 +395,8 @@ public enum GameLayout {
     public static let tetrisSide: CGFloat = 96
     public static let tetrisGap: CGFloat = 14
     public static let tile: CGFloat = 58
-    public static let tileGap: CGFloat = 7
+    /// 6 keeps the 4 × 4 grid (262 pt) inside the Games tool's 264 pt board area.
+    public static let tileGap: CGFloat = 6
     /// Flappy world units (the original's pixels) to points.
     public static let flappyScale: CGFloat = 0.6
     /// Platy Chase: 8.5 pt tiles, a 238 × 263.5 maze between two info columns.

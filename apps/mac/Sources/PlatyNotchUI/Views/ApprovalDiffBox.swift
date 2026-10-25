@@ -61,6 +61,8 @@ struct ApprovalDiffBox: View {
                     .padding(.horizontal, 4)
                 }
                 .scrollIndicators(.automatic)
+                // Lines start at the top left; a short diff is never centred in the box.
+                .defaultScrollAnchor(.topLeading)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(height: Self.boxHeight(preview: preview, cards: cards))
                 .background(Theme.codeBackground, in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
@@ -90,7 +92,7 @@ struct ApprovalDiffBox: View {
                 Button(expanded ? "Show first \(ApprovalPreview.collapsedLines)" : "Show all \(preview.diff.count) lines") {
                     expanded.toggle()
                 }
-                .buttonStyle(.link)
+                .buttonStyle(.panelLink)
                 .font(DS.font(TypeScale.caption))
                 .lineLimit(1)
                 .fixedSize()

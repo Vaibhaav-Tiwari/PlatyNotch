@@ -161,8 +161,8 @@ final class WindowSnapperTests: DefaultsTestCase {
 
     /// Fix round 2: the panel-key scan looks at every window, not `NSApp.keyWindow`.
     func testPanelIsKeyScansWindows() {
-        let panel = NotchPanel(frame: .zero)
-        let other = NSWindow(contentRect: .init(x: 0, y: 0, width: 10, height: 10), styleMask: [.titled],
+        let panel = NotchPanel(frame: CGRect(x: -10_000, y: 10_000, width: 10, height: 10))
+        let other = NSWindow(contentRect: .init(x: -10_000, y: 10_000, width: 10, height: 10), styleMask: [.titled],
                              backing: .buffered, defer: true)
         other.isReleasedWhenClosed = false
         XCTAssertTrue(WindowSnapper.panelIsKey(in: [other, panel], isKey: { $0 === panel }))
@@ -342,7 +342,7 @@ final class WindowSnapperTests: DefaultsTestCase {
     func testSettingsClosingRechecksTrust() async {
         let r = rig(trusted: false)
         r.trust.trusted = true
-        let settings = NSWindow(contentRect: .init(x: 0, y: 0, width: 10, height: 10), styleMask: [.titled],
+        let settings = NSWindow(contentRect: .init(x: -10_000, y: 10_000, width: 10, height: 10), styleMask: [.titled],
                                 backing: .buffered, defer: true)
         settings.isReleasedWhenClosed = false
         settings.identifier = AppWindowID.settings

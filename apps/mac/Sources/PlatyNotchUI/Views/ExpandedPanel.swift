@@ -1,17 +1,22 @@
 import PlatyNotchKit
 import SwiftUI
 
+/// Today's internal tab ids (spec 14 "tab links"), kept so `WidgetContext.openPanel(tab:)`
+/// and `NotchController.expand(tab:)` callers keep working: each maps through
+/// `PanelRoute.legacy` (today → Now, focus / memory / games → that Library tool).
 enum BuiltinTab {
     /// The default destination (spec 6.4).
     static let now = "now"
     static let agents = "agents"
+    static let library = "library"
     static let today = "today"
     static let focus = "focus"
     static let memory = "memory"
     static let games = GamesWidget.tabID
 }
 
-/// The open panel: tab bar, pending approvals (always on top), then the selected tab.
+/// The open panel (spec 6.1): the three destinations (Now, Agents, Library) or an open
+/// Library tool's header, pending approvals (always on top), then the destination or tool.
 struct ExpandedPanel: View {
     let store: AppStore
     let responder: ApprovalResponder
@@ -19,8 +24,9 @@ struct ExpandedPanel: View {
     let today: TodayServices
     let widgets: WidgetRegistry
     let memory: MemoryServices
+    /// Plugin `panelTabs()`: Library tools, never a destination of their own (spec 6.9).
     let extraTabs: [PanelTab]
-    @Binding var selectedTab: String
+    @Binding var route: PanelRoute
     let onCollapse: () -> Void
     /// Opens the Settings window (the gear; mouse only, no keyboard shortcut).
     var onOpenSettings: () -> Void = {}
@@ -28,20 +34,40 @@ struct ExpandedPanel: View {
     var deck: Binding<HeroDeck> = .constant(HeroDeck())
     /// Renders only: Now at a fixed time.
     var fixedNow: Date?
-    /// Where Now's chosen glances are saved (renders and tests pass their own).
+    /// Where Now's chosen glances and the Library's recents are saved (renders and tests
+    /// pass their own).
     var glanceDefaults: UserDefaults = .standard
     /// The Agents destination shows (`AgentsVisibility.isVisible`, via
     /// `PanelDestination.shown`); hidden until an agent first connects.
     var agentsVisible: Bool = true
     /// The Agents empty state's "Connect an agent": Settings › Agents.
     var onConnectAgent: () -> Void = {}
+    /// Renders only: the Memory tool's first view.
+    var memoryMode: MemoryTab.Mode = .search
     let onDecide: (Approval, ApprovalBehavior) -> Void
     let onOpenTerminal: (Session) -> Void
 
+    /// The nav's destinations (forwards to `PanelDestination.shown`).
+    static func destinations(agentsVisible: Bool) -> [PanelDestination] {
+        PanelDestination.shown(agentsVisible: agentsVisible)
+    }
+
+    var destinations: [PanelDestination] { Self.destinations(agentsVisible: agentsVisible) }
+
+    /// Where a glance, the quiet line or a tile opens a tool.
+    static func route(forTool id: String) -> PanelRoute {
+        PanelRoute(destination: .library, tool: id)
+    }
+
     var body: some View {
-        let tabs = allTabs
-        VStack(alignment: .leading, spacing: NowMetrics.gap) {
-            tabBar(tabs)
+        // An open tool is resolved alone (it redraws often); the grid builds the catalog.
+        let normal: PanelRoute = route.normalized(agentsVisible: agentsVisible)
+        let open: LibraryTool? = normal.destination == .library ? normal.tool.flatMap { libraryTool($0) } : nil
+        let tools: [LibraryTool] = normal.destination == .library && open == nil ? libraryTools : []
+        // A tool that is not in the Library now (its widget turned off) shows the grid.
+        let shown: PanelRoute = open == nil ? PanelRoute(destination: normal.destination) : normal
+        VStack(alignment: .leading, spacing: 0) {
+            header(tool: open)
                 .frame(height: NowMetrics.nav)
                 .panelChrome()
             if !store.approvals.isEmpty {
@@ -53,17 +79,103 @@ struct ExpandedPanel: View {
                         Color.clear.preference(key: ApprovalsRegionFrameKey.self, value: g.frame(in: .named(Self.space)))
                     })
                     .layoutPriority(1)
+                    .padding(.top, NowMetrics.gap)
             }
-            (tabs.first { $0.id == selectedTab } ?? tabs[0]).view
+            destination(shown, tool: open, tools: tools)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 // Now is left unclipped: it relies on the fit tests (`NowMetrics`,
                 // `NowViewTests`, `HeroViewsTests`) to stay inside, and must not clip Platy or
-                // the live glyph while they morph in from the pill. Other tabs stay clipped.
-                .clipped(unless: selectedTab == BuiltinTab.now)
-                .environment(\.selectPanelTab, { selectedTab = $0 })   // the games tile opens its tab
+                // the live glyph while they morph in from the pill. Other destinations stay clipped.
+                .clipped(unless: shown.destination == .now)
+                .padding(.top, open == nil ? NowMetrics.gap : ToolHost.gap)
+                .environment(\.openPanelRoute, { route = $0 })   // the games tile opens its tool
         }
         .coordinateSpace(name: Self.space)
+        // One accent: prominent buttons and controls in brand teal, never system blue.
+        .tint(DS.dynamicColor(.working))
     }
+
+    @ViewBuilder private func header(tool: LibraryTool?) -> some View {
+        if let tool {
+            ToolHeader(title: tool.item.title, onBack: goBack, trailing: AnyView(controls))
+        } else {
+            HStack(spacing: 2) {
+                nav
+                Spacer(minLength: 4)
+                controls
+            }
+        }
+    }
+
+    @ViewBuilder private func destination(_ shown: PanelRoute, tool: LibraryTool?, tools: [LibraryTool]) -> some View {
+        switch shown.destination {
+        case .now:
+            nowView
+        case .agents:
+            AgentsView(sessions: store.sessions, usage: store.usage, log: today.agentActivity.log,
+                       onOpenTerminal: onOpenTerminal, onConnect: onConnectAgent, fixedNow: fixedNow)
+        case .library:
+            if let tool {
+                ToolBody(content: tool.view())
+                    .id(tool.item.id)
+            } else {
+                LibraryView(items: sortedItems(tools), tile: { id in tools.first { $0.item.id == id }?.tile },
+                            onOpen: { openTool($0) }, onSetUp: { setUp($0) })
+            }
+        }
+    }
+
+    /// Now; its glances and quiet line open their tool directly.
+    var nowView: NowView {
+        NowView(store: store, widgets: widgets, today: today, deck: deck, glanceDefaults: glanceDefaults,
+                onOpenTool: { openTool($0) },
+                onOpenAgents: { route = PanelRoute(destination: .agents) }, onOpenTerminal: onOpenTerminal,
+                fixedNow: fixedNow)
+    }
+
+    // MARK: - Library
+
+    /// One tool by id, or nil when it is not in the Library now.
+    func libraryTool(_ id: String) -> LibraryTool? {
+        let store = self.store
+        let memory = self.memory
+        let mode = memoryMode
+        return LibraryCatalog.tool(id, widgets: widgets, extraTabs: extraTabs,
+                                   memory: { AnyView(MemoryTab(store: store, memory: memory, mode: mode)) })
+    }
+
+    /// The Library's tools in input order (`LibraryCatalog`): widget tools, Platy Chase,
+    /// Memory, plugin tabs.
+    var libraryTools: [LibraryTool] {
+        let store = self.store
+        let memory = self.memory
+        let mode = memoryMode
+        return LibraryCatalog.tools(widgets: widgets, extraTabs: extraTabs,
+                                    memory: { AnyView(MemoryTab(store: store, memory: memory, mode: mode)) })
+    }
+
+    /// The grid's order: recently used first.
+    func sortedLibraryItems() -> [LibraryItem] { sortedItems(libraryTools) }
+
+    private func sortedItems(_ tools: [LibraryTool]) -> [LibraryItem] {
+        LibraryOrder.sorted(tools.map(\.item), recents: LibraryRecentsCache.resolve(from: glanceDefaults))
+    }
+
+    /// Opens a tool full-panel and notes it for the grid's order.
+    func openTool(_ id: String) {
+        var recents = LibraryRecents.load(from: glanceDefaults)
+        recents.noteOpened(id, at: Date())
+        recents.save(to: glanceDefaults)
+        route = Self.route(forTool: id)
+    }
+
+    /// The back chevron: the Library grid.
+    func goBack() { route = route.back() }
+
+    /// A dimmed tile's "Set up": the widget's own setup, else its settings page.
+    func setUp(_ id: String) { widgets.runSetup(id) }
+
+    // MARK: - Chrome
 
     /// The coordinate space the approvals region and cards report their frames in (tests).
     static var space: String { "expandedPanel" }
@@ -91,91 +203,52 @@ struct ExpandedPanel: View {
         }
     }
 
-    /// Now first, then today's tabs (they move into the Library in Task 21), then plugins'.
-    var allTabs: [PanelTab] {
-        let store = self.store
-        let open = onOpenTerminal
-        let today = self.today
-        let widgets = self.widgets
-        let memory = self.memory
-        let deck = self.deck
-        let fixedNow = self.fixedNow
-        let glanceDefaults = self.glanceDefaults
-        let connect = onConnectAgent
-        let select: (String) -> Void = { [selectedTab = $selectedTab] in selectedTab.wrappedValue = $0 }
-        var tabs = [
-            PanelTab(id: BuiltinTab.now, title: "Now", systemImage: "sparkles") {
-                NowView(store: store, widgets: widgets, today: today, deck: deck, glanceDefaults: glanceDefaults,
-                        onOpenTool: { select(Self.tab(forTool: $0)) },
-                        onOpenAgents: { select(BuiltinTab.agents) }, onOpenTerminal: open, fixedNow: fixedNow)
-            },
-            PanelTab(id: BuiltinTab.agents, title: "Agents", systemImage: "terminal") {
-                AgentsView(sessions: store.sessions, usage: store.usage, log: today.agentActivity.log,
-                           onOpenTerminal: open, onConnect: connect, fixedNow: fixedNow)
-            },
-            PanelTab(id: BuiltinTab.today, title: "Today", systemImage: "calendar") {
-                TodayTab(widgets: widgets)
-            },
-        ]
-        // The Focus tab belongs to the focus widget: hidden while it is off.
-        if widgets.isEnabled(FocusWidget.widgetID) {
-            tabs.append(PanelTab(id: BuiltinTab.focus, title: "Focus", systemImage: "timer") {
-                FocusTab(focus: today.focus)
-            })
-        }
-        tabs.append(PanelTab(id: BuiltinTab.memory, title: "Memory", systemImage: "brain") {
-            MemoryTab(store: store, memory: memory)
-        })
-        // The Games tab belongs to the games widget: shown only while it runs.
-        if widgets.running.contains(GamesWidget.widgetID),
-           let games = widgets.widget(GamesWidget.widgetID) as? GamesWidget {
-            let host = games.host
-            tabs.append(PanelTab(id: BuiltinTab.games, title: "Games", systemImage: "gamecontroller") {
-                GamesTab(host: host)
-            })
-        }
-        let shown: [PanelDestination] = PanelDestination.shown(agentsVisible: agentsVisible)
-        if !shown.contains(.agents) { tabs.removeAll { $0.id == BuiltinTab.agents } }
-        return tabs + extraTabs
-    }
-
-    /// Where a tool opens until the Library (Task 21): its own tab, else Today's tiles.
-    static func tab(forTool id: String) -> String {
-        switch id {
-        case FocusWidget.widgetID: BuiltinTab.focus
-        case GamesWidget.widgetID: BuiltinTab.games
-        default: BuiltinTab.today
-        }
-    }
-
-    private func tabBar(_ tabs: [PanelTab]) -> some View {
-        HStack(spacing: 2) {
-            // The tabs get their room first; with many (plugin tabs) the labels shrink to
-            // the 11 pt floor, then truncate, so the gear and close never leave the frame.
-            HStack(spacing: 2) {
-                ForEach(tabs) { tab in
-                    let selected = tab.id == (tabs.contains { $0.id == selectedTab } ? selectedTab : tabs[0].id)
-                    Button { selectedTab = tab.id } label: {
-                        Text(verbatim: tab.title)
-                            .font(DS.font(TypeScale.headline).weight(selected ? .semibold : .regular))
-                            .foregroundStyle(selected ? .primary : .secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(TypeScale.minimum / TypeScale.headline.size)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 4)
-                            .background(selected ? Theme.card : .clear, in: Capsule())
-                            .contentShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(tab.title) tab")
-                    .accessibilityAddTraits(selected ? .isSelected : [])
+    /// Now, Agents (while shown) and Library.
+    private var nav: some View {
+        let current: PanelDestination = route.normalized(agentsVisible: agentsVisible).destination
+        return HStack(spacing: 2) {
+            ForEach(destinations, id: \.self) { d in
+                let selected: Bool = d == current
+                Button { route = PanelRoute(destination: d) } label: {
+                    Text(verbatim: Self.title(d))
+                        .font(DS.font(TypeScale.headline).weight(selected ? .semibold : .regular))
+                        .foregroundStyle(selected ? .primary : .secondary)
+                        .lineLimit(1)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(selected ? Theme.card : .clear, in: Capsule())
+                        .contentShape(Capsule())
                 }
+                .buttonStyle(.plain)
+                .help("\(Self.title(d)) (\u{2318}\(Self.shortcutDigit(d)))")
+                .accessibilityLabel(Self.title(d))
+                .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
             }
-            .layoutPriority(1)
-            Spacer(minLength: 4)
+        }
+    }
+
+    /// ⌘1 / ⌘2 / ⌘3 (`NotchController.commandDigit`).
+    static func shortcutDigit(_ d: PanelDestination) -> Int {
+        switch d {
+        case .now: 1
+        case .agents: 2
+        case .library: 3
+        }
+    }
+
+    static func title(_ d: PanelDestination) -> String {
+        switch d {
+        case .now: "Now"
+        case .agents: "Agents"
+        case .library: "Library"
+        }
+    }
+
+    /// The connection state, Settings and close: at the trailing edge of the nav or a tool's header.
+    private var controls: some View {
+        HStack(spacing: 2) {
             if store.connection != .connected {
                 let text: String = store.connection == .connecting ? "Connecting…" : "Reconnecting…"
-                // With many tabs only the symbol fits; VoiceOver and the tooltip keep the word.
                 ViewThatFits(in: .horizontal) {
                     Label(text, systemImage: "bolt.horizontal.circle")
                     Image(systemName: "bolt.horizontal.circle")
@@ -227,5 +300,19 @@ struct ApprovalCardFramesKey: PreferenceKey {
     static let defaultValue: [String: CGRect] = [:]
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue()) { $1 }
+    }
+}
+
+/// The saved Library recents, decoded once per saved value (the grid reads them on every draw).
+@MainActor
+enum LibraryRecentsCache {
+    private static var last: (data: Data, recents: LibraryRecents)?
+
+    static func resolve(from defaults: UserDefaults) -> LibraryRecents {
+        guard let data = defaults.data(forKey: LibraryRecents.key) else { return LibraryRecents() }
+        if let last, last.data == data { return last.recents }
+        let recents = LibraryRecents.decode(data)
+        last = (data, recents)
+        return recents
     }
 }

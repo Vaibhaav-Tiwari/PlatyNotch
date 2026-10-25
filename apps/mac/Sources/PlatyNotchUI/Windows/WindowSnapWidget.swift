@@ -192,6 +192,7 @@ final class WindowSnapWidget: NotchWidget {
 struct WindowSnapSettingsView: View {
     let widget: WindowSnapWidget
     @State private var probe = WindowProbe()
+    @Environment(\.inLibraryTool) private var inTool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -211,25 +212,33 @@ struct WindowSnapSettingsView: View {
                     icon: { Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange) }
                 Button("Try Again") { widget.retryShortcuts() }.controlSize(.small)
             }
-            Picker("Gap", selection: Binding(get: { widget.gap }, set: { widget.setGap($0) })) {
-                ForEach(SnapLayout.gapPresets, id: \.self) { p in
-                    Text(verbatim: p == 0 ? "None" : "\(p) pt").tag(p)
+            if inTool {
+                HStack(spacing: Space.s) {
+                    Text("Gap").foregroundStyle(.secondary)
+                    CapsuleSegments(selection: Binding(get: { widget.gap }, set: { widget.setGap($0) }),
+                                    options: SnapLayout.gapPresets.map { ($0, $0 == 0 ? "None" : "\($0) pt") },
+                                    label: "Gap", size: 12)
                 }
-            }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 260)
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 2) {
-                ForEach(SnapTarget.allCases, id: \.self) { t in
-                    GridRow {
-                        Text(verbatim: t.defaultCombo.display).monospaced()
-                        Text(verbatim: t.title)
-                        if let owner = widget.usedBy[t] {
-                            Text(verbatim: "used by \(owner)").foregroundStyle(.orange)
-                        } else if widget.taken.contains(t) {
-                            Text("shortcut taken").foregroundStyle(.orange)
-                        }
+            } else {
+                Picker("Gap", selection: Binding(get: { widget.gap }, set: { widget.setGap($0) })) {
+                    ForEach(SnapLayout.gapPresets, id: \.self) { p in
+                        Text(verbatim: p == 0 ? "None" : "\(p) pt").tag(p)
                     }
                 }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 260)
+            }
+            if inTool {
+                // The Library tool: the shortcuts in two columns, so they fit without scrolling.
+                let all: [SnapTarget] = SnapTarget.allCases
+                let half: Int = (all.count + 1) / 2
+                HStack(alignment: .top, spacing: Space.xl) {
+                    shortcuts(Array(all.prefix(half)))
+                    shortcuts(Array(all.dropFirst(half)))
+                }
+                .padding(.vertical, Space.xs)
+            } else {
+                shortcuts(SnapTarget.allCases)
             }
             Text("""
             Reads the focused window's position and size and sets them; never its content. \
@@ -238,11 +247,27 @@ struct WindowSnapSettingsView: View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }
-        .font(.system(size: 11))
+        .font(.system(size: inTool ? 12 : 11))
         .background(WindowReader(probe: probe))
         .task(id: widget.status) {
             guard widget.status == .needsAccessibility else { return }
             await widget.watchTrustWhileVisible(isOnScreen: { probe.isOnScreen })
+        }
+    }
+
+    private func shortcuts(_ targets: [SnapTarget]) -> some View {
+        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 2) {
+            ForEach(targets, id: \.self) { t in
+                GridRow {
+                    Text(verbatim: t.defaultCombo.display).monospaced()
+                    Text(verbatim: t.title)
+                    if let owner = widget.usedBy[t] {
+                        Text(verbatim: "used by \(owner)").foregroundStyle(.orange)
+                    } else if widget.taken.contains(t) {
+                        Text("shortcut taken").foregroundStyle(.orange)
+                    }
+                }
+            }
         }
     }
 }

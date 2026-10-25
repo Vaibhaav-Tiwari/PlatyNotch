@@ -77,7 +77,7 @@ public final class NotchController {
 
     /// `carryOver` restores the panel state of the controller this one replaces (display change).
     /// Without it, notices already in the store count as shown.
-    /// `extraTabs` follow the built-in tabs (plugin tabs); `onOpenTerminal` focuses a session's terminal.
+    /// `extraTabs` are plugin tabs (Library tools); `onOpenTerminal` focuses a session's terminal.
     /// Pass one `responder`, one `today` and one `widgets` to every display's controller so
     /// answers, the focus session, loop changes and live activities are shared; likewise one `memory`.
     /// `appearance` is `AppearanceStore.load` in the app; tests pass their own.
@@ -189,11 +189,40 @@ public final class NotchController {
     }
 
     /// Opens the panel (menu bar "Open PlatyNotch", `platynotch://open`, a widget), at a
-    /// tab id when given.
+    /// tab id when given: today's ids keep working through `PanelRoute.legacy` (`today` →
+    /// Now, `focus`, `memory`, `games` → that Library tool, a plugin's tab id → its tool).
     public func expand(tab: String? = nil) {
-        if let tab { model.selectedTab = tab }
+        if let tab {
+            model.route = PanelRoute.legacy(tab: tab, tools: LibraryCatalog.ids(widgets: widgets, extraTabs: extraTabs))
+        }
         guard machine.mode != .expanded else { return }
         handle(.click)
+    }
+
+    /// Escape: an open Library tool goes back to the grid first; otherwise the state
+    /// machine's `.escape` (the open panel closes).
+    func escapePressed() {
+        if machine.mode == .expanded, model.route.destination == .library, let tool = model.route.tool {
+            // Back only from a tool that shows: one whose widget was turned off already
+            // shows the grid, so Esc closes (and the route is written back to the grid).
+            model.route = model.route.back()
+            if LibraryCatalog.ids(widgets: widgets, extraTabs: extraTabs).contains(tool) { return }
+        }
+        handle(.escape)
+    }
+
+    /// ⌘1 / ⌘2 / ⌘3 in the open panel: Now, Agents (only while it shows), Library. False
+    /// (not used) elsewhere, so the approval peek and other modes keep their keys.
+    @discardableResult
+    func commandDigit(_ digit: Int) -> Bool {
+        guard machine.mode == .expanded else { return false }
+        let shown: [PanelDestination] = ExpandedPanel.destinations(agentsVisible: today.agentActivity.agentsVisibility.isVisible)
+        let all: [PanelDestination] = [.now, .agents, .library]
+        guard (1...all.count).contains(digit) else { return false }
+        let target: PanelDestination = all[digit - 1]
+        guard shown.contains(target) else { return false }
+        model.route = PanelRoute(destination: target)
+        return true
     }
 
     /// Removes the panel and stops all monitoring.
@@ -225,7 +254,8 @@ public final class NotchController {
         host.registerForDraggedTypes(PanelDrop.types)
         host.dropRouter = self
         p.contentView = host
-        p.onEscape = { [weak self] in self?.handle(.escape) }
+        p.onEscape = { [weak self] in self?.escapePressed() }
+        p.onCommandDigit = { [weak self] in self?.commandDigit($0) ?? false }
         return p
     }
 

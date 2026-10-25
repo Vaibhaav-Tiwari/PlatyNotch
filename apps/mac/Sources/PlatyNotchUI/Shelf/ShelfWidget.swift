@@ -105,6 +105,12 @@ final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost, FileAct
         ShelfWidget(persist: false)
     }
 
+    /// Renders only: sample cards on an inert widget (no store, nothing written or read).
+    func showForRendering(_ sample: [ShelfItem]) {
+        guard !persist else { return }
+        items = sample
+    }
+
     var isRunning: Bool { context != nil }
 
     // MARK: - Lifecycle

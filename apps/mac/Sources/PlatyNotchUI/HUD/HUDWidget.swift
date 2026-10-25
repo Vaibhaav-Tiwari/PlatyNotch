@@ -340,6 +340,9 @@ final class HUDWidget: NotchWidget {
 
     func tileView() -> AnyView { AnyView(HUDTile(widget: self)) }
 
+    /// The Library tool: the HUD's state and what it needs, centred.
+    func toolView() -> AnyView { AnyView(ToolPage { HUDTile(widget: self) }) }
+
     func settingsView() -> AnyView? { AnyView(HUDSettingsView(widget: self)) }
 
     /// Why the system HUD is still showing, for Settings and the tile; nil when ours is on.

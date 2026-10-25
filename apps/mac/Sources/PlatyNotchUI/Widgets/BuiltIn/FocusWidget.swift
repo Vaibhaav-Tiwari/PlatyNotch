@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The focus session: a tile with presets (or the running session), and a countdown in
 /// the pill while focusing. The session itself lives in `FocusModel` (persisted, shared
-/// with the Focus tab). While this widget is off, the Focus tab is hidden. Turning it off
+/// with the Focus tool). While this widget is off, the Focus tool is not in the Library. Turning it off
 /// ends a running session (`disabled()`), so no focus timer runs while focus is off (C5).
 @MainActor
 final class FocusWidget: NotchWidget {
@@ -40,6 +40,9 @@ final class FocusWidget: NotchWidget {
     }
 
     func tileView() -> AnyView { AnyView(FocusTile(focus: focus)) }
+
+    /// The Library tool: presets, or the running session's countdown (today's Focus tab).
+    func toolView() -> AnyView { AnyView(FocusTab(focus: focus)) }
 
     /// The user turned the widget off (not quit: a session survives a relaunch).
     func disabled() { focus.stop() }

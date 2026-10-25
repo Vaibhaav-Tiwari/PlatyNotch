@@ -139,6 +139,10 @@ final class SettingsWindowController {
         show(activate: false)
         window?.alphaValue = 0
         window?.ignoresMouseEvents = true
+        // Off screen as well as invisible: a smoke run never puts a window where the user works.
+        // Autosave off first, so the saved Settings frame is never moved off screen.
+        window?.setFrameAutosaveName("")
+        window?.setFrameOrigin(NSPoint(x: -10_000, y: 10_000))
     }
 
     private func makeWindow() -> NSWindow {

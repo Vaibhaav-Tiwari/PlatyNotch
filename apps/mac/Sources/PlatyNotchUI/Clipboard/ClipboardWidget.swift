@@ -110,6 +110,12 @@ final class ClipboardWidget: NotchWidget, ClipboardMenuControl {
                         makeHotKey: { _, _, _ in nil }, poster: NoPasteEvents(), trust: .never)
     }
 
+    /// Renders only: sample rows on an inert widget (no store, nothing written or read).
+    func showForRendering(_ sample: [ClipItem]) {
+        guard !persist else { return }
+        items = sample
+    }
+
     var isRunning: Bool { context != nil }
     var history: ClipboardHistory { store?.history ?? ClipboardHistory() }
     var maxAge: TimeInterval { TimeInterval(keepDays) * 86400 }
@@ -381,12 +387,21 @@ final class ClipboardWidget: NotchWidget, ClipboardMenuControl {
 /// The Today tile: the latest few items (click copies), pause and the picker.
 struct ClipboardTile: View {
     static let shown = 4
+    /// Rows in the Library tool (it scrolls past what fits).
+    static let toolShown = 30
     let widget: ClipboardWidget
+    @Environment(\.inLibraryTool) private var inTool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: inTool ? Space.s : 6) {
             HStack {
-                Label("Clipboard", systemImage: "doc.on.clipboard").font(.system(size: 12, weight: .semibold))
+                if !inTool {
+                    Label("Clipboard", systemImage: "doc.on.clipboard").font(.system(size: 12, weight: .semibold))
+                } else if !widget.items.isEmpty {
+                    Text("Click an item to copy it")
+                        .font(DS.font(TypeScale.caption))
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 Button(widget.paused ? "Resume" : "Pause") { widget.setPaused(!widget.paused) }
                     .buttonStyle(.borderless)
@@ -401,15 +416,18 @@ struct ClipboardTile: View {
                 Text("Paused: nothing you copy is recorded.")
                     .font(.system(size: 11)).foregroundStyle(Theme.color(.attention))
             }
-            if widget.items.isEmpty {
+            if widget.items.isEmpty, inTool {
+                ToolEmptyState(systemImage: "doc.on.clipboard", title: "Nothing copied yet",
+                               detail: "Things you copy appear here. Press \(widget.hotKeyChoice.display) anywhere to search and paste them.")
+            } else if widget.items.isEmpty {
                 Text("Things you copy appear here. Press \(widget.hotKeyChoice.display) anywhere to search and paste them.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
             } else {
-                ForEach(widget.items.prefix(Self.shown)) { item in
+                ForEach(widget.items.prefix(inTool ? Self.toolShown : Self.shown)) { item in
                     Button { widget.copy(item) } label: {
-                        ClipRow(item: item, imageURL: widget.imageURL(for: item), compact: true)
+                        ClipRow(item: item, imageURL: widget.imageURL(for: item), compact: !inTool)
                     }
                     .buttonStyle(.plain)
                     .help("Copy")
@@ -433,6 +451,18 @@ struct ClipCopiedPeek: View {
 
 /// One history row (tile and picker).
 struct ClipRow: View {
+    /// "Just now", "5 min ago", "2 hr ago", "3 days ago".
+    static func ago(_ date: Date, now: Date) -> String {
+        let seconds: Double = max(0, now.timeIntervalSince(date))
+        let minutes = Int(seconds / 60)
+        if minutes < 1 { return "Just now" }
+        if minutes < 60 { return "\(minutes) min ago" }
+        let hours = minutes / 60
+        if hours < 24 { return "\(hours) hr ago" }
+        let days = hours / 24
+        return days == 1 ? "1 day ago" : "\(days) days ago"
+    }
+
     let item: ClipItem
     let imageURL: URL?
     var compact = false
@@ -446,9 +476,12 @@ struct ClipRow: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                 if !compact {
-                    Text(item.copiedAt, style: .relative)
-                        .font(DS.font(TypeScale.caption))
-                        .foregroundStyle(.secondary)
+                    // "5 min ago", once a minute (never "5 min, 0 secs").
+                    TimelineView(.periodic(from: .now, by: 60)) { ctx in
+                        Text(verbatim: Self.ago(item.copiedAt, now: ctx.date))
+                            .font(DS.font(TypeScale.caption))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             Spacer(minLength: 0)

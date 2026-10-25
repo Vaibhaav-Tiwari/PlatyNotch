@@ -631,6 +631,11 @@ final class SystemWidget: NotchWidget {
 
     func tileView() -> AnyView { AnyView(SystemTile(widget: self)) }
 
+    /// The Library tool: the battery large (a laptop), then keep-awake and the rest, centred.
+    func toolView() -> AnyView {
+        AnyView(ToolPage(value: battery.map { "\($0.percent)%" }, label: battery?.statusText) { SystemTile(widget: self) })
+    }
+
     func settingsView() -> AnyView? { AnyView(SystemSettings(widget: self)) }
 
     func peekView(id: String) -> AnyView? {

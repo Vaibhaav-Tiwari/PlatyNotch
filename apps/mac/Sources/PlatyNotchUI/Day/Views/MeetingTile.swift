@@ -7,8 +7,13 @@ import SwiftUI
 struct MeetingTile: View {
     let widget: MeetingWidget
     static let laterCount = 2
+    @Environment(\.inLibraryTool) private var inTool
 
     var body: some View {
+        if inTool { MeetingTool(widget: widget) } else { tile }
+    }
+
+    @ViewBuilder private var tile: some View {
         let calendar = widget.calendar
         switch calendar.access {
         case .notAsked:
@@ -205,5 +210,90 @@ struct MeetingSettings: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .onAppear { calendar.refreshAccess() }
+    }
+}
+
+/// Meetings full-panel: the next meeting (or the one in progress) large and centred with
+/// its Join button, the rest of the next 12 hours below; otherwise a centred empty state.
+struct MeetingTool: View {
+    let widget: MeetingWidget
+    static let laterCount = 4
+
+    var body: some View {
+        let calendar = widget.calendar
+        switch calendar.access {
+        case .notAsked:
+            ToolEmptyState(systemImage: "calendar", title: "See your next meetings",
+                           detail: "PlatyNotch reads only your calendar's events, on this Mac.",
+                           action: ("Allow Calendar Access", { Task { await calendar.requestAccess(); widget.tick() } }))
+        case .denied:
+            ToolEmptyState(systemImage: "calendar.badge.exclamationmark", title: "Calendar access is off",
+                           detail: "Turn it on in System Settings to see your meetings here.",
+                           action: ("Open Settings", { calendar.openSettings() }))
+        case .unavailable:
+            ToolEmptyState(systemImage: "calendar", title: "Calendar needs the installed app",
+                           detail: "Meetings show when PlatyNotch runs from its app bundle.")
+        case .granted:
+            TimelineView(.periodic(from: .now, by: 30)) { ctx in
+                content(now: ctx.date)
+            }
+        }
+    }
+
+    @ViewBuilder private func content(now: Date) -> some View {
+        let meetings = widget.calendar.meetings
+        let current = MeetingTimeline.current(meetings, now: now)
+        let ahead = MeetingTimeline.upcoming(meetings, now: now).filter { $0.start > now }
+        if let lead = current ?? ahead.first {
+            let later: [CalendarMeeting] = Array(ahead.filter { $0.id != lead.id }.prefix(Self.laterCount))
+            VStack(spacing: Space.l) {
+                VStack(spacing: Space.xs) {
+                    Text(verbatim: current != nil ? "Now" : MeetingWidget.time(lead.start))
+                        .font(DS.font(TypeScale.display))
+                        .monospacedDigit()
+                    Text(verbatim: lead.title)
+                        .font(DS.font(TypeScale.title))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Text(verbatim: when(lead, now: now, inProgress: current != nil))
+                        .font(DS.font(TypeScale.body))
+                        .foregroundStyle(.secondary)
+                }
+                if lead.joinURL != nil {
+                    Button { widget.join(lead) } label: {
+                        Label("Join", systemImage: "video.fill")
+                    }
+                    .buttonStyle(ToolPrimaryButtonStyle())
+                    .accessibilityLabel("Join \(lead.title)")
+                }
+                if !later.isEmpty {
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        ForEach(later) { m in
+                            HStack(spacing: Space.s) {
+                                Text(verbatim: MeetingWidget.time(m.start))
+                                    .font(DS.font(TypeScale.mono))
+                                    .foregroundStyle(.secondary)
+                                Text(verbatim: m.title).font(DS.font(TypeScale.body)).lineLimit(1)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: 360, alignment: .leading)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ToolEmptyState(systemImage: "calendar", title: "No meetings in the next 12 hours",
+                           detail: "Your next meeting shows here, with its Join button.")
+        }
+    }
+
+    private func when(_ m: CalendarMeeting, now: Date, inProgress: Bool) -> String {
+        if inProgress {
+            let left = max(0, Int(m.end.timeIntervalSince(now) / 60))
+            return "Ends in \(left) min"
+        }
+        let minutes = max(0, Int(m.start.timeIntervalSince(now) / 60))
+        if minutes < 60 { return minutes == 0 ? "Starting now" : "In \(minutes) min" }
+        return "In \(minutes / 60) hr \(minutes % 60) min"
     }
 }

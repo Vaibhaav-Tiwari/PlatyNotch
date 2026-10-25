@@ -60,21 +60,25 @@ public struct ApprovalPreview: Equatable, Sendable {
     /// Bash's input keys that say nothing beyond the command itself.
     public static let plainBashKeys: Set<String> = ["command", "description", "timeout", "run_in_background"]
 
+    /// The core's summary length before it adds "…" (`summaryMax` in core/agents/summarize.go,
+    /// counted in runes, which are Unicode scalars).
+    public static let coreSummaryMax = 500
+
     /// The raw command to show in place of the core's summary, only when that hides
     /// nothing (fix round 1, C1): the tool is Bash, the input has no key beyond
     /// `plainBashKeys` (so `dangerouslyDisableSandbox` and the like keep the summary), and
-    /// the summary is the command or a "…"-truncated prefix of it. Otherwise nil: the card
-    /// keeps the core's summary.
+    /// the summary is the command or the core's `truncate` of it: exactly `coreSummaryMax`
+    /// scalars of the command followed by "…". Otherwise nil: the card keeps the summary.
     public static func fullCommand(for approval: Approval) -> String? {
         guard approval.tool == "Bash", case .object(let input)? = approval.input?.value,
               case .string(let command)? = input["command"],
               Set(input.keys).isSubset(of: plainBashKeys) else { return nil }
         let summary = approval.summary
         if summary == command { return command }
-        guard summary.hasSuffix("…") else { return nil }
-        var head = String(summary.dropLast())
-        while let last = head.last, last == " " || last == "\t" { head.removeLast() }
-        guard !head.isEmpty, command.hasPrefix(head) else { return nil }
+        let scalars = Array(summary.unicodeScalars)
+        guard scalars.count == coreSummaryMax + 1, scalars.last == "\u{2026}" else { return nil }
+        let full = Array(command.unicodeScalars)
+        guard full.count > coreSummaryMax, Array(full.prefix(coreSummaryMax)) == Array(scalars.prefix(coreSummaryMax)) else { return nil }
         return command
     }
 
@@ -108,22 +112,24 @@ public struct ApprovalPreview: Equatable, Sendable {
 
     /// Whether the payload carries something the diff would show, without building it (the
     /// peek's "Show changes"): Edit's two strings differing, a MultiEdit edit doing so, or
-    /// non-empty Write `content` / NotebookEdit `new_source`. Same answer as
-    /// `!ApprovalPreview(approval:).diff.isEmpty`.
+    /// non-empty Write `content` / NotebookEdit `new_source`. Strings are compared as
+    /// `LineDiff.lines`, the way the diff sees them, so a change in a trailing newline alone
+    /// offers nothing. Same answer as `!ApprovalPreview(approval:).diff.isEmpty`.
     public static func hasDiff(_ approval: Approval) -> Bool {
         guard case .object(let input)? = approval.input?.value else { return false }
         func string(_ key: String, _ o: [String: JSONValue]) -> String? {
             if case .string(let s)? = o[key] { return s }
             return nil
         }
-        if let old = string("old_string", input), let new = string("new_string", input) { return old != new }
+        func differs(_ old: String, _ new: String) -> Bool { LineDiff.lines(old) != LineDiff.lines(new) }
+        if let old = string("old_string", input), let new = string("new_string", input) { return differs(old, new) }
         if case .array(let edits)? = input["edits"] {
             for case .object(let e) in edits {
-                if let old = string("old_string", e), let new = string("new_string", e), old != new { return true }
+                if let old = string("old_string", e), let new = string("new_string", e), differs(old, new) { return true }
             }
             return false
         }
-        if let added = string("content", input) ?? string("new_source", input) { return !added.isEmpty }
+        if let added = string("content", input) ?? string("new_source", input) { return !LineDiff.lines(added).isEmpty }
         return false
     }
 }

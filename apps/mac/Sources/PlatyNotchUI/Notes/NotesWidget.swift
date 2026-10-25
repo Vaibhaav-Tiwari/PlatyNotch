@@ -555,6 +555,10 @@ struct NotesTile: View {
     @Bindable var widget: NotesWidget
     @State private var token = NotesTileToken()
     @Environment(\.panelTicking) private var shown
+    @Environment(\.inLibraryTool) private var inTool
+
+    /// Open tasks the tile lists; the Library tool lists more (it scrolls).
+    private var limit: Int { inTool ? 40 : NotesWidget.shownLimit }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -595,7 +599,12 @@ struct NotesTile: View {
     }
 
     @ViewBuilder private var tasks: some View {
-        if widget.vault == nil {
+        if widget.vault == nil, inTool {
+            ToolEmptyState(systemImage: "checklist", title: "No vault yet",
+                           detail: widget.options.vaultNeedReenable
+                               ? "Turn the vault on again in Settings › Widgets › Notes & Tasks to see its tasks."
+                               : "Choose an Obsidian vault in Settings › Widgets › Notes & Tasks to see its open tasks here.")
+        } else if widget.vault == nil {
             Text(widget.options.vaultNeedReenable
                  ? "Turn the vault on again in Settings › Widgets › Notes & Tasks to see its tasks."
                  : "Choose a vault in Settings › Widgets › Notes & Tasks to see its open tasks.")
@@ -606,11 +615,11 @@ struct NotesTile: View {
             Text("No open tasks in notes edited in the last 30 days")
                 .font(.system(size: 11)).foregroundStyle(.secondary).padding(.leading, 6)
         } else {
-            ForEach(widget.tasks.prefix(NotesWidget.shownLimit)) { task in
+            ForEach(widget.tasks.prefix(limit)) { task in
                 row(task)
             }
-            if widget.tasks.count > NotesWidget.shownLimit {
-                Text("+\(widget.tasks.count - NotesWidget.shownLimit) more")
+            if widget.tasks.count > limit {
+                Text("+\(widget.tasks.count - limit) more")
                     .font(DS.font(TypeScale.caption)).foregroundStyle(.tertiary).padding(.leading, 6)
             }
         }

@@ -8,6 +8,7 @@ import SwiftUI
 /// file shows a badge with Locate… and Remove. Works on any `ItemListHost` (the shelf).
 struct ShelfTile: View {
     let host: any ItemListHost
+    @Environment(\.inLibraryTool) private var inTool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -36,7 +37,13 @@ struct ShelfTile: View {
     // Split out of `body`: one expression was slow for the type checker (25 ms probe).
     private var header: some View {
         HStack {
-            Label("Shelf", systemImage: "tray.full").font(.system(size: 12, weight: .semibold))
+            if inTool {
+                Text(host.items.isEmpty ? "" : "Double-click to open · drag out to use")
+                    .font(DS.font(TypeScale.caption))
+                    .foregroundStyle(.secondary)
+            } else {
+                Label("Shelf", systemImage: "tray.full").font(.system(size: 12, weight: .semibold))
+            }
             Spacer()
             if host.items.contains(where: { !$0.pinned }) {
                 Button("Clear") { host.clearUnpinned() }
@@ -48,7 +55,21 @@ struct ShelfTile: View {
     }
 
     @ViewBuilder private var items: some View {
-        if host.items.isEmpty {
+        if host.items.isEmpty, inTool {
+            ToolEmptyState(systemImage: "tray", title: "The shelf is empty",
+                           detail: "Drag files, images, links or text to the notch to keep them here.")
+        } else if inTool {
+            // The tool has the room for every card: rows that wrap, not one row that scrolls.
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(ShelfCard.toolSize.width), spacing: ShelfCard.toolSpacing),
+                                     count: 5),
+                      alignment: .leading, spacing: ShelfCard.toolSpacing) {
+                ForEach(host.items) { item in
+                    ShelfCard(host: host, item: item, missing: host.missing.contains(item.id),
+                              selected: host.selection.contains(item.id),
+                              run: host.fileActions?.running[item.id])
+                }
+            }
+        } else if host.items.isEmpty {
             Text("Drag files, images, links or text to the notch to keep them here.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
@@ -70,12 +91,19 @@ struct ShelfTile: View {
 /// One item: thumbnail, name, pin and missing badges.
 struct ShelfCard: View {
     static let size = CGSize(width: 72, height: 78)
+    /// The Library tool's cards: five to a row of the panel's width.
+    static let toolSize = CGSize(width: 96, height: 100)
+    static let toolSpacing: CGFloat = (PanelLayout.expandedSize.width - 2 * Space.panelMargin - 5 * 96) / 4
     let host: any ItemListHost
     let item: ShelfItem
     let missing: Bool
     let selected: Bool
     /// A file action working on this item (progress and Cancel on the card).
     var run: FileActionCenter.Run?
+    @Environment(\.inLibraryTool) private var inTool
+
+    private var cardSize: CGSize { inTool ? Self.toolSize : Self.size }
+    private var thumbnail: CGFloat { inTool ? 56 : 40 }
 
     var body: some View {
         content
@@ -92,7 +120,7 @@ struct ShelfCard: View {
                 .buttonStyle(.borderless)
                 .font(DS.font(TypeScale.caption))
         }
-        .frame(width: Self.size.width, height: Self.size.height)
+        .frame(width: cardSize.width, height: cardSize.height)
         .background(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).fill(.background.opacity(0.85)))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(run.title) \(item.title)")
@@ -102,7 +130,7 @@ struct ShelfCard: View {
         // Spacing 1: two 11 pt title lines fit under the thumbnail in the fixed card.
         VStack(spacing: 1) {
             ZStack(alignment: .topTrailing) {
-                ShelfThumbnail(item: item, missing: missing).frame(width: 40, height: 40)
+                ShelfThumbnail(item: item, missing: missing).frame(width: thumbnail, height: thumbnail)
                 if missing {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 11))
@@ -145,7 +173,7 @@ struct ShelfCard: View {
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 2)
-        .frame(width: Self.size.width, height: Self.size.height)
+        .frame(width: cardSize.width, height: cardSize.height)
         .background(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).fill(.primary.opacity(selected ? 0.18 : 0.06)))
         .overlay {
             if !missing {
@@ -420,8 +448,8 @@ struct ShelfDropZone: View {
         let on = shelf.dropTargeted
         RoundedRectangle(cornerRadius: 12)
             .strokeBorder(style: StrokeStyle(lineWidth: on ? 2 : 1.5, dash: on ? [] : [6, 4]))
-            .foregroundStyle(on ? Color.accentColor : Color.secondary)
-            .background(RoundedRectangle(cornerRadius: 12).fill(Color.accentColor.opacity(on ? 0.15 : 0)))
+            .foregroundStyle(on ? DS.dynamicColor(.working) : Color.secondary)
+            .background(RoundedRectangle(cornerRadius: 12).fill(DS.dynamicColor(.working).opacity(on ? 0.15 : 0)))
             .overlay {
                 VStack(spacing: 6) {
                     Image(systemName: on ? "tray.and.arrow.down.fill" : "tray.and.arrow.down")

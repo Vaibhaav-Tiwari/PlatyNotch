@@ -105,16 +105,18 @@ final class ApprovalPreviewCardTests: DefaultsTestCase {
     /// but only when the command hides nothing (fix round 1, C1).
     func testCardShowsCommandAndPath() {
         let command = "git status &&\nmake test\u{200B}"
-        let bash = approval("Bash", ["command": .string(command)], summary: "git status &&…")
+        let bash = approval("Bash", ["command": .string(command)], summary: command)
         let c = card(bash)
         XCTAssertEqual(c.summaryText, "git status &&\nmake test⟨U+200B⟩")
         XCTAssertTrue(c.hasHidden, "hidden characters still marked")
-        let plain = ApprovalCard(approval: bash, session: nil, canAnswer: true, phase: nil, arming: ApprovalArming(),
+        let truncatedByHand = approval("Bash", ["command": .string(command)], summary: "git status &&…")
+        XCTAssertEqual(card(truncatedByHand).summaryText, "git status &&…", "only the core's 500-scalar truncation counts")
+        let plain = ApprovalCard(approval: truncatedByHand, session: nil, canAnswer: true, phase: nil, arming: ApprovalArming(),
                                  onDecide: { _ in }, onOpenTerminal: { _ in })
         XCTAssertEqual(plain.summaryText, "git status &&…", "no preview: today's summary")
         XCTAssertEqual(card(write(lines: 2)).preview?.path, "/r/notes.txt")
         let long = String(repeating: "x", count: 600)
-        XCTAssertEqual(card(approval("Bash", ["command": .string(long)], summary: String(long.prefix(80)) + "…")).summaryText,
+        XCTAssertEqual(card(approval("Bash", ["command": .string(long)], summary: String(long.prefix(500)) + "…")).summaryText,
                        long, "a 600-character command in full")
     }
 

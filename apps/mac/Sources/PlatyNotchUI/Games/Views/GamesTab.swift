@@ -2,7 +2,8 @@ import Foundation
 import PlatyNotchKit
 import SwiftUI
 
-/// The expanded panel's Games tab: game picker, score and the board.
+/// The Games tool (full-panel in the Library): game picker, score and the board. `pick`
+/// opens it on one game (Platy Chase's own Library entry).
 ///
 /// Frames come from a `TimelineView(.animation)` capped at 60 fps and paused whenever
 /// `GameHost.isRunning` is false (not playing, paused, blocked, or 2048): a paused game
@@ -12,6 +13,7 @@ import SwiftUI
 /// Every size is explicit (`GameLayout`): no ideal size ever reaches the window.
 struct GamesTab: View {
     let host: GameHost
+    var pick: GameKind?
     @Environment(\.gamePanel) private var panel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var surfaceID = UUID()
@@ -25,7 +27,10 @@ struct GamesTab: View {
                 game
             }
         }
-        .onAppear { report() }
+        .onAppear {
+            if let pick, host.session.kind != pick { host.select(pick) }
+            report()
+        }
         .onChange(of: panel) { report() }
         .onDisappear { host.surfaceGone(surfaceID) }
     }
@@ -58,8 +63,10 @@ struct GamesTab: View {
 
     private var header: some View {
         let session = host.session
+        // With `pick` (Platy Chase's own entry) the picker is hidden: that tool is one game.
+        let kinds: [GameKind] = pick == nil ? GameKind.allCases : []
         return HStack(spacing: 4) {
-            ForEach(GameKind.allCases) { kind in
+            ForEach(kinds) { kind in
                 let selected = kind == session.kind
                 Button { host.select(kind) } label: {
                     Text(verbatim: kind.title)

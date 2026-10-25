@@ -52,24 +52,27 @@ final class AgentsViewTests: DefaultsTestCase {
     }
 
     func testAgentsTabHiddenUntilConnected() {
-        func tabs(_ v: AgentsVisibility) -> [String] {
+        func destinations(_ v: AgentsVisibility) -> [PanelDestination] {
             let client = CoreClient(socketPath: "/nonexistent")
             let today = TodayServices(client: client, calendar: CalendarService(eventKit: false),
                                       reminders: RemindersService(eventKit: false, defaults: defaults()),
                                       focus: FocusModel(defaults: defaults()))
-            var selected = BuiltinTab.now
+            var route = PanelRoute(destination: .agents)
             let panel = ExpandedPanel(store: AppStore(), responder: ApprovalResponder(client: client),
                                       arming: ApprovalArming(), today: today,
                                       widgets: WidgetRegistry(defaults: defaults(), persist: false),
                                       memory: MemoryServices(client: client), extraTabs: [],
-                                      selectedTab: Binding(get: { selected }, set: { selected = $0 }),
+                                      route: Binding(get: { route }, set: { route = $0 }),
                                       onCollapse: {}, agentsVisible: v.isVisible, onDecide: { _, _ in },
                                       onOpenTerminal: { _ in })
-            return panel.allTabs.map(\.id)
+            return panel.destinations
         }
-        XCTAssertFalse(tabs(AgentsVisibility()).contains(BuiltinTab.agents))
-        XCTAssertEqual(tabs(AgentsVisibility(everConnected: true)).prefix(2), [BuiltinTab.now, BuiltinTab.agents])
-        XCTAssertTrue(tabs(AgentsVisibility(forcedOn: true)).contains(BuiltinTab.agents))
+        XCTAssertEqual(destinations(AgentsVisibility()), [.now, .library])
+        XCTAssertEqual(destinations(AgentsVisibility(everConnected: true)), [.now, .agents, .library])
+        XCTAssertEqual(destinations(AgentsVisibility(forcedOn: true)), [.now, .agents, .library])
+        // A route to Agents while it is hidden shows Now.
+        XCTAssertEqual(PanelRoute(destination: .agents).normalized(agentsVisible: AgentsVisibility().isVisible),
+                       PanelRoute(destination: .now))
     }
 
     /// The app's one model notes sessions: the first connect shows Agents and tells once.

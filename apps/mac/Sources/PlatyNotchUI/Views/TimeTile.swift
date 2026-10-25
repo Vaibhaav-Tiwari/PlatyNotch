@@ -5,15 +5,13 @@ import SwiftUI
 /// while the tile is on screen (the expanded panel).
 struct TimeTile: View {
     @Bindable var widget: TimeWidget
+    @Environment(\.inLibraryTool) private var inTool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Picker("Time", selection: $widget.section) {
-                ForEach(TimeWidget.Section.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .controlSize(.small)
+        let content = VStack(alignment: .leading, spacing: inTool ? Space.m : 6) {
+            CapsuleSegments(selection: $widget.section,
+                            options: TimeWidget.Section.allCases.map { ($0, $0.rawValue) },
+                            label: "Time", size: inTool ? TypeScale.body.size : TypeScale.caption.size)
             switch widget.section {
             case .timers: TimersSection(widget: widget)
             case .stopwatch: StopwatchSection(widget: widget)
@@ -21,9 +19,15 @@ struct TimeTile: View {
             case .clocks: ClocksSection(widget: widget)
             }
         }
-        .font(.system(size: 11))
-        .padding(6)
-        .dsCard()
+        if inTool {
+            // Full-panel: no card, body-size text.
+            content.font(DS.font(TypeScale.body))
+        } else {
+            content
+                .font(.system(size: 11))
+                .padding(6)
+                .dsCard()
+        }
     }
 }
 

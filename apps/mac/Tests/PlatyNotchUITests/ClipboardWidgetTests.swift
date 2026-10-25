@@ -622,7 +622,7 @@ final class ClipboardWidgetTests: DefaultsTestCase {
 
     func testPickerWindowSitsBelowTheNotchPanelAndDoesNotActivate() {
         let picker = ClipPickerWindow()
-        let notch = NotchPanel(frame: CGRect(x: 0, y: 0, width: 10, height: 10))
+        let notch = NotchPanel(frame: CGRect(x: -10_000, y: 10_000, width: 10, height: 10))
         XCTAssertLessThan(picker.level.rawValue, notch.level.rawValue, "can never cover an approval card")
         XCTAssertTrue(picker.styleMask.contains(.nonactivatingPanel), "the previous app stays active")
         XCTAssertTrue(picker.canBecomeKey)

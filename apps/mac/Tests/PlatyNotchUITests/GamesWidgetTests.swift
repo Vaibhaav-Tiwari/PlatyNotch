@@ -279,7 +279,7 @@ final class GamesWidgetTests: DefaultsTestCase {
     /// Key loss disarms the board: the panel becoming key again (hover, a click elsewhere
     /// on it) does not give the board keys until it is clicked itself.
     func testKeyLossDisarmsTheBoard() {
-        let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 100, height: 100), styleMask: [.borderless],
+        let window = NSWindow(contentRect: CGRect(x: -10_000, y: 10_000, width: 100, height: 100), styleMask: [.borderless],
                               backing: .buffered, defer: true)
         window.isReleasedWhenClosed = false
         defer { window.close() }

@@ -56,7 +56,7 @@ enum ThemeRenders {
     /// draws as a placeholder: an off-screen hosting view's own drawing instead.
     /// `settle`: seconds the run loop turns before the capture, so a symbol or text that
     /// fades in on first appearance is drawn settled (the pill gallery).
-    static func renderHosted(_ view: AnyView, scheme: ColorScheme, settle: TimeInterval = 0) -> Data? {
+    static func renderHosted(_ view: AnyView, scheme: ColorScheme, settle: TimeInterval = 0.02) -> Data? {
         let host = NSHostingView(rootView: framed(view, scheme: scheme))
         host.appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
         host.frame = CGRect(origin: .zero, size: host.fittingSize)
@@ -199,6 +199,7 @@ enum NowRenders {
         out.append(("hero-agents", panel(agentsHero()), true))
         out.append(("peek-hover", hoverPeek(agentsHero()), true))
         out += AgentsRenders.views()
+        out += LibraryRenders.views()
         return out
     }
 
@@ -278,6 +279,15 @@ enum NowRenders {
                                   focus: FocusModel(defaults: glances))
         }
 
+        /// Starts the registry (inert context) with each widget's default on/off.
+        func startDefaults() {
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pn-render-now")
+            registry.start(context: WidgetContext(store: store, client: client,
+                                                  config: ConfigFileStore(url: dir.appendingPathComponent("config.json")),
+                                                  events: CoreEventHub(), defaults: glances, notify: NoopNotifier(),
+                                                  surfaces: PanelSurfaces(registry: registry), openPanel: { _ in }))
+        }
+
         /// Starts the registry (inert context) and turns every widget on.
         func startAll() {
             let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pn-render-now")
@@ -291,14 +301,16 @@ enum NowRenders {
 
     /// The open panel as `PanelRootView` lays it out: 16 pt margins, content below the
     /// camera housing, 10 pt at the bottom; clipped, so anything too tall shows.
-    static func panel(_ rig: Rig, tab: String = BuiltinTab.now) -> AnyView {
+    static func panel(_ rig: Rig, route: PanelRoute = PanelRoute(destination: .now), extraTabs: [PanelTab] = [],
+                      memory: MemoryServices? = nil, memoryMode: MemoryTab.Mode = .search) -> AnyView {
         let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelMargin
         let height: CGFloat = NowMetrics.available(in: layout)
-        var selected = tab
+        var current = route
         let view = ExpandedPanel(store: rig.store, responder: ApprovalResponder(client: rig.client), arming: ApprovalArming(),
-                                 today: rig.today, widgets: rig.registry, memory: MemoryServices(client: rig.client),
-                                 extraTabs: [], selectedTab: Binding(get: { selected }, set: { selected = $0 }),
-                                 onCollapse: {}, fixedNow: fixedNow, glanceDefaults: rig.glances, onDecide: { _, _ in }, onOpenTerminal: { _ in })
+                                 today: rig.today, widgets: rig.registry, memory: memory ?? MemoryServices(client: rig.client),
+                                 extraTabs: extraTabs, route: Binding(get: { current }, set: { current = $0 }),
+                                 onCollapse: {}, fixedNow: fixedNow, glanceDefaults: rig.glances, memoryMode: memoryMode,
+                                 onDecide: { _, _ in }, onOpenTerminal: { _ in })
             .frame(width: width, height: height, alignment: .top)
             .clipped()
             .environment(\.platyMood, rig.mood)
@@ -406,15 +418,15 @@ private final class RenderLiveWidget: NotchWidget {
 enum AgentsRenders {
     static func views() -> [(String, AnyView, Bool)] {
         [
-            ("agents-one", NowRenders.panel(rig(one()), tab: BuiltinTab.agents), true),
-            ("agents-mixed", NowRenders.panel(mixed(), tab: BuiltinTab.agents), true),
-            ("agents-twelve", NowRenders.panel(rig(twelve()), tab: BuiltinTab.agents), true),
-            ("agents-empty", NowRenders.panel(rig([]), tab: BuiltinTab.agents), true),
+            ("agents-one", NowRenders.panel(rig(one()), route: PanelRoute(destination: .agents)), true),
+            ("agents-mixed", NowRenders.panel(mixed(), route: PanelRoute(destination: .agents)), true),
+            ("agents-twelve", NowRenders.panel(rig(twelve()), route: PanelRoute(destination: .agents)), true),
+            ("agents-empty", NowRenders.panel(rig([]), route: PanelRoute(destination: .agents)), true),
             ("agents-app-icon", appIcon(), true),
-            ("approval-card-command", NowRenders.panel(approvals([bashApproval()]), tab: BuiltinTab.agents), true),
-            ("approval-card-diff", NowRenders.panel(approvals([editApproval("e1")]), tab: BuiltinTab.agents), true),
+            ("approval-card-command", NowRenders.panel(approvals([bashApproval()]), route: PanelRoute(destination: .agents)), true),
+            ("approval-card-diff", NowRenders.panel(approvals([editApproval("e1")]), route: PanelRoute(destination: .agents)), true),
             ("approval-cards-diff-3", NowRenders.panel(approvals([editApproval("e1"), writeApproval(),
-                                                                  editApproval("e3")]), tab: BuiltinTab.agents), true),
+                                                                  editApproval("e3")]), route: PanelRoute(destination: .agents)), true),
             ("peek-show-changes", approvalPeek(approvals([editApproval("e1"), bashApproval()])), true),
         ]
     }
@@ -439,7 +451,7 @@ enum AgentsRenders {
     /// A long command with a zero-width space (the card says "Contains hidden characters").
     static func bashApproval() -> Approval {
         let command = "rm -rf ./build\u{200B} && swift build -c release \\\n  && swift test --filter ApprovalPreviewCardTests --parallel"
-        return make("bash", tool: "Bash", summary: String(command.prefix(40)) + "…",
+        return make("bash", tool: "Bash", summary: command,
                     input: ["command": .string(command), "description": .string("Clean build and test")], age: 30)
     }
 
@@ -561,5 +573,130 @@ enum AgentsRenders {
             .environment(\.agentIcons, source)
             .environment(\.panelTicking, false)
         return AnyView(view)
+    }
+}
+
+/// The Library (Task 21): the grid with the default widgets and with everything on, the
+/// dimmed "Set up" tiles, every built-in tool opened full-panel and a plugin tab as a tool.
+@MainActor
+enum LibraryRenders {
+    static func views() -> [(String, AnyView, Bool)] {
+        var out: [(String, AnyView, Bool)] = []
+        out.append(("library-grid", NowRenders.panel(NowRenders.everythingOn(), route: grid, extraTabs: [pluginTab]), true))
+        out.append(("library-grid-default", NowRenders.panel(defaults(), route: grid), true))
+        out.append(("library-setup", NowRenders.panel(setUp(), route: grid), true))
+        out.append(("library-tool-focus", tool(FocusWidget.widgetID), true))
+        out.append(("library-tool-time", tool(TimeWidget.widgetID, rig: NowRenders.timerHero()), true))
+        out.append(("library-tool-music", tool(MusicWidget.widgetID, rig: NowRenders.musicHero()), true))
+        out.append(("library-tool-clipboard", tool(ClipboardWidget.widgetID, rig: samples()), true))
+        out.append(("library-tool-shelf", tool(ShelfWidget.widgetID, rig: samples()), true))
+        out.append(("library-tool-memory-search", memory(.search), true))
+        out.append(("library-tool-memory-graph", memory(.graph), true))
+        out.append(("library-tool-games", tool(GamesWidget.widgetID), true))
+        out.append(("library-tool-chase", tool(LibraryTools.chase), true))
+        out.append(("library-tool-launch", tool(LaunchWidget.widgetID), true))
+        out.append(("library-tool-notes", tool(NotesWidget.widgetID), true))
+        out.append(("library-tool-mirror", tool(MirrorWidget.widgetID), true))
+        out.append(("library-tool-mail", tool(MailWidget.widgetID), true))
+        out.append(("library-tool-file-actions", tool(FileActionsWidget.widgetID), true))
+        out.append(("library-tool-snap", tool(WindowSnapWidget.widgetID), true))
+        // The other built-in tools, so every one is checked full-panel.
+        for id in [MeetingWidget.widgetID, RemindersWidget.widgetID, LoopsWidget.widgetID, WeatherWidget.widgetID,
+                   WellbeingWidget.widgetID, SystemWidget.widgetID, HUDWidget.widgetID, BasketsWidget.widgetID] {
+            out.append(("library-tool-\(id.lowercased())", tool(id, rig: NowRenders.meetingHero()), true))
+        }
+        out.append(("library-tool-plugin", NowRenders.panel(NowRenders.everythingOn(),
+                                                            route: route(LibraryTools.plugin(pluginTab.id)),
+                                                            extraTabs: [pluginTab]), true))
+        return out
+    }
+
+    private static let grid = PanelRoute(destination: .library)
+
+    private static func route(_ id: String) -> PanelRoute { PanelRoute(destination: .library, tool: id) }
+
+    private static func tool(_ id: String, rig: NowRenders.Rig? = nil) -> AnyView {
+        NowRenders.panel(rig ?? NowRenders.builtIns(meeting: false), route: route(id))
+    }
+
+    /// Every built-in on, with sample clipboard rows and shelf cards (inert: nothing written).
+    private static func samples() -> NowRenders.Rig {
+        let rig = NowRenders.builtIns(meeting: false)
+        let now = Date()
+        let clips: [ClipItem] = [
+            ClipItem(kind: .text("Ship the Library grid today, then the settings pages."), copiedAt: now.addingTimeInterval(-40)),
+            ClipItem(kind: .url(URL(string: "https://example.com/design/library")!), copiedAt: now.addingTimeInterval(-300),
+                     pinned: true),
+            ClipItem(kind: .text("swift test --filter LibraryViewTests"), copiedAt: now.addingTimeInterval(-900)),
+            ClipItem(kind: .text("Priya's deck: slides 4 to 9 need the new colours"), copiedAt: now.addingTimeInterval(-3_600)),
+            ClipItem(kind: .files([URL(fileURLWithPath: "/Users/sample/Documents/Quarterly report.pdf")]),
+                     copiedAt: now.addingTimeInterval(-7_200)),
+        ]
+        (rig.registry.widget(ClipboardWidget.widgetID) as? ClipboardWidget)?.showForRendering(clips)
+        let cards: [ShelfItem] = [
+            ShelfItem(kind: .text("Meeting notes for Thursday"), addedAt: now),
+            ShelfItem(kind: .url(URL(string: "https://example.com/report")!), addedAt: now, pinned: true),
+            ShelfItem(kind: .text("Release checklist: notarise, tag, appcast"), addedAt: now),
+            ShelfItem(kind: .url(URL(string: "https://example.com/specs/library")!), addedAt: now),
+            ShelfItem(kind: .text("Colours: teal 2FB8A6, cream F2E6C9"), addedAt: now),
+        ]
+        (rig.registry.widget(ShelfWidget.widgetID) as? ShelfWidget)?.showForRendering(cards)
+        return rig
+    }
+
+    /// The built-ins with each one's default on/off, and nothing seeded.
+    private static func defaults() -> NowRenders.Rig {
+        let rig = NowRenders.Rig()
+        BuiltInWidgets.register(in: rig.registry, store: rig.store, today: rig.today, persist: false)
+        rig.startDefaults()
+        NowRenders.seed(rig, meeting: false)
+        return rig
+    }
+
+    /// Every built-in on and nothing seeded, with calendar and Reminders access never asked:
+    /// the widgets that need setup (meetings, reminders, weather, the HUD, snapping) are
+    /// dimmed with "Set up"; the rest show their calm lines.
+    private static func setUp() -> NowRenders.Rig {
+        let rig = NowRenders.Rig()
+        BuiltInWidgets.register(in: rig.registry, store: rig.store, today: rig.today, persist: false)
+        rig.startAll()
+        rig.today.calendar.setForTesting(access: .notAsked, meetings: [])
+        (rig.registry.widget(RemindersWidget.widgetID) as? RemindersWidget)?.reminders
+            .setForTesting(access: .notAsked, items: [])
+        return rig
+    }
+
+    private static func memory(_ mode: MemoryTab.Mode) -> AnyView {
+        let now = Date()
+        let hits: [MemoryHit] = [
+            MemoryHit(threadID: "t1", title: "Panel layout notes", sourceApp: "Notes",
+                      snippet: "The Library is a four-column grid; tools open full-panel with a back chevron.",
+                      score: 0.92, at: now.addingTimeInterval(-600)),
+            MemoryHit(threadID: "t2", title: "Pull request: Library routes", sourceApp: "Safari",
+                      snippet: "Legacy tab ids map through PanelRoute.legacy so old links keep working.",
+                      score: 0.81, at: now.addingTimeInterval(-3_600)),
+            MemoryHit(threadID: "t3", title: "Standup", sourceApp: "Slack",
+                      snippet: "Ship the Library grid today, then the settings pages.",
+                      score: 0.66, at: now.addingTimeInterval(-7_200)),
+        ]
+        let services = MemoryServices(search: MemorySearchModel(preset: hits),
+                                      graph: MemoryGraphModel(preset: MemoryGraphSample.week))
+        return NowRenders.panel(NowRenders.builtIns(meeting: false), route: route(LibraryTools.memory), memory: services,
+                                memoryMode: mode)
+    }
+
+    /// A plugin's panel tab: a tool tile of its own and its view full-panel.
+    static let pluginTab = PanelTab(id: "sample.standup", title: "Standup", systemImage: "list.bullet.rectangle") {
+        VStack(alignment: .leading, spacing: Space.s) {
+            ForEach(["Ship the Library grid", "Review the settings plan", "Pair on the pond scene"], id: \.self) { line in
+                HStack(spacing: Space.s) {
+                    Image(systemName: "circle").foregroundStyle(.secondary)
+                    Text(verbatim: line).font(DS.font(TypeScale.body))
+                }
+            }
+        }
+        .padding(Space.m)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dsCard()
     }
 }

@@ -266,22 +266,22 @@ final class NowViewTests: DefaultsTestCase {
         XCTAssertLessThanOrEqual(controls.fittingSize.width, HeroFrame<EmptyView>.controlsWidth)
     }
 
-    func testDefaultTabIsNow() {
-        XCTAssertEqual(PanelViewModel().selectedTab, BuiltinTab.now)
-        XCTAssertEqual(BuiltinTab.now, "now")
+    func testDefaultRouteIsNow() {
+        XCTAssertEqual(PanelViewModel().route, PanelRoute(destination: .now))
+        XCTAssertEqual(PanelRoute.legacy(tab: BuiltinTab.now, tools: []), PanelRoute(destination: .now))
         let store = AppStore()
         let client = CoreClient(socketPath: "/nonexistent")
         let today = TodayServices(client: client, calendar: CalendarService(eventKit: false),
                                   reminders: RemindersService(eventKit: false, defaults: defaults()),
                                   focus: FocusModel(defaults: defaults()))
-        var selected = BuiltinTab.now
+        var route = PanelViewModel().route
         let panel = ExpandedPanel(store: store, responder: ApprovalResponder(client: client), arming: ApprovalArming(),
                                   today: today, widgets: WidgetRegistry(defaults: defaults(), persist: false),
                                   memory: MemoryServices(client: client), extraTabs: [],
-                                  selectedTab: Binding(get: { selected }, set: { selected = $0 }),
+                                  route: Binding(get: { route }, set: { route = $0 }),
                                   onCollapse: {}, onDecide: { _, _ in }, onOpenTerminal: { _ in })
-        XCTAssertEqual(panel.allTabs.first?.id, BuiltinTab.now)
-        XCTAssertEqual(panel.allTabs.map(\.id).prefix(2), [BuiltinTab.now, BuiltinTab.agents])
+        XCTAssertEqual(panel.destinations.first, .now)
+        XCTAssertEqual(panel.destinations, [.now, .agents, .library])
     }
 
     func testAgentActivityRecordsFinishAndFailure() {

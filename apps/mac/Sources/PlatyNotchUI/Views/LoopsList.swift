@@ -69,14 +69,18 @@ struct LoopsList: View {
     let loops: [Loop]
     let memoryEnabled: Bool
     let actions: LoopActions
+    /// The Library tool shows the count large above the list.
+    @Environment(\.inLibraryTool) private var inTool
 
     var body: some View {
         let open = LoopsFormat.open(loops)
         let shown = open.filter { !actions.hidden.contains($0.id) }
         VStack(alignment: .leading, spacing: 4) {
-            Text(shown.isEmpty ? "Open loops" : "Open loops · \(shown.count)")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
+            if !inTool {
+                Text(shown.isEmpty ? "Open loops" : "Open loops · \(shown.count)")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
             if shown.isEmpty {
                 Text(memoryEnabled ? "Nothing open. Promises and follow-ups you make show up here."
                                    : "Turn on memory to track promises and follow-ups.")

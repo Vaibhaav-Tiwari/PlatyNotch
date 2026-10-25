@@ -216,16 +216,75 @@ final class MailWidget: NotchWidget {
 /// The Today tile.
 struct MailTileView: View {
     let widget: MailWidget
+    @Environment(\.inLibraryTool) private var inTool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            header
-            content
+        Group {
+            if inTool {
+                tool
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    header
+                    content
+                }
+                .padding(6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .dsCard()
+            }
         }
-        .padding(6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .dsCard()
         .onAppear { widget.tileAppeared() }
+    }
+
+    /// Full-panel: the newest unread as rows, or what Mail needs, centred.
+    @ViewBuilder private var tool: some View {
+        switch widget.phase {
+        case .off, .loading:
+            ToolEmptyState(systemImage: "envelope", title: "Reading Mail…", detail: "Unread senders and subjects show here.")
+        case .notOpen:
+            ToolEmptyState(systemImage: "envelope", title: "Mail is not open",
+                           detail: "Open Mail to see your unread messages here. PlatyNotch never opens it for you.")
+        case .needsAllow:
+            ToolEmptyState(systemImage: "envelope.badge", title: "Allow reading Mail",
+                           detail: "PlatyNotch reads only the unread count, senders and subjects, and keeps nothing.",
+                           action: ("Allow", { Task { await widget.allow() } }))
+        case .denied(let history):
+            ToolEmptyState(systemImage: "lock", title: "Mail access is off",
+                           detail: PermissionAdvice.automationDenied(app: "Mail", history: history),
+                           action: ("Open Settings", { widget.openAutomationSettings() }))
+        case .failed(let why):
+            ToolEmptyState(systemImage: "exclamationmark.triangle", title: "Mail did not answer", detail: why)
+        case .inbox(let inbox):
+            if inbox.latest.isEmpty {
+                ToolEmptyState(systemImage: "envelope.open", title: "No unread mail", detail: "You are all caught up.")
+            } else {
+                VStack(alignment: .leading, spacing: Space.s) {
+                    Text(verbatim: inbox.unread == 1 ? "1 unread · click to open in Mail"
+                                                      : "\(inbox.unread) unread · click to open in Mail")
+                        .font(DS.font(TypeScale.caption))
+                        .foregroundStyle(.secondary)
+                    ForEach(inbox.latest) { m in
+                        toolRow(m)
+                        Divider().opacity(0.5)
+                    }
+                }
+            }
+        }
+    }
+
+    private func toolRow(_ m: MailMessage) -> some View {
+        Button { widget.open(m) } label: {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: m.sender.isEmpty ? "Unknown sender" : m.sender)
+                    .font(DS.font(TypeStyle(size: TypeScale.body.size, weight: .semibold))).lineLimit(1)
+                Text(verbatim: m.subject.isEmpty ? "No subject" : m.subject)
+                    .font(DS.font(TypeScale.body)).foregroundStyle(.secondary).lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(verbatim: "\(m.sender), \(m.subject)"))
+        .accessibilityHint("Opens it in Mail")
     }
 
     private var header: some View {
