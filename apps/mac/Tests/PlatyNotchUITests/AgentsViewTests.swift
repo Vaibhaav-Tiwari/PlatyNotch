@@ -160,4 +160,20 @@ final class AgentsViewTests: DefaultsTestCase {
         XCTAssertFalse(AgentsView.showsHeader(height: 80))
         XCTAssertGreaterThanOrEqual(AgentsView.headerRoom, AgentRow.height)
     }
+
+    /// Needs you and errors are counted apart; an errored row offers Open terminal.
+    func testCountsSeparateErrors() {
+        var log = AgentFinishLog()
+        log.noteFailure(sessionKey: "err", at: t0)
+        let sessions = [session("ask", .waitingInput), session("err", .idle), session("w1", .active),
+                        session("w2", .active)]
+        let view = AgentsView(sessions: sessions, usage: Usage(), log: log, onOpenTerminal: { _ in }, onConnect: {})
+        XCTAssertEqual(view.countsLine(now: t0.addingTimeInterval(5)), "4 sessions · 1 needs you · 1 error")
+        XCTAssertEqual(AgentRow.texts(sessions[1], attention: .errored, now: t0).last, "Open terminal")
+        let two = AgentsView(sessions: [session("a", .idle), session("b", .idle)], usage: Usage(),
+                             log: { var l = AgentFinishLog(); l.noteFailure(sessionKey: "a", at: t0)
+                                    l.noteFailure(sessionKey: "b", at: t0); return l }(),
+                             onOpenTerminal: { _ in }, onConnect: {})
+        XCTAssertEqual(two.countsLine(now: t0), "2 sessions · 2 errors")
+    }
 }

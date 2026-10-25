@@ -86,15 +86,16 @@ struct AgentsView: View {
 
     private var countsLine: String { countsLine(now: fixedNow ?? Date()) }
 
-    /// "4 sessions · 1 needs you".
-    private func countsLine(now: Date) -> String {
+    /// "4 sessions · 1 needs you · 1 error": needs you and errors counted apart.
+    func countsLine(now: Date) -> String {
         guard !sessions.isEmpty else { return "" }
-        let needs: Int = sessions.filter {
-            let a = AgentAttention.of($0, log: log, now: now)
-            return a == .needsYou || a == .errored
-        }.count
-        let total: String = sessions.count == 1 ? "1 session" : "\(sessions.count) sessions"
-        return needs > 0 ? "\(total) · \(needs) needs you" : total
+        let rated: [AgentAttention] = sessions.map { AgentAttention.of($0, log: log, now: now) }
+        let needs: Int = rated.filter { $0 == .needsYou }.count
+        let errors: Int = rated.filter { $0 == .errored }.count
+        var parts: [String] = [sessions.count == 1 ? "1 session" : "\(sessions.count) sessions"]
+        if needs > 0 { parts.append("\(needs) needs you") }
+        if errors > 0 { parts.append(errors == 1 ? "1 error" : "\(errors) errors") }
+        return parts.joined(separator: " · ")
     }
 
     private func list(now: Date) -> some View {

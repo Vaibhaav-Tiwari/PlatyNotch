@@ -98,7 +98,7 @@ final class HeroViewsTests: DefaultsTestCase {
         let errored = AgentsLive(rank: .agentNeedsYou, title: "Codex · api", subtitle: "Stopped with an error",
                                  startedAt: Date(), needsYou: 1, working: 0, total: 1, leadKey: "e", leadAttention: .errored)
         XCTAssertEqual(AgentsHero.tone(for: errored), .error, "coral, not amber")
-        XCTAssertEqual(AgentsHero.action(for: errored), .answer)
+        XCTAssertEqual(AgentsHero.action(for: errored), .openTerminal)
         let finishedWithWork = AgentsLive(rank: .agentFinished, title: "Codex · api", subtitle: "Finished",
                                           startedAt: Date(), needsYou: 0, working: 1, total: 2, leadKey: "f",
                                           leadAttention: .finished)

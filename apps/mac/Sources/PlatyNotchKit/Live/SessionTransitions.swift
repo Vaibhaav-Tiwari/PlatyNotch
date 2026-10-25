@@ -58,7 +58,7 @@ public enum AgentRowAction: Sendable, Equatable {
 
     public init(_ a: AgentAttention) {
         switch a {
-        case .needsYou, .errored: self = .answer
+        case .needsYou: self = .answer
         default: self = .openTerminal
         }
     }

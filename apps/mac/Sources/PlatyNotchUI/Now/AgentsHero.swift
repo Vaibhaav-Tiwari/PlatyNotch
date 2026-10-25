@@ -22,8 +22,8 @@ struct AgentsHero: View {
         self.onPrimary = onPrimary
     }
 
-    /// The lead session's row action (`AgentsLive.leadAttention`): Answer while it needs you
-    /// or errored, else Open terminal.
+    /// The lead session's row action (`AgentsLive.leadAttention`): Answer while it needs
+    /// you, else Open terminal (an errored session is looked at in its terminal).
     static func action(for agents: AgentsLive) -> AgentRowAction {
         AgentRowAction(agents.leadAttention)
     }
