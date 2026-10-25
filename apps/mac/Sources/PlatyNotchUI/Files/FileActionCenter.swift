@@ -47,6 +47,20 @@ final class FileActionCenter {
 
     /// Running actions by the item they work on (one at a time per item).
     private(set) var running: [UUID: Run] = [:]
+    /// Actions started since `running` was last empty (the shelf's progress ring).
+    private(set) var batchTotal = 0
+
+    /// 0…1: how much of the current batch has finished (0 with nothing running).
+    var batchProgress: Double {
+        guard batchTotal > 0, !running.isEmpty else { return 0 }
+        return Double(batchTotal - running.count) / Double(batchTotal)
+    }
+
+    /// Tests: pretend these actions run.
+    func debugSetRunning(_ runs: [UUID: Run]) {
+        running = runs
+        batchTotal = runs.count
+    }
     /// The last outcome ("Text copied", "Couldn't convert a.heic: …"), for a few seconds.
     private(set) var status: String?
     /// One level of undo for the last Batch rename.
@@ -175,6 +189,8 @@ final class FileActionCenter {
             }
             reserved = r
         }
+        if running.isEmpty { batchTotal = 0 }
+        batchTotal += 1
         running[key] = Run(action: action, title: action.progressTitle)
         let engine = self.engine
         let task = Task { [weak self] in

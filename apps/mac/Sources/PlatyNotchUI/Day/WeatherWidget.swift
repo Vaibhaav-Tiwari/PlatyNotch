@@ -88,6 +88,14 @@ final class WeatherWidget: NotchWidget {
                              trailing: temp, accessibilityLabel: "\(temp), \(d.text)")]
     }
 
+    var kind: WidgetKind { [.glance, .tool] }
+
+    /// A forecast is loaded for a chosen place.
+    var hasContent: Bool { place != nil && weather != nil }
+
+    /// "24° Clear".
+    func glanceView() -> AnyView? { AnyView(WeatherGlance(widget: self)) }
+
     // MARK: - Lifecycle
 
     func start(context: WidgetContext) {
@@ -273,4 +281,19 @@ final class WeatherWidget: NotchWidget {
     func tileView() -> AnyView { AnyView(WeatherTile(widget: self)) }
 
     func settingsView() -> AnyView? { AnyView(WeatherSettings(widget: self)) }
+}
+
+/// The weather glance: temperature and conditions.
+private struct WeatherGlance: View {
+    let widget: WeatherWidget
+
+    var body: some View {
+        if let weather = widget.weather {
+            let d = WeatherCode.describe(weather.code, isDay: weather.isDay)
+            GlanceChip(systemImage: d.symbol, value: WeatherFormat.temperature(weather.temperatureC, unit: widget.unit),
+                       label: d.text)
+        } else {
+            GlanceChip(systemImage: widget.systemImage, value: "—", label: "Weather")
+        }
+    }
 }

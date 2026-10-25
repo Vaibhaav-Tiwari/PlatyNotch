@@ -18,6 +18,17 @@ final class LoopsWidget: NotchWidget {
         self.actions = actions
     }
 
+    var kind: WidgetKind { [.glance, .tool] }
+
+    /// Open loops from memory, less those just marked done or dismissed.
+    var openCount: Int { LoopsFormat.open(store.loops).filter { !actions.hidden.contains($0.id) }.count }
+
+    var hasContent: Bool { openCount > 0 }
+
+    func glanceView() -> AnyView? {
+        AnyView(GlanceChip(systemImage: systemImage, value: "\(openCount)", label: "Open loops"))
+    }
+
     func tileView() -> AnyView {
         AnyView(LoopsTile(store: store, actions: actions))
     }

@@ -71,7 +71,29 @@ final class MeetingWidget: NotchWidget {
         return [LiveActivity(id: "meeting:next", widgetID: id, priority: LivePriority.meetingSoon,
                              glyph: .ring(progress: MeetingReminderSchedule.progress(start: next.start, now: now)),
                              tint: .warning, expiresAt: next.start, countdownTo: next.start,
-                             accessibilityLabel: "\(next.title) \(TodayFormat.meetingWhen(start: next.start, now: now).lowercased())")]
+                             accessibilityLabel: "\(next.title) \(TodayFormat.meetingWhen(start: next.start, now: now).lowercased())",
+                             title: next.title, subtitle: Self.time(next.start), startedAt: next.start)]
+    }
+
+    var kind: WidgetKind { [.glance, .live, .tool] }
+
+    /// The glance's meeting: the next (or current) one within `UpcomingMeeting.horizon`,
+    /// only with calendar access (never asks).
+    var glanceMeeting: CalendarMeeting? {
+        guard calendar.access == .granted else { return nil }
+        return MeetingTimeline.upcoming(calendar.meetings, now: now).first
+    }
+
+    var hasContent: Bool { glanceMeeting != nil }
+
+    /// "10:30 Design".
+    func glanceView() -> AnyView? {
+        AnyView(MeetingGlance(widget: self))
+    }
+
+    /// "10:30" in the user's locale.
+    static func time(_ date: Date) -> String {
+        date.formatted(date: .omitted, time: .shortened)
     }
 
     // MARK: - Lifecycle
@@ -206,5 +228,16 @@ final class MeetingWidget: NotchWidget {
 
     func settingsView() -> AnyView? {
         AnyView(MeetingSettings(calendar: calendar))
+    }
+}
+
+/// The meeting glance: the start time and the event's title.
+private struct MeetingGlance: View {
+    let widget: MeetingWidget
+
+    var body: some View {
+        let m = widget.glanceMeeting
+        GlanceChip(systemImage: "calendar", value: m.map { MeetingWidget.time($0.start) } ?? "—",
+                   label: m?.title ?? "No meetings")
     }
 }

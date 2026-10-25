@@ -198,6 +198,16 @@ final class MailWidget: NotchWidget {
         }
     }
 
+    var kind: WidgetKind { [.glance, .tool] }
+
+    /// Unread messages in the inbox shown (0 until Mail is read).
+    var unreadCount: Int { inbox?.unread ?? 0 }
+
+    var hasContent: Bool { unreadCount > 0 }
+
+    /// "Mail 4".
+    func glanceView() -> AnyView? { AnyView(MailGlance(widget: self)) }
+
     func tileView() -> AnyView { AnyView(MailTileView(widget: self)) }
 
     func settingsView() -> AnyView? { AnyView(MailSettingsView()) }
@@ -299,5 +309,14 @@ struct MailSettingsView: View {
         .font(.system(size: 11))
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// The unread-mail glance.
+private struct MailGlance: View {
+    let widget: MailWidget
+
+    var body: some View {
+        GlanceChip(systemImage: widget.systemImage, value: "\(widget.unreadCount)", label: "Mail")
     }
 }

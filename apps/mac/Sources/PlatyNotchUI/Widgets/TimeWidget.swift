@@ -389,7 +389,8 @@ final class TimeWidget: NotchWidget, TimerStarter {
             out.append(LiveActivity(id: "time:ring:\(r.id)", widgetID: id,
                                     priority: r.isAlarm ? LivePriority.alarmRinging : LivePriority.timerFinished,
                                     glyph: .symbol(r.isAlarm ? "alarm.fill" : "timer"), trailing: r.isAlarm ? nil : "Done",
-                                    tint: r.isAlarm ? .critical : .warning, accessibilityLabel: "\(r.title) ringing"))
+                                    tint: r.isAlarm ? .critical : .warning, accessibilityLabel: "\(r.title) ringing",
+                                    title: r.title, subtitle: r.subtitle))
         }
         let ringingTimers = Set(ringing.compactMap { r -> UUID? in if case .timer(let t) = r.kind { t } else { nil } })
         if let latest = finished.filter({ !ringingTimers.contains($0.key) }).max(by: { $0.value < $1.value }),
@@ -398,24 +399,28 @@ final class TimeWidget: NotchWidget, TimerStarter {
             out.append(LiveActivity(id: "time:done:\(timerID.uuidString)", widgetID: id, priority: LivePriority.timerFinished,
                                     glyph: .symbol("checkmark.circle.fill"), trailing: "Done", tint: .warning,
                                     expiresAt: end.addingTimeInterval(Self.noticeTime),
-                                    accessibilityLabel: "\(timer.label.isEmpty ? "Timer" : timer.label) done"))
+                                    accessibilityLabel: "\(timer.label.isEmpty ? "Timer" : timer.label) done",
+                                    title: timer.label.isEmpty ? "Timer" : timer.label, subtitle: "Done", startedAt: end))
         }
         if let next = state.timers.filter({ $0.isRunning(at: now) }).min(by: { $0.endsAt! < $1.endsAt! }),
            let end = next.endsAt {
             out.append(LiveActivity(id: "time:timer:\(next.id.uuidString)", widgetID: id, priority: LivePriority.timerRunning,
                                     glyph: .symbol("timer"), tint: .accent, expiresAt: end, countdownTo: end,
-                                    accessibilityLabel: "\(next.label.isEmpty ? "Timer" : next.label) running"))
+                                    accessibilityLabel: "\(next.label.isEmpty ? "Timer" : next.label) running",
+                                    title: next.label.isEmpty ? "Timer" : next.label))
         }
         if let since = state.stopwatch.runningSince {
             out.append(LiveActivity(id: "time:stopwatch", widgetID: id, priority: LivePriority.stopwatch,
                                     glyph: .symbol("stopwatch"), tint: .accent,
                                     countUpFrom: since.addingTimeInterval(-state.stopwatch.accumulated),
-                                    accessibilityLabel: "Stopwatch running"))
+                                    accessibilityLabel: "Stopwatch running", title: "Stopwatch"))
         }
         return out
     }
 
     // MARK: - Views
+
+    var kind: WidgetKind { [.live, .tool] }
 
     func tileView() -> AnyView { AnyView(TimeTile(widget: self)) }
 

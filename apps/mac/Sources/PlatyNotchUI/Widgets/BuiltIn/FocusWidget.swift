@@ -19,11 +19,14 @@ final class FocusWidget: NotchWidget {
         self.focus = focus
     }
 
+    var kind: WidgetKind { [.live, .tool] }
+
     var liveActivities: [LiveActivity] {
         guard focus.focusActive, let end = focus.timer?.endsAt else { return [] }
         return [LiveActivity(id: "focus:session", widgetID: id, priority: LivePriority.focusSession,
                              glyph: .symbol("moon.fill"), tint: .accent, expiresAt: end, countdownTo: end,
-                             accessibilityLabel: "Focus session running")]
+                             accessibilityLabel: "Focus session running", title: "Focus",
+                             subtitle: "Notices held until it ends")]
     }
 
     func tileView() -> AnyView { AnyView(FocusTile(focus: focus)) }

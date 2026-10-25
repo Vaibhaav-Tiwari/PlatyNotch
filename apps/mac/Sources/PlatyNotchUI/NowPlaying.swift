@@ -41,6 +41,9 @@ public final class NowPlaying {
     public var title: String? { info?.title }
     public var artist: String? { info?.artist }
     public var isPlaying: Bool { info?.isPlaying ?? false }
+    /// When playback last stopped with a track still loaded (music stays live for 10
+    /// minutes after a pause, spec 6.2); nil while playing or with nothing loaded.
+    public private(set) var pausedAt: Date?
     /// Where playback is (nil when the player gives no times).
     public var clock: PlaybackClock? { info.flatMap { PlaybackClock(info: $0, now: Date()) } }
     /// Favourites work for Apple Music only (Spotify has no AppleScript for it).
@@ -202,7 +205,7 @@ public final class NowPlaying {
     }
 
     /// Tests: feed a report as if the reader had sent it.
-    func debugApply(_ new: NowPlayingInfo?) { apply(new) }
+    func debugApply(_ new: NowPlayingInfo?, now: Date = Date()) { apply(new, now: now) }
 
     // MARK: - Adapter
 
@@ -263,6 +266,12 @@ public final class NowPlaying {
             showLikeMessage(nil)
         }
         info = new
+        if new == nil || isPlaying {
+            pausedAt = nil
+        } else if wasPlaying {
+            // Paused (or stopped) now; a track first seen paused was not paused "just now".
+            pausedAt = now
+        }
         // Only while a music view is on screen: nothing is read for a heart nobody sees.
         if trackChanged, viewers > 0 { readLiked() }
         if isPlaying != wasPlaying { onPlayingChange?(isPlaying) }

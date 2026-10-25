@@ -143,12 +143,27 @@ final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost, FileAct
 
     // `disabled()`: nothing beyond `stop`. Items and owned copies are the user's; they stay.
 
+    var kind: WidgetKind { [.live, .tool] }
+
     var liveActivities: [LiveActivity] {
-        guard !items.isEmpty else { return [] }
+        var out: [LiveActivity] = []
+        // A file action in progress (convert, zip, OCR…): live at file-action rank, a ring
+        // that fills as the batch's actions finish.
+        let center = actionCenter
+        if !center.running.isEmpty {
+            let n = center.running.count
+            let title: String = n == 1 ? (center.running.values.first?.title ?? "Working…") : "\(n) file actions"
+            out.append(LiveActivity(id: "shelf:action", widgetID: id, priority: LivePriority.fileAction,
+                                    glyph: .ring(progress: center.batchProgress), tint: .accent,
+                                    accessibilityLabel: title, title: title, subtitle: "Shelf"))
+        }
+        guard !items.isEmpty else { return out }
         let n = items.count
-        return [LiveActivity(id: "shelf", widgetID: id, priority: LivePriority.shelfItems,
-                             glyph: .symbol("tray.full.fill"), trailing: "\(n)",
-                             accessibilityLabel: n == 1 ? "1 item on the shelf" : "\(n) items on the shelf")]
+        out.append(LiveActivity(id: "shelf", widgetID: id, priority: LivePriority.shelfItems,
+                                glyph: .symbol("tray.full.fill"), trailing: "\(n)",
+                                accessibilityLabel: n == 1 ? "1 item on the shelf" : "\(n) items on the shelf",
+                                title: "Shelf", subtitle: n == 1 ? "1 item" : "\(n) items"))
+        return out
     }
 
     func tileView() -> AnyView { AnyView(ShelfTile(host: self)) }
