@@ -18,6 +18,14 @@ public final class MemoryServices {
         self.capture = capture
         self.onOpenSettings = onOpenSettings
     }
+
+    /// Fixed models that never ask the core (renders).
+    init(search: MemorySearchModel, graph: MemoryGraphModel) {
+        self.search = search
+        self.graph = graph
+        capture = nil
+        onOpenSettings = {}
+    }
 }
 
 /// Debounced `memory.search`. An empty query lists recent activity.
@@ -38,7 +46,7 @@ public final class MemorySearchModel {
     }
     private(set) var phase: Phase = .idle
 
-    @ObservationIgnored private let request: @Sendable (Envelope) async throws -> Envelope
+    @ObservationIgnored private let request: (@Sendable (Envelope) async throws -> Envelope)?
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private let delay: Duration
 
@@ -46,6 +54,13 @@ public final class MemorySearchModel {
          request: @escaping @Sendable (Envelope) async throws -> Envelope) {
         self.delay = debounce
         self.request = request
+    }
+
+    /// Fixed results that never ask the core (renders).
+    init(preset hits: [MemoryHit]) {
+        delay = .zero
+        request = nil
+        phase = .results(hits)
     }
 
     public convenience init(client: CoreClient) {
@@ -63,9 +78,9 @@ public final class MemorySearchModel {
     }
 
     private func schedule(debounced: Bool) {
+        guard let request else { return }
         task?.cancel()
         let q = query
-        let request = self.request
         let delay = self.delay
         task = Task { [weak self] in
             if debounced {
@@ -99,7 +114,15 @@ public final class MemorySearchModel {
 struct MemoryTab: View {
     let store: AppStore
     let memory: MemoryServices
-    @State private var mode: Mode = .search
+    @State private var mode: Mode
+    /// The graph fades in only while the panel is really shown (renders draw it settled).
+    @Environment(\.panelTicking) private var ticking
+
+    init(store: AppStore, memory: MemoryServices, mode: Mode = .search) {
+        self.store = store
+        self.memory = memory
+        _mode = State(initialValue: mode)
+    }
 
     enum Mode: String, CaseIterable {
         case search = "Search", graph = "Graph"
@@ -131,7 +154,7 @@ struct MemoryTab: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             case .graph:
                 // Asks the core when shown; static afterwards.
-                MemoryGraphView(model: memory.graph, onOpenSettings: memory.onOpenSettings)
+                MemoryGraphView(model: memory.graph, onOpenSettings: memory.onOpenSettings, fadeIn: ticking)
             }
 
             MemoryStatusLine(status: store.memory, capture: memory.capture)

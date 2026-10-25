@@ -381,12 +381,21 @@ final class ClipboardWidget: NotchWidget, ClipboardMenuControl {
 /// The Today tile: the latest few items (click copies), pause and the picker.
 struct ClipboardTile: View {
     static let shown = 4
+    /// Rows in the Library tool (it scrolls past what fits).
+    static let toolShown = 30
     let widget: ClipboardWidget
+    @Environment(\.inLibraryTool) private var inTool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: inTool ? Space.s : 6) {
             HStack {
-                Label("Clipboard", systemImage: "doc.on.clipboard").font(.system(size: 12, weight: .semibold))
+                if !inTool {
+                    Label("Clipboard", systemImage: "doc.on.clipboard").font(.system(size: 12, weight: .semibold))
+                } else if !widget.items.isEmpty {
+                    Text("Click an item to copy it")
+                        .font(DS.font(TypeScale.caption))
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
                 Button(widget.paused ? "Resume" : "Pause") { widget.setPaused(!widget.paused) }
                     .buttonStyle(.borderless)
@@ -401,15 +410,18 @@ struct ClipboardTile: View {
                 Text("Paused: nothing you copy is recorded.")
                     .font(.system(size: 11)).foregroundStyle(Theme.color(.attention))
             }
-            if widget.items.isEmpty {
+            if widget.items.isEmpty, inTool {
+                ToolEmptyState(systemImage: "doc.on.clipboard", title: "Nothing copied yet",
+                               detail: "Things you copy appear here. Press \(widget.hotKeyChoice.display) anywhere to search and paste them.")
+            } else if widget.items.isEmpty {
                 Text("Things you copy appear here. Press \(widget.hotKeyChoice.display) anywhere to search and paste them.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
             } else {
-                ForEach(widget.items.prefix(Self.shown)) { item in
+                ForEach(widget.items.prefix(inTool ? Self.toolShown : Self.shown)) { item in
                     Button { widget.copy(item) } label: {
-                        ClipRow(item: item, imageURL: widget.imageURL(for: item), compact: true)
+                        ClipRow(item: item, imageURL: widget.imageURL(for: item), compact: !inTool)
                     }
                     .buttonStyle(.plain)
                     .help("Copy")

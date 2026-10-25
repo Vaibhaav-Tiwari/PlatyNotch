@@ -10,7 +10,9 @@ final class PanelViewModel {
     /// A full-screen app covers this panel's display (games pause).
     var fullScreen = false
     var layout: PanelLayout?
-    var selectedTab = BuiltinTab.now
+    /// Where the open panel is: Now by default, or a destination or Library tool
+    /// (`NotchController.expand(tab:)` maps today's tab ids through `PanelRoute.legacy`).
+    var route = PanelRoute(destination: .now)
     /// Which live item Now's hero shows; back to the top one on every open.
     var heroDeck = HeroDeck()
     /// Which approval cards have been on screen long enough to be answered (this window).
@@ -189,7 +191,7 @@ struct PanelRootView: View {
             ChromeSettle {
             ExpandedPanel(store: store, responder: responder, arming: model.arming, today: today,
                           widgets: widgets, memory: memory, extraTabs: extraTabs,
-                          selectedTab: Binding(get: { model.selectedTab }, set: { model.selectedTab = $0 }),
+                          route: Binding(get: { model.route }, set: { model.route = $0 }),
                           onCollapse: model.onClick, onOpenSettings: model.onOpenSettings,
                           deck: Binding(get: { model.heroDeck }, set: { model.heroDeck = $0 }),
                           agentsVisible: today.agentActivity.agentsVisibility.isVisible,

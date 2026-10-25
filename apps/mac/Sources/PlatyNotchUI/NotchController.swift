@@ -77,7 +77,7 @@ public final class NotchController {
 
     /// `carryOver` restores the panel state of the controller this one replaces (display change).
     /// Without it, notices already in the store count as shown.
-    /// `extraTabs` follow the built-in tabs (plugin tabs); `onOpenTerminal` focuses a session's terminal.
+    /// `extraTabs` are plugin tabs (Library tools); `onOpenTerminal` focuses a session's terminal.
     /// Pass one `responder`, one `today` and one `widgets` to every display's controller so
     /// answers, the focus session, loop changes and live activities are shared; likewise one `memory`.
     /// `appearance` is `AppearanceStore.load` in the app; tests pass their own.
@@ -189,9 +189,12 @@ public final class NotchController {
     }
 
     /// Opens the panel (menu bar "Open PlatyNotch", `platynotch://open`, a widget), at a
-    /// tab id when given.
+    /// tab id when given: today's ids keep working through `PanelRoute.legacy` (`today` →
+    /// Now, `focus`, `memory`, `games` → that Library tool, a plugin's tab id → its tool).
     public func expand(tab: String? = nil) {
-        if let tab { model.selectedTab = tab }
+        if let tab {
+            model.route = PanelRoute.legacy(tab: tab, tools: LibraryCatalog.ids(widgets: widgets, extraTabs: extraTabs))
+        }
         guard machine.mode != .expanded else { return }
         handle(.click)
     }

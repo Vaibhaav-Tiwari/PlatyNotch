@@ -7,12 +7,73 @@ import SwiftUI
 struct MusicTile: View {
     let nowPlaying: NowPlaying
     let visualiser: MusicVisualiser
+    @Environment(\.inLibraryTool) private var inTool
+
+    /// The Library tool's artwork.
+    static let toolArtwork: CGFloat = 116
 
     var body: some View {
+        if inTool {
+            tool
+        } else {
+            tile
+        }
+    }
+
+    /// Full-panel: large artwork; beside it the title, artist and source, then the
+    /// scrubber and the controls, the whole player centred in the tool's room.
+    @ViewBuilder private var tool: some View {
+        if let title = nowPlaying.title {
+            VStack(alignment: .leading, spacing: Space.m) {
+                HStack(alignment: .top, spacing: Space.xl) {
+                    artwork(size: Self.toolArtwork)
+                    VStack(alignment: .leading, spacing: Space.xs) {
+                        HStack(alignment: .center, spacing: Space.s) {
+                            Text(verbatim: title)
+                                .font(DS.font(TypeScale.title))
+                                .lineLimit(2)
+                                .truncationMode(.tail)
+                            Spacer(minLength: Space.s)
+                            if nowPlaying.isPlaying {
+                                MusicBars(color: nowPlaying.artworkTint ?? Theme.color(.active), count: 6, height: 18,
+                                          barWidth: 3, spacing: 2)
+                                    .environment(\.musicVisualiser, visualiser)
+                            }
+                        }
+                        if let artist = nowPlaying.artist {
+                            Text(verbatim: artist)
+                                .font(DS.font(TypeScale.body))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        source
+                            .padding(.top, 2)
+                        Spacer(minLength: Space.s)
+                        controls(size: 15, playSize: 22, spacing: 22)
+                    }
+                    .frame(height: Self.toolArtwork)
+                }
+                if nowPlaying.clock != nil {
+                    MusicScrubber(nowPlaying: nowPlaying)
+                }
+                if let message = nowPlaying.likeMessage {
+                    LikeMessage(text: message, help: nowPlaying.likeHelp)
+                }
+            }
+            .padding(.horizontal, Space.xs)
+            // Centred in the tool's room, like a player, not a tile stuck to the top.
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ToolEmptyState(systemImage: "music.note", title: "Nothing playing",
+                           detail: "Play something in Music, Spotify or your browser and it shows here.")
+        }
+    }
+
+    @ViewBuilder private var tile: some View {
         if let title = nowPlaying.title {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 10) {
-                    artwork
+                    artwork(size: 44)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(verbatim: title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
                         if let artist = nowPlaying.artist {
@@ -30,7 +91,7 @@ struct MusicTile: View {
                 if nowPlaying.clock != nil {
                     MusicScrubber(nowPlaying: nowPlaying)
                 }
-                controls
+                controls(size: 12, playSize: 15, spacing: 14)
                 if let message = nowPlaying.likeMessage {
                     LikeMessage(text: message, help: nowPlaying.likeHelp)
                 }
@@ -44,16 +105,17 @@ struct MusicTile: View {
         }
     }
 
-    @ViewBuilder private var artwork: some View {
+    @ViewBuilder private func artwork(size: CGFloat) -> some View {
         let tint = nowPlaying.artworkTint
+        let symbol: CGFloat = size > 60 ? IconSize.hero : 18
         Group {
             if let image = nowPlaying.artwork {
                 Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
             } else {
-                Image(systemName: "music.note").font(.system(size: 18)).foregroundStyle(.secondary)
+                Image(systemName: "music.note").font(.system(size: symbol)).foregroundStyle(.secondary)
             }
         }
-        .frame(width: 44, height: 44)
+        .frame(width: size, height: size)
         .background(Theme.codeBackground)
         .clipShape(RoundedRectangle(cornerRadius: Radius.inner(outer: Radius.card, padding: Space.s), style: .continuous))
         .shadow(color: (tint ?? .clear).opacity(0.75), radius: 10)
@@ -75,27 +137,32 @@ struct MusicTile: View {
         }
     }
 
-    private var controls: some View {
-        HStack(spacing: 14) {
+    private func controls(size: CGFloat, playSize: CGFloat, spacing: CGFloat) -> some View {
+        HStack(spacing: spacing) {
             if nowPlaying.canLike {
                 control(nowPlaying.liked == true ? "heart.fill" : "heart",
-                        nowPlaying.liked == true ? "Remove from favourites" : "Add to favourites") { nowPlaying.toggleLike() }
+                        nowPlaying.liked == true ? "Remove from favourites" : "Add to favourites", size: size) {
+                    nowPlaying.toggleLike()
+                }
                     .disabled(nowPlaying.likeBusy)
                     .opacity(nowPlaying.likeBusy ? 0.5 : 1)
             }
             Spacer(minLength: 0)
-            control("backward.fill", "Previous track") { nowPlaying.previous() }
+            control("backward.fill", "Previous track", size: size) { nowPlaying.previous() }
             control(nowPlaying.isPlaying ? "pause.fill" : "play.fill",
-                    nowPlaying.isPlaying ? "Pause" : "Play", size: 15) { nowPlaying.playPause() }
-            control("forward.fill", "Next track") { nowPlaying.next() }
+                    nowPlaying.isPlaying ? "Pause" : "Play", size: playSize) { nowPlaying.playPause() }
+            control("forward.fill", "Next track", size: size) { nowPlaying.next() }
             Spacer(minLength: 0)
-            if nowPlaying.canLike { Color.clear.frame(width: 18, height: 18) }   // keeps the controls centred
+            if nowPlaying.canLike {   // keeps the controls centred
+                Color.clear.frame(width: max(18, size + 6), height: max(18, size + 6))
+            }
         }
     }
 
     private func control(_ symbol: String, _ label: String, size: CGFloat = 12, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol).font(.system(size: size)).frame(width: 18, height: 18).contentShape(Rectangle())
+        let box: CGFloat = max(18, size + 6)
+        return Button(action: action) {
+            Image(systemName: symbol).font(.system(size: size)).frame(width: box, height: box).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)

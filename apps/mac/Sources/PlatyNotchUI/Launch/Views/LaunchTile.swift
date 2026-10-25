@@ -6,11 +6,16 @@ import SwiftUI
 /// runs), "Add current tab" and the Shortcuts picker, and the last notice.
 struct LaunchTile: View {
     let widget: LaunchWidget
+    @Environment(\.inLibraryTool) private var inTool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let empty: Bool = widget.pins.sites.isEmpty && widget.pins.shortcuts.isEmpty
+        let content = VStack(alignment: .leading, spacing: inTool ? Space.m : 8) {
             header
-            if widget.pins.sites.isEmpty && widget.pins.shortcuts.isEmpty {
+            if empty, inTool, !widget.pickerOpen {
+                ToolEmptyState(systemImage: "square.grid.2x2", title: "Nothing pinned yet",
+                               detail: "Pin the current browser tab with the button above, sites in Settings › Widgets, and Shortcuts from the list.")
+            } else if empty {
                 Text("Pin sites with Add current tab or in Settings › Widgets, and Shortcuts from the list.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -20,15 +25,26 @@ struct LaunchTile: View {
             if widget.pickerOpen { ShortcutPicker(widget: widget) }
             if let notice = widget.notice { NoticeLine(notice: notice) }
         }
-        .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .dsCard()
+        if inTool {
+            content
+        } else {
+            content
+                .padding(10)
+                .dsCard()
+        }
     }
 
     private var header: some View {
         HStack(spacing: 8) {
-            Label("Sites & Shortcuts", systemImage: "square.grid.2x2")
-                .font(.system(size: 12, weight: .semibold))
+            if inTool {
+                Text("Sites open in your browser · Shortcuts run on click")
+                    .font(DS.font(TypeScale.caption))
+                    .foregroundStyle(.secondary)
+            } else {
+                Label("Sites & Shortcuts", systemImage: "square.grid.2x2")
+                    .font(.system(size: 12, weight: .semibold))
+            }
             Spacer(minLength: 0)
             AddTabButton(widget: widget)
             Button {

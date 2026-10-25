@@ -231,10 +231,53 @@ struct MirrorTileView: View {
     let widget: MirrorWidget
     @State private var token = MirrorTileToken()
     @Environment(\.panelTicking) private var shown
+    @Environment(\.inLibraryTool) private var inTool
 
     var body: some View {
+        Group {
+            if inTool { tool } else { tile }
+        }
+        .onAppear { widget.tileAppeared(token, visible: shown) }
+        .onDisappear { widget.tileDisappeared(token) }
+        .onChange(of: shown) { widget.tileVisibility(token, visible: shown) }
+    }
+
+    /// Full-panel: the preview fills the room, else what the mirror needs, centred.
+    @ViewBuilder private var tool: some View {
         let state = widget.tileState
-        VStack(alignment: .leading, spacing: 6) {
+        if state == .live, widget.owner == token.id {
+            VStack(spacing: Space.s) {
+                MirrorPreview(session: widget.session)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+                HStack {
+                    Text(verbatim: state.message)
+                        .font(DS.font(TypeScale.caption))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    button(state)
+                }
+            }
+        } else if state == .live {
+            ToolEmptyState(systemImage: "person.crop.square", title: "Mirror is on another display",
+                           detail: "Only one panel shows the camera at a time.")
+        } else {
+            let tile = token
+            let denied: Bool = { if case .denied = state { return true } else { return false } }()
+            let widget = self.widget
+            let show: () -> Void = { Task { @MainActor in await widget.buttonClicked(tile) } }
+            let settings: () -> Void = { widget.openCameraSettings() }
+            let action: (title: String, run: () -> Void)?
+                = state.buttonTitle.map { ($0, show) } ?? (denied ? ("Open Settings", settings) : nil)
+            ToolEmptyState(systemImage: "person.crop.square", title: "Check your camera before a call",
+                           detail: state.message, action: action)
+                .disabled(widget.asking)
+        }
+    }
+
+    private var tile: some View {
+        let state = widget.tileState
+        return VStack(alignment: .leading, spacing: 6) {
             if state == .live, widget.owner == token.id {
                 MirrorPreview(session: widget.session)
                     .frame(height: 150)
@@ -260,9 +303,6 @@ struct MirrorTileView: View {
         }
         .padding(6)
         .dsCard()
-        .onAppear { widget.tileAppeared(token, visible: shown) }
-        .onDisappear { widget.tileDisappeared(token) }
-        .onChange(of: shown) { widget.tileVisibility(token, visible: shown) }
     }
 
     @ViewBuilder

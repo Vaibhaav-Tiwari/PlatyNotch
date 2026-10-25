@@ -41,11 +41,11 @@ final class ApprovalsRegionLayoutTests: DefaultsTestCase {
                                   reminders: RemindersService(eventKit: false, defaults: defaults()),
                                   focus: FocusModel(defaults: defaults()))
         let frames = Frames()
-        var selected = BuiltinTab.agents
+        var route = PanelRoute(destination: .agents)
         let panel = ExpandedPanel(store: store, responder: ApprovalResponder(client: client), arming: ApprovalArming(),
                                   today: today, widgets: WidgetRegistry(defaults: defaults(), persist: false),
                                   memory: MemoryServices(client: client), extraTabs: [],
-                                  selectedTab: Binding(get: { selected }, set: { selected = $0 }),
+                                  route: Binding(get: { route }, set: { route = $0 }),
                                   onCollapse: {}, onDecide: { _, _ in }, onOpenTerminal: { _ in })
             .frame(width: 528, height: 330, alignment: .top)
             .onPreferenceChange(ApprovalsRegionFrameKey.self) { v in MainActor.assumeIsolated { frames.region = v } }

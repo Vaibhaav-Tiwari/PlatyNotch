@@ -73,17 +73,21 @@ final class WidgetCategoryRegistryTests: DefaultsTestCase {
         XCTAssertEqual(registry.orderedWidgets.map(\.id), ["shelf", "music", "snap", "mirror"])
     }
 
-    /// Fix round 1: widgets on but none with a tile is not "no widgets are on".
-    func testTodayEmptyMessage() {
-        XCTAssertEqual(TodayTab.emptyMessage(enabledCount: 0).title, "No widgets are on.")
-        XCTAssertEqual(TodayTab.emptyMessage(enabledCount: 2).title, "No tiles to show.")
+    /// Task 21 (was the Today tab's empty message): a headless power feature has no tile but
+    /// is still a Library tool, and opens its settings full-panel; its tile is never built.
+    func testHeadlessPowerFeatureIsALibraryTool() {
         let registry = WidgetRegistry(defaults: defaults(), persist: false)
-        registry.register(CategoryWidget("snap", category: .power, hasTile: false))
+        let headless = CategoryWidget("snap", category: .power, hasTile: false)
+        registry.register(headless)
         XCTAssertTrue(registry.tileWidgets.isEmpty)
-        XCTAssertEqual(TodayTab.emptyMessage(enabledCount: registry.visibleWidgets.count).title, "No tiles to show.")
-        let view = NSHostingView(rootView: TodayTab(widgets: registry).frame(width: 360, height: 200))
+        let tools = LibraryCatalog.tools(widgets: registry, extraTabs: [], memory: { AnyView(EmptyView()) })
+        XCTAssertEqual(tools.map(\.item.id), ["snap", LibraryTools.memory])
+        XCTAssertEqual(tools.first?.item.isSetUp, true)
+        let view = NSHostingView(rootView: LibraryView(items: tools.map(\.item), tile: { _ in nil }, onOpen: { _ in },
+                                                       onSetUp: { _ in }).frame(width: 528, height: 200))
         view.layoutSubtreeIfNeeded()
         XCTAssertGreaterThan(view.fittingSize.width, 0)
+        XCTAssertEqual(headless.tileBuilds, 0, "the grid never builds a tile the widget does not have")
     }
 
     /// No power widget yet: no "Power features" group.

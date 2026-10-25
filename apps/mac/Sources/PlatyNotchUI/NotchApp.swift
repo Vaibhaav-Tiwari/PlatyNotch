@@ -358,6 +358,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                     widgets: widgets,
                                     openSettings: { [weak self] in self?.openSettings(section: $0) })
         for p in plugins { p.start(context: context) }
+        // Each plugin tab is a Library tool ("plugin:<id>"), never a destination (spec 6.9).
         pluginTabs = plugins.flatMap { $0.panelTabs() }
     }
 

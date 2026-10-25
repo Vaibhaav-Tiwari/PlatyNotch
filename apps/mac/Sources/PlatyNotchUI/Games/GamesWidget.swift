@@ -3,8 +3,8 @@ import Observation
 import PlatyNotchKit
 import SwiftUI
 
-/// Snake, Tetris, 2048, Flappy and Platy Chase in the expanded panel's Games tab; the Today tile picks
-/// one and shows the best scores.
+/// Snake, Tetris, 2048, Flappy and Platy Chase: the Games tool in the Library (and Platy
+/// Chase's own entry beside it); the tile picks one and shows the best scores.
 ///
 /// On by default, and does nothing until a game is opened and played: `start` only wires
 /// the pause signals (pending approvals, ringing), with no timer or observer. High scores
@@ -15,7 +15,7 @@ import SwiftUI
 @MainActor @Observable
 public final class GamesWidget: NotchWidget {
     nonisolated public static let widgetID = "games"
-    /// The expanded panel's tab id.
+    /// The old Games tab's id: `openPanel(tab:)` maps it to the Games tool (`PanelRoute.legacy`).
     nonisolated public static let tabID = "games"
 
     public let id = GamesWidget.widgetID
@@ -50,6 +50,7 @@ public final class GamesWidget: NotchWidget {
         let surfaces = context.surfaces
         host.approvals = { store.approvals.count }
         host.ringing = { !surfaces.ringing.isEmpty }
+        // The Games tool in the Library (the legacy tab id maps there).
         openTab = { context.openPanel(tab: GamesWidget.tabID) }
         host.refresh()
     }
@@ -80,6 +81,9 @@ public final class GamesWidget: NotchWidget {
         AnyView(GamesTile(host: host, open: { [weak self] in self?.openTab() }))
     }
 
+    /// The Library tool: the game picker, score and board, full-panel.
+    public func toolView() -> AnyView { AnyView(GamesTab(host: host)) }
+
     public func settingsView() -> AnyView? { AnyView(GamesSettings(host: host)) }
 }
 
@@ -96,9 +100,9 @@ private struct GamePanelKey: EnvironmentKey {
     static let defaultValue = GamePanelState()
 }
 
-/// Switches the expanded panel's tab (set by `ExpandedPanel`; nil elsewhere).
-private struct SelectPanelTabKey: EnvironmentKey {
-    static let defaultValue: (@MainActor (String) -> Void)? = nil
+/// Moves the open panel to a route, e.g. a Library tool (set by `ExpandedPanel`; nil elsewhere).
+private struct OpenPanelRouteKey: EnvironmentKey {
+    static let defaultValue: (@MainActor (PanelRoute) -> Void)? = nil
 }
 
 extension EnvironmentValues {
@@ -107,19 +111,19 @@ extension EnvironmentValues {
         set { self[GamePanelKey.self] = newValue }
     }
 
-    var selectPanelTab: (@MainActor (String) -> Void)? {
-        get { self[SelectPanelTabKey.self] }
-        set { self[SelectPanelTabKey.self] = newValue }
+    var openPanelRoute: (@MainActor (PanelRoute) -> Void)? {
+        get { self[OpenPanelRouteKey.self] }
+        set { self[OpenPanelRouteKey.self] = newValue }
     }
 }
 
 // MARK: - Tile and settings
 
-/// Today tile: one button per game (with its best) that opens it in the Games tab.
+/// The tile: one button per game (with its best) that opens it in the Games tool.
 struct GamesTile: View {
     let host: GameHost
     let open: () -> Void
-    @Environment(\.selectPanelTab) private var selectTab
+    @Environment(\.openPanelRoute) private var openRoute
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -154,7 +158,7 @@ struct GamesTile: View {
 
     private func choose(_ kind: GameKind) {
         host.select(kind)
-        if let selectTab { selectTab(GamesWidget.tabID) } else { open() }
+        if let openRoute { openRoute(ExpandedPanel.route(forTool: GamesWidget.widgetID)) } else { open() }
     }
 }
 

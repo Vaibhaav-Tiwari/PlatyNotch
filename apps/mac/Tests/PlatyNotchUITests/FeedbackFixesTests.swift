@@ -48,7 +48,7 @@ final class FeedbackFixesTests: DefaultsTestCase {
                         createdAt: created, expiresAt: created.addingTimeInterval(600))
     }
 
-    /// Every built-in tab (Agents, Today, Focus, Memory, Games) and "Reconnecting…".
+    /// The three destinations (Focus, Memory and Games are Library tools now) and "Reconnecting…".
     private func fullPanel(store: AppStore, onOpenSettings: @escaping () -> Void) -> ExpandedPanel {
         let client = CoreClient(socketPath: "/nonexistent")
         let registry = WidgetRegistry(defaults: defaults(), persist: false)
@@ -63,10 +63,10 @@ final class FeedbackFixesTests: DefaultsTestCase {
                                               surfaces: PanelSurfaces(registry: registry), openPanel: { _ in }))
         registry.setEnabled(FocusWidget.widgetID, true)
         registry.setEnabled(GamesWidget.widgetID, true)
-        var selected = BuiltinTab.agents
+        var route = PanelRoute(destination: .agents)
         return ExpandedPanel(store: store, responder: ApprovalResponder(client: client), arming: ApprovalArming(),
                              today: today, widgets: registry, memory: MemoryServices(client: client), extraTabs: [],
-                             selectedTab: Binding(get: { selected }, set: { selected = $0 }),
+                             route: Binding(get: { route }, set: { route = $0 }),
                              onCollapse: {}, onOpenSettings: onOpenSettings,
                              onDecide: { _, _ in }, onOpenTerminal: { _ in })
     }

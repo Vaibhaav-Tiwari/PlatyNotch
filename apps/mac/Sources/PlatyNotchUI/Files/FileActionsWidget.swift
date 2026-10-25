@@ -19,6 +19,52 @@ final class FileActionsWidget: NotchWidget {
 
     func tileView() -> AnyView { AnyView(EmptyView()) }
     func settingsView() -> AnyView? { AnyView(FileActionsSettings()) }
+    /// The Library tool: what the actions do and where they live.
+    func toolView() -> AnyView { AnyView(FileActionsTool()) }
+}
+
+/// File actions in the Library: every action with its symbol, and how to reach them.
+struct FileActionsTool: View {
+    static let actions: [(symbol: String, title: String)] = [
+        ("arrow.triangle.2.circlepath", "Convert images, video and audio"),
+        ("film", "Compress a video"),
+        ("doc.richtext", "Combine images into a PDF"),
+        ("doc.zipper", "Zip or unzip"),
+        ("text.viewfinder", "Copy the text in an image or PDF"),
+        ("person.crop.rectangle", "Remove a photo's background"),
+        ("pencil.line", "Rename files in a batch"),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.m) {
+            Text("Right-click a shelf item, then Actions.")
+                .font(DS.font(TypeScale.body))
+                .foregroundStyle(.secondary)
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: Space.s), GridItem(.flexible(), spacing: Space.s)],
+                      alignment: .leading, spacing: Space.s) {
+                ForEach(Self.actions, id: \.title) { action in
+                    HStack(spacing: Space.s) {
+                        DS.icon(action.symbol, size: IconSize.row)
+                            .foregroundStyle(DS.dynamicColor(.working))
+                            .frame(width: 22)
+                        Text(verbatim: action.title)
+                            .font(DS.font(TypeScale.body))
+                            .lineLimit(1)
+                            .minimumScaleFactor(TypeScale.minimum / TypeScale.body.size)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, Space.m)
+                    .frame(height: 36)
+                    .dsCard()
+                    .accessibilityElement(children: .combine)
+                }
+            }
+            Text("Everything runs on this Mac. Results are new shelf items, kept 7 days unless pinned. Nothing is written next to your files; a rename can be undone once.")
+                .font(DS.font(TypeScale.caption))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
 }
 
 struct FileActionsSettings: View {

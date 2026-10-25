@@ -8,6 +8,7 @@ import SwiftUI
 /// file shows a badge with Locate… and Remove. Works on any `ItemListHost` (the shelf).
 struct ShelfTile: View {
     let host: any ItemListHost
+    @Environment(\.inLibraryTool) private var inTool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -36,7 +37,13 @@ struct ShelfTile: View {
     // Split out of `body`: one expression was slow for the type checker (25 ms probe).
     private var header: some View {
         HStack {
-            Label("Shelf", systemImage: "tray.full").font(.system(size: 12, weight: .semibold))
+            if inTool {
+                Text(host.items.isEmpty ? "" : "Double-click to open · drag out to use")
+                    .font(DS.font(TypeScale.caption))
+                    .foregroundStyle(.secondary)
+            } else {
+                Label("Shelf", systemImage: "tray.full").font(.system(size: 12, weight: .semibold))
+            }
             Spacer()
             if host.items.contains(where: { !$0.pinned }) {
                 Button("Clear") { host.clearUnpinned() }
@@ -48,7 +55,20 @@ struct ShelfTile: View {
     }
 
     @ViewBuilder private var items: some View {
-        if host.items.isEmpty {
+        if host.items.isEmpty, inTool {
+            ToolEmptyState(systemImage: "tray", title: "The shelf is empty",
+                           detail: "Drag files, images, links or text to the notch to keep them here.")
+        } else if inTool {
+            // The tool has the room for every card: rows that wrap, not one row that scrolls.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: ShelfCard.size.width), spacing: 6)],
+                      alignment: .leading, spacing: 6) {
+                ForEach(host.items) { item in
+                    ShelfCard(host: host, item: item, missing: host.missing.contains(item.id),
+                              selected: host.selection.contains(item.id),
+                              run: host.fileActions?.running[item.id])
+                }
+            }
+        } else if host.items.isEmpty {
             Text("Drag files, images, links or text to the notch to keep them here.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
