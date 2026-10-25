@@ -108,8 +108,12 @@ final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost, FileAct
     /// Renders only: sample cards on an inert widget (no store, nothing written or read).
     func showForRendering(_ sample: [ShelfItem]) {
         guard !persist else { return }
+        renderSample = true
         items = sample
     }
+
+    /// A render's sample is showing: the (empty) store never replaces it.
+    @ObservationIgnored private var renderSample = false
 
     var isRunning: Bool { context != nil }
 
@@ -502,6 +506,7 @@ final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost, FileAct
     }
 
     private func sync() {
+        guard !renderSample else { return }
         let now = store?.items ?? []
         if now != items { items = now }
     }

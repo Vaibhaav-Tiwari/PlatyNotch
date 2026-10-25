@@ -126,6 +126,18 @@ struct ShelfCard: View {
         .accessibilityLabel("\(run.title) \(item.title)")
     }
 
+    /// In the Library tool, the Library tile's own card (a soft fill on dark, a near-white
+    /// card on light), outlined in teal while selected; on the tile, the quiet wash.
+    @ViewBuilder private var cardBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+        if inTool {
+            LibraryTileCard(hovering: selected)
+                .overlay { if selected { shape.strokeBorder(DS.dynamicColor(.working), lineWidth: 1.5) } }
+        } else {
+            shape.fill(.primary.opacity(selected ? 0.18 : 0.06))
+        }
+    }
+
     private var content: some View {
         // Spacing 1: two 11 pt title lines fit under the thumbnail in the fixed card.
         VStack(spacing: 1) {
@@ -174,7 +186,7 @@ struct ShelfCard: View {
         .padding(.vertical, 4)
         .padding(.horizontal, 2)
         .frame(width: cardSize.width, height: cardSize.height)
-        .background(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).fill(.primary.opacity(selected ? 0.18 : 0.06)))
+        .background { cardBackground }
         .overlay {
             if !missing {
                 // Clicks, drags out and the menu (AppKit: a real NSDraggingSource with file URLs).
