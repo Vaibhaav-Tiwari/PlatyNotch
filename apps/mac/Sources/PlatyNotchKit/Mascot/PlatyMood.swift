@@ -160,8 +160,10 @@ public struct PlatyEarFit: Equatable, Sendable {
     public static let dot: CGFloat = 7 + 4
     /// The "+n" label (two digits at the 11 pt floor) and the space before it.
     public static let overflowLabel: CGFloat = 22
-    /// The "+n" badge's horizontal padding, each side.
-    public static let badgePadding: CGFloat = 2
+    /// The "+n" badge's horizontal padding inside its capsule, each side.
+    public static let badgePadding: CGFloat = 1
+    /// Counts above this show as "99+" on the badge.
+    public static let badgeMaxCount = 99
 
     /// Dots drawn.
     public let dots: Int
@@ -195,10 +197,25 @@ public struct PlatyEarFit: Equatable, Sendable {
         self.init(dots: shown, overflowCount: dots - shown + overflow, badge: false)
     }
 
-    /// The width a badge may take: it starts at Platy's horizontal centre (Platy at the
-    /// ear's leading edge) and runs to the end of the ear.
-    public static func badgeRoom(earWidth: CGFloat) -> CGFloat {
-        platy / 2 + max(0, earWidth - platy)
+    /// The badge's text: "+n", or "99+" above `badgeMaxCount`.
+    public static func badgeText(_ count: Int) -> String {
+        count > badgeMaxCount ? "\(badgeMaxCount)+" : "+\(count)"
+    }
+
+    /// The width a badge may take. With a badge Platy sits against the notch edge of the
+    /// ear; the badge runs outward from Platy's horizontal centre across the ear's free
+    /// room and the pill's outer padding (`PanelLayout.pillPadding`), up to the pill's
+    /// outer edge.
+    public static func badgeRoom(earWidth: CGFloat, outerPadding: CGFloat) -> CGFloat {
+        platy / 2 + max(0, earWidth - platy) + outerPadding
+    }
+
+    /// Where a badge `badgeWidth` wide starts, measured outward from the notch edge of
+    /// the ear: at Platy's centre, moved toward the notch only if it would otherwise cross
+    /// the pill's outer edge, and never past the notch edge (0).
+    public static func badgeOffset(earWidth: CGFloat, outerPadding: CGFloat, badgeWidth: CGFloat) -> CGFloat {
+        let outerEdge: CGFloat = max(earWidth, platy) + outerPadding
+        return max(0, min(platy / 2, outerEdge - badgeWidth))
     }
 
     /// The width this fit draws (the badge takes none).

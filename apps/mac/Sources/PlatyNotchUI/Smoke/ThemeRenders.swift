@@ -81,7 +81,40 @@ enum ThemeRenders {
         out.append(("memory-graph", memoryGraph(selection: nil), true))
         out.append(("memory-graph-selected", memoryGraph(selection: "t-pr"), true))
         out.append(("memory-graph-empty", memoryGraph(MemoryGraph(nodes: [], edges: []), selection: nil), true))
+        for width in AppearanceSettings.PillWidth.allCases {
+            for count in [4, 12] {
+                out.append(("pill-\(width.rawValue)-\(count)", compactPill(width, sessions: count), true))
+            }
+        }
         return out
+    }
+
+    /// The resting pill beside a 14-inch MacBook Pro notch (drawn dark grey here so its
+    /// edges show; black in the app) at `width`, with `sessions` working sessions: the
+    /// Compact ear shows Platy and the "+n" badge, the wider ears dots and "+n".
+    private static func compactPill(_ width: AppearanceSettings.PillWidth, sessions count: Int) -> AnyView {
+        let layout = PanelLayout(screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),
+                                 visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 950),
+                                 auxLeft: CGRect(x: 0, y: 950, width: 654, height: 32),
+                                 auxRight: CGRect(x: 858, y: 950, width: 654, height: 32), pillWidth: width)
+        let rect = layout.contentRect(for: .compact)
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let sessions = (0..<count).map { i in
+            Session(key: "s\(i)", agent: "claude-code", agentName: "Claude Code", sessionID: "s\(i)",
+                    state: .active, startedAt: start, updatedAt: start)
+        }
+        let pill = CompactPill(dots: PillDots(sessions: sessions), approvalCount: 0, connection: .connected,
+                               hasNotch: true, notchWidth: layout.anchor.width, liveSide: .right,
+                               earWidth: layout.liveEarWidth, platy: .working)
+        let view = ZStack {
+            Color(PanelPalette.darkSurface)
+            Color(white: 0.2).frame(width: layout.anchor.width)
+            pill
+        }
+        .frame(width: rect.width, height: rect.height)
+        .clipShape(Theme.panelShape(hasNotch: true))
+        .environment(\.colorScheme, .dark)
+        return AnyView(view)
     }
 
     /// The Memory tab's Graph mode at the panel's content size, with a sample week.

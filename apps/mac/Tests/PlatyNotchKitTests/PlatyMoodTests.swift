@@ -284,24 +284,43 @@ final class PlatyMoodTests: XCTestCase {
         }
     }
 
-    /// The Compact pill's "+n" badge (11 pt bold rounded, `badgePadding` each side) fits
-    /// from Platy's centre to the end of the 34 pt ear (`badgeRoom`).
-    func testBadgeFitsCompactEar() throws {
+    /// The width the pill draws for a badge: 11 pt bold rounded text, rounded up, plus
+    /// `badgePadding` each side.
+    private func badgeWidth(_ text: String) throws -> CGFloat {
         let base = NSFont.systemFont(ofSize: 11, weight: .bold)
         let descriptor = try XCTUnwrap(base.fontDescriptor.withDesign(.rounded))
         let font = try XCTUnwrap(NSFont(descriptor: descriptor, size: 11))
-        func width(_ s: String) -> CGFloat {
-            NSAttributedString(string: s, attributes: [.font: font]).size().width.rounded(.up)
-                + 2 * PlatyEarFit.badgePadding
+        return NSAttributedString(string: text, attributes: [.font: font]).size().width.rounded(.up)
+            + 2 * PlatyEarFit.badgePadding
+    }
+
+    /// The Compact pill's badge fits from Platy's centre to the pill's outer edge at the
+    /// 34 pt ear (40 less the 6 pt padding), for one and two digits and "99+".
+    func testBadgeFitsCompactEar() throws {
+        let pad = PanelLayout.pillPadding(hasNotch: true)
+        let room = PlatyEarFit.badgeRoom(earWidth: 34, outerPadding: pad)
+        XCTAssertEqual(room, 29)
+        XCTAssertEqual(PlatyEarFit.badgeText(150), "99+")
+        XCTAssertEqual(PlatyEarFit.badgeText(99), "+99")
+        for count in [9, 11, 40, 99, 150] {
+            let text = PlatyEarFit.badgeText(count)
+            XCTAssertLessThanOrEqual(try badgeWidth(text), room, text)
         }
-        let room = PlatyEarFit.badgeRoom(earWidth: 34)
-        XCTAssertEqual(room, 23)
-        XCTAssertLessThanOrEqual(width("+9"), room, "one digit fits")
-        // Two digits do not fit at 11 pt: "+11" needs 24, "+40" 28 (measured), against 23.
-        // Recorded for the coordinator rather than shrinking the font below 11.
-        XCTExpectFailure("two-digit badge is wider than the Compact ear's badge room at 11 pt")
-        for n in [11, 40, 99] {
-            XCTAssertLessThanOrEqual(width("+\(n)"), room, "+\(n)")
+    }
+
+    /// At every pill width beside a notch, every badge stays between the hardware notch
+    /// edge and the pill's outer edge.
+    func testBadgeNeverCrossesNotchOrPillEdge() throws {
+        let pad = PanelLayout.pillPadding(hasNotch: true)
+        for w in AppearanceSettings.PillWidth.allCases {
+            let earWidth = PanelLayout.ear(w) - pad
+            for count in 1...150 {
+                let width = try badgeWidth(PlatyEarFit.badgeText(count))
+                let start = PlatyEarFit.badgeOffset(earWidth: earWidth, outerPadding: pad, badgeWidth: width)
+                XCTAssertGreaterThanOrEqual(start, 0, "crosses the notch: \(w) \(count)")
+                XCTAssertLessThanOrEqual(start + width, earWidth + pad, "crosses the pill's edge: \(w) \(count)")
+                XCTAssertEqual(start, PlatyEarFit.platy / 2, "starts at Platy's centre: \(w) \(count)")
+            }
         }
     }
 
