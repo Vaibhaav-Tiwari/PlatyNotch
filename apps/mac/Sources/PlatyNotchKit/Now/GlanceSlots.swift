@@ -32,10 +32,22 @@ public struct GlanceSlots: Codable, Equatable, Sendable {
 
     /// The saved choice, else (no key, or unreadable) the defaults.
     public static func load(from defaults: UserDefaults, glanceCapable: [String]) -> GlanceSlots {
-        guard let data = defaults.data(forKey: key),
-              let slots = try? JSONDecoder().decode(GlanceSlots.self, from: data) else {
-            return Self.defaults(glanceCapable: glanceCapable)
-        }
+        decode(defaults.data(forKey: key)) ?? Self.defaults(glanceCapable: glanceCapable)
+    }
+
+    /// The saved choice; with none yet, the defaults, saved at once so they never change
+    /// as widgets come and go (the slots never backfill, Ruling 6). `glanceCapable` is every
+    /// registered glance in registry order, on or off.
+    public static func resolve(from defaults: UserDefaults, glanceCapable: [String]) -> GlanceSlots {
+        if defaults.object(forKey: key) != nil { return load(from: defaults, glanceCapable: glanceCapable) }
+        let slots = Self.defaults(glanceCapable: glanceCapable)
+        slots.save(to: defaults)
+        return slots
+    }
+
+    /// Decodes saved slots (nil for missing or unreadable data).
+    public static func decode(_ data: Data?) -> GlanceSlots? {
+        guard let data, let slots = try? JSONDecoder().decode(GlanceSlots.self, from: data) else { return nil }
         return GlanceSlots(ids: slots.ids)
     }
 

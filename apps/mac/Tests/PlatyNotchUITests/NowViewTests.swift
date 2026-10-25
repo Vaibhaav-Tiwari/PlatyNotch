@@ -135,6 +135,43 @@ final class NowViewTests: DefaultsTestCase {
         XCTAssertLessThanOrEqual(height(now(r)), NowMetrics.quietLine + 4, "one compact line, no hero, no glances")
     }
 
+    /// While an approval is pending: nav, gap, the approvals region at its 240 pt cap, gap
+    /// and the one compact line still fit beside a 38 pt notch.
+    func testApprovalsPendingFits() {
+        let needed: CGFloat = NowMetrics.nav + NowMetrics.gap + 240 + NowMetrics.gap + NowMetrics.quietLine
+        XCTAssertLessThanOrEqual(needed, NowMetrics.available(in: notched38))
+        XCTAssertLessThanOrEqual(needed, NowMetrics.available(in: plain))
+    }
+
+    /// Ruling 6: the default slots are saved once from every registered glance; turning the
+    /// first glance off hides its chip without pulling in a fifth, and turning it back on
+    /// puts it back first.
+    func testGlancesNeverBackfill() {
+        let store = AppStore()
+        let client = CoreClient(socketPath: "/nonexistent")
+        let registry = WidgetRegistry(defaults: defaults(), persist: false)
+        let ids = ["g1", "g2", "g3", "g4", "g5"]
+        for id in ids { registry.register(NowFakeWidget(id, kind: [.glance, .tool])) }
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("pnglance\(UUID().uuidString)")
+        registry.start(context: WidgetContext(store: store, client: client,
+                                              config: ConfigFileStore(url: dir.appendingPathComponent("config.json")),
+                                              events: CoreEventHub(), defaults: defaults(), notify: NoopNotifier(),
+                                              openPanel: { _ in }))
+        func shown() -> [String] {
+            NowView.glanceEntries(widgets: registry, usage: store.usage, defaults: defaults()).map(\.id)
+        }
+        // The first one is off before Now ever resolves the slots: it still owns slot 1.
+        registry.setEnabled("g1", false)
+        XCTAssertEqual(shown(), ["g2", "g3", "g4"])
+        XCTAssertEqual(GlanceSlots.load(from: defaults(), glanceCapable: []).ids, ["g1", "g2", "g3", "g4"], "saved once")
+        registry.setEnabled("g1", true)
+        XCTAssertEqual(shown(), ["g1", "g2", "g3", "g4"])
+        registry.setEnabled("g1", false)
+        XCTAssertEqual(shown(), ["g2", "g3", "g4"], "no g5: nothing backfills")
+        registry.setEnabled("g1", true)
+        XCTAssertEqual(shown(), ["g1", "g2", "g3", "g4"], "back first")
+    }
+
     func testHeroFitsWithLongTitle() {
         let long = String(repeating: "x", count: 200)
         let item = LiveItem(id: "x", rank: .timerRunning,
@@ -223,5 +260,72 @@ final class GlanceRowTests: DefaultsTestCase {
         host.layoutSubtreeIfNeeded()
         XCTAssertLessThanOrEqual(host.fittingSize.width, width + 0.5)
         XCTAssertEqual(host.fittingSize.height, NowMetrics.glance)
+    }
+}
+
+/// Paused music runs out by itself (an observed change), and at once after a wake or a
+/// clock change.
+@MainActor
+final class MusicPauseExpiryTests: DefaultsTestCase {
+    private func music() -> (NowPlaying, MusicWidget) {
+        let np = NowPlaying()
+        return (np, MusicWidget(nowPlaying: np, visualiser: MusicVisualiser(defaults: defaults())))
+    }
+
+    private func info(playing: Bool, title: String = "Song") -> NowPlayingInfo {
+        NowPlayingInfo(bundleIdentifier: "com.apple.Music", title: title, artist: "Band", isPlaying: playing)
+    }
+
+    func testPauseExpiresAndNotifies() {
+        let (np, w) = music()
+        np.pauseWindow = 0.3
+        np.debugApply(info(playing: true))
+        np.debugApply(info(playing: false))
+        XCTAssertEqual(w.liveActivities.map(\.id), ["music:paused"])
+        let changed = expectation(description: "liveActivities changes when the pause runs out")
+        withObservationTracking { _ = w.liveActivities } onChange: { changed.fulfill() }
+        wait(for: [changed], timeout: 5)
+        XCTAssertNil(np.pausedAt)
+        XCTAssertTrue(w.liveActivities.isEmpty)
+    }
+
+    func testWakeExpiresAtOnce() {
+        let (np, w) = music()
+        var now = Date()
+        np.pauseClock = { now }
+        np.debugApply(info(playing: true), now: now)
+        np.debugApply(info(playing: false), now: now)
+        XCTAssertNotNil(np.pausedAt)
+        now = now.addingTimeInterval(NowPlaying.pauseLength + 60)   // slept through the window
+        np.recheckPause()
+        XCTAssertNil(np.pausedAt)
+        XCTAssertTrue(w.liveActivities.isEmpty)
+    }
+
+    func testPlayNewTrackAndNilCancel() {
+        let (np, _) = music()
+        np.debugApply(info(playing: true))
+        np.debugApply(info(playing: false))
+        XCTAssertNotNil(np.pausedAt)
+        np.debugApply(info(playing: true))
+        XCTAssertNil(np.pausedAt, "playing again")
+        np.debugApply(info(playing: false))
+        np.debugApply(info(playing: false, title: "Next song"))
+        XCTAssertNil(np.pausedAt, "a new track loaded paused was not paused by you")
+        np.debugApply(info(playing: true))
+        np.debugApply(info(playing: false))
+        np.debugApply(nil)
+        XCTAssertNil(np.pausedAt, "nothing loaded")
+    }
+
+    func testAgentActivityRerankOnClockChange() {
+        let model = AgentActivityModel()
+        let before = model.revision
+        model.clockChanged(now: Date())
+        XCTAssertEqual(model.revision, before + 1)
+        let store = AppStore()
+        model.start(store: store)
+        model.start(store: store)   // idempotent
+        model.stop()
     }
 }

@@ -174,7 +174,7 @@ enum NowRenders {
     /// (file name, view, needs a hosting view): Platy is a layer-backed view.
     static func views() -> [(String, AnyView, Bool)] {
         var out: [(String, AnyView, Bool)] = []
-        out.append(("now-summary", panel(Rig()), true))
+        out.append(("now-summary", panel(builtIns(meeting: false)), true))
         out.append(("now-live-generic", panel(everythingOn()), true))
         out.append(("now-approvals-line", panel(approvalPending()), true))
         out.append(("hero-music", panel(musicHero()), true))
@@ -235,10 +235,9 @@ enum NowRenders {
                                     auxLeft: CGRect(x: 0, y: 944, width: 654, height: 38),
                                     auxRight: CGRect(x: 858, y: 944, width: 654, height: 38))
 
-    /// 09:41 today: a fixed clock for the summary.
-    static var fixedNow: Date {
-        Calendar.current.date(bySettingHour: 9, minute: 41, second: 0, of: Date()) ?? Date()
-    }
+    /// The summary's clock: the real time, so its "Next: …" line and the meeting glance
+    /// agree with the seeded calendar.
+    static var fixedNow: Date { Date() }
 
     /// Inert models for one render.
     @MainActor
@@ -321,7 +320,7 @@ enum NowRenders {
         let usage: Usage = (try? JSONCoding.decoder.decode(Usage.self, from: Data(json.utf8))) ?? Usage()
         try? rig.store.apply(Envelope.make(.snapshot, Snapshot(usage: usage, loops: loops)))
         let start = now.addingTimeInterval(8 * 60)
-        let later = now.addingTimeInterval(3 * 3600)
+        let later = now.addingTimeInterval(45 * 60)   // today, and not yet live
         let next = meeting ? CalendarMeeting(id: "design", title: "Design review", start: start,
                                              end: start.addingTimeInterval(1800),
                                              joinURL: URL(string: "https://meet.example.com/design"))

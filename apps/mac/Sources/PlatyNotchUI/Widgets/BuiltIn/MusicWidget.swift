@@ -23,8 +23,6 @@ final class MusicWidget: NotchWidget {
         self.visualiser = visualiser
     }
 
-    /// Music stays live this long after a pause (spec 6.2).
-    static let pausedWindow: TimeInterval = 600
 
     var kind: WidgetKind { [.live, .tool] }
 
@@ -39,7 +37,7 @@ final class MusicWidget: NotchWidget {
         guard let pausedAt = nowPlaying.pausedAt, nowPlaying.info != nil else { return [] }
         return [LiveActivity(id: "music:paused", widgetID: id, priority: LivePriority.musicPlaying,
                              glyph: .symbol("pause.fill"), tint: .neutral,
-                             expiresAt: pausedAt.addingTimeInterval(Self.pausedWindow),
+                             expiresAt: pausedAt.addingTimeInterval(nowPlaying.pauseWindow),
                              accessibilityLabel: "Music paused", title: "Music", subtitle: track, startedAt: pausedAt)]
     }
 

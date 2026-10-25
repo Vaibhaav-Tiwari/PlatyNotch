@@ -38,9 +38,9 @@ struct TodaySummaryHero: View {
                     .monospacedDigit()
                     .lineLimit(1)
                     .contentTransition(.numericText())
-                if let next = nextMeeting(now) {
+                if let line = Self.nextLine(calendar: calendar, now: now) {
                     Label {
-                        Text(verbatim: "Next: \(MeetingWidget.time(next.start)) \(next.title)")
+                        Text(verbatim: line)
                             .lineLimit(1)
                             .truncationMode(.tail)
                     } icon: {
@@ -58,8 +58,13 @@ struct TodaySummaryHero: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func nextMeeting(_ now: Date) -> CalendarMeeting? {
+    /// "Next: 10:30 Design review"; "No more events today" with access and nothing left
+    /// today; nil without calendar access (never asks).
+    static func nextLine(calendar: CalendarService, now: Date, in cal: Calendar = .current) -> String? {
         guard calendar.access == .granted else { return nil }
-        return MeetingTimeline.next(calendar.meetings, now: now)
+        guard let next = MeetingTimeline.next(calendar.meetings, now: now), cal.isDate(next.start, inSameDayAs: now) else {
+            return "No more events today"
+        }
+        return "Next: \(MeetingWidget.time(next.start)) \(next.title)"
     }
 }

@@ -58,6 +58,10 @@ final class PriorityModelTests: DefaultsTestCase {
         XCTAssertEqual(LiveRank(activity: imminent, now: now), .meetingImminent)
         XCTAssertEqual(LiveRank(activity: soon, now: now), .meetingSoon)
         XCTAssertEqual(LiveRank(activity: act("m", LivePriority.meetingSoon), now: now), .meetingSoon)
+        // A plugin's meeting more than 10 minutes off is minor, not "soon".
+        let far = act("m", LivePriority.meetingSoon, countdown: now.addingTimeInterval(601))
+        XCTAssertEqual(LiveRank(activity: far, now: now), .minor)
+        XCTAssertEqual(LiveRank(activity: act("m", 79, countdown: now.addingTimeInterval(600)), now: now), .meetingSoon)
         XCTAssertEqual(LiveRank.meetingImminent.notificationKind, .meetingStarting)
         XCTAssertEqual(LiveRank.meetingSoon.notificationKind, .meetingStarting)
         XCTAssertEqual(LiveRank.ringing.notificationKind, .ringing)
@@ -75,6 +79,12 @@ final class PriorityModelTests: DefaultsTestCase {
         let d = act("d", LivePriority.focusSession)
         XCTAssertEqual(PriorityModel.rank([c, d], agents: nil, now: now).map(\.id), ["c", "d"])
         XCTAssertEqual(PriorityModel.rank([d, c], agents: nil, now: now).map(\.id), ["d", "c"])
+        // A strict weak ordering: an item without a start sorts after those with one,
+        // whatever the input order.
+        let e = act("e", LivePriority.timerRunning, started: now.addingTimeInterval(-5))
+        for input in [[c, a, e], [e, c, a], [a, e, c], [c, e, a]] {
+            XCTAssertEqual(PriorityModel.rank(input, agents: nil, now: now).map(\.id), ["a", "e", "c"])
+        }
     }
 
     func testExpiredDropped() {
@@ -116,6 +126,47 @@ final class PriorityModelTests: DefaultsTestCase {
         XCTAssertEqual(live?.working, 2)
         XCTAssertEqual(live?.needsYou, 0)
         XCTAssertEqual(live?.total, 3)
+    }
+
+    /// Spec 6.7 (ruling M1): the most urgent session ranks the item. A finish in the last
+    /// 10 minutes (5) outranks a working session (9); its counts still say how many work.
+    func testFinishOutranksWorking() {
+        let log = finishLog("done", at: now.addingTimeInterval(-120))
+        let sessions = [session("w", .active, project: "api"), session("done", .idle, project: "web", started: -50)]
+        let live = AgentsLive.make(sessions: sessions, log: log, now: now)
+        XCTAssertEqual(live?.rank, .agentFinished)
+        XCTAssertEqual(live?.title, "Claude Code · web")
+        XCTAssertEqual(live?.working, 1)
+        XCTAssertEqual(live?.leadKey, "done")
+        XCTAssertEqual(live?.leadAttention, .finished)
+        // Needs you still beats a finish.
+        let waiting = sessions + [session("n", .waitingInput, project: "cli")]
+        XCTAssertEqual(AgentsLive.make(sessions: waiting, log: log, now: now)?.rank, .agentNeedsYou)
+        // After the window, working again.
+        XCTAssertEqual(AgentsLive.make(sessions: sessions, log: log, now: now.addingTimeInterval(600))?.rank, .agentsWorking)
+    }
+
+    func testLeadSessionAndAttention() {
+        var log = AgentFinishLog()
+        log.noteFailure(sessionKey: "err", at: now)
+        let errored = AgentsLive.make(sessions: [session("err", .idle, project: "x"), session("w", .active)], log: log,
+                                      now: now)
+        XCTAssertEqual(errored?.rank, .agentNeedsYou)
+        XCTAssertEqual(errored?.leadKey, "err")
+        XCTAssertEqual(errored?.leadAttention, .errored, "errored is not needs-you: the hero shows the error state")
+        XCTAssertEqual(errored?.leadAttention.tone, .error)
+        let both = AgentsLive.make(sessions: [session("err", .idle), session("n", .waitingInput, started: 10)],
+                                   log: log, now: now)
+        XCTAssertEqual(both?.leadKey, "n", "needs input before errored")
+        XCTAssertEqual(both?.leadAttention, .needsYou)
+        XCTAssertEqual(both?.needsYou, 2)
+        let working = AgentsLive.make(sessions: [session("late", .active, started: 5), session("early", .active)],
+                                      log: AgentFinishLog(), now: now)
+        XCTAssertEqual(working?.leadKey, "early")
+        XCTAssertEqual(working?.leadAttention, .working)
+        // Additive init: old call sites still compile, the attention follows the rank.
+        XCTAssertEqual(AgentsLive(rank: .agentFinished, title: "t", subtitle: nil, startedAt: now, needsYou: 0, working: 0,
+                                  total: 1).leadAttention, .finished)
     }
 
     func testFailureMeansNeedsYou() {

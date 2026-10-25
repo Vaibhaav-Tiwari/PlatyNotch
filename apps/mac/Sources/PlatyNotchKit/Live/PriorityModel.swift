@@ -41,8 +41,8 @@ public struct LiveItem: Identifiable, Equatable, Sendable {
 /// The one priority model (spec 6.3) for the pill, the Now hero and auto-open.
 public enum PriorityModel {
     /// Live activities (expired ones dropped) and the agents item, highest rank first.
-    /// Ties go to the earlier `startedAt` when both have one, else the input order (the
-    /// agents item counts as first).
+    /// Ties go to the earlier `startedAt` (an item without one after those with one), then
+    /// the input order (the agents item counts as first).
     public static func rank(_ activities: [LiveActivity], agents: AgentsLive?, now: Date) -> [LiveItem] {
         var items: [LiveItem] = []
         if let agents {
@@ -54,10 +54,13 @@ public enum PriorityModel {
                                   title: a.title ?? a.accessibilityLabel ?? a.widgetID, subtitle: a.subtitle,
                                   startedAt: a.startedAt, countdownTo: a.countdownTo))
         }
+        // A strict weak ordering: (rank, start, input order); no start sorts after any start.
         return items.enumerated()
             .sorted { x, y in
                 if x.element.rank != y.element.rank { return x.element.rank < y.element.rank }
-                if let a = x.element.startedAt, let b = y.element.startedAt, a != b { return a < b }
+                let a: Date = x.element.startedAt ?? .distantFuture
+                let b: Date = y.element.startedAt ?? .distantFuture
+                if a != b { return a < b }
                 return x.offset < y.offset
             }
             .map(\.element)

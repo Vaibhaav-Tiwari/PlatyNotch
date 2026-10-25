@@ -106,37 +106,23 @@ struct NowView: View {
         }
     }
 
-    /// Platy at 96 pt beside the most urgent session; its action opens that session's terminal.
+    /// Platy at 96 pt beside the most urgent session; its action opens that session's
+    /// terminal (the Agents tab when the core no longer lists it).
     private func agentsHero(_ agents: AgentsLive) -> some View {
         AgentsHero(agents: agents, action: AgentsHero.action(for: agents), mood: platyMood) {
-            if let lead = leadSession() { onOpenTerminal(lead) } else { onOpenAgents() }
+            if let lead = leadSession(agents) { onOpenTerminal(lead) } else { onOpenAgents() }
         }
     }
 
-    /// The most urgent session (the agents item's title): by attention, then the oldest.
-    private func leadSession() -> Session? {
-        let now = Date()
-        let log: AgentFinishLog = today.agentActivity.log
-        var best: (session: Session, attention: AgentAttention)?
-        for s in store.sessions {
-            let a: AgentAttention = AgentAttention.of(s, log: log, now: now)
-            guard a != .exited else { continue }
-            guard let current = best else { best = (s, a); continue }
-            if a < current.attention || (a == current.attention && s.startedAt < current.session.startedAt) {
-                best = (s, a)
-            }
-        }
-        return best?.session
+    /// The agents item's lead session (`AgentsLive.leadKey`, the one classifier's choice).
+    private func leadSession(_ agents: AgentsLive) -> Session? {
+        store.sessions.first { $0.key == agents.leadKey }
     }
 
     private func keyline(_ item: LiveItem) -> Color? {
         switch item.source {
         case .agents(let a):
-            switch a.rank {
-            case .agentNeedsYou: return DS.dynamicColor(.needsYou, alpha: 0.7)
-            case .agentFinished: return DS.dynamicColor(.done, alpha: 0.7)
-            default: return DS.dynamicColor(.working, alpha: 0.7)
-            }
+            return DS.dynamicColor(AgentsHero.tone(for: a), alpha: 0.7)
         case .activity(let a):
             // Music takes the album art's colour, like a Live Activity's tinted keyline.
             if a.widgetID == MusicWidget.widgetID, let tint = today.nowPlaying.artworkTint {
@@ -149,14 +135,21 @@ struct NowView: View {
     // MARK: - Glances and the quiet line
 
     private var glances: [GlanceEntry] {
-        let capable: [String] = widgets.glanceCapableIDs + [GlanceSlots.usageID]
-        let slots: GlanceSlots = GlanceSlots.load(from: glanceDefaults, glanceCapable: capable)
+        Self.glanceEntries(widgets: widgets, usage: store.usage, defaults: glanceDefaults)
+    }
+
+    /// The chosen glances that have something to show, in slot order. The slots come from
+    /// every registered glance (saved on first use); one with nothing to show is skipped,
+    /// never replaced (Ruling 6).
+    static func glanceEntries(widgets: WidgetRegistry, usage: Usage, defaults: UserDefaults) -> [GlanceEntry] {
+        let capable: [String] = widgets.registeredGlanceIDs + [GlanceSlots.usageID]
+        let slots: GlanceSlots = GlanceSlotsCache.resolve(from: defaults, glanceCapable: capable)
         var views: [String: AnyView] = [:]
         for w in widgets.glanceWidgets {
             if let v = w.glanceView() { views[w.id] = v }
         }
-        if UsageGlance.reading(store.usage) != nil {
-            views[GlanceSlots.usageID] = AnyView(UsageGlance(usage: store.usage))
+        if UsageGlance.reading(usage) != nil {
+            views[GlanceSlots.usageID] = AnyView(UsageGlance(usage: usage))
         }
         return slots.shown(available: Set(views.keys)).compactMap { id in
             views[id].map { GlanceEntry(id: id, view: $0) }
@@ -192,5 +185,18 @@ struct NowView: View {
                 .frame(maxWidth: .infinity, minHeight: NowMetrics.quietLine, alignment: .leading)
                 .accessibilityLabel(line)
         }
+    }
+}
+
+/// Saved glance slots, decoded once per saved value (Now's body reads them on every draw).
+@MainActor
+enum GlanceSlotsCache {
+    private static var last: (data: Data, slots: GlanceSlots)?
+
+    static func resolve(from defaults: UserDefaults, glanceCapable: [String]) -> GlanceSlots {
+        if let data = defaults.data(forKey: GlanceSlots.key), let last, last.data == data { return last.slots }
+        let slots = GlanceSlots.resolve(from: defaults, glanceCapable: glanceCapable)
+        if let data = defaults.data(forKey: GlanceSlots.key) { last = (data, slots) }
+        return slots
     }
 }

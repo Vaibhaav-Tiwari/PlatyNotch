@@ -137,7 +137,13 @@ public final class WidgetRegistry {
         visibleWidgets.filter { running.contains($0.id) && $0.kind.contains(.glance) && $0.hasContent }
     }
 
-    /// Every enabled glance widget, in the user's order (the default glance slots).
+    /// Every registered glance widget, on or off, in the user's order: Now's default
+    /// glance slots (saved once, so turning a widget off never backfills its slot).
+    public var registeredGlanceIDs: [String] {
+        orderedWidgets.filter { $0.kind.contains(.glance) }.map(\.id)
+    }
+
+    /// Every enabled glance widget, in the user's order.
     public var glanceCapableIDs: [String] {
         visibleWidgets.filter { $0.kind.contains(.glance) }.map(\.id)
     }

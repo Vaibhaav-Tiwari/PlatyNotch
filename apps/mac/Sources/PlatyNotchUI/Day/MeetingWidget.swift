@@ -235,13 +235,18 @@ final class MeetingWidget: NotchWidget {
 }
 
 /// The meeting glance: the start time and the event's title.
-private struct MeetingGlance: View {
+struct MeetingGlance: View {
     let widget: MeetingWidget
 
     var body: some View {
         let m = widget.glanceMeeting
-        GlanceChip(systemImage: "calendar", value: m.map { MeetingWidget.time($0.start) } ?? "—",
+        GlanceChip(systemImage: "calendar", value: m.map { Self.value($0, now: widget.now) } ?? "—",
                    label: m?.title ?? "No meetings")
+    }
+
+    /// "10:30", or "Now" for a meeting in progress (the chip reads "Now: Design" aloud).
+    static func value(_ m: CalendarMeeting, now: Date) -> String {
+        m.start <= now ? "Now" : MeetingWidget.time(m.start)
     }
 }
 
@@ -257,7 +262,7 @@ private struct MeetingHero: View {
                 HeroGlyph(glyph: .ring(progress: MeetingReminderSchedule.progress(start: next.start, now: widget.now)),
                           tint: .warning)
             } value: {
-                HeroClock(countdownTo: next.start, countUpFrom: nil)
+                HeroClock(countdownTo: next.start, countUpFrom: nil, style: .minutesUntil)
             }
         }
     }

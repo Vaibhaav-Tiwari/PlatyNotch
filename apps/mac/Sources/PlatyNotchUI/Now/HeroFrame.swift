@@ -31,6 +31,7 @@ struct HeroFrame<Content: View>: View {
                     .layoutPriority(1)
             }
         }
+        .environment(\.heroPosition, position)
         .padding(Space.heroPadding)
         .frame(maxWidth: .infinity)
         .frame(height: NowMetrics.hero)

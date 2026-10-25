@@ -78,6 +78,7 @@ final class BuiltInKindsTests: DefaultsTestCase {
         let np = NowPlaying()
         let music = MusicWidget(nowPlaying: np, visualiser: MusicVisualiser(defaults: defaults()))
         let t = Date(timeIntervalSince1970: 6_000_000)
+        np.pauseClock = { t }
         np.debugApply(NowPlayingInfo(bundleIdentifier: "com.apple.Music", title: "Song", artist: "Band",
                                      isPlaying: true), now: t.addingTimeInterval(-60))
         XCTAssertEqual(music.liveActivities.map(\.id), ["music:playing"])
@@ -94,6 +95,7 @@ final class BuiltInKindsTests: DefaultsTestCase {
         XCTAssertEqual(PriorityModel.rank(paused, agents: nil, now: t.addingTimeInterval(601)), [])
         np.debugApply(nil, now: t.addingTimeInterval(5))
         XCTAssertTrue(music.liveActivities.isEmpty, "nothing loaded: nothing live")
+        XCTAssertNil(np.pausedAt)
     }
 
     func testShelfActionIsFileActionRank() {
@@ -127,6 +129,15 @@ final class BuiltInKindsTests: DefaultsTestCase {
         XCTAssertEqual(live?.title, "Design")
         XCTAssertNotNil(live?.subtitle)
         XCTAssertEqual(live?.startedAt, start)
+    }
+
+    func testMeetingGlanceSaysNowDuringAMeeting() {
+        let now = Date(timeIntervalSince1970: 7_000_000)
+        let current = CalendarMeeting(id: "c", title: "Design", start: now.addingTimeInterval(-60),
+                                      end: now.addingTimeInterval(1800))
+        XCTAssertEqual(MeetingGlance.value(current, now: now), "Now")
+        let next = CalendarMeeting(id: "n", title: "Sync", start: now.addingTimeInterval(600), end: now.addingTimeInterval(900))
+        XCTAssertEqual(MeetingGlance.value(next, now: now), MeetingWidget.time(next.start))
     }
 
     func testGlanceViewsExistForGlanceKinds() {

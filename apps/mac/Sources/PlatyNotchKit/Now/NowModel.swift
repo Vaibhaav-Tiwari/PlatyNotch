@@ -28,12 +28,19 @@ public enum NowSummaryLine {
         let parts: [String] = deck.prefix(2).map { item in
             let meeting: Bool = item.rank == .meetingImminent || item.rank == .meetingSoon
             guard meeting, let to = item.countdownTo else { return item.title }
-            let left: TimeInterval = to.timeIntervalSince(now)
-            guard left > 0, left <= countdownWindow else { return item.title }
-            let minutes = Int((left / 60).rounded(.up))
-            return "\(item.title) in \(minutes) min"
+            guard let soon = inMinutes(to: to, now: now) else { return item.title }
+            return "\(item.title) \(soon)"
         }
         return "Now: " + parts.joined(separator: " · ")
+    }
+
+    /// "in 8 min" (rounded up) while `to` is within `countdownWindow`, else nil. The
+    /// meeting hero uses the same rule.
+    public static func inMinutes(to: Date, now: Date) -> String? {
+        let left: TimeInterval = to.timeIntervalSince(now)
+        guard left > 0, left <= countdownWindow else { return nil }
+        let minutes = Int((left / 60).rounded(.up))
+        return "in \(minutes) min"
     }
 }
 

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 import PlatyNotchKit
@@ -17,21 +18,46 @@ final class AgentActivityModel {
     @ObservationIgnored private var expiry: Task<Void, Never>?
     @ObservationIgnored private var store: AppStore?
     @ObservationIgnored private var lastNotice = 0
+    @ObservationIgnored private var clockObservers: [(NotificationCenter, NSObjectProtocol)] = []
 
     init() {}
 
-    /// Follows the store's sessions and notices (the app calls this once at launch).
+    /// Follows the store's sessions and notices, and re-ranks after a wake or a clock
+    /// change. Idempotent: a second call (or one for the same store) does nothing.
     func start(store: AppStore) {
+        guard self.store == nil else { return }
         self.store = store
         lastNotice = store.noticeSequence
         observeSessions()
         observeNotices()
+        observeClock()
     }
 
     func stop() {
         store = nil
         expiry?.cancel()
         expiry = nil
+        for (center, token) in clockObservers { center.removeObserver(token) }
+        clockObservers = []
+    }
+
+    /// After a wake or a clock change: re-rank now (a window may have run out while
+    /// asleep) and wait for the next expiry afresh.
+    func clockChanged(now: Date) {
+        revision += 1
+        scheduleExpiry(now: now)
+    }
+
+    private func observeClock() {
+        let workspace = NSWorkspace.shared.notificationCenter
+        let wake = workspace.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.clockChanged(now: Date()) }
+        }
+        let center = NotificationCenter.default
+        let change = center.addObserver(forName: .NSSystemClockDidChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.clockChanged(now: Date()) }
+        }
+        clockObservers = [(workspace, wake), (center, change)]
     }
 
     /// The store's sessions now: finishes are logged; a session active again loses its failure.

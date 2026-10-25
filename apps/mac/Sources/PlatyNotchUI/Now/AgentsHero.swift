@@ -17,9 +17,15 @@ struct AgentsHero: View {
         self.onPrimary = onPrimary
     }
 
-    /// The hero's action for the item's rank: Answer while one needs you, else Open terminal.
+    /// The lead session's row action (`AgentsLive.leadAttention`): Answer while it needs you
+    /// or errored, else Open terminal.
     static func action(for agents: AgentsLive) -> AgentRowAction {
-        AgentRowAction(agents.rank == .agentNeedsYou ? .needsYou : .working)
+        AgentRowAction(agents.leadAttention)
+    }
+
+    /// The lead session's state colour and symbol: errored is the coral error state.
+    static func tone(for agents: AgentsLive) -> StateTone {
+        agents.leadAttention.tone
     }
 
     var body: some View {
@@ -50,13 +56,7 @@ struct AgentsHero: View {
         action == .answer ? "arrowshape.turn.up.left.fill" : "terminal"
     }
 
-    private var tone: StateTone {
-        switch agents.rank {
-        case .agentNeedsYou: .needsYou
-        case .agentFinished: .done
-        default: .working
-        }
-    }
+    private var tone: StateTone { Self.tone(for: agents) }
 
     /// "1 needs you · 2 working · 4 sessions"; "Finished" once all are done.
     private var counts: String {
