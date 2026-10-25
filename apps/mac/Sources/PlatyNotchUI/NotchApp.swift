@@ -501,9 +501,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return (count, failed)
     }
 
-    /// Lays out `w`'s settings view, its hero, glance, Library tile and tool views, and
-    /// when it has one (`hasTile`) its tile off screen. False when the tile lays out with
-    /// no width.
+    /// Lays out `w`'s settings view, its hero, glance and Library tile views, and when it
+    /// has one (`hasTile`) its tile off screen. A headless widget's tool view is laid out
+    /// only when it has settings (its default tool view is then those settings; a tile the
+    /// widget does not have is never built). False when the tile lays out with no width.
     static func buildViews(of w: any NotchWidget) -> Bool {
         if let settings = w.settingsView() {
             NSHostingView(rootView: settings.frame(width: 480)).layoutSubtreeIfNeeded()
@@ -512,7 +513,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let hero = w.heroView() { extra.append(AnyView(hero.frame(width: 488, height: 120))) }
         if let glance = w.glanceView() { extra.append(AnyView(glance.frame(width: 122, height: 64))) }
         if let tile = w.libraryTile() { extra.append(AnyView(tile.frame(width: 126))) }
-        extra.append(AnyView(w.toolView().frame(width: 528)))
+        if !w.hasTile, w.settingsView() != nil { extra.append(AnyView(w.toolView().frame(width: 528))) }
         for view in extra {
             NSHostingView(rootView: view.environment(\.colorScheme, .dark)).layoutSubtreeIfNeeded()
         }
