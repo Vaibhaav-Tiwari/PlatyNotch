@@ -588,8 +588,8 @@ enum LibraryRenders {
         out.append(("library-tool-focus", tool(FocusWidget.widgetID), true))
         out.append(("library-tool-time", tool(TimeWidget.widgetID, rig: NowRenders.timerHero()), true))
         out.append(("library-tool-music", tool(MusicWidget.widgetID, rig: NowRenders.musicHero()), true))
-        out.append(("library-tool-clipboard", tool(ClipboardWidget.widgetID), true))
-        out.append(("library-tool-shelf", tool(ShelfWidget.widgetID), true))
+        out.append(("library-tool-clipboard", tool(ClipboardWidget.widgetID, rig: samples()), true))
+        out.append(("library-tool-shelf", tool(ShelfWidget.widgetID, rig: samples()), true))
         out.append(("library-tool-memory-search", memory(.search), true))
         out.append(("library-tool-memory-graph", memory(.graph), true))
         out.append(("library-tool-games", tool(GamesWidget.widgetID), true))
@@ -617,6 +617,31 @@ enum LibraryRenders {
 
     private static func tool(_ id: String, rig: NowRenders.Rig? = nil) -> AnyView {
         NowRenders.panel(rig ?? NowRenders.builtIns(meeting: false), route: route(id))
+    }
+
+    /// Every built-in on, with sample clipboard rows and shelf cards (inert: nothing written).
+    private static func samples() -> NowRenders.Rig {
+        let rig = NowRenders.builtIns(meeting: false)
+        let now = Date()
+        let clips: [ClipItem] = [
+            ClipItem(kind: .text("Ship the Library grid today, then the settings pages."), copiedAt: now.addingTimeInterval(-40)),
+            ClipItem(kind: .url(URL(string: "https://example.com/design/library")!), copiedAt: now.addingTimeInterval(-300),
+                     pinned: true),
+            ClipItem(kind: .text("swift test --filter LibraryViewTests"), copiedAt: now.addingTimeInterval(-900)),
+            ClipItem(kind: .text("Priya's deck: slides 4 to 9 need the new colours"), copiedAt: now.addingTimeInterval(-3_600)),
+            ClipItem(kind: .files([URL(fileURLWithPath: "/Users/sample/Documents/Quarterly report.pdf")]),
+                     copiedAt: now.addingTimeInterval(-7_200)),
+        ]
+        (rig.registry.widget(ClipboardWidget.widgetID) as? ClipboardWidget)?.showForRendering(clips)
+        let cards: [ShelfItem] = [
+            ShelfItem(kind: .text("Meeting notes for Thursday"), addedAt: now),
+            ShelfItem(kind: .url(URL(string: "https://example.com/report")!), addedAt: now, pinned: true),
+            ShelfItem(kind: .text("Release checklist: notarise, tag, appcast"), addedAt: now),
+            ShelfItem(kind: .url(URL(string: "https://example.com/specs/library")!), addedAt: now),
+            ShelfItem(kind: .text("Colours: teal 2FB8A6, cream F2E6C9"), addedAt: now),
+        ]
+        (rig.registry.widget(ShelfWidget.widgetID) as? ShelfWidget)?.showForRendering(cards)
+        return rig
     }
 
     /// The built-ins with each one's default on/off, and nothing seeded.

@@ -209,9 +209,19 @@ struct ExpandedPanel: View {
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .help("\(Self.title(d)) (\u{2318}\(Self.shortcutDigit(d)))")
                 .accessibilityLabel(Self.title(d))
                 .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
             }
+        }
+    }
+
+    /// ⌘1 / ⌘2 / ⌘3 (`NotchController.commandDigit`).
+    static func shortcutDigit(_ d: PanelDestination) -> Int {
+        switch d {
+        case .now: 1
+        case .agents: 2
+        case .library: 3
         }
     }
 

@@ -8,7 +8,7 @@ import XCTest
 /// XCTest brings in DeveloperToolsSupport, which has its own `LibraryItem` (Xcode's library).
 private typealias LibraryItem = PlatyNotchKit.LibraryItem
 
-/// A plugin-style widget with no data yet (a dimmed "Set up" tile).
+/// A plugin-style widget that cannot work until set up (a dimmed "Set up" tile).
 @MainActor
 private final class EmptyToolWidget: NotchWidget {
     let id = "fake.empty"
@@ -17,7 +17,19 @@ private final class EmptyToolWidget: NotchWidget {
     let defaultEnabled = true
     var setUps = 0
     var hasContent: Bool { false }
+    var needsSetup: Bool { true }
     var setupAction: WidgetSetupAction { .run { [weak self] in self?.setUps += 1 } }
+    func tileView() -> AnyView { AnyView(Text("tile")) }
+}
+
+/// A widget with nothing right now but nothing to set up: a normal tile.
+@MainActor
+private final class QuietToolWidget: NotchWidget {
+    let id = "fake.quiet"
+    let title = "Quiet"
+    let systemImage = "moon.zzz"
+    let defaultEnabled = true
+    var hasContent: Bool { false }
     func tileView() -> AnyView { AnyView(Text("tile")) }
 }
 
@@ -111,7 +123,18 @@ final class LibraryViewTests: DefaultsTestCase {
 
     func testDimmedTileOffersSetUp() {
         let empty = EmptyToolWidget()
-        let r = rig(extra: [empty])
+        let quiet = QuietToolWidget()
+        let r = rig(extra: [empty, quiet])
+        let quietItem = panel(r).libraryTools.first { $0.item.id == quiet.id }!.item
+        XCTAssertTrue(quietItem.isSetUp, "nothing right now is not \"needs setup\"")
+        XCTAssertEqual(LibraryTile.action(for: quietItem), .open)
+        XCTAssertEqual(quietItem.liveLine, LibraryCatalog.fallbackLine)
+        // Built-ins: no open loops is a calm line, not a dimmed tile; no city is setup.
+        let loops = panel(r).libraryTools.first { $0.item.id == LoopsWidget.widgetID }!.item
+        XCTAssertTrue(loops.isSetUp)
+        XCTAssertEqual(loops.liveLine, "No open loops")
+        let weather = panel(r).libraryTools.first { $0.item.id == WeatherWidget.widgetID }
+        if let weather { XCTAssertFalse(weather.item.isSetUp, "no city chosen") }
         let p = panel(r)
         let tool = p.libraryTools.first { $0.item.id == empty.id }
         XCTAssertEqual(tool?.item.isSetUp, false)
@@ -203,5 +226,87 @@ final class LibraryViewTests: DefaultsTestCase {
     func testGamesFitAsATool() {
         XCTAssertNil(AppDelegate.checkGameViews())
         XCTAssertLessThanOrEqual(GameLayout.tabSize.height, ToolHost.contentHeight(available: 380 - 42 - 10))
+    }
+
+    /// Every tile has one calm line that fits it (the coordinator's grid review).
+    func testEveryTileHasALine() {
+        let r = rig()
+        for w in r.registry.orderedWidgets { r.registry.setEnabled(w.id, true) }
+        let font = NSFont.systemFont(ofSize: TypeScale.caption.size, weight: .medium)
+        let room: CGFloat = LibraryView.tileWidth - 2 * Space.m
+        let titleFont = NSFont.systemFont(ofSize: TypeScale.body.size, weight: .semibold)
+        for tool in panel(r, tabs: [pluginTab]).libraryTools {
+            let line = tool.item.liveLine ?? ""
+            XCTAssertFalse(line.trimmingCharacters(in: .whitespaces).isEmpty, tool.item.id)
+            let width = (line as NSString).size(withAttributes: [.font: font]).width
+            XCTAssertLessThanOrEqual(width, room, "\(tool.item.id): \"\(line)\" truncates")
+            let titleWidth = (tool.item.title as NSString).size(withAttributes: [.font: titleFont]).width
+            XCTAssertLessThanOrEqual(titleWidth, room, "\(tool.item.id): \"\(tool.item.title)\" truncates")
+        }
+        // Only real setup dims a tile: weather without a city does; empty shelf, clipboard and
+        // loops do not.
+        let items = Dictionary(uniqueKeysWithValues: panel(r).libraryTools.map { ($0.item.id, $0.item) })
+        XCTAssertEqual(items[WeatherWidget.widgetID]?.isSetUp, false)
+        for id in [ShelfWidget.widgetID, ClipboardWidget.widgetID, LoopsWidget.widgetID, TimeWidget.widgetID,
+                   MusicWidget.widgetID] {
+            XCTAssertEqual(items[id]?.isSetUp, true, id)
+        }
+        XCTAssertEqual(items[MusicWidget.widgetID]?.liveLine, "Nothing playing")
+        XCTAssertEqual(items[ShelfWidget.widgetID]?.liveLine, "Empty")
+    }
+
+    /// ⌘1…⌘3 only, never Return or a digit alone.
+    func testCommandDigits() throws {
+        func key(_ chars: String, _ flags: NSEvent.ModifierFlags, code: UInt16 = 18) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0,
+                                           windowNumber: 0, context: nil, characters: chars,
+                                           charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code))
+        }
+        XCTAssertEqual(NotchPanel.commandDigit(try key("1", .command)), 1)
+        XCTAssertEqual(NotchPanel.commandDigit(try key("2", .command)), 2)
+        XCTAssertEqual(NotchPanel.commandDigit(try key("3", .command)), 3)
+        XCTAssertNil(NotchPanel.commandDigit(try key("4", .command)))
+        XCTAssertNil(NotchPanel.commandDigit(try key("1", [])), "a digit alone types")
+        XCTAssertNil(NotchPanel.commandDigit(try key("1", [.command, .shift])))
+        XCTAssertNil(NotchPanel.commandDigit(try key("\r", .command, code: 36)), "never Return")
+        XCTAssertNil(NotchPanel.commandDigit(try key("\r", [], code: 36)))
+    }
+
+    /// ⌘1 / ⌘2 / ⌘3 switch destinations in the open panel, also from inside a tool.
+    func testCommandDigitsSwitchDestinations() {
+        let r = rig()
+        AgentsVisibility(forcedOn: true).save(to: defaults())
+        r.today.agentActivity.loadVisibility(from: defaults())
+        let c = NotchController(store: r.store, client: r.client, plugins: [], today: r.today, widgets: r.registry)
+        XCTAssertFalse(c.commandDigit(1), "only in the open panel")
+        c.expand(tab: "memory")
+        XCTAssertEqual(c.mode, .expanded)
+        XCTAssertTrue(c.commandDigit(2))
+        XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .agents))
+        XCTAssertTrue(c.commandDigit(1))
+        XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .now))
+        XCTAssertTrue(c.commandDigit(3))
+        XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .library))
+        XCTAssertFalse(c.commandDigit(4))
+        // Agents hidden: ⌘2 does nothing.
+        let hidden = rig()
+        let h = NotchController(store: hidden.store, client: hidden.client, plugins: [], today: hidden.today,
+                                widgets: hidden.registry)
+        h.expand()
+        XCTAssertFalse(h.commandDigit(2))
+        XCTAssertEqual(h.panelModel.route, PanelRoute(destination: .now))
+    }
+
+    /// Esc goes back from a tool to the Library first, then closes the panel.
+    func testEscapeGoesBackBeforeClosing() {
+        let r = rig()
+        let c = NotchController(store: r.store, client: r.client, plugins: [], today: r.today, widgets: r.registry)
+        c.expand(tab: "memory")
+        XCTAssertEqual(c.mode, .expanded)
+        c.escapePressed()
+        XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .library))
+        XCTAssertEqual(c.mode, .expanded, "the first Esc only leaves the tool")
+        c.escapePressed()
+        XCTAssertNotEqual(c.mode, .expanded, "then Esc closes the panel")
     }
 }

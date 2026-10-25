@@ -199,6 +199,30 @@ public final class NotchController {
         handle(.click)
     }
 
+    /// Escape: an open Library tool goes back to the grid first; otherwise the state
+    /// machine's `.escape` (the open panel closes).
+    func escapePressed() {
+        if machine.mode == .expanded, model.route.destination == .library, model.route.tool != nil {
+            model.route = model.route.back()
+            return
+        }
+        handle(.escape)
+    }
+
+    /// ⌘1 / ⌘2 / ⌘3 in the open panel: Now, Agents (only while it shows), Library. False
+    /// (not used) elsewhere, so the approval peek and other modes keep their keys.
+    @discardableResult
+    func commandDigit(_ digit: Int) -> Bool {
+        guard machine.mode == .expanded else { return false }
+        let shown: [PanelDestination] = ExpandedPanel.destinations(agentsVisible: today.agentActivity.agentsVisibility.isVisible)
+        let all: [PanelDestination] = [.now, .agents, .library]
+        guard (1...all.count).contains(digit) else { return false }
+        let target: PanelDestination = all[digit - 1]
+        guard shown.contains(target) else { return false }
+        model.route = PanelRoute(destination: target)
+        return true
+    }
+
     /// Removes the panel and stops all monitoring.
     public func detach() {
         surfaces.detach(self)
@@ -228,7 +252,8 @@ public final class NotchController {
         host.registerForDraggedTypes(PanelDrop.types)
         host.dropRouter = self
         p.contentView = host
-        p.onEscape = { [weak self] in self?.handle(.escape) }
+        p.onEscape = { [weak self] in self?.escapePressed() }
+        p.onCommandDigit = { [weak self] in self?.commandDigit($0) ?? false }
         return p
     }
 

@@ -39,8 +39,12 @@ public protocol NotchWidget: AnyObject {
     /// What the widget is to the panel (spec 6.2). Default `.tool`.
     var kind: WidgetKind { get }
     /// False while the widget has nothing to show (no data, not set up): it then shows
-    /// nowhere in Now and gets a dimmed "Set up" tile in the Library. Default true.
+    /// nowhere in Now. Default true.
     var hasContent: Bool { get }
+    /// True only while the widget cannot work at all until it is set up (no city, no
+    /// calendar access, a permission never allowed): its Library tile is dimmed with one
+    /// "Set up" action (`setupAction`). Having nothing right now is not this. Default false.
+    var needsSetup: Bool { get }
     /// Now's hero for this widget's top live item, laid out in `HeroFrame` (528 × 160 less
     /// its padding). Nil: a generic hero from the activity's glyph and title.
     func heroView() -> AnyView?
@@ -80,6 +84,7 @@ extension NotchWidget {
     public var hasTile: Bool { true }
     public var kind: WidgetKind { .tool }
     public var hasContent: Bool { true }
+    public var needsSetup: Bool { false }
     public func heroView() -> AnyView? { nil }
     public func glanceView() -> AnyView? { nil }
     public func libraryTile() -> AnyView? { nil }

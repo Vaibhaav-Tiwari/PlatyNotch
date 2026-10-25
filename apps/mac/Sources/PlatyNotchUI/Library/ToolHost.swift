@@ -64,7 +64,7 @@ struct ToolHeader: View {
             }
             .buttonStyle(.plain)
             .onHover { hovering = $0 }
-            .help(ToolHost.backLabel)
+            .help(ToolHost.backLabel + " (Esc)")
             .accessibilityLabel(ToolHost.backLabel)
             .accessibilityHint("\(title) is open")
             .layoutPriority(1)

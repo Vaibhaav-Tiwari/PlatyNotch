@@ -156,11 +156,15 @@ enum LibraryCatalog {
                                tile: nil, view: memory))
         for tab in extraTabs {
             out.append(LibraryTool(item: LibraryItem(id: LibraryTools.plugin(tab.id), title: tab.title,
-                                                     systemImage: tab.systemImage, liveLine: nil, isSetUp: true),
+                                                     systemImage: tab.systemImage, liveLine: fallbackLine,
+                                                     isSetUp: true),
                                    tile: nil, view: { tab.view }))
         }
         return out
     }
+
+    /// The line of a tool that has nothing more specific to say (plugin widgets and tabs).
+    static let fallbackLine = "Plug-in"
 
     /// Every tool id (`PanelRoute.legacy`), without building any view.
     static func ids(widgets: WidgetRegistry, extraTabs: [PanelTab]) -> Set<String> {
@@ -176,9 +180,10 @@ enum LibraryCatalog {
     static func item(for w: any NotchWidget) -> LibraryItem {
         let top: LiveActivity? = w.liveActivities.max { $0.priority < $1.priority }
         let lines: LibraryLiveLine? = w as? LibraryLiveLine
-        let line: String? = lines?.libraryLine ?? top?.title
+        // Never empty: the widget's own line, else its top live item, else a calm word.
+        let line: String = lines?.libraryLine ?? top?.title ?? Self.fallbackLine
         return LibraryItem(id: w.id, title: lines?.libraryTitle ?? w.title, systemImage: w.systemImage, liveLine: line,
-                           isSetUp: w.hasContent)
+                           isSetUp: !w.needsSetup)
     }
 
     /// Platy Chase keeps its own entry (spec 6.10): the games tool with Chase picked.
@@ -186,7 +191,7 @@ enum LibraryCatalog {
         let best: Int = games.host.session.scores.best(GameKind.chase.rawValue)
         let host = games.host
         return LibraryTool(item: LibraryItem(id: LibraryTools.chase, title: "Platy Chase", systemImage: "hare",
-                                             liveLine: best > 0 ? "Best \(best)" : nil,
+                                             liveLine: best > 0 ? "Best \(best)" : "Arcade maze",
                                              isSetUp: true),
                            tile: nil, view: { AnyView(GamesTab(host: host, pick: .chase)) })
     }

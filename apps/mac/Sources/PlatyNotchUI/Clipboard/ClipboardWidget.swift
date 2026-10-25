@@ -110,6 +110,12 @@ final class ClipboardWidget: NotchWidget, ClipboardMenuControl {
                         makeHotKey: { _, _, _ in nil }, poster: NoPasteEvents(), trust: .never)
     }
 
+    /// Renders only: sample rows on an inert widget (no store, nothing written or read).
+    func showForRendering(_ sample: [ClipItem]) {
+        guard !persist else { return }
+        items = sample
+    }
+
     var isRunning: Bool { context != nil }
     var history: ClipboardHistory { store?.history ?? ClipboardHistory() }
     var maxAge: TimeInterval { TimeInterval(keepDays) * 86400 }
