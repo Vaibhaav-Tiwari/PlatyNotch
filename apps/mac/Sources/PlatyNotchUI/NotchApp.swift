@@ -175,6 +175,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         events.start(client.events)
         today.platy.start(store: store)
+        today.agentActivity.start(store: store)
         Task { await client.start() }
 
         watchConfig()
@@ -323,6 +324,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         today.calendar.onOpenSettings = { [weak self] in self?.openSettings(section: "permissions") }
         settingsServices.showOnboarding = { [weak self] in self?.onboarding.show() }
         settingsServices.restartCore = { [weak self] in self?.scheduleCoreRestart() }
+        // A widget's "Set up" asks for "widgets/<id>"; until the Settings detail pages
+        // (Task 24) this opens the Widgets section and ignores the detail.
+        widgets.openSettingsHandler = { [weak self] route in
+            let section: String = route.split(separator: "/").first.map(String.init) ?? "widgets"
+            self?.openSettings(section: section)
+        }
     }
 
     private func openSettings(section: String?) {
@@ -495,11 +502,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return (count, failed)
     }
 
-    /// Lays out `w`'s settings view and, when it has one (`hasTile`), its tile off
-    /// screen. False when the tile lays out with no width.
+    /// Lays out `w`'s settings view, its hero, glance and Library tile views, and when it
+    /// has one (`hasTile`) its tile off screen. A headless widget's tool view is laid out
+    /// only when it has settings (its default tool view is then those settings; a tile the
+    /// widget does not have is never built). False when the tile lays out with no width.
     static func buildViews(of w: any NotchWidget) -> Bool {
         if let settings = w.settingsView() {
             NSHostingView(rootView: settings.frame(width: 480)).layoutSubtreeIfNeeded()
+        }
+        var extra: [AnyView] = []
+        if let hero = w.heroView() { extra.append(AnyView(hero.frame(width: 488, height: 120))) }
+        if let glance = w.glanceView() { extra.append(AnyView(glance.frame(width: 122, height: 64))) }
+        if let tile = w.libraryTile() { extra.append(AnyView(tile.frame(width: 126))) }
+        if !w.hasTile, w.settingsView() != nil { extra.append(AnyView(w.toolView().frame(width: 528))) }
+        for view in extra {
+            NSHostingView(rootView: view.environment(\.colorScheme, .dark)).layoutSubtreeIfNeeded()
         }
         guard w.hasTile else { return true }
         let tile = NSHostingView(rootView: w.tileView().frame(width: 360).environment(\.colorScheme, .dark))

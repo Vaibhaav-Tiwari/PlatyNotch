@@ -59,6 +59,23 @@ public final class GamesWidget: NotchWidget {
         openTab = {}
     }
 
+    public var kind: WidgetKind { [.live, .tool] }
+
+    /// Platy Chase in play: a minor live item (Ruling 4).
+    public var liveActivities: [LiveActivity] {
+        let session = host.session
+        guard session.kind == .chase, session.phase == .playing else { return [] }
+        return [LiveActivity(id: "games:chase", widgetID: id, priority: LivePriority.panelActivity,
+                             glyph: .symbol("gamecontroller.fill"), tint: .accent,
+                             accessibilityLabel: "Platy Chase in play", title: "Platy Chase",
+                             subtitle: "Score \(session.score)")]
+    }
+
+    /// Platy Chase in play and its score: no primary control.
+    public func heroView() -> AnyView? {
+        AnyView(TopActivityHero(activities: { [weak self] in self?.liveActivities ?? [] }, action: { _ in nil }))
+    }
+
     public func tileView() -> AnyView {
         AnyView(GamesTile(host: host, open: { [weak self] in self?.openTab() }))
     }

@@ -15,6 +15,8 @@ public final class TodayServices {
     public let loops: LoopActions
     /// Platy's timed mood inputs (just finished, celebrating, the hour), one for every display.
     public let platy: PlatyMoodModel
+    /// The app's one session tracker: finishes and failures in the last 10 minutes.
+    let agentActivity: AgentActivityModel
 
     public init(client: CoreClient, nowPlaying: NowPlaying = NowPlaying(), visualiser: MusicVisualiser? = nil,
                 calendar: CalendarService = CalendarService(), reminders: RemindersService = RemindersService(),
@@ -26,6 +28,7 @@ public final class TodayServices {
         self.focus = focus
         loops = LoopActions(client: client)
         self.platy = platy
+        agentActivity = AgentActivityModel()
     }
 }
 

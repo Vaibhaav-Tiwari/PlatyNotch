@@ -19,11 +19,24 @@ final class FocusWidget: NotchWidget {
         self.focus = focus
     }
 
+    var kind: WidgetKind { [.live, .tool] }
+
     var liveActivities: [LiveActivity] {
         guard focus.focusActive, let end = focus.timer?.endsAt else { return [] }
         return [LiveActivity(id: "focus:session", widgetID: id, priority: LivePriority.focusSession,
                              glyph: .symbol("moon.fill"), tint: .accent, expiresAt: end, countdownTo: end,
-                             accessibilityLabel: "Focus session running")]
+                             accessibilityLabel: "Focus session running", title: "Focus",
+                             subtitle: "Notices held until it ends")]
+    }
+
+    /// The session's countdown and Pause.
+    func heroView() -> AnyView? {
+        let focus = self.focus
+        return AnyView(TopActivityHero(activities: { [weak self] in self?.liveActivities ?? [] }, action: { activity in
+            let rank: LiveRank = LiveRank(activity: activity, now: Date())
+            guard let title = HeroPrimary.title(rank: rank, playing: false, hasLink: false) else { return nil }
+            return HeroAction(title: title, systemImage: "pause.fill", run: { focus.pause() })
+        }))
     }
 
     func tileView() -> AnyView { AnyView(FocusTile(focus: focus)) }

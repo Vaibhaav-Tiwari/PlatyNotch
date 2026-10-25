@@ -33,7 +33,26 @@ public protocol NotchWidget: AnyObject {
     /// The user turned the widget off (after `stop`). Undo work that outlives the process,
     /// e.g. scheduled system notifications. Not called when the app quits (`stop` alone).
     func disabled()
+    /// The widget's view in the Today tab. Deprecated in favour of `toolView()` (spec 6.9),
+    /// which defaults to it; kept so widgets written before the redesign keep working.
     func tileView() -> AnyView
+    /// What the widget is to the panel (spec 6.2). Default `.tool`.
+    var kind: WidgetKind { get }
+    /// False while the widget has nothing to show (no data, not set up): it then shows
+    /// nowhere in Now and gets a dimmed "Set up" tile in the Library. Default true.
+    var hasContent: Bool { get }
+    /// Now's hero for this widget's top live item, laid out in `HeroFrame` (528 × 160 less
+    /// its padding). Nil: a generic hero from the activity's glyph and title.
+    func heroView() -> AnyView?
+    /// A glance chip's content (`.glance` widgets): icon, value and a short label.
+    func glanceView() -> AnyView?
+    /// The Library tile's live line or content; nil uses the widget's icon and name.
+    func libraryTile() -> AnyView?
+    /// The full-panel tool opened from the Library. Default: the tile, or for a widget with
+    /// no tile its settings view.
+    func toolView() -> AnyView
+    /// What "Set up" does for a widget without content. Default: open its settings.
+    var setupAction: WidgetSetupAction { get }
     /// Shown in Settings › Widgets under the widget's name while it is enabled.
     func settingsView() -> AnyView?
     /// The content of a peek or ringing card this widget asked for with
@@ -50,8 +69,22 @@ public protocol NotchWidget: AnyObject {
     func dropTarget() -> PanelDropTarget?
 }
 
+/// What a widget's "Set up" button does.
+public enum WidgetSetupAction {
+    /// Opens the widget's page in Settings (`WidgetRegistry.openSettingsHandler`).
+    case openSettings
+    case run(@MainActor () -> Void)
+}
+
 extension NotchWidget {
     public var hasTile: Bool { true }
+    public var kind: WidgetKind { .tool }
+    public var hasContent: Bool { true }
+    public func heroView() -> AnyView? { nil }
+    public func glanceView() -> AnyView? { nil }
+    public func libraryTile() -> AnyView? { nil }
+    public func toolView() -> AnyView { hasTile ? tileView() : (settingsView() ?? tileView()) }
+    public var setupAction: WidgetSetupAction { .openSettings }
     public var category: WidgetCategory { .everyday }
     public var liveActivities: [LiveActivity] { [] }
     public func start(context: WidgetContext) {}

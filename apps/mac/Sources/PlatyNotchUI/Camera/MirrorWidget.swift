@@ -206,6 +206,21 @@ final class MirrorWidget: NotchWidget {
     /// The live preview's session (nil for fakes and while not live).
     var session: AVCaptureSession? { live ? feed?.session : nil }
 
+    var kind: WidgetKind { [.live, .tool] }
+
+    /// The camera mirror is on: a minor live item (Ruling 4), so it is never forgotten.
+    var liveActivities: [LiveActivity] {
+        guard live else { return [] }
+        return [LiveActivity(id: "mirror:on", widgetID: id, priority: LivePriority.panelActivity,
+                             glyph: .symbol("camera.fill"), tint: .accent, accessibilityLabel: "Camera mirror on",
+                             title: "Mirror", subtitle: "Camera on")]
+    }
+
+    /// "Mirror · Camera on" (the preview stays in its tool): no primary control.
+    func heroView() -> AnyView? {
+        AnyView(TopActivityHero(activities: { [weak self] in self?.liveActivities ?? [] }, action: { _ in nil }))
+    }
+
     func tileView() -> AnyView { AnyView(MirrorTileView(widget: self)) }
 
     func settingsView() -> AnyView? { AnyView(MirrorSettingsView()) }

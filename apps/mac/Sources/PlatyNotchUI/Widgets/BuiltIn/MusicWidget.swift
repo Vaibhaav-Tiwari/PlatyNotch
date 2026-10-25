@@ -23,10 +23,22 @@ final class MusicWidget: NotchWidget {
         self.visualiser = visualiser
     }
 
+
+    var kind: WidgetKind { [.live, .tool] }
+
     var liveActivities: [LiveActivity] {
-        guard nowPlaying.isPlaying else { return [] }
-        return [LiveActivity(id: "music:playing", widgetID: id, priority: LivePriority.musicPlaying, glyph: .musicBars,
-                             tint: .accent, accessibilityLabel: "Music playing")]
+        let track: String? = nowPlaying.title.map { title in
+            nowPlaying.artist.map { "\(title) — \($0)" } ?? title
+        }
+        if nowPlaying.isPlaying {
+            return [LiveActivity(id: "music:playing", widgetID: id, priority: LivePriority.musicPlaying, glyph: .musicBars,
+                                 tint: .accent, accessibilityLabel: "Music playing", title: "Music", subtitle: track)]
+        }
+        guard let pausedAt = nowPlaying.pausedAt, nowPlaying.info != nil else { return [] }
+        return [LiveActivity(id: "music:paused", widgetID: id, priority: LivePriority.musicPlaying,
+                             glyph: .symbol("pause.fill"), tint: .neutral,
+                             expiresAt: pausedAt.addingTimeInterval(nowPlaying.pauseWindow),
+                             accessibilityLabel: "Music paused", title: "Music", subtitle: track, startedAt: pausedAt)]
     }
 
     func start(context: WidgetContext) {
@@ -43,6 +55,9 @@ final class MusicWidget: NotchWidget {
         nowPlaying.stop()
         visualiser.setPlaying(false)
     }
+
+    /// Artwork, track and artist, and Play / Pause (the keyline takes the artwork's tint).
+    func heroView() -> AnyView? { AnyView(MusicHero(nowPlaying: nowPlaying)) }
 
     func tileView() -> AnyView {
         let nowPlaying = self.nowPlaying
@@ -81,5 +96,46 @@ struct MusicSettingsView: View {
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }
+    }
+}
+
+/// The music hero: artwork (or a note), the track, the artist and one Play / Pause.
+struct MusicHero: View {
+    let nowPlaying: NowPlaying
+
+    var body: some View {
+        let playing: Bool = nowPlaying.isPlaying
+        let title: String = HeroPrimary.title(rank: .music, playing: playing, hasLink: false) ?? "Play"
+        let np = nowPlaying
+        HeroLayout(title: nowPlaying.title ?? "Music", subtitle: subtitle,
+                   action: HeroAction(title: title, systemImage: playing ? "pause.fill" : "play.fill",
+                                      run: { np.playPause() })) {
+            artwork
+        } value: {
+            Label(playing ? "Playing" : "Paused", systemImage: playing ? "waveform" : "pause.circle")
+                .font(DS.font(TypeScale.caption))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var subtitle: String? {
+        [nowPlaying.artist, nowPlaying.appName].compactMap { $0 }.first
+    }
+
+    private var artwork: some View {
+        let side: CGFloat = 96
+        return Group {
+            if let image = nowPlaying.artwork {
+                Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
+            } else {
+                ZStack {
+                    Color.secondary.opacity(0.15)
+                    DS.icon("music.note", size: IconSize.hero).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(width: side, height: side)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+        .accessibilityHidden(true)
     }
 }

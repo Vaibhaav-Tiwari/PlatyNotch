@@ -41,6 +41,19 @@ public final class NowPlaying {
     public var title: String? { info?.title }
     public var artist: String? { info?.artist }
     public var isPlaying: Bool { info?.isPlaying ?? false }
+    /// When playback last stopped with a track still loaded (music stays live for 10
+    /// minutes after a pause, spec 6.2); nil while playing, with nothing loaded, and once
+    /// `pauseWindow` has passed (cleared by a sleeping task, and at once after a wake or a
+    /// clock change), so the pill and Now drop paused music when it runs out.
+    public private(set) var pausedAt: Date?
+    /// How long paused music stays live.
+    public static let pauseLength: TimeInterval = 600
+    /// `pauseLength`; tests shorten it.
+    @ObservationIgnored var pauseWindow: TimeInterval = NowPlaying.pauseLength
+    @ObservationIgnored private var pauseExpiry: Task<Void, Never>?
+    @ObservationIgnored private var clockObservers: [(NotificationCenter, NSObjectProtocol)] = []
+    /// The clock the pause expiry re-checks against (tests move it).
+    @ObservationIgnored var pauseClock: () -> Date = Date.init
     /// Where playback is (nil when the player gives no times).
     public var clock: PlaybackClock? { info.flatMap { PlaybackClock(info: $0, now: Date()) } }
     /// Favourites work for Apple Music only (Spotify has no AppleScript for it).
@@ -78,6 +91,7 @@ public final class NowPlaying {
     public func start() {
         guard !started else { return }
         started = true
+        observeClock()
         if fakePlaying {
             apply(NowPlayingInfo(bundleIdentifier: "dev.platynotch.fake", title: "Perf run", artist: "PlatyNotch",
                                  isPlaying: true))
@@ -95,6 +109,8 @@ public final class NowPlaying {
 
     public func stop() {
         started = false
+        for (center, token) in clockObservers { center.removeObserver(token) }
+        clockObservers = []
         adapter?.stop()
         adapter = nil
         pollTask?.cancel()
@@ -202,7 +218,7 @@ public final class NowPlaying {
     }
 
     /// Tests: feed a report as if the reader had sent it.
-    func debugApply(_ new: NowPlayingInfo?) { apply(new) }
+    func debugApply(_ new: NowPlayingInfo?, now: Date = Date()) { apply(new, now: now) }
 
     // MARK: - Adapter
 
@@ -263,10 +279,59 @@ public final class NowPlaying {
             showLikeMessage(nil)
         }
         info = new
+        if new == nil || isPlaying {
+            setPaused(nil)
+        } else if wasPlaying {
+            // Paused (or stopped) now; a track first seen paused was not paused "just now".
+            setPaused(now)
+        } else if trackChanged {
+            // A new track loaded without playing was not paused by the user.
+            setPaused(nil)
+        }
         // Only while a music view is on screen: nothing is read for a heart nobody sees.
         if trackChanged, viewers > 0 { readLiked() }
         if isPlaying != wasPlaying { onPlayingChange?(isPlaying) }
         if viewers > 0 { refreshOutputDevice() }
+    }
+
+    /// Sets the pause and (re)schedules its expiry; nil cancels it.
+    private func setPaused(_ date: Date?) {
+        pauseExpiry?.cancel()
+        pauseExpiry = nil
+        if pausedAt != date { pausedAt = date }
+        guard let date else { return }
+        let wait: TimeInterval = date.addingTimeInterval(pauseWindow).timeIntervalSince(pauseClock())
+        guard wait > 0 else { pausedAt = nil; return }
+        pauseExpiry = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(wait))
+            guard !Task.isCancelled, let self else { return }
+            self.recheckPause()
+        }
+    }
+
+    /// After a wake or a clock change: a pause past its window ends at once; one still
+    /// inside it is rescheduled for what is left.
+    func recheckPause() {
+        guard let pausedAt else { return }
+        let age: TimeInterval = pauseClock().timeIntervalSince(pausedAt)
+        if age >= pauseWindow || age < 0 {
+            setPaused(nil)
+        } else {
+            setPaused(pausedAt)
+        }
+    }
+
+    /// Re-checks the pause on wake and on a system clock change (while reading).
+    private func observeClock() {
+        let workspace = NSWorkspace.shared.notificationCenter
+        let wake = workspace.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.recheckPause() }
+        }
+        let center = NotificationCenter.default
+        let clockChange = center.addObserver(forName: .NSSystemClockDidChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.recheckPause() }
+        }
+        clockObservers = [(workspace, wake), (center, clockChange)]
     }
 
     /// A report with an elapsed time but no timestamp is stamped once, when it arrives (so

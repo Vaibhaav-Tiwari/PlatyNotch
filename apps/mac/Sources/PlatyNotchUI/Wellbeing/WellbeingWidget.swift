@@ -452,6 +452,14 @@ final class WellbeingWidget: NotchWidget {
         return AnyView(NudgeCard(widget: self, nudge: nudge))
     }
 
+    var kind: WidgetKind { [.glance, .tool] }
+
+    /// Water tracking is on (a water interval is set).
+    var hasContent: Bool { settings.water > 0 }
+
+    /// "Water 5/8".
+    func glanceView() -> AnyView? { AnyView(WellbeingGlance(widget: self)) }
+
     func tileView() -> AnyView { AnyView(WellbeingTile(widget: self)) }
 
     func settingsView() -> AnyView? { AnyView(WellbeingSettings(widget: self)) }
@@ -460,4 +468,14 @@ final class WellbeingWidget: NotchWidget {
 /// Never reads anything (smoke runs).
 final class ZeroIdleClock: IdleClock {
     func secondsSinceLastInput() -> TimeInterval { 0 }
+}
+
+/// The water glance: glasses today against the goal.
+private struct WellbeingGlance: View {
+    let widget: WellbeingWidget
+
+    var body: some View {
+        GlanceChip(systemImage: "drop.fill", value: "\(widget.glassesToday())/\(widget.settings.dailyWaterGoal)",
+                   label: "Water")
+    }
 }

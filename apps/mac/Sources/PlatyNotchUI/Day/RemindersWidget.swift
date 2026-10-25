@@ -168,11 +168,32 @@ final class RemindersWidget: NotchWidget {
         RemindersDay.dueText(item, now: date, calendar: cal())
     }
 
+    var kind: WidgetKind { [.glance, .tool] }
+
+    /// Reminders due today (and overdue), only with Reminders access (never asks).
+    var dueCount: Int {
+        reminders.access == .granted ? shown(at: now).count : 0
+    }
+
+    var hasContent: Bool { dueCount > 0 }
+
+    /// "Tasks 3".
+    func glanceView() -> AnyView? { AnyView(RemindersGlance(widget: self)) }
+
     func tileView() -> AnyView {
         AnyView(RemindersTile(widget: self))
     }
 
     func settingsView() -> AnyView? {
         AnyView(RemindersSettings(widget: self))
+    }
+}
+
+/// The reminders glance: how many are due today.
+private struct RemindersGlance: View {
+    let widget: RemindersWidget
+
+    var body: some View {
+        GlanceChip(systemImage: widget.systemImage, value: "\(widget.dueCount)", label: "Tasks")
     }
 }

@@ -2,6 +2,8 @@ import PlatyNotchKit
 import SwiftUI
 
 enum BuiltinTab {
+    /// The default destination (spec 6.4).
+    static let now = "now"
     static let agents = "agents"
     static let today = "today"
     static let focus = "focus"
@@ -22,13 +24,20 @@ struct ExpandedPanel: View {
     let onCollapse: () -> Void
     /// Opens the Settings window (the gear; mouse only, no keyboard shortcut).
     var onOpenSettings: () -> Void = {}
+    /// Now's hero selection (the panel model's; reset on each open).
+    var deck: Binding<HeroDeck> = .constant(HeroDeck())
+    /// Renders only: Now at a fixed time.
+    var fixedNow: Date?
+    /// Where Now's chosen glances are saved (renders and tests pass their own).
+    var glanceDefaults: UserDefaults = .standard
     let onDecide: (Approval, ApprovalBehavior) -> Void
     let onOpenTerminal: (Session) -> Void
 
     var body: some View {
         let tabs = allTabs
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: NowMetrics.gap) {
             tabBar(tabs)
+                .frame(height: NowMetrics.nav)
             if !store.approvals.isEmpty {
                 approvals
                     .frame(maxHeight: 240, alignment: .top)
@@ -62,13 +71,23 @@ struct ExpandedPanel: View {
         }
     }
 
-    private var allTabs: [PanelTab] {
+    /// Now first, then today's tabs (they move into the Library in Task 21), then plugins'.
+    var allTabs: [PanelTab] {
         let store = self.store
         let open = onOpenTerminal
         let today = self.today
         let widgets = self.widgets
         let memory = self.memory
+        let deck = self.deck
+        let fixedNow = self.fixedNow
+        let glanceDefaults = self.glanceDefaults
+        let select: (String) -> Void = { [selectedTab = $selectedTab] in selectedTab.wrappedValue = $0 }
         var tabs = [
+            PanelTab(id: BuiltinTab.now, title: "Now", systemImage: "sparkles") {
+                NowView(store: store, widgets: widgets, today: today, deck: deck, glanceDefaults: glanceDefaults,
+                        onOpenTool: { select(Self.tab(forTool: $0)) },
+                        onOpenAgents: { select(BuiltinTab.agents) }, onOpenTerminal: open, fixedNow: fixedNow)
+            },
             PanelTab(id: BuiltinTab.agents, title: "Agents", systemImage: "terminal") {
                 AgentsTab(sessions: store.sessions, usage: store.usage, onOpenTerminal: open)
             },
@@ -96,29 +115,52 @@ struct ExpandedPanel: View {
         return tabs + extraTabs
     }
 
+    /// Where a tool opens until the Library (Task 21): its own tab, else Today's tiles.
+    static func tab(forTool id: String) -> String {
+        switch id {
+        case FocusWidget.widgetID: BuiltinTab.focus
+        case GamesWidget.widgetID: BuiltinTab.games
+        default: BuiltinTab.today
+        }
+    }
+
     private func tabBar(_ tabs: [PanelTab]) -> some View {
         HStack(spacing: 2) {
-            ForEach(tabs) { tab in
-                let selected = tab.id == (tabs.contains { $0.id == selectedTab } ? selectedTab : tabs[0].id)
-                Button { selectedTab = tab.id } label: {
-                    Text(verbatim: tab.title)
-                        .font(.system(size: 12, weight: selected ? .semibold : .regular))
-                        .foregroundStyle(selected ? .primary : .secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(selected ? Theme.card : .clear, in: Capsule())
-                        .contentShape(Capsule())
+            // The tabs get their room first; with many (plugin tabs) the labels shrink to
+            // the 11 pt floor, then truncate, so the gear and close never leave the frame.
+            HStack(spacing: 2) {
+                ForEach(tabs) { tab in
+                    let selected = tab.id == (tabs.contains { $0.id == selectedTab } ? selectedTab : tabs[0].id)
+                    Button { selectedTab = tab.id } label: {
+                        Text(verbatim: tab.title)
+                            .font(DS.font(TypeScale.headline).weight(selected ? .semibold : .regular))
+                            .foregroundStyle(selected ? .primary : .secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(TypeScale.minimum / TypeScale.headline.size)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background(selected ? Theme.card : .clear, in: Capsule())
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(tab.title) tab")
+                    .accessibilityAddTraits(selected ? .isSelected : [])
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("\(tab.title) tab")
-                .accessibilityAddTraits(selected ? .isSelected : [])
             }
+            .layoutPriority(1)
             Spacer(minLength: 4)
             if store.connection != .connected {
-                Label(store.connection == .connecting ? "Connecting…" : "Reconnecting…",
-                      systemImage: "bolt.horizontal.circle")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.color(.attention))
+                let text: String = store.connection == .connecting ? "Connecting…" : "Reconnecting…"
+                // With many tabs only the symbol fits; VoiceOver and the tooltip keep the word.
+                ViewThatFits(in: .horizontal) {
+                    Label(text, systemImage: "bolt.horizontal.circle")
+                    Image(systemName: "bolt.horizontal.circle")
+                }
+                .font(.system(size: 11))
+                .lineLimit(1)
+                .foregroundStyle(Theme.color(.attention))
+                .help(text)
+                .accessibilityLabel(text)
             }
             Button(action: onOpenSettings) {
                 Image(systemName: "gearshape")

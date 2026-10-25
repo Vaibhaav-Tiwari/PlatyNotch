@@ -389,7 +389,8 @@ final class TimeWidget: NotchWidget, TimerStarter {
             out.append(LiveActivity(id: "time:ring:\(r.id)", widgetID: id,
                                     priority: r.isAlarm ? LivePriority.alarmRinging : LivePriority.timerFinished,
                                     glyph: .symbol(r.isAlarm ? "alarm.fill" : "timer"), trailing: r.isAlarm ? nil : "Done",
-                                    tint: r.isAlarm ? .critical : .warning, accessibilityLabel: "\(r.title) ringing"))
+                                    tint: r.isAlarm ? .critical : .warning, accessibilityLabel: "\(r.title) ringing",
+                                    title: r.title, subtitle: r.subtitle))
         }
         let ringingTimers = Set(ringing.compactMap { r -> UUID? in if case .timer(let t) = r.kind { t } else { nil } })
         if let latest = finished.filter({ !ringingTimers.contains($0.key) }).max(by: { $0.value < $1.value }),
@@ -398,24 +399,53 @@ final class TimeWidget: NotchWidget, TimerStarter {
             out.append(LiveActivity(id: "time:done:\(timerID.uuidString)", widgetID: id, priority: LivePriority.timerFinished,
                                     glyph: .symbol("checkmark.circle.fill"), trailing: "Done", tint: .warning,
                                     expiresAt: end.addingTimeInterval(Self.noticeTime),
-                                    accessibilityLabel: "\(timer.label.isEmpty ? "Timer" : timer.label) done"))
+                                    accessibilityLabel: "\(timer.label.isEmpty ? "Timer" : timer.label) done",
+                                    title: timer.label.isEmpty ? "Timer" : timer.label, subtitle: "Done", startedAt: end))
         }
         if let next = state.timers.filter({ $0.isRunning(at: now) }).min(by: { $0.endsAt! < $1.endsAt! }),
            let end = next.endsAt {
             out.append(LiveActivity(id: "time:timer:\(next.id.uuidString)", widgetID: id, priority: LivePriority.timerRunning,
                                     glyph: .symbol("timer"), tint: .accent, expiresAt: end, countdownTo: end,
-                                    accessibilityLabel: "\(next.label.isEmpty ? "Timer" : next.label) running"))
+                                    accessibilityLabel: "\(next.label.isEmpty ? "Timer" : next.label) running",
+                                    title: next.label.isEmpty ? "Timer" : next.label))
         }
         if let since = state.stopwatch.runningSince {
             out.append(LiveActivity(id: "time:stopwatch", widgetID: id, priority: LivePriority.stopwatch,
                                     glyph: .symbol("stopwatch"), tint: .accent,
                                     countUpFrom: since.addingTimeInterval(-state.stopwatch.accumulated),
-                                    accessibilityLabel: "Stopwatch running"))
+                                    accessibilityLabel: "Stopwatch running", title: "Stopwatch"))
         }
         return out
     }
 
     // MARK: - Views
+
+    var kind: WidgetKind { [.live, .tool] }
+
+    /// The top timer, stopwatch or ring with Stop or Pause (a finished timer's notice has none).
+    func heroView() -> AnyView? {
+        AnyView(TopActivityHero(activities: { [weak self] in self?.liveActivities ?? [] }, action: { [weak self] activity in
+            self?.heroAction(activity)
+        }))
+    }
+
+    /// Stop for a ringing alarm or timer, Pause for a running timer or the stopwatch.
+    func heroAction(_ activity: LiveActivity) -> HeroAction? {
+        let rank: LiveRank = LiveRank(activity: activity, now: now)
+        guard let title = HeroPrimary.title(rank: rank, playing: false, hasLink: false) else { return nil }
+        let id: String = activity.id
+        if id.hasPrefix("time:ring:") {
+            let ring = String(id.dropFirst("time:ring:".count))
+            return HeroAction(title: title, systemImage: "stop.fill", run: { [weak self] in self?.stopRing(ring) })
+        }
+        if id.hasPrefix("time:timer:"), let uuid = UUID(uuidString: String(id.dropFirst("time:timer:".count))) {
+            return HeroAction(title: title, systemImage: "pause.fill", run: { [weak self] in self?.toggleTimer(uuid) })
+        }
+        if id == "time:stopwatch" {
+            return HeroAction(title: title, systemImage: "pause.fill", run: { [weak self] in self?.toggleStopwatch() })
+        }
+        return nil
+    }
 
     func tileView() -> AnyView { AnyView(TimeTile(widget: self)) }
 
