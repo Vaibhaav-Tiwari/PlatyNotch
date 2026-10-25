@@ -128,6 +128,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var restartTask: Task<Void, Never>?
     private var screenObserver: NSObjectProtocol?
     private var defaultsObserver: NSObjectProtocol?
+    /// First run, the tour card or neither (`prepareFirstRun`).
+    private var firstRun: FirstRunState = .settled
     /// Settings › Appearance; the panels are built from it (`AppearanceStore`, C32).
     private var appearance = AppearanceStore.load(from: .standard)
     /// The one runtime shortcut catalog every widget claims global shortcuts in (M1).
@@ -156,6 +158,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before anything builds the widget registry: a layout saved by an earlier version
+        // marks someone who used PlatyNotch before (spec 14).
+        let layoutSaved: Bool = UserDefaults.standard.data(forKey: WidgetLayout.key) != nil
         // Before any widget opens its folder: shelf, clipboard and favicons move to their
         // `.noindex` names (Spotlight). Smoke runs read and write nothing.
         if !options.smoke, !options.smokeSettings { PrivateFolder.migrateToNoIndex(home: CorePaths.home()) }
@@ -212,6 +217,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The Finder service is inert until picked; smoke runs never offer it.
         if !options.smoke, !options.smokeSettings { NSApp.servicesProvider = finderService }
         startPlugins()
+        if !options.smoke, !options.smokeSettings, !options.perfRun { prepareFirstRun(layoutSaved: layoutSaved) }
         startWidgets()
 
         rebuildControllers()
@@ -241,6 +247,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else if !onboarding.isDone {
             onboarding.show()
         }
+    }
+
+    /// Who gets the first run and who the tour card (spec 10, 14), and the one-time upgrade
+    /// for existing users, before any widget starts: their widgets, layout and appearance
+    /// are kept exactly. A new install is marked so a layout saved during its first launch
+    /// never makes it an "existing user" later, and needs no upgrade.
+    private func prepareFirstRun(layoutSaved: Bool) {
+        let d = UserDefaults.standard
+        firstRun = FirstRunState.resolve(onboardingDone: onboarding.isDone, layoutSaved: layoutSaved, defaults: d)
+        if firstRun == .firstRun {
+            d.set(true, forKey: FirstRunState.pendingKey)
+            d.set(true, forKey: UpgradeMigration.key)
+        }
+        UpgradeMigration.run(defaults: d, existingUser: firstRun != .firstRun, glanceCapable: widgets.glanceCapableIDs)
+        today.agentActivity.reloadVisibility()   // the upgrade keeps Agents shown
     }
 
     func applicationWillTerminate(_ notification: Notification) {
