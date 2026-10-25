@@ -165,122 +165,96 @@ public struct PlatyMoodFlags: Equatable, Sendable {
     }
 }
 
-/// The compact pill's agents ear with Platy: Platy first, then as many agent dots as fit
-/// in `earWidth`, then "+n" for every live session without a dot (beyond `PillDots.limit`
-/// or squeezed out by Platy). With no room for the label (Compact beside a notch) the "+n"
-/// is a small badge on Platy instead. Platy always shows; every session is counted.
+/// The compact pill's agents ear with Platy: Platy at the ear's outer edge, then the agent
+/// dots that fit, then a plain "+n" label for every live session without a dot (beyond
+/// `PillDots.limit` or squeezed out). Nothing ever overlaps Platy. When space runs short:
+/// fewer dots (down to one) while "+n" stays; then "+n" goes and the dots that fit stay;
+/// at the narrowest ear Platy alone. Text is never truncated; VoiceOver carries the full
+/// counts (`PillContent.sessionsSummary`).
 public struct PlatyEarFit: Equatable, Sendable {
     /// Platy's size in the pill (points).
     public static let platy: CGFloat = 22
+    /// The gap between Platy, each dot and the label.
     public static let spacing: CGFloat = 4
+    /// An agent dot's diameter.
+    public static let dotSize: CGFloat = 6
     /// An agent dot and the space before it.
-    public static let dot: CGFloat = 7 + 4
-    /// The "+n" label (two digits at the 11 pt floor) and the space before it.
-    public static let overflowLabel: CGFloat = 22
-    /// The "+n" badge's horizontal padding inside its capsule, each side.
-    public static let badgePadding: CGFloat = 1
-    /// Counts above this show as "99+" on the badge.
-    public static let badgeMaxCount = 99
+    public static let dot: CGFloat = dotSize + spacing
 
     /// Dots drawn.
     public let dots: Int
     /// The n in "+n" (0: no label).
     public let overflowCount: Int
-    /// "+n" sits on Platy as a badge rather than after the dots.
-    public let badge: Bool
 
-    public init(dots: Int, overflowCount: Int, badge: Bool) {
+    public init(dots: Int, overflowCount: Int) {
         self.dots = dots
         self.overflowCount = overflowCount
-        self.badge = badge
     }
 
+    /// The fit with `labelWidthEstimate` for the label.
     public init(earWidth: CGFloat, dots: Int, overflow: Int) {
-        let room: CGFloat = earWidth - Self.platy
-        let allDots: CGFloat = CGFloat(dots) * Self.dot
-        let label: CGFloat = overflow > 0 ? Self.overflowLabel : 0
-        if allDots + label <= room {
-            self.init(dots: dots, overflowCount: overflow, badge: false)
-            return
-        }
-        guard room >= Self.overflowLabel else {
-            // No room for the label: no dots either, so the badge gets all of the room.
-            self.init(dots: 0, overflowCount: dots + overflow, badge: true)
-            return
-        }
-        let dotRoom: CGFloat = room - Self.overflowLabel
-        let fitting: Int = dotRoom > 0 ? Int((dotRoom / Self.dot).rounded(.down)) : 0
-        let shown = min(dots, fitting)
-        self.init(dots: shown, overflowCount: dots - shown + overflow, badge: false)
+        self.init(earWidth: earWidth, dots: dots, overflow: overflow, labelWidth: Self.labelWidthEstimate)
     }
 
-    /// The pill's fit, which knows the pill's outer padding beside the ear. When the dots
-    /// and the "+n" label do not both fit, it keeps as many dots as it can (all three
-    /// where possible: "Platy, three dots and +9") and puts "+n" on Platy as a badge, if
-    /// the badge fits from Platy's centre outward across the free room and the padding
-    /// (`badgeWidthEstimate`). Otherwise it falls back to `init(earWidth:dots:overflow:)`.
-    public init(earWidth: CGFloat, dots: Int, overflow: Int, outerPadding: CGFloat) {
+    /// The fit with the label's drawn width for a count (`labelWidth`, the view's
+    /// measured text), so the label is never cut and never passes the ear.
+    public init(earWidth: CGFloat, dots: Int, overflow: Int, labelWidth: (Int) -> CGFloat) {
         let room: CGFloat = earWidth - Self.platy
-        let label: CGFloat = overflow > 0 ? Self.overflowLabel : 0
-        if CGFloat(dots) * Self.dot + label <= room {
-            self.init(dots: dots, overflowCount: overflow, badge: false)
-            return
-        }
+        // 1. Fewer dots (down to one) while "+n" keeps every session counted.
         if dots > 0 {
             for kept in stride(from: dots, through: 1, by: -1) {
-                let dotsWidth: CGFloat = CGFloat(kept) * Self.dot
-                guard dotsWidth <= room else { continue }
                 let count: Int = dots - kept + overflow
-                let badgeRoom: CGFloat = Self.platy / 2 + (room - dotsWidth) + outerPadding
-                if count > 0, Self.badgeWidthEstimate(count) <= badgeRoom {
-                    self.init(dots: kept, overflowCount: count, badge: true)
+                let label: CGFloat = count > 0 ? Self.spacing + labelWidth(count) : 0
+                if CGFloat(kept) * Self.dot + label <= room {
+                    self.init(dots: kept, overflowCount: count)
                     return
                 }
             }
+        } else if overflow > 0, Self.spacing + labelWidth(overflow) <= room {
+            self.init(dots: 0, overflowCount: overflow)
+            return
         }
-        self.init(earWidth: earWidth, dots: dots, overflow: overflow)
+        // 2. "+n" goes; the dots that fit stay. 3. Platy alone.
+        let fitting: Int = room > 0 ? Int((room / Self.dot).rounded(.down)) : 0
+        self.init(dots: min(dots, fitting), overflowCount: 0)
     }
 
-    /// A width the badge never exceeds: 8 pt per character of `badgeText` (11 pt bold
-    /// rounded measures 7.7 at most), rounded up, plus `badgePadding` each side.
-    public static func badgeWidthEstimate(_ count: Int) -> CGFloat {
-        let chars: CGFloat = CGFloat(badgeText(count).count)
-        return (chars * 8).rounded(.up) + 2 * badgePadding
+    /// The label's text.
+    public static func overflowText(_ count: Int) -> String { "+\(count)" }
+
+    /// A width the label never exceeds: 8 pt per character (11 pt medium rounded measures
+    /// 7.7 at most), so a fit made with it never cuts the label.
+    public static func labelWidthEstimate(_ count: Int) -> CGFloat {
+        CGFloat(overflowText(count).count) * 8
     }
 
-    /// The badge's text: "+n", or "99+" above `badgeMaxCount`.
-    public static func badgeText(_ count: Int) -> String {
-        count > badgeMaxCount ? "\(badgeMaxCount)+" : "+\(count)"
+    /// Where each part sits, measured from the ear's outer edge toward the notch.
+    public struct Placement: Equatable, Sendable {
+        public let platy: ClosedRange<CGFloat>
+        public let dots: [ClosedRange<CGFloat>]
+        public let label: ClosedRange<CGFloat>?
     }
 
-    /// The width a badge may take. With a badge Platy sits against the notch edge of the
-    /// ear; the badge runs outward from Platy's horizontal centre across the ear's free
-    /// room and the pill's outer padding (`PanelLayout.pillPadding`), up to the pill's
-    /// outer edge.
-    public static func badgeRoom(earWidth: CGFloat, outerPadding: CGFloat) -> CGFloat {
-        platy / 2 + max(0, earWidth - platy) + outerPadding
+    public func placement(labelWidth: CGFloat) -> Placement {
+        let platyRange: ClosedRange<CGFloat> = 0...Self.platy
+        let dotRanges: [ClosedRange<CGFloat>] = (0..<dots).map { i in
+            let start: CGFloat = Self.platy + Self.spacing + CGFloat(i) * Self.dot
+            return start...(start + Self.dotSize)
+        }
+        var label: ClosedRange<CGFloat>?
+        if overflowCount > 0 {
+            let start: CGFloat = Self.platy + CGFloat(dots) * Self.dot + Self.spacing
+            label = start...(start + labelWidth)
+        }
+        return Placement(platy: platyRange, dots: dotRanges, label: label)
     }
 
-    /// Where a badge `badgeWidth` wide starts, measured outward from the notch edge of
-    /// the ear: at Platy's centre, moved toward the notch only if it would otherwise cross
-    /// the pill's outer edge, and never past the notch edge (0).
-    public static func badgeOffset(earWidth: CGFloat, outerPadding: CGFloat, badgeWidth: CGFloat) -> CGFloat {
-        badgeOffset(earWidth: earWidth, outerPadding: outerPadding, badgeWidth: badgeWidth, dotsWidth: 0)
+    /// The width this fit draws with `labelWidth` for the label.
+    public func width(labelWidth: CGFloat) -> CGFloat {
+        let label: CGFloat = overflowCount > 0 ? Self.spacing + labelWidth : 0
+        return Self.platy + CGFloat(dots) * Self.dot + label
     }
 
-    /// The same with dots between Platy and the notch (`dotsWidth`, `dots × dot`): Platy's
-    /// notch-side edge is then `dotsWidth` from the notch edge, and the badge never moves
-    /// over a dot.
-    public static func badgeOffset(earWidth: CGFloat, outerPadding: CGFloat, badgeWidth: CGFloat,
-                                   dotsWidth: CGFloat) -> CGFloat {
-        let outerEdge: CGFloat = max(earWidth, dotsWidth + platy) + outerPadding
-        return max(dotsWidth, min(dotsWidth + platy / 2, outerEdge - badgeWidth))
-    }
-
-    /// The width this fit draws (the badge takes none).
-    public var width: CGFloat {
-        let dotsWidth: CGFloat = CGFloat(dots) * Self.dot
-        let label: CGFloat = overflowCount > 0 && !badge ? Self.overflowLabel : 0
-        return Self.platy + dotsWidth + label
-    }
+    /// The width this fit draws with the estimated label.
+    public var width: CGFloat { width(labelWidth: Self.labelWidthEstimate(overflowCount)) }
 }

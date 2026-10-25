@@ -1,15 +1,26 @@
 import Foundation
 
-/// How an agent dot in the pill shows its session's state (spec 6.7): a pulse while
-/// working, solid while it waits for you (or errored), hollow otherwise.
-public enum AgentDotStyle: Sendable, Equatable {
-    case pulse, solid, hollow
+/// How an agent dot in the pill shows its session's state (spec 6.7). Every dot is a solid
+/// circle filled with its agent's colour; the state is the motion and the opacity: a pulse
+/// while working, full opacity while it waits for you, 35% while idle or finished. An
+/// errored session's dot is solid coral (the error colour) instead of the agent's.
+public enum AgentDotStyle: Sendable, Equatable, CaseIterable {
+    case pulse, solid, dim, errored
 
     public init(_ a: AgentAttention) {
         switch a {
         case .working: self = .pulse
-        case .needsYou, .errored: self = .solid
-        case .finished, .idle, .exited: self = .hollow
+        case .needsYou: self = .solid
+        case .errored: self = .errored
+        case .finished, .idle, .exited: self = .dim
+        }
+    }
+
+    /// The dot's resting opacity (a pulse animates down from it).
+    public var opacity: Double {
+        switch self {
+        case .pulse, .solid, .errored: 1
+        case .dim: 0.35
         }
     }
 }
@@ -42,7 +53,7 @@ public struct PillContent: Equatable, Sendable {
     /// The same, with the app's finish log, so errored and finished sessions are named.
     public init(activities: [LiveActivity], sessions: [Session], approvals: Int, hiddenKinds: Set<NotificationKind>,
                 log: AgentFinishLog, now: Date) {
-        dots = PillDots(sessions: sessions)
+        dots = PillDots(sessions: sessions, log: log, now: now)
         approvalCount = approvals
         var counts: [AgentAttention: Int] = [:]
         for s in sessions {

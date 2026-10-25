@@ -9,6 +9,8 @@ import SwiftUI
 enum PillRenders {
     enum Scene: String, CaseIterable {
         case idle, agents, needsYou = "needs-you", music, timer, paused, approval
+        /// 1, 3, 4 and 12 sessions in mixed states (working, waiting, errored, finished, idle).
+        case one = "mixed-1", three = "mixed-3", four = "mixed-4", twelve = "mixed-12"
     }
 
     private static let start = Date(timeIntervalSince1970: 1_800_000_000)
@@ -22,6 +24,25 @@ enum PillRenders {
     static func sessions(_ count: Int, waiting: Int? = nil) -> [Session] {
         let agents = ["claude-code", "codex", "cursor", "gemini"]
         return (0..<count).map { i in session(i, i == waiting ? .waitingInput : .active, agent: agents[i % agents.count]) }
+    }
+
+    /// `count` sessions over four agents in mixed states, and the finish log that names
+    /// the errored and finished ones: one waiting, then working, errored, finished, idle,
+    /// repeating. A single session is idle (a dimmed dot).
+    static func mixed(_ count: Int, now: Date) -> ([Session], AgentFinishLog) {
+        let agents = ["claude-code", "codex", "cursor", "gemini"]
+        let cycle: [SessionState] = [.active, .idle, .idle, .idle]
+        var log = AgentFinishLog()
+        let list: [Session] = (0..<count).map { i in
+            guard count > 1 else { return session(i, .idle, agent: agents[0]) }
+            guard i > 0 else { return session(i, .waitingInput, agent: agents[0]) }
+            let slot: Int = (i - 1) % cycle.count
+            let s = session(i, cycle[slot], agent: agents[i % agents.count])
+            if slot == 1 { log.noteFailure(sessionKey: s.key, at: now) }
+            if slot == 2 { log.record(SessionChanges(finished: [s.key], enteredNeedsYou: [], allFinished: false), now: now) }
+            return s
+        }
+        return (list, log)
     }
 
     static let music = LiveActivity(id: "music:playing", widgetID: "music", priority: LivePriority.musicPlaying,
@@ -45,6 +66,11 @@ enum PillRenders {
         func make(_ a: [LiveActivity], _ s: [Session], approvals: Int = 0) -> PillContent {
             PillContent(activities: a, sessions: s, approvals: approvals, hiddenKinds: [], now: now)
         }
+        func mixedScene(_ count: Int) -> (PillContent, PlatyMood) {
+            let (s, log) = mixed(count, now: now)
+            return (PillContent(activities: [], sessions: s, approvals: 0, hiddenKinds: [], log: log, now: now),
+                    count == 1 ? .idle : .waiting)
+        }
         switch scene {
         case .idle: return (make([], []), .idle)
         case .agents: return (make([], sessions(12)), .working)
@@ -56,6 +82,10 @@ enum PillRenders {
             var s = sessions(2)
             s[0].state = .blocked
             return (make([music], s, approvals: 1), .waiting)
+        case .one: return mixedScene(1)
+        case .three: return mixedScene(3)
+        case .four: return mixedScene(4)
+        case .twelve: return mixedScene(12)
         }
     }
 

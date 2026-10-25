@@ -297,71 +297,34 @@ final class PlatyMoodTests: XCTestCase {
 
     func testEarFitsPlatyAndDots() {
         // Plenty of room: every dot and the +n.
-        XCTAssertEqual(PlatyEarFit(earWidth: 86, dots: 3, overflow: 2), PlatyEarFit(dots: 3, overflowCount: 2, badge: false))
-        XCTAssertEqual(PlatyEarFit(earWidth: 86, dots: 2, overflow: 0), PlatyEarFit(dots: 2, overflowCount: 0, badge: false))
-        XCTAssertEqual(PlatyEarFit(earWidth: 34, dots: 1, overflow: 0), PlatyEarFit(dots: 1, overflowCount: 0, badge: false))
-        // Room for some dots and the label: the squeezed-out dots join the "+n". (The label
-        // is 22 pt at the 11 pt floor: 56 holds three dots alone, or one dot and the label.)
-        XCTAssertEqual(PlatyEarFit(earWidth: 56, dots: 3, overflow: 0), PlatyEarFit(dots: 3, overflowCount: 0, badge: false))
-        XCTAssertEqual(PlatyEarFit(earWidth: 56, dots: 3, overflow: 4), PlatyEarFit(dots: 1, overflowCount: 6, badge: false))
-        XCTAssertEqual(PlatyEarFit(earWidth: 52, dots: 3, overflow: 0), PlatyEarFit(dots: 0, overflowCount: 3, badge: false))
-        // Compact beside a notch (40 - 6): no room for the label, so "+n" is a badge on Platy
-        // and no dots are drawn, leaving the ear's room to the badge.
-        XCTAssertEqual(PlatyEarFit(earWidth: 34, dots: 3, overflow: 0), PlatyEarFit(dots: 0, overflowCount: 3, badge: true))
-        XCTAssertEqual(PlatyEarFit(earWidth: 10, dots: 3, overflow: 1), PlatyEarFit(dots: 0, overflowCount: 4, badge: true))
+        XCTAssertEqual(PlatyEarFit(earWidth: 86, dots: 3, overflow: 2), PlatyEarFit(dots: 3, overflowCount: 2))
+        XCTAssertEqual(PlatyEarFit(earWidth: 86, dots: 2, overflow: 0), PlatyEarFit(dots: 2, overflowCount: 0))
+        XCTAssertEqual(PlatyEarFit(earWidth: 34, dots: 1, overflow: 0), PlatyEarFit(dots: 1, overflowCount: 0))
+        XCTAssertEqual(PlatyEarFit(earWidth: 52, dots: 3, overflow: 0), PlatyEarFit(dots: 3, overflowCount: 0))
+        // First fewer dots (down to one) while "+n" stays and counts the rest.
+        XCTAssertEqual(PlatyEarFit(earWidth: 56, dots: 3, overflow: 4), PlatyEarFit(dots: 1, overflowCount: 6))
+        // Then "+n" goes and the dots that fit stay (Compact beside a notch, 40 - 6).
+        XCTAssertEqual(PlatyEarFit(earWidth: 34, dots: 3, overflow: 0), PlatyEarFit(dots: 1, overflowCount: 0))
+        XCTAssertEqual(PlatyEarFit(earWidth: 34, dots: 3, overflow: 40), PlatyEarFit(dots: 1, overflowCount: 0))
+        // Then Platy alone.
+        XCTAssertEqual(PlatyEarFit(earWidth: 30, dots: 3, overflow: 1), PlatyEarFit(dots: 0, overflowCount: 0))
+        XCTAssertEqual(PlatyEarFit(earWidth: 10, dots: 3, overflow: 1), PlatyEarFit(dots: 0, overflowCount: 0))
         for w in stride(from: 0.0, through: 120.0, by: 1) {
             for dots in 0...3 {
                 for overflow in [0, 1, 4] {
                     let fit = PlatyEarFit(earWidth: CGFloat(w), dots: dots, overflow: overflow)
                     XCTAssertLessThanOrEqual(fit.width, max(CGFloat(w), PlatyEarFit.platy), "w=\(w)")
-                    XCTAssertEqual(fit.dots + fit.overflowCount, dots + overflow, "every session is counted, w=\(w)")
+                    XCTAssertLessThanOrEqual(fit.dots, dots, "w=\(w)")
+                    if fit.overflowCount > 0 {
+                        XCTAssertEqual(fit.dots + fit.overflowCount, dots + overflow, "+n counts the rest, w=\(w)")
+                    }
                 }
             }
         }
     }
 
-    /// The width the pill draws for a badge: 11 pt bold rounded text, rounded up, plus
-    /// `badgePadding` each side.
-    private func badgeWidth(_ text: String) throws -> CGFloat {
-        let base = NSFont.systemFont(ofSize: 11, weight: .bold)
-        let descriptor = try XCTUnwrap(base.fontDescriptor.withDesign(.rounded))
-        let font = try XCTUnwrap(NSFont(descriptor: descriptor, size: 11))
-        return NSAttributedString(string: text, attributes: [.font: font]).size().width.rounded(.up)
-            + 2 * PlatyEarFit.badgePadding
-    }
-
-    /// The Compact pill's badge fits from Platy's centre to the pill's outer edge at the
-    /// 34 pt ear (40 less the 6 pt padding), for one and two digits and "99+".
-    func testBadgeFitsCompactEar() throws {
-        let pad = PanelLayout.pillPadding(hasNotch: true)
-        let room = PlatyEarFit.badgeRoom(earWidth: 34, outerPadding: pad)
-        XCTAssertEqual(room, 29)
-        XCTAssertEqual(PlatyEarFit.badgeText(150), "99+")
-        XCTAssertEqual(PlatyEarFit.badgeText(99), "+99")
-        for count in [9, 11, 40, 99, 150] {
-            let text = PlatyEarFit.badgeText(count)
-            XCTAssertLessThanOrEqual(try badgeWidth(text), room, text)
-        }
-    }
-
-    /// At every pill width beside a notch, every badge stays between the hardware notch
-    /// edge and the pill's outer edge.
-    func testBadgeNeverCrossesNotchOrPillEdge() throws {
-        let pad = PanelLayout.pillPadding(hasNotch: true)
-        for w in AppearanceSettings.PillWidth.allCases {
-            let earWidth = PanelLayout.ear(w) - pad
-            for count in 1...150 {
-                let width = try badgeWidth(PlatyEarFit.badgeText(count))
-                let start = PlatyEarFit.badgeOffset(earWidth: earWidth, outerPadding: pad, badgeWidth: width)
-                XCTAssertGreaterThanOrEqual(start, 0, "crosses the notch: \(w) \(count)")
-                XCTAssertLessThanOrEqual(start + width, earWidth + pad, "crosses the pill's edge: \(w) \(count)")
-                XCTAssertEqual(start, PlatyEarFit.platy / 2, "starts at Platy's centre: \(w) \(count)")
-            }
-        }
-    }
-
     /// Feedback 5: with many sessions (6, 12, 40) Platy still shows in the pill at every
-    /// Appearance › Pill width, beside a notch and without one, and every session is counted.
+    /// Appearance › Pill width, beside a notch and without one.
     func testPlatyShowsWithManySessionsAtEveryPillWidth() {
         let screen = CGRect(x: 0, y: 0, width: 1512, height: 982)
         let visible = CGRect(x: 0, y: 0, width: 1512, height: 950)
@@ -387,7 +350,9 @@ final class PlatyMoodTests: XCTestCase {
                     let label = "\(count) sessions, \(w), notch=\(l.hasNotch), ear=\(ear)"
                     XCTAssertGreaterThanOrEqual(ear, PlatyEarFit.platy, "Platy fits the ear: " + label)
                     XCTAssertLessThanOrEqual(fit.width, ear, label)
-                    XCTAssertEqual(fit.dots + fit.overflowCount, count, "every session counted: " + label)
+                    // "+n" counts every session without a dot, or is dropped for room
+                    // (VoiceOver still names every session).
+                    XCTAssertTrue(fit.overflowCount == 0 || fit.dots + fit.overflowCount == count, label)
                 }
             }
         }
