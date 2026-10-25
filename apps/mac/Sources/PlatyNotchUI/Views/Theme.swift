@@ -160,7 +160,8 @@ enum Theme {
 /// A session dot. A `.pulse` dot (working) pulses (1 → 0.45 → 1, 1.8 s) as a Core
 /// Animation opacity animation played by the render server: the app does no work per
 /// frame. It plays only while the panel ticks and Reduce Motion is off; otherwise it
-/// draws solid. `.hollow` is a ring (idle, finished) and never animates.
+/// draws solid. Every style is a solid circle: `.dim` (idle, finished) rests at 35%
+/// opacity, `.errored` is filled coral instead of the given colour; neither animates.
 struct AgentDot: View {
     let color: NSColor
     let style: AgentDotStyle
@@ -205,8 +206,6 @@ private struct AgentDotLayer: NSViewRepresentable {
 
 final class AgentDotNSView: NSView {
     static let pulseKey = "dot.pulse"
-    /// A hollow dot's ring.
-    static let ringWidth: CGFloat = 1.5
     private let dot = CALayer()
     private var color: NSColor = .systemGray
     private var style: AgentDotStyle = .solid
@@ -215,7 +214,7 @@ final class AgentDotNSView: NSView {
         super.init(frame: frame)
         wantsLayer = true
         dot.actions = ["bounds": NSNull(), "position": NSNull(), "backgroundColor": NSNull(), "cornerRadius": NSNull(),
-                       "borderColor": NSNull(), "borderWidth": NSNull()]
+                       "opacity": NSNull()]
         layer?.addSublayer(dot)
     }
 
@@ -262,21 +261,21 @@ final class AgentDotNSView: NSView {
     }
 
     var isPulsing: Bool { dot.animation(forKey: Self.pulseKey) != nil }
-    var isHollow: Bool { style == .hollow }
+    /// The dot's resting opacity (`AgentDotStyle.opacity`).
+    var restingOpacity: Float { dot.opacity }
+    /// The dot's fill, nil when clear.
+    var fill: CGColor? { dot.backgroundColor }
+    /// The width of any outline (always 0: dots are solid).
+    var outlineWidth: CGFloat { dot.borderWidth }
 
     private func applyColor() {
-        var cg: CGColor = color.cgColor
-        effectiveAppearance.performAsCurrentDrawingAppearance { cg = self.color.cgColor }
+        let source: NSColor = style == .errored ? DS.dynamicNSColor(.error) : color
+        var cg: CGColor = source.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance { cg = source.cgColor }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        if style == .hollow {
-            dot.backgroundColor = CGColor.clear
-            dot.borderColor = cg
-            dot.borderWidth = Self.ringWidth
-        } else {
-            dot.backgroundColor = cg
-            dot.borderWidth = 0
-        }
+        dot.backgroundColor = cg
+        dot.opacity = Float(style.opacity)
         CATransaction.commit()
     }
 }

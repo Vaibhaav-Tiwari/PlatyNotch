@@ -61,14 +61,41 @@ final class PillContentTests: DefaultsTestCase {
     func testDotStyles() {
         XCTAssertEqual(AgentDotStyle(.working), .pulse)
         XCTAssertEqual(AgentDotStyle(.needsYou), .solid)
-        XCTAssertEqual(AgentDotStyle(.errored), .solid)
-        XCTAssertEqual(AgentDotStyle(.idle), .hollow)
-        XCTAssertEqual(AgentDotStyle(.finished), .hollow)
+        XCTAssertEqual(AgentDotStyle(.errored), .errored)
+        XCTAssertEqual(AgentDotStyle(.idle), .dim)
+        XCTAssertEqual(AgentDotStyle(.finished), .dim)
         let c = content([], sessions: [session("a", .active, agent: "codex"), session("b", .waitingInput, agent: "cursor"),
                                        session("c", .idle, agent: "gemini-cli")])
         XCTAssertEqual(c.dots.dots.map(\.key), ["b", "a", "c"])
-        XCTAssertEqual(c.dots.dots.map(\.style), [.solid, .pulse, .hollow])
+        XCTAssertEqual(c.dots.dots.map(\.style), [.solid, .pulse, .dim])
         XCTAssertEqual(c.dots.dots.map(\.agent), [.cursor, .codex, .gemini])
+    }
+
+    /// Hotfix: every dot is a solid circle. There is no hollow (ring) style; idle and
+    /// finished rest at 35% opacity, waiting and errored at full opacity.
+    func testNoHollowStyleAndIdleIsDimmed() {
+        XCTAssertEqual(AgentDotStyle.allCases, [.pulse, .solid, .dim, .errored])
+        for style in AgentDotStyle.allCases {
+            XCTAssertFalse(String(describing: style).lowercased().contains("hollow"))
+            XCTAssertFalse(String(describing: style).lowercased().contains("ring"))
+        }
+        XCTAssertEqual(AgentDotStyle(.idle).opacity, 0.35)
+        XCTAssertEqual(AgentDotStyle(.finished).opacity, 0.35)
+        XCTAssertEqual(AgentDotStyle(.needsYou).opacity, 1)
+        XCTAssertEqual(AgentDotStyle(.errored).opacity, 1)
+        XCTAssertEqual(AgentDotStyle(.working).opacity, 1, "a pulse animates down from full opacity")
+    }
+
+    /// With the finish log an errored session's dot is coral (`.errored`) and a finished
+    /// one is dimmed; the order still comes from the state alone.
+    func testDotsUseTheFinishLog() {
+        var log = AgentFinishLog()
+        log.noteFailure(sessionKey: "e", at: now)
+        log.record(SessionChanges(finished: ["f"], enteredNeedsYou: [], allFinished: false), now: now)
+        let c = PillContent(activities: [], sessions: [session("e", .idle), session("w", .active), session("f", .idle)],
+                            approvals: 0, hiddenKinds: [], log: log, now: now)
+        XCTAssertEqual(c.dots.dots.map(\.key), ["w", "e", "f"])
+        XCTAssertEqual(c.dots.dots.map(\.style), [.pulse, .errored, .dim])
     }
 
     func testTwelveSessions() {
@@ -81,48 +108,83 @@ final class PillContentTests: DefaultsTestCase {
         XCTAssertEqual(c.dots.dots.first?.style, .solid)
         XCTAssertEqual(c.dots.dots.first?.agent, .gemini)
         XCTAssertEqual(c.dots.overflow, 9)
-        // The "3 dots + +9" fit: at the Standard and Wide ears beside a notch, Platy, all
-        // three dots and "+9" show (the "+9" as a badge on Platy where the label has no room).
+        // Wide beside a notch: Platy, all three dots and a plain "+9".
         let pad = PanelLayout.pillPadding(hasNotch: true)
-        for w in [AppearanceSettings.PillWidth.standard, .wide] {
-            let ear = PanelLayout.ear(w) - pad
-            let fit = PlatyEarFit(earWidth: ear, dots: 3, overflow: 9, outerPadding: pad)
-            XCTAssertEqual(fit.dots, 3, "\(w)")
-            XCTAssertEqual(fit.overflowCount, 9, "\(w)")
-            XCTAssertLessThanOrEqual(fit.width, ear, "\(w)")
-        }
+        let wide = PanelLayout.ear(.wide) - pad
+        let fit = PlatyEarFit(earWidth: wide, dots: 3, overflow: 9, labelWidth: measuredLabel)
+        XCTAssertEqual(fit, PlatyEarFit(dots: 3, overflowCount: 9))
+        // Standard: fewer dots, "+n" kept. Compact: "+n" dropped, one dot beside Platy.
+        let standard = PanelLayout.ear(.standard) - pad
+        XCTAssertEqual(PlatyEarFit(earWidth: standard, dots: 3, overflow: 9, labelWidth: measuredLabel),
+                       PlatyEarFit(dots: 1, overflowCount: 11))
+        let compact = PanelLayout.ear(.compact) - pad
+        XCTAssertEqual(PlatyEarFit(earWidth: compact, dots: 3, overflow: 9, labelWidth: measuredLabel),
+                       PlatyEarFit(dots: 1, overflowCount: 0))
     }
 
-    /// With the pill's outer padding, a fit keeps the dots and badges Platy when the label
-    /// has no room, and the badge never crosses a dot, the notch or the pill's edge.
-    func testEarFitKeepsDotsWithBadge() throws {
+    /// The fit order with the measured "+n" for every count from 1 to 150, at all three
+    /// ear widths beside a notch and without one: fewer dots (down to one) while "+n"
+    /// stays; then "+n" goes and the dots that fit stay; then Platy alone. Nothing overlaps
+    /// Platy, nothing passes the notch edge or the pill's edge, and text is never cut.
+    func testFitOrderNeverOverlaps() {
+        let pad = PanelLayout.pillPadding(hasNotch: true)
+        var ears: [(String, CGFloat, CGFloat)] = AppearanceSettings.PillWidth.allCases.map { w in
+            ("\(w) notch", PanelLayout.ear(w) - pad, pad)
+        }
         for w in AppearanceSettings.PillWidth.allCases {
-            let pad = PanelLayout.pillPadding(hasNotch: true)
-            let ear = PanelLayout.ear(w) - pad
-            for dots in 0...3 {
-                for overflow in [0, 1, 9, 40, 150] {
-                    let fit = PlatyEarFit(earWidth: ear, dots: dots, overflow: overflow, outerPadding: pad)
-                    let label = "\(w) dots=\(dots) overflow=\(overflow)"
-                    XCTAssertEqual(fit.dots + fit.overflowCount, dots + overflow, label)
-                    XCTAssertLessThanOrEqual(fit.width, max(ear, PlatyEarFit.platy), label)
-                    guard fit.badge, fit.overflowCount > 0 else { continue }
-                    let dotsWidth = CGFloat(fit.dots) * PlatyEarFit.dot
-                    let width = try measuredBadge(PlatyEarFit.badgeText(fit.overflowCount))
-                    let start = PlatyEarFit.badgeOffset(earWidth: ear, outerPadding: pad, badgeWidth: width,
-                                                        dotsWidth: dotsWidth)
-                    XCTAssertGreaterThanOrEqual(start, dotsWidth, "never over a dot: " + label)
-                    XCTAssertLessThanOrEqual(start + width, ear + pad, "never past the pill's edge: " + label)
+            let plain = PanelLayout(screenFrame: CGRect(x: 0, y: 0, width: 1920, height: 1080),
+                                    visibleFrame: CGRect(x: 0, y: 0, width: 1920, height: 1055),
+                                    auxLeft: nil, auxRight: nil, pillWidth: w)
+            ears.append(("\(w) plain", plain.liveEarWidth, PanelLayout.pillPadding(hasNotch: false)))
+        }
+        for (name, ear, outer) in ears {
+            let room = ear - PlatyEarFit.platy
+            for total in 1...150 {
+                let dots = min(total, PillDots.limit)
+                let overflow = total - dots
+                let fit = PlatyEarFit(earWidth: ear, dots: dots, overflow: overflow, labelWidth: measuredLabel)
+                let label = "\(name) total=\(total) fit=\(fit)"
+                let width = fit.overflowCount > 0 ? measuredLabel(fit.overflowCount) : 0
+                let place = fit.placement(labelWidth: width)
+                // Platy at the outer edge; nothing over it; nothing past the notch or pill edge.
+                // The ear starts `outer` inside the pill's edge; Platy sits at the ear's start.
+                XCTAssertEqual(place.platy.lowerBound, 0, label)
+                XCTAssertGreaterThan(outer + place.platy.lowerBound, 0, "inside the pill's outer edge: " + label)
+                var last: CGFloat = place.platy.upperBound
+                for d in place.dots {
+                    XCTAssertGreaterThan(d.lowerBound, last, "a dot overlaps Platy or a dot: " + label)
+                    XCTAssertEqual(d.upperBound - d.lowerBound, PlatyEarFit.dotSize, label)
+                    last = d.upperBound
+                }
+                if let l = place.label {
+                    XCTAssertGreaterThan(l.lowerBound, last, "the label overlaps: " + label)
+                    last = l.upperBound
+                }
+                XCTAssertLessThanOrEqual(last, ear, "passes the notch edge: " + label)
+                XCTAssertEqual(fit.width(labelWidth: width), max(last, PlatyEarFit.platy), label)
+                // The order.
+                XCTAssertGreaterThanOrEqual(fit.dots, 1, "every ear holds Platy and a dot: " + label)
+                if fit.overflowCount > 0 {
+                    XCTAssertEqual(fit.dots + fit.overflowCount, total, "+n counts every other session: " + label)
+                    if fit.dots < dots {
+                        let more = CGFloat(fit.dots + 1) * PlatyEarFit.dot + PlatyEarFit.spacing
+                            + measuredLabel(total - fit.dots - 1)
+                        XCTAssertGreaterThan(more, room, "one more dot would have fit with +n: " + label)
+                    }
+                } else if fit.dots < total {
+                    let withLabel = PlatyEarFit.dot + PlatyEarFit.spacing + measuredLabel(total - 1)
+                    XCTAssertGreaterThan(withLabel, room, "+n dropped though one dot and +n fit: " + label)
+                    XCTAssertEqual(fit.dots, min(dots, Int((room / PlatyEarFit.dot).rounded(.down))),
+                                   "after +n goes, the dots that fit stay: " + label)
                 }
             }
         }
-        // The plain init keeps its old answer (no padding known: the label squeezes dots).
-        XCTAssertEqual(PlatyEarFit(earWidth: 56, dots: 3, overflow: 4), PlatyEarFit(dots: 1, overflowCount: 6, badge: false))
     }
 
-    func testBadgeEstimateNeverUnderMeasures() throws {
+    func testLabelEstimateNeverUnderMeasures() {
         for count in 1...150 {
-            let text = PlatyEarFit.badgeText(count)
-            XCTAssertGreaterThanOrEqual(PlatyEarFit.badgeWidthEstimate(count), try measuredBadge(text), text)
+            XCTAssertGreaterThanOrEqual(PlatyEarFit.labelWidthEstimate(count), measuredLabel(count),
+                                        PlatyEarFit.overflowText(count))
         }
     }
 
@@ -205,12 +267,11 @@ final class PillContentTests: DefaultsTestCase {
         XCTAssertEqual(music.trailing?.id, "music")
     }
 
-    /// The pill's badge width: 11 pt bold rounded, rounded up, plus `badgePadding` each side.
-    private func measuredBadge(_ text: String) throws -> CGFloat {
-        let base = NSFont.systemFont(ofSize: 11, weight: .bold)
-        let descriptor = try XCTUnwrap(base.fontDescriptor.withDesign(.rounded))
-        let font = try XCTUnwrap(NSFont(descriptor: descriptor, size: 11))
-        return NSAttributedString(string: text, attributes: [.font: font]).size().width.rounded(.up)
-            + 2 * PlatyEarFit.badgePadding
+    /// The "+n" label as the pill draws it: 11 pt medium rounded, rounded up.
+    private func measuredLabel(_ count: Int) -> CGFloat {
+        let base = NSFont.systemFont(ofSize: 11, weight: .medium)
+        let font = base.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: 11) } ?? base
+        return NSAttributedString(string: PlatyEarFit.overflowText(count), attributes: [.font: font]).size().width
+            .rounded(.up)
     }
 }

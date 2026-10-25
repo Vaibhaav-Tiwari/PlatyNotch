@@ -3,8 +3,8 @@ import SwiftUI
 
 /// The resting panel (spec 6.1, 6.7). The agents ear holds Platy (the aggregate mood) at
 /// its outer edge and the agent dots toward the notch, coloured by each session's agent
-/// with the state as the dot's motion, then "+n" (a badge on Platy when the label has no
-/// room, `PlatyEarFit`). The live ear holds the connection glyph, else the approval badge,
+/// with the state as the dot's motion and opacity, then a plain "+n"; nothing overlaps
+/// Platy (`PlatyEarFit`). The live ear holds the connection glyph, else the approval badge,
 /// else the top live item's glyph and text, then up to two indicator dots for the next
 /// live items (`PillContent`, `LiveEarFit`). `liveSide` says which ear is the live one.
 /// On a notch the ears sit beside the camera housing.
@@ -56,72 +56,43 @@ struct CompactPill: View {
 
     private var agentsEar: some View {
         let dots: PillDots = content.dots
-        let pad: CGFloat = PanelLayout.pillPadding(hasNotch: hasNotch)
         let fit: PlatyEarFit? = platy.map { _ in
-            PlatyEarFit(earWidth: earWidth, dots: dots.dots.count, overflow: dots.overflow, outerPadding: pad)
+            PlatyEarFit(earWidth: earWidth, dots: dots.dots.count, overflow: dots.overflow,
+                        labelWidth: OverflowLabel.width)
         }
         let shown: Int = fit?.dots ?? dots.dots.count
         let count: Int = fit?.overflowCount ?? dots.overflow
-        let badge: Bool = (fit?.badge ?? false) && count > 0
         // The agents ear is left of the notch when the live ear is on the right. Platy sits
-        // at the ear's outer edge, the dots run toward the notch (mirrored on the right).
+        // at the ear's outer edge, the dots and "+n" run toward the notch (mirrored on the right).
         let earOnLeft: Bool = liveSide == .right
         let kept: [PillDots.Dot] = Array(dots.dots.prefix(shown))
         let ordered: [PillDots.Dot] = earOnLeft ? kept : kept.reversed()
-        return HStack(spacing: PlatyEarFit.spacing) {
+        let row = HStack(spacing: PlatyEarFit.spacing) {
             if earOnLeft {
-                platyGlyph(count: count, badge: badge, dots: shown, earOnLeft: true)
+                platyGlyph
                 dotViews(ordered)
-                overflowLabel(count, badge: badge)
+                if count > 0 { OverflowLabel(count: count) }
             } else {
-                overflowLabel(count, badge: badge)
+                if count > 0 { OverflowLabel(count: count) }
                 dotViews(ordered)
-                platyGlyph(count: count, badge: badge, dots: shown, earOnLeft: false)
+                platyGlyph
             }
         }
-        // With a badge, the content sits against the notch so the badge has the rest.
-        .frame(width: badge ? earWidth : nil, alignment: earOnLeft ? .trailing : .leading)
+        // Beside a notch Platy keeps one spot at the ear's outer edge, whatever the count.
+        return row.frame(width: hasNotch && earWidth.isFinite && platy != nil ? earWidth : nil,
+                         alignment: earOnLeft ? .leading : .trailing)
     }
 
     private func dotViews(_ dots: [PillDots.Dot]) -> some View {
         ForEach(dots, id: \.key) { dot in
-            AgentDot(color: DS.agentNSColor(dot.agent), style: dot.style)
+            AgentDot(color: DS.agentNSColor(dot.agent), style: dot.style, size: PlatyEarFit.dotSize)
         }
     }
 
-    @ViewBuilder private func overflowLabel(_ count: Int, badge: Bool) -> some View {
-        if count > 0, !badge {
-            Text("+\(count)")
-                .font(DS.font(TypeScale.caption, design: .rounded).weight(.semibold))
-                .foregroundStyle(.secondary)
-                .fixedSize()
-        }
-    }
-
-    @ViewBuilder private func platyGlyph(count: Int, badge: Bool, dots: Int, earOnLeft: Bool) -> some View {
+    @ViewBuilder private var platyGlyph: some View {
         if let platy {
             PlatyView(mood: platy, size: PlatyEarFit.platy, morphID: MorphID.platy)
-                .overlay(alignment: earOnLeft ? .bottomTrailing : .bottomLeading) {
-                    // From Platy's centre outward, across the ear's free room and the
-                    // pill's outer padding; never over a dot, the notch or past the pill's
-                    // edge (`PlatyEarFit.badgeOffset`).
-                    if badge {
-                        let start: CGFloat = badgeStart(count, dots: dots)
-                        OverflowBadge(count: count)
-                            .offset(x: earOnLeft ? -start : start)
-                    }
-                }
         }
-    }
-
-    /// The badge's start outward from Platy's notch-side edge.
-    private func badgeStart(_ count: Int, dots: Int) -> CGFloat {
-        let pad: CGFloat = PanelLayout.pillPadding(hasNotch: hasNotch)
-        let width: CGFloat = OverflowBadge.width(count)
-        let dotsWidth: CGFloat = CGFloat(dots) * PlatyEarFit.dot
-        let start: CGFloat = PlatyEarFit.badgeOffset(earWidth: earWidth, outerPadding: pad, badgeWidth: width,
-                                                     dotsWidth: dotsWidth)
-        return start - dotsWidth
     }
 
     /// What VoiceOver reads for the pill: the sessions, Platy's mood, approvals, the
@@ -188,31 +159,28 @@ struct LiveEarView: View {
     }
 }
 
-/// "+n" ("99+" above 99) beside Platy when the ear has no room for it after the dots.
-private struct OverflowBadge: View {
+/// "+n" after the agent dots: plain secondary text, 11 pt medium rounded, no background.
+private struct OverflowLabel: View {
     let count: Int
 
     static let font: NSFont = {
-        let base = NSFont.systemFont(ofSize: TypeScale.minimum, weight: .bold)
+        let base = NSFont.systemFont(ofSize: TypeScale.caption.size, weight: .medium)
         guard let rounded = base.fontDescriptor.withDesign(.rounded) else { return base }
-        return NSFont(descriptor: rounded, size: TypeScale.minimum) ?? base
+        return NSFont(descriptor: rounded, size: TypeScale.caption.size) ?? base
     }()
 
-    /// The drawn width: the text, rounded up, and the capsule's padding.
+    /// The drawn width, rounded up: what `PlatyEarFit` makes room for.
     static func width(_ count: Int) -> CGFloat {
-        let text = NSAttributedString(string: PlatyEarFit.badgeText(count), attributes: [.font: font])
-        return text.size().width.rounded(.up) + 2 * PlatyEarFit.badgePadding
+        let text = NSAttributedString(string: PlatyEarFit.overflowText(count), attributes: [.font: font])
+        return text.size().width.rounded(.up)
     }
 
     var body: some View {
-        Text(verbatim: PlatyEarFit.badgeText(count))
-            .font(DS.font(TypeScale.caption, design: .rounded).weight(.bold))
+        Text(verbatim: PlatyEarFit.overflowText(count))
+            .font(DS.font(TypeScale.caption, design: .rounded).weight(.medium))
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
             .fixedSize()
-            .foregroundStyle(.white)
-            .padding(.horizontal, PlatyEarFit.badgePadding)
-            .background(Color(white: 0.25), in: Capsule())
-            // Level with Platy's bottom (not below it), so the mood's cue still reads.
-            .offset(y: 0)
     }
 }
 

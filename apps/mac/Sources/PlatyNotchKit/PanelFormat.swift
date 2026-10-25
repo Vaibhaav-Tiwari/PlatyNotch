@@ -99,10 +99,10 @@ public struct PillDots: Sendable, Equatable {
         public var tone: AgentTone
         /// Whose session it is: the dot's colour (spec 6.7).
         public var agent: AgentIdentity
-        /// The session's state as the dot's motion (pulse, solid, hollow).
+        /// The session's state as the dot's motion and opacity (`AgentDotStyle`).
         public var style: AgentDotStyle
 
-        public init(key: String, tone: AgentTone, agent: AgentIdentity = .other, style: AgentDotStyle = .hollow) {
+        public init(key: String, tone: AgentTone, agent: AgentIdentity = .other, style: AgentDotStyle = .dim) {
             self.key = key
             self.tone = tone
             self.agent = agent
@@ -117,13 +117,20 @@ public struct PillDots: Sendable, Equatable {
     public let overflow: Int
 
     public init(sessions: [Session], limit: Int = PillDots.limit) {
+        self.init(sessions: sessions, limit: limit, log: AgentFinishLog(), now: Date())
+    }
+
+    /// The same, with the app's finish log: an errored session's dot is coral and a
+    /// finished one is dimmed. The order still comes from the state alone.
+    public init(sessions: [Session], limit: Int = PillDots.limit, log: AgentFinishLog, now: Date) {
         // Ranked by the one session classifier: needs you, working, idle; exited left out.
         let live = sessions.enumerated()
             .compactMap { i, s -> (Int, Int, Dot)? in
                 let attention = AgentAttention(state: s.state)
                 guard attention != .exited else { return nil }
+                let style = AgentDotStyle(AgentAttention.of(s, log: log, now: now))
                 return (attention.rawValue, i, Dot(key: s.key, tone: AgentTone(s.state), agent: AgentIdentity(agent: s.agent),
-                                                   style: AgentDotStyle(attention)))
+                                                   style: style))
             }
             .sorted { ($0.0, $0.1) < ($1.0, $1.1) }
             .map(\.2)
