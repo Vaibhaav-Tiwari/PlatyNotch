@@ -126,11 +126,11 @@ struct PanelRootView: View {
         case .hidden:
             Color.clear
         case .compact:
-            let live = LiveArbiter.pick(widgets.liveActivities, now: Date())
-            CompactPill(dots: PillDots(sessions: store.sessions), approvalCount: store.approvals.count,
-                        connection: store.connection, hasNotch: layout.hasNotch,
+            // `hiddenKinds` stays empty until Settings › Notifications (Task 22).
+            let pill = PillContent(activities: widgets.liveActivities, sessions: store.sessions,
+                                   approvals: store.approvals.count, hiddenKinds: [], now: Date())
+            CompactPill(content: pill, connection: store.connection, hasNotch: layout.hasNotch,
                         notchWidth: layout.hasNotch ? layout.anchor.width : 0,
-                        primary: live.primary, bubble: live.bubble,
                         liveSide: model.appearance.liveSide, earWidth: layout.liveEarWidth,
                         platy: model.appearance.showPlaty ? platyMood : nil)
                 .contentShape(Rectangle())

@@ -446,7 +446,11 @@ public final class NotchController {
 
     private func syncFromStore() {
         responder.sync(store: store)
-        machine.setLive(PanelMode.hasLive(sessions: store.sessions, activities: widgets.liveActivities, now: Date()))
+        // What the pill shows keeps Minimal up (approvals, sessions working or waiting,
+        // non-ambient live items), from the same `PillContent` the pill draws.
+        let pill = PillContent(activities: widgets.liveActivities, sessions: store.sessions,
+                               approvals: store.approvals.count, hiddenKinds: [], now: Date())
+        machine.setLive(pill.keepsMinimalUp)
         // During focus, notices are consumed without peeking; approvals still peek.
         // A session left running while the focus widget is off holds nothing.
         let holdNotices = today.focus.focusActive && widgets.isEnabled(FocusWidget.widgetID)

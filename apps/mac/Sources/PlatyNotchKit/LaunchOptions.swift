@@ -22,6 +22,9 @@ public struct LaunchOptions: Equatable, Sendable {
     public var renderIconDir: String?
     /// `--platy-gallery <dir>` (hidden, C35): write Platy's art review PNGs and exit.
     public var platyGalleryDir: String?
+    /// `--pill-gallery <dir>` (hidden): write the compact pill in every state at every
+    /// pill width (and the open/close morph frames) and exit.
+    public var pillGalleryDir: String?
     /// `PLATYNOTCH_FAKE_NOWPLAYING=1` together with `--perf-run` (scripts/perf-idle.sh
     /// `--state music` passes both): now playing reports a fake track as playing instead of
     /// reading any player, so the pill shows the music bars. Either one alone does nothing.
@@ -39,6 +42,7 @@ public struct LaunchOptions: Equatable, Sendable {
         renderDir = env["PLATYNOTCH_RENDER_DIR"].flatMap { $0.isEmpty ? nil : $0 }
         renderIconDir = Self.value(after: "--render-icon", in: arguments)
         platyGalleryDir = Self.value(after: "--platy-gallery", in: arguments)
+        pillGalleryDir = Self.value(after: "--pill-gallery", in: arguments)
         perfRun = arguments.dropFirst().contains("--perf-run")
         fakeNowPlaying = env["PLATYNOTCH_FAKE_NOWPLAYING"] == "1" && perfRun
     }

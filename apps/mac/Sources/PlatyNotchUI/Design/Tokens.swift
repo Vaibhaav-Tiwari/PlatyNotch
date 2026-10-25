@@ -80,6 +80,23 @@ enum DS {
         Color(a.rgb(dark: scheme != .light))
     }
 
+    /// An agent's colour that follows the drawing appearance (the pill's layer-backed
+    /// dots); one instance per agent, like `dynamicNSColor`.
+    static func agentNSColor(_ a: AgentIdentity) -> NSColor {
+        colorLock.lock()
+        defer { colorLock.unlock() }
+        if let cached = agentCache[a] { return cached }
+        let color = NSColor(name: nil) { appearance in
+            let dark = appearance.bestMatch(from: [.darkAqua, .aqua]) != .aqua
+            return NSColor(a.rgb(dark: dark))
+        }
+        agentCache[a] = color
+        return color
+    }
+
+    /// Guarded by `colorLock`; one entry per agent.
+    nonisolated(unsafe) private static var agentCache: [AgentIdentity: NSColor] = [:]
+
     static let teal = Color(Brand.teal)
     static let cream = Color(Brand.cream)
     static let pond = Color(Brand.pond)

@@ -36,7 +36,7 @@ enum ThemeRenders {
         let message: String
     }
 
-    private static func framed(_ view: AnyView, scheme: ColorScheme) -> some View {
+    static func framed(_ view: AnyView, scheme: ColorScheme) -> some View {
         view
             .padding(12)
             .background(Theme.surface(scheme))
@@ -52,11 +52,29 @@ enum ThemeRenders {
 
     /// Views holding AppKit views (the shelf card's drag handle), which `ImageRenderer`
     /// draws as a placeholder: an off-screen hosting view's own drawing instead.
-    private static func renderHosted(_ view: AnyView, scheme: ColorScheme) -> Data? {
+    /// `settle`: seconds the run loop turns before the capture, so a symbol or text that
+    /// fades in on first appearance is drawn settled (the pill gallery).
+    static func renderHosted(_ view: AnyView, scheme: ColorScheme, settle: TimeInterval = 0) -> Data? {
         let host = NSHostingView(rootView: framed(view, scheme: scheme))
         host.appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
         host.frame = CGRect(origin: .zero, size: host.fittingSize)
         host.layoutSubtreeIfNeeded()
+        if settle > 0 {
+            // In an off-screen window at 2x, so every layer draws at the window's scale.
+            let window = NSWindow(contentRect: CGRect(x: -10_000, y: -10_000, width: host.frame.width,
+                                                      height: host.frame.height),
+                                  styleMask: .borderless, backing: .buffered, defer: false)
+            window.appearance = host.appearance
+            window.contentView = host
+            window.orderFrontRegardless()
+            RunLoop.main.run(until: Date().addingTimeInterval(settle))
+            host.layoutSubtreeIfNeeded()
+            host.display()
+            defer { window.orderOut(nil) }
+            guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return nil }
+            host.cacheDisplay(in: host.bounds, to: rep)
+            return rep.representation(using: .png, properties: [:])
+        }
         guard host.bounds.width > 0, let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return nil }
         host.cacheDisplay(in: host.bounds, to: rep)
         return rep.representation(using: .png, properties: [:])
@@ -87,34 +105,30 @@ enum ThemeRenders {
                 out.append(("pill-\(width.rawValue)-\(count)", compactPill(width, sessions: count), true))
             }
         }
+        out.append(("pill-platy-idle", PillRenders.pill(.idle, width: .standard, notch: true), true))
+        out.append(("pill-agents-music", PillRenders.pill(.music, width: .standard, notch: true), true))
+        out.append(("pill-indicators", PillRenders.pill(.timer, width: .wide, notch: true), true))
         return out
     }
 
-    /// The resting pill beside a 14-inch MacBook Pro notch (drawn dark grey here so its
-    /// edges show; black in the app) at `width`, with `sessions` working sessions: the
-    /// Compact ear shows Platy and the "+n" badge, the wider ears dots and "+n".
+    /// The resting pill beside a 14-inch MacBook Pro notch at `width`, with `sessions`
+    /// working sessions over four agents: Platy, the dots that fit and "+n".
     private static func compactPill(_ width: AppearanceSettings.PillWidth, sessions count: Int) -> AnyView {
-        let layout = PanelLayout(screenFrame: CGRect(x: 0, y: 0, width: 1512, height: 982),
-                                 visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 950),
-                                 auxLeft: CGRect(x: 0, y: 950, width: 654, height: 32),
-                                 auxRight: CGRect(x: 858, y: 950, width: 654, height: 32), pillWidth: width)
+        let layout = PillRenders.notchLayout(width)
         let rect = layout.contentRect(for: .compact)
-        let start = Date(timeIntervalSince1970: 1_800_000_000)
-        let sessions = (0..<count).map { i in
-            Session(key: "s\(i)", agent: "claude-code", agentName: "Claude Code", sessionID: "s\(i)",
-                    state: .active, startedAt: start, updatedAt: start)
-        }
-        let pill = CompactPill(dots: PillDots(sessions: sessions), approvalCount: 0, connection: .connected,
-                               hasNotch: true, notchWidth: layout.anchor.width, liveSide: .right,
-                               earWidth: layout.liveEarWidth, platy: .working)
+        let content = PillContent(activities: [], sessions: PillRenders.sessions(count), approvals: 0, hiddenKinds: [],
+                                  now: Date())
+        let pill = CompactPill(content: content, connection: .connected, hasNotch: true,
+                               notchWidth: layout.anchor.width, liveSide: .right, earWidth: layout.liveEarWidth,
+                               platy: .working)
         let view = ZStack {
-            Color(PanelPalette.darkSurface)
+            Theme.panelShape(hasNotch: true).fill(Color(PanelPalette.darkSurface))
             Color(white: 0.2).frame(width: layout.anchor.width)
             pill
         }
         .frame(width: rect.width, height: rect.height)
-        .clipShape(Theme.panelShape(hasNotch: true))
         .environment(\.colorScheme, .dark)
+        .environment(\.panelTicking, false)
         return AnyView(view)
     }
 
