@@ -22,6 +22,33 @@ private final class EmptyToolWidget: NotchWidget {
     func tileView() -> AnyView { AnyView(Text("tile")) }
 }
 
+/// Records each `@State` token its probe view was drawn with (a new token: torn down).
+@MainActor
+private final class StateRecord {
+    var tokens: Set<UUID> = []
+    var inTool: [Bool] = []
+}
+
+/// Made once per view identity (`@StateObject` builds it lazily, so a rebuilt view gets a new one).
+private final class StateToken: ObservableObject {
+    let id = UUID()
+}
+
+private struct StateProbe: View {
+    let record: StateRecord
+    let height: CGFloat
+    @StateObject private var state = StateToken()
+    @Environment(\.inLibraryTool) private var inTool
+
+    var body: some View {
+        MainActor.assumeIsolated {
+            record.tokens.insert(state.id)
+            record.inTool.append(inTool)
+        }
+        return Color.clear.frame(height: height)
+    }
+}
+
 /// A widget with nothing right now but nothing to set up: a normal tile.
 @MainActor
 private final class QuietToolWidget: NotchWidget {
@@ -308,5 +335,26 @@ final class LibraryViewTests: DefaultsTestCase {
         XCTAssertEqual(c.mode, .expanded, "the first Esc only leaves the tool")
         c.escapePressed()
         XCTAssertNotEqual(c.mode, .expanded, "then Esc closes the panel")
+    }
+
+    /// Fix round 1: the room changing between "fits" and "scrolls" never rebuilds the tool,
+    /// so its `@State` (typed text, a picker's choice, focus) survives.
+    func testToolStateSurvivesAHeightChange() {
+        let record = StateRecord()
+        let body = ToolBody(content: AnyView(StateProbe(record: record, height: 200)))
+        let host = NSHostingView(rootView: body)
+        // Off screen, never where the user works; a window so size changes re-lay out.
+        let window = NSWindow(contentRect: CGRect(x: -10_000, y: 10_000, width: 528, height: 400),
+                              styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host
+        defer { window.orderOut(nil) }
+        for height in [400.0, 120.0, 400.0, 80.0] as [CGFloat] {
+            window.setFrame(CGRect(x: -10_000, y: 10_000, width: 528, height: height), display: true)
+            host.layoutSubtreeIfNeeded()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
+        XCTAssertEqual(record.tokens.count, 1, "the tool kept its state through fits and scrolls")
+        XCTAssertFalse(record.inTool.isEmpty)
+        XCTAssertTrue(record.inTool.allSatisfy { $0 }, "ToolBody tells the tool it is full-panel")
     }
 }

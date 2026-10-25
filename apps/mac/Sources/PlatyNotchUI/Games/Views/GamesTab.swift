@@ -63,8 +63,10 @@ struct GamesTab: View {
 
     private var header: some View {
         let session = host.session
+        // With `pick` (Platy Chase's own entry) the picker is hidden: that tool is one game.
+        let kinds: [GameKind] = pick == nil ? GameKind.allCases : []
         return HStack(spacing: 4) {
-            ForEach(GameKind.allCases) { kind in
+            ForEach(kinds) { kind in
                 let selected = kind == session.kind
                 Button { host.select(kind) } label: {
                     Text(verbatim: kind.title)

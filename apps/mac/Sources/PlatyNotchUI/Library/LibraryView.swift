@@ -17,8 +17,6 @@ struct LibraryView: View {
     let tile: (String) -> AnyView?
     let onOpen: (String) -> Void
     let onSetUp: (String) -> Void
-    @State private var edges = ScrollEdges()
-
     init(items: [LibraryItem], tile: @escaping (String) -> AnyView?, onOpen: @escaping (String) -> Void,
          onSetUp: @escaping (String) -> Void) {
         self.items = items
@@ -51,22 +49,7 @@ struct LibraryView: View {
         if items.isEmpty {
             empty
         } else {
-            GeometryReader { geo in
-                let scrolls: Bool = Self.scrolls(count: items.count, height: geo.size.height)
-                ScrollView(.vertical) {
-                    grid
-                }
-                .scrollDisabled(!scrolls)
-                .scrollIndicators(.hidden)
-                .scrollBounceBehavior(.basedOnSize)
-                .onScrollGeometryChange(for: ScrollEdges.self) { g in
-                    ScrollEdges(top: g.contentOffset.y > 1,
-                                bottom: g.contentOffset.y + g.containerSize.height < g.contentSize.height - 1)
-                } action: { _, new in
-                    edges = new
-                }
-                .mask { fadeMask(scrolls: scrolls) }
-            }
+            FadingScroll(fillsRoom: false) { grid }
         }
     }
 
@@ -79,20 +62,6 @@ struct LibraryView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-
-    /// Solid, with a soft fade at an edge only while there is more beyond it.
-    @ViewBuilder private func fadeMask(scrolls: Bool) -> some View {
-        let top: Bool = scrolls && edges.top
-        let bottom: Bool = scrolls && edges.bottom
-        VStack(spacing: 0) {
-            LinearGradient(colors: [.black.opacity(top ? 0 : 1), .black], startPoint: .top, endPoint: .bottom)
-                .frame(height: Self.fade)
-            Color.black
-            LinearGradient(colors: [.black, .black.opacity(bottom ? 0 : 1)], startPoint: .top, endPoint: .bottom)
-                .frame(height: Self.fade)
-        }
-        .animation(.easeOut(duration: 0.15), value: edges)
     }
 
     private var empty: some View {
@@ -113,6 +82,8 @@ struct LibraryView: View {
 struct ScrollEdges: Equatable {
     var top = false
     var bottom = false
+    /// A scroll report has arrived (before it, the content's height decides the fade).
+    var known = false
 }
 
 /// A built-in widget's Library line ("2 timers", "5 items") when it has one; nil falls back

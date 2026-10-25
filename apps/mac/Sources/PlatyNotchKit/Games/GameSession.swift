@@ -377,8 +377,8 @@ public struct GameSession: Equatable, Sendable {
 /// must never size the panel's window). Checked against `PanelLayout.expandedSize` in tests.
 public enum GameLayout {
     /// Game picker, score and best.
-    public static let headerHeight: CGFloat = 22
-    public static let spacing: CGFloat = 6
+    public static let headerHeight: CGFloat = 20
+    public static let spacing: CGFloat = 4
     /// Where a board (and its overlay) sits: all the room the Games tool has below its
     /// picker (`PanelLayout.expandedSize` less the notch inset, padding, the tool header
     /// and its gap; checked in tests). 264 fits Platy Chase's 263.5 pt maze.

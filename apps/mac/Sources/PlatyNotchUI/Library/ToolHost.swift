@@ -6,8 +6,9 @@ import SwiftUI
 /// taller than the room scrolls inside, fading at the edge that has more.
 struct ToolHost: View {
     static let backLabel = "Back to Library"
-    /// Between the header and the tool.
-    static let gap: CGFloat = Space.xs
+    /// Between the header and the tool: the nav's gap, so content starts where it does
+    /// under the nav.
+    static let gap: CGFloat = NowMetrics.gap
 
     let title: String
     let onBack: () -> Void
@@ -76,46 +77,87 @@ struct ToolHeader: View {
     private var wash: Color { (scheme == .light ? Color.black : Color.white).opacity(0.08) }
 }
 
-/// A tool's content: at its own height from the top when it fits, else scrolling inside
-/// the room with a fade at the edge that has more.
+/// A tool's content in one scroll view that never swaps it out (a swap would reset its
+/// `@State`: typed text, a picker's choice, focus): at least the room tall, so a tool that
+/// fills it (the games, a centred empty state) stays put, and scrolling only when taller,
+/// with a fade at the edge that has more.
 struct ToolBody: View {
     let content: AnyView
-    @State private var edges = ScrollEdges()
 
     var body: some View {
-        ViewThatFits(in: .vertical) {
-            // Fits: the tool has the whole room (a tool that fills it, like the games, stays put).
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            scroller
+        FadingScroll(fillsRoom: true) { content }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .environment(\.inLibraryTool, true)
+    }
+}
+
+/// One vertical scroll view whose content keeps its identity, with a soft fade at an edge
+/// only while there is more beyond it. `fillsRoom`: the content is laid out at least as
+/// tall as the scroll view (`FillHeight`).
+struct FadingScroll<Content: View>: View {
+    let fillsRoom: Bool
+    @ViewBuilder let content: Content
+    @State private var edges = ScrollEdges()
+    @State private var contentHeight: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { geo in
+            let room: CGFloat = geo.size.height
+            ScrollView(.vertical) {
+                FillHeight(minHeight: fillsRoom ? room : 0) { content }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { contentHeight = $0 }
+            }
+            .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.basedOnSize)
+            .onScrollGeometryChange(for: ScrollEdges.self) { g in
+                ScrollEdges(top: g.contentOffset.y > 1,
+                            bottom: g.contentOffset.y + g.containerSize.height < g.contentSize.height - 1,
+                            known: true)
+            } action: { _, new in
+                edges = new
+            }
+            // Before the first scroll report (and in renders) the content's height decides:
+            // resting at the top, the bottom has more when the content is taller.
+            .mask { ScrollFade(top: edges.known && edges.top,
+                               bottom: edges.known ? edges.bottom : contentHeight > room + 1) }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .environment(\.inLibraryTool, true)
+    }
+}
+
+/// The fade mask: solid, with `LibraryView.fade` of gradient at an edge that has more.
+struct ScrollFade: View {
+    let top: Bool
+    let bottom: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            LinearGradient(colors: [.black.opacity(top ? 0 : 1), .black], startPoint: .top, endPoint: .bottom)
+                .frame(height: LibraryView.fade)
+            Color.black
+            LinearGradient(colors: [.black, .black.opacity(bottom ? 0 : 1)], startPoint: .top, endPoint: .bottom)
+                .frame(height: LibraryView.fade)
+        }
+        .animation(.easeOut(duration: 0.15), value: top)
+        .animation(.easeOut(duration: 0.15), value: bottom)
+    }
+}
+
+/// Lays its one child out at least `minHeight` tall: a child that fills (a flexible frame)
+/// gets the whole room, a taller one keeps its own height (the scroll view scrolls it).
+struct FillHeight: Layout {
+    let minHeight: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let child = subviews.first else { return .zero }
+        let ideal: CGSize = child.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
+        let width: CGFloat = proposal.width ?? ideal.width
+        return CGSize(width: width, height: max(minHeight, ideal.height))
     }
 
-    private var scroller: some View {
-        ScrollView(.vertical) {
-            content
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-        }
-        .scrollIndicators(.hidden)
-        .scrollBounceBehavior(.basedOnSize)
-        .onScrollGeometryChange(for: ScrollEdges.self) { g in
-            ScrollEdges(top: g.contentOffset.y > 1,
-                        bottom: g.contentOffset.y + g.containerSize.height < g.contentSize.height - 1)
-        } action: { _, new in
-            edges = new
-        }
-        .mask {
-            VStack(spacing: 0) {
-                LinearGradient(colors: [.black.opacity(edges.top ? 0 : 1), .black], startPoint: .top, endPoint: .bottom)
-                    .frame(height: LibraryView.fade)
-                Color.black
-                LinearGradient(colors: [.black, .black.opacity(edges.bottom ? 0 : 1)], startPoint: .top,
-                               endPoint: .bottom)
-                    .frame(height: LibraryView.fade)
-            }
-        }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, anchor: .topLeading,
+                              proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
     }
 }
 

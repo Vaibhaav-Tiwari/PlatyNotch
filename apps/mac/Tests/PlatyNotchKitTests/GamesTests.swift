@@ -653,9 +653,9 @@ final class GameSessionTests: XCTestCase {
 
     func testBoardsFitTheExpandedPanel() {
         // The Games tool below its header (Task 21): panel height − notch inset (42 on a
-        // 38 pt housing) − bottom padding − the header (the nav's 32) − its 4 pt gap.
+        // 38 pt housing) − bottom padding − the header (the nav's 32) − its 8 pt gap.
         let room = CGSize(width: PanelLayout.expandedSize.width - 2 * Space.panelMargin,
-                          height: PanelLayout.expandedSize.height - 42 - 10 - 32 - 4)
+                          height: PanelLayout.expandedSize.height - 42 - 10 - 32 - 8)
         XCTAssertLessThanOrEqual(GameLayout.tabSize.width, room.width)
         XCTAssertLessThanOrEqual(GameLayout.tabSize.height, room.height)
         for kind in GameKind.allCases {
