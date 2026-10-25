@@ -32,7 +32,12 @@ public struct RGB: Equatable, Sendable {
 
 /// The panel's fixed colors per scheme (the views build their `Color`s from these).
 public enum PanelPalette {
+    /// The pill and anything touching the hardware notch: pure black.
     public static let darkSurface = RGB(hex: 0x000000)
+    /// The open panel's dark surface (spec 7.1).
+    public static let panelDark = RGB(hex: 0x0B0D0D)
+    /// A card's 1 px inner keyline: this much white (dark) or black (light).
+    public static let keylineAlpha: Double = 0.08
     /// The light theme's surface (macOS's light window background).
     public static let lightSurface = RGB(hex: 0xECECEC)
     /// Warning text ("Contains hidden characters") in the dark scheme: systemOrange.
