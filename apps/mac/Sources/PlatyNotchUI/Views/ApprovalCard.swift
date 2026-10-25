@@ -34,7 +34,7 @@ struct ApprovalCard: View {
                 header(visible, status, lookFirst: lookFirst)
                 if visible.hadHidden {
                     Label("Contains hidden characters", systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: 10, weight: .medium))
+                        .font(DS.font(TypeScale.caption).weight(.medium))
                         .foregroundStyle(Theme.warning(scheme))
                 }
                 SummaryView(summary: visible.summary, maxLines: maxLines)
@@ -42,7 +42,7 @@ struct ApprovalCard: View {
             }
         }
         .padding(8)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .dsCard()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(visible.agentName) asks to run \(visible.tool)")
     }
@@ -182,7 +182,7 @@ private struct TrailingIconLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: 4) {
             configuration.title
-            configuration.icon.font(.system(size: 10))
+            configuration.icon.font(DS.font(TypeScale.caption))
         }
     }
 }
@@ -227,7 +227,7 @@ struct ApprovalRow: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .dsCard()
         .accessibilityElement(children: .contain)
     }
 }

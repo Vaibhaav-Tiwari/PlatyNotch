@@ -118,7 +118,7 @@ struct GamesTile: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 10))
+        .dsCard()
     }
 
     private func label(_ kind: GameKind) -> some View {
@@ -126,12 +126,12 @@ struct GamesTile: View {
         return VStack(spacing: 2) {
             Text(verbatim: kind.shortTitle).font(.system(size: 11, weight: .medium))
             Text(best > 0 ? "Best \(best)" : "New")
-                .font(.system(size: 10))
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 5)
-        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 7))
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
         .contentShape(Rectangle())
     }
 

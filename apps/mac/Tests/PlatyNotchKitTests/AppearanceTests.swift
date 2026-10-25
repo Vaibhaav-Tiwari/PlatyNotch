@@ -280,4 +280,19 @@ final class AppearanceTests: DefaultsTestCase {
         let greenFill = lightCard.under(PanelPalette.systemGreenLight, alpha: PanelPalette.tintedFill)
         XCTAssertLessThan(RGB.contrast(PanelPalette.systemGreenLight, greenFill), 4.5, "why light needs its own green")
     }
+
+    /// The open panel is #0B0D0D (spec 7.1): the dark warning text and the Allow button's
+    /// systemGreen tint stay at 4.5:1 on it and on a card over it.
+    func testPaletteOnPanelDark() {
+        let panel = PanelPalette.panelDark
+        let card = panel.under(RGB(hex: 0xFFFFFF), alpha: PanelPalette.cardOverlay)
+        let systemGreenDark = RGB(hex: 0x30D158)
+        for (name, fg) in [("warningDark", PanelPalette.warningDark), ("systemGreen", systemGreenDark)] {
+            XCTAssertGreaterThanOrEqual(RGB.contrast(fg, panel), 4.5, "\(name) on panelDark")
+            XCTAssertGreaterThanOrEqual(RGB.contrast(fg, card), 4.5, "\(name) on a card over panelDark")
+        }
+        // Allow: systemGreen text on its own tinted fill over a dark card.
+        let allowFill = card.under(systemGreenDark, alpha: PanelPalette.tintedFill)
+        XCTAssertGreaterThanOrEqual(RGB.contrast(systemGreenDark, allowFill), 4.5)
+    }
 }

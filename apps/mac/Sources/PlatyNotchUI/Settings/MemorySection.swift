@@ -20,7 +20,7 @@ struct MemorySection: View {
             Form {
                 Section {
                     Toggle("Remember on-screen text", isOn: $draft.enabled)
-                    Text(verbatim: storageNote).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                    Text(verbatim: storageNote).font(DS.font(TypeScale.caption)).foregroundStyle(.secondary).textSelection(.enabled)
                     if draft.enabled, !services.permissions.accessibility {
                         HStack {
                             Label("Capture needs Accessibility access.", systemImage: "exclamationmark.triangle")
@@ -68,7 +68,7 @@ struct MemorySection: View {
             GroupBox("Let agents search your memory (MCP)") {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Adds PlatyNotch's memory search as an MCP server. Runs `notch mcp install`.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
                     HStack {
                         ForEach([("claude-desktop", "Claude Desktop"), ("claude-code", "Claude Code"), ("cursor", "Cursor")], id: \.0) { id, name in
                             Button(name) { Task { await services.agents.run("MCP: \(name)", ["mcp", "install", id]) } }
@@ -102,7 +102,7 @@ struct MemorySection: View {
                 HStack {
                     Text(verbatim: Self.appName(id))
                     Spacer()
-                    Text(verbatim: id).font(.caption).foregroundStyle(.secondary)
+                    Text(verbatim: id).font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
                 }
                 .tag(id)
             }
@@ -165,7 +165,7 @@ struct CoreRestartWarningLabel: View {
 
     var body: some View {
         Label(CoreRestartWarning.text(action: action), systemImage: "exclamationmark.triangle")
-            .font(.caption).foregroundStyle(.orange)
+            .font(DS.font(TypeScale.caption)).foregroundStyle(.orange)
     }
 }
 
@@ -187,7 +187,7 @@ private struct ProviderEditor: View {
         Picker("Provider", selection: $provider.name) {
             ForEach(names, id: \.self) { Text(Self.label($0)).tag($0) }
         }
-        Text(explanation).font(.caption).foregroundStyle(.secondary)
+        Text(explanation).font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
         if provider.name != "none" {
             TextField("Model", text: $provider.model, prompt: Text(modelPrompt))
             TextField("Base URL", text: $provider.baseURL, prompt: Text(urlPrompt))
@@ -199,7 +199,7 @@ private struct ProviderEditor: View {
                 if !key.isEmpty, effect.warnsAboutApprovals(pending: services.store.approvals.count) {
                     CoreRestartWarningLabel(action: "Saving the key")
                 }
-                if let keyNote { Text(verbatim: keyNote).font(.caption).foregroundStyle(.secondary) }
+                if let keyNote { Text(verbatim: keyNote).font(DS.font(TypeScale.caption)).foregroundStyle(.secondary) }
             }
         }
         EmptyView()

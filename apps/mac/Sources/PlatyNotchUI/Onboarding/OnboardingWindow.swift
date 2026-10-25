@@ -223,7 +223,7 @@ private struct HUDOptIn: View {
                 set: { widgets.setEnabled(HUDWidget.widgetID, $0) }))
                 .toggleStyle(.switch)
             Text("Shows volume, brightness and keyboard backlight in the notch. Needs Accessibility (above); without it the system HUD shows as before.")
-                .font(.caption)
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -256,7 +256,7 @@ private struct MemoryPage: View {
             }
             if config.config.memory.enabled, !services.permissions.accessibility {
                 HStack {
-                    Text("Capture also needs Accessibility access.").font(.caption).foregroundStyle(.secondary)
+                    Text("Capture also needs Accessibility access.").font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
                     Button("Allow") { services.permissions.requestAccessibility() }
                 }
             }

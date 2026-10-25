@@ -22,7 +22,7 @@ struct LaunchTile: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .dsCard()
     }
 
     private var header: some View {
@@ -86,7 +86,7 @@ private struct SiteButton: View {
             VStack(spacing: 3) {
                 SiteIcon(image: widget.icon(for: site), letter: SiteURL.letter(for: site), size: 26)
                 Text(verbatim: site.title)
-                    .font(.system(size: 9))
+                    .font(DS.font(TypeScale.caption))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .frame(width: 48)
@@ -121,7 +121,7 @@ struct SiteIcon: View {
                 .accessibilityHidden(true)
         } else {
             Text(verbatim: letter)
-                .font(.system(size: size * 0.5, weight: .bold, design: .rounded))
+                .font(.system(size: max(size * 0.5, TypeScale.minimum), weight: .bold, design: .rounded))
                 .foregroundStyle(.white)   // on the green letter tile, every theme
                 .frame(width: size, height: size)
                 .background(Theme.tint(.accent).opacity(0.7), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -199,7 +199,7 @@ private struct ShortcutPicker: View {
         }
         .padding(6)
         // A darker well in both schemes; its text is semantic, so it stays legible in light.
-        .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
     }
 }
 
@@ -214,7 +214,7 @@ private struct PickerRow: View {
             HStack {
                 Text(verbatim: name).font(.system(size: 11)).lineLimit(1)
                 Spacer(minLength: 0)
-                Image(systemName: pinned ? "pin.fill" : "pin").font(.system(size: 10))
+                Image(systemName: pinned ? "pin.fill" : "pin").font(DS.font(TypeScale.caption))
             }
         }
         .buttonStyle(.plain)
@@ -306,7 +306,7 @@ struct LaunchSettings: View {
                     .disabled(widget.readingTab || widget.isFull)
             }
             Text(verbatim: countsText)
-                .font(.caption)
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
             ForEach(widget.pins.sites) { site in
                 PinnedSiteRow(widget: widget, site: site)
@@ -316,7 +316,7 @@ struct LaunchSettings: View {
             }
             if let notice = widget.notice { NoticeLine(notice: notice) }
             Text(LaunchSettings.privacy)
-                .font(.caption)
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -346,7 +346,7 @@ private struct PinnedSiteRow: View {
             SiteIcon(image: widget.icon(for: site), letter: SiteURL.letter(for: site), size: 16)
             Text(verbatim: site.title).lineLimit(1)
             Text(verbatim: site.url.absoluteString)
-                .font(.caption)
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)

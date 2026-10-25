@@ -158,8 +158,12 @@ public struct PlatyEarFit: Equatable, Sendable {
     public static let spacing: CGFloat = 4
     /// An agent dot and the space before it.
     public static let dot: CGFloat = 7 + 4
-    /// The "+n" label (two digits) and the space before it.
-    public static let overflowLabel: CGFloat = 18
+    /// The "+n" label (two digits at the 11 pt floor) and the space before it.
+    public static let overflowLabel: CGFloat = 22
+    /// The "+n" badge's horizontal padding inside its capsule, each side.
+    public static let badgePadding: CGFloat = 1
+    /// Counts above this show as "99+" on the badge.
+    public static let badgeMaxCount = 99
 
     /// Dots drawn.
     public let dots: Int
@@ -182,11 +186,36 @@ public struct PlatyEarFit: Equatable, Sendable {
             self.init(dots: dots, overflowCount: overflow, badge: false)
             return
         }
-        let withLabel = room >= Self.overflowLabel
-        let dotRoom: CGFloat = withLabel ? room - Self.overflowLabel : room
+        guard room >= Self.overflowLabel else {
+            // No room for the label: no dots either, so the badge gets all of the room.
+            self.init(dots: 0, overflowCount: dots + overflow, badge: true)
+            return
+        }
+        let dotRoom: CGFloat = room - Self.overflowLabel
         let fitting: Int = dotRoom > 0 ? Int((dotRoom / Self.dot).rounded(.down)) : 0
         let shown = min(dots, fitting)
-        self.init(dots: shown, overflowCount: dots - shown + overflow, badge: !withLabel)
+        self.init(dots: shown, overflowCount: dots - shown + overflow, badge: false)
+    }
+
+    /// The badge's text: "+n", or "99+" above `badgeMaxCount`.
+    public static func badgeText(_ count: Int) -> String {
+        count > badgeMaxCount ? "\(badgeMaxCount)+" : "+\(count)"
+    }
+
+    /// The width a badge may take. With a badge Platy sits against the notch edge of the
+    /// ear; the badge runs outward from Platy's horizontal centre across the ear's free
+    /// room and the pill's outer padding (`PanelLayout.pillPadding`), up to the pill's
+    /// outer edge.
+    public static func badgeRoom(earWidth: CGFloat, outerPadding: CGFloat) -> CGFloat {
+        platy / 2 + max(0, earWidth - platy) + outerPadding
+    }
+
+    /// Where a badge `badgeWidth` wide starts, measured outward from the notch edge of
+    /// the ear: at Platy's centre, moved toward the notch only if it would otherwise cross
+    /// the pill's outer edge, and never past the notch edge (0).
+    public static func badgeOffset(earWidth: CGFloat, outerPadding: CGFloat, badgeWidth: CGFloat) -> CGFloat {
+        let outerEdge: CGFloat = max(earWidth, platy) + outerPadding
+        return max(0, min(platy / 2, outerEdge - badgeWidth))
     }
 
     /// The width this fit draws (the badge takes none).

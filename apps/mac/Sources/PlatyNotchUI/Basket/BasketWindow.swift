@@ -121,7 +121,7 @@ struct BasketView: View {
             Circle().fill(tint).frame(width: 8, height: 8).accessibilityHidden(true)
             Text(verbatim: host.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
             if host.pinned {
-                Image(systemName: "pin.fill").font(.system(size: 9)).foregroundStyle(.secondary)
+                Image(systemName: "pin.fill").font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
                     .accessibilityLabel("Pinned")
             }
             Spacer(minLength: 4)
@@ -169,7 +169,7 @@ struct BasketClosePrompt: View {
             Text(verbatim: ask.count == 1 ? "Close with 1 item?" : "Close with \(ask.count) items?")
                 .font(.system(size: 12, weight: .semibold))
             Text("Discard deletes the copies this basket made, never your own files.")
-                .font(.system(size: 10))
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)

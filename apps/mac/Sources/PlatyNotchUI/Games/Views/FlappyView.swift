@@ -14,7 +14,7 @@ struct FlappyView: View {
         let size = GameLayout.boardSize(.flappy)
         Canvas { ctx, _ in FlappyArt.draw(flappy, in: ctx, size: size, decorate: decorate) }
             .frame(width: size.width, height: size.height)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
             .accessibilityLabel("Flappy, score \(flappy.score)")
     }
 }

@@ -214,7 +214,7 @@ struct MailTileView: View {
         }
         .padding(6)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .dsCard()
         .onAppear { widget.tileAppeared() }
     }
 

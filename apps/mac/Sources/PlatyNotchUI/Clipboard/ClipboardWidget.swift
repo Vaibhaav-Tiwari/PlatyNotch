@@ -447,13 +447,13 @@ struct ClipRow: View {
                     .truncationMode(.tail)
                 if !compact {
                     Text(item.copiedAt, style: .relative)
-                        .font(.system(size: 10))
+                        .font(DS.font(TypeScale.caption))
                         .foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 0)
             if item.pinned {
-                Image(systemName: "pin.fill").font(.system(size: 9)).foregroundStyle(.secondary)
+                Image(systemName: "pin.fill").font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
                     .accessibilityLabel("Pinned")
             }
         }

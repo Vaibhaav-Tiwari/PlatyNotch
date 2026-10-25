@@ -47,7 +47,7 @@ struct TetrisView: View {
 
     private func stat(_ title: String, _ value: Int) -> some View {
         VStack(alignment: .trailing, spacing: 0) {
-            Text(title).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+            Text(title).font(DS.font(TypeScale.caption).weight(.semibold)).foregroundStyle(.secondary)
             Text(verbatim: "\(value)").font(.system(size: 15, weight: .medium)).monospacedDigit()
         }
         .padding(.bottom, 6)
@@ -55,7 +55,7 @@ struct TetrisView: View {
 
     private var next: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Next").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+            Text("Next").font(DS.font(TypeScale.caption).weight(.semibold)).foregroundStyle(.secondary)
             Canvas { ctx, _ in drawNext(in: ctx) }
                 .frame(width: GameLayout.tetrisSide, height: 150)
         }

@@ -9,8 +9,8 @@ public struct LiveEarFit: Equatable, Sendable {
     public static let glyph: CGFloat = 20
     public static let spacing: CGFloat = 4
     public static let bubble: CGFloat = 14
-    /// Narrower than this the text is hidden rather than cut to a stub ("12:34" fits).
-    public static let minTrailing: CGFloat = 30
+    /// Narrower than this the text is hidden rather than cut to a stub ("12:34" fits at 11 pt).
+    public static let minTrailing: CGFloat = 34
 
     /// Width for the trailing text; 0 hides it.
     public let trailingWidth: CGFloat

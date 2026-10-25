@@ -23,7 +23,7 @@ struct TimeTile: View {
         }
         .font(.system(size: 11))
         .padding(6)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .dsCard()
     }
 }
 
@@ -220,7 +220,7 @@ private struct WeekdayChips: View {
                 let on = selected.contains(day)
                 Button { toggle(day) } label: {
                     Text(verbatim: symbols[day - 1])
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(DS.font(TypeScale.caption).weight(.semibold))
                         .frame(width: 18, height: 16)
                         .foregroundStyle(on ? Color.black : .secondary)   // black on the orange chip
                         .background(on ? Color.orange : Color.secondary.opacity(0.15), in: Capsule())
@@ -253,7 +253,7 @@ private struct ClocksSection: View {
                             if widget.addClock(tz) { query = "" }
                         }
                         .buttonStyle(.bordered)
-                        .controlSize(.mini)
+                        .controlSize(.small)
                         .help(tz)
                     }
                 }

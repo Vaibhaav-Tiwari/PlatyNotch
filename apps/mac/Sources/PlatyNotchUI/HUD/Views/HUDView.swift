@@ -23,7 +23,7 @@ struct HUDView: View {
             .frame(height: 5)
             if let output {
                 Text(verbatim: output)
-                    .font(.system(size: 10, weight: .medium))
+                    .font(DS.font(TypeScale.caption).weight(.medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)

@@ -18,10 +18,44 @@ enum Theme {
         scheme == .light ? lightSurface : surface
     }
 
+    /// The amber behind black text (the pill's approval count, the ringing chip): the dark
+    /// needs-you amber in every scheme, since black on the light amber is about 3.1:1.
+    static let needsYouFill = Color(StateTone.needsYou.rgb(dark: true))
+
+    /// The open panel's dark surface (#0B0D0D, `PanelPalette.panelDark`).
+    static let panelDark = Color(PanelPalette.panelDark)
+
+    /// Whether the system glass effect exists (macOS 26 and later).
+    static var glassAvailable: Bool {
+        if #available(macOS 26, *) { return true }
+        return false
+    }
+
+    /// The surface behind a mode's content (spec 7.1): the pill (`.hidden` / `.compact`)
+    /// keeps `surface(scheme)`, which is pure black whenever it touches the notch; the open
+    /// panel and peeks are `panelDark` in dark and the light surface in light, or the
+    /// system glass when `style` is `.glass` (pass `effectiveSurface(glassAvailable:mode:
+    /// approvalsShowing:)`, which keeps every approval on an opaque surface). `hasNotch` is
+    /// reserved: the notch band is drawn separately (`PanelLayout.notchBand`).
+    @ViewBuilder
+    static func surface(_ scheme: ColorScheme, mode: PanelMode, hasNotch: Bool,
+                        style: AppearanceSettings.SurfaceStyle) -> some View {
+        switch mode {
+        case .hidden, .compact:
+            surface(scheme)
+        default:
+            if style == .glass, #available(macOS 26, *) {
+                Rectangle().fill(Color.clear).glassEffect(.regular, in: Rectangle())
+            } else {
+                scheme == .light ? lightSurface : panelDark
+            }
+        }
+    }
+
     /// The Allow button's tint: systemGreen in dark, a darker green in light (4.5:1 on
     /// its tinted fill, `PanelPalette.allowLight`).
     static func allow(_ scheme: ColorScheme) -> Color {
-        scheme == .light ? Color(PanelPalette.allowLight) : color(.active)
+        scheme == .light ? Color(PanelPalette.allowLight) : Color(nsColor: .systemGreen)
     }
 
     /// Small warning text ("Contains hidden characters"): systemOrange in dark, a darker
@@ -46,35 +80,29 @@ enum Theme {
     static let codeBackground = Color(nsColor: .textBackgroundColor).opacity(0.55)
     static let divider = Color(nsColor: .separatorColor)
 
-    static let mono = Font.system(size: 11, design: .monospaced)
+    static let mono = DS.font(TypeScale.caption, design: .monospaced).weight(.regular)
     /// Line height of `mono`, used to size the approval summary.
     static let monoLineHeight: CGFloat = 14
 
-    /// `color(_:)` as an NSColor (layer-backed dots).
+    /// `color(_:)` as an NSColor (layer-backed dots): the state palette (`StateTone`),
+    /// resolved against the view's appearance. Exited sessions are a faint idle.
     static func nsColor(_ tone: AgentTone) -> NSColor {
-        switch tone {
-        case .active: .systemGreen
-        case .attention: .systemOrange
-        case .idle: .systemGray
-        case .off: NSColor.systemGray.withAlphaComponent(0.35)
-        }
+        DS.dynamicNSColor(StateTone(tone), alpha: tone == .off ? 0.35 : 1)
     }
 
+    /// A session's tone in the state palette: working teal, needs-you amber, idle grey.
     static func color(_ tone: AgentTone) -> Color {
-        switch tone {
-        case .active: Color(nsColor: .systemGreen)
-        case .attention: Color(nsColor: .systemOrange)
-        case .idle: Color(nsColor: .systemGray)
-        case .off: Color(nsColor: .systemGray).opacity(0.35)
-        }
+        DS.dynamicColor(StateTone(tone), alpha: tone == .off ? 0.35 : 1)
     }
 
+    /// A live activity's tint: neutral is the label colour; accent, warning and critical
+    /// are the working, needs-you and error states.
     static func tint(_ tint: LiveTint) -> Color {
         switch tint {
         case .neutral: Color(nsColor: .labelColor)
-        case .accent: Color(nsColor: .systemGreen)
-        case .warning: Color(nsColor: .systemOrange)
-        case .critical: Color(nsColor: .systemRed)
+        case .accent: DS.dynamicColor(.working)
+        case .warning: DS.dynamicColor(.needsYou)
+        case .critical: DS.dynamicColor(.error)
         }
     }
 
@@ -205,7 +233,7 @@ struct Tag: View {
 
     var body: some View {
         Text(verbatim: text)
-            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .font(DS.font(TypeScale.caption, design: .monospaced).weight(.medium))
             .lineLimit(1)
             .padding(.horizontal, 5)
             .padding(.vertical, 1)

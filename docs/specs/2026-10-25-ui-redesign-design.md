@@ -165,7 +165,16 @@ The user can demote or silence any kind in Settings › Notifications (MediaMate
 | Agent finished | on | on, as today's short notice | yes |
 | Ringing alarm / timer | on | on | no |
 | Meeting starting | on | on | yes |
-| Everything else | on | off | yes |
+| Reminders you asked for: wellbeing nudges (water, stand, eyes), AirPods connected **[call]** | on | on | yes |
+| Everything else (downloads, charging, anything not listed) | on | off | yes |
+| Plug-in peeks that declare no kind **[call]** | on | on | yes |
+
+**[call]** Wellbeing nudges and the AirPods peek are things the user turned on to be told
+about, so they may open the notch by default. A plug-in peek follows the kind it declares;
+one that declares none counts as "Everything else" but with "can open the notch" on, which
+keeps today's behaviour for third-party plug-ins until they adopt kinds. Confirmations the
+user just triggered (clipboard "Copied", a launch result, a link's confirm card) are answers
+to a click, not interruptions, and are not governed by this table.
 
 ### 6.4 Now (the default destination)
 

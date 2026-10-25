@@ -36,13 +36,13 @@ struct WeatherTile: View {
                     Text(verbatim: "\(d.text) · \(place.name)").font(.system(size: 12, weight: .medium)).lineLimit(1)
                     Text(rain(w)).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                     if let note = widget.ageNote(at: now) {
-                        Text(verbatim: note).font(.system(size: 10)).foregroundStyle(Theme.tint(.warning)).lineLimit(1)
+                        Text(verbatim: note).font(DS.font(TypeScale.caption)).foregroundStyle(Theme.tint(.warning)).lineLimit(1)
                     }
                 }
                 Spacer(minLength: 0)
             }
             .padding(6)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .dsCard()
             .accessibilityElement(children: .combine)
         } else if let error = widget.lastError {
             Label("\(error). Trying again soon.", systemImage: "exclamationmark.triangle")
@@ -93,7 +93,7 @@ struct WeatherSettings: View {
                 if widget.searching { ProgressView().controlSize(.small) }
             }
             if let message = widget.searchMessage {
-                Text(verbatim: message).font(.caption).foregroundStyle(.secondary)
+                Text(verbatim: message).font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
             }
             ForEach(widget.results) { p in
                 HStack {
@@ -113,7 +113,7 @@ struct WeatherSettings: View {
                  + "the forecast request carries only the chosen place's coordinates, rounded to about a kilometre. "
                  + "No location access, account, cookies or tracking. Refreshes every 30 minutes while this widget is on, "
                  + "never while the Mac sleeps or is offline.")
-                .font(.caption)
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

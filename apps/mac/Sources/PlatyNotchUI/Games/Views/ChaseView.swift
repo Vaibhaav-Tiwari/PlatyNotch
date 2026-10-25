@@ -38,7 +38,7 @@ struct ChaseView: View {
 
     private var extras: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Lives").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+            Text("Lives").font(DS.font(TypeScale.caption).weight(.semibold)).foregroundStyle(.secondary)
             Canvas { ctx, _ in
                 let shown = min(max(game.lives - 1, 0), 5)   // the one in play is on the maze
                 for i in 0..<shown {
@@ -47,7 +47,7 @@ struct ChaseView: View {
                 }
             }
             .frame(width: GameLayout.chaseSide, height: 18)
-            Text("Bonus").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+            Text("Bonus").font(DS.font(TypeScale.caption).weight(.semibold)).foregroundStyle(.secondary)
                 .padding(.top, 6)
             HStack(spacing: 6) {
                 Canvas { ctx, size in
@@ -62,7 +62,7 @@ struct ChaseView: View {
 
     private func stat(_ title: String, _ value: String) -> some View {
         VStack(alignment: .trailing, spacing: 0) {
-            Text(title).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+            Text(title).font(DS.font(TypeScale.caption).weight(.semibold)).foregroundStyle(.secondary)
             Text(verbatim: value).font(.system(size: 15, weight: .medium)).monospacedDigit()
         }
     }
@@ -518,7 +518,7 @@ enum ChaseArt {
 
     private static func drawText(_ g: PlatyChase, in ctx: GraphicsContext, tile t: CGFloat) {
         for p in g.popups {
-            let label = Text(verbatim: "\(p.points)").font(.system(size: 9, weight: .bold)).foregroundColor(points)
+            let label = Text(verbatim: "\(p.points)").font(DS.font(TypeScale.caption).weight(.bold)).foregroundColor(points)
             ctx.draw(label, at: CGPoint(x: CGFloat(p.x) * t, y: CGFloat(p.y) * t))
         }
         if g.phase == .ready {

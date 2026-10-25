@@ -55,11 +55,11 @@ struct RemindersTile: View {
                 }
             }
             .padding(6)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .dsCard(radius: Radius.chip)
             if let preview = widget.draft.isEmpty ? nil : widget.preview(at: now) {
-                Text(verbatim: preview).font(.system(size: 10)).foregroundStyle(.secondary).padding(.leading, 6)
+                Text(verbatim: preview).font(DS.font(TypeScale.caption)).foregroundStyle(.secondary).padding(.leading, 6)
             } else if let status = widget.status {
-                Text(verbatim: status).font(.system(size: 10)).foregroundStyle(.secondary).padding(.leading, 6)
+                Text(verbatim: status).font(DS.font(TypeScale.caption)).foregroundStyle(.secondary).padding(.leading, 6)
             }
             if items.isEmpty {
                 Text("Nothing due today").font(.system(size: 11)).foregroundStyle(.secondary).padding(.leading, 6)
@@ -69,7 +69,7 @@ struct RemindersTile: View {
             }
             if items.count > RemindersWidget.shownLimit {
                 Text("+\(items.count - RemindersWidget.shownLimit) more in Reminders")
-                    .font(.system(size: 10)).foregroundStyle(.tertiary).padding(.leading, 6)
+                    .font(DS.font(TypeScale.caption)).foregroundStyle(.tertiary).padding(.leading, 6)
             }
         }
     }
@@ -85,7 +85,7 @@ struct RemindersTile: View {
             Text(verbatim: item.title).font(.system(size: 12)).lineLimit(1)
             Spacer(minLength: 4)
             Text(verbatim: widget.dueText(item, at: now))
-                .font(.system(size: 10))
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(overdue ? Theme.tint(.critical) : Color.secondary)
                 .accessibilityLabel(overdue ? "Overdue, \(widget.dueText(item, at: now))" : widget.dueText(item, at: now))
         }
@@ -104,10 +104,10 @@ struct RemindersSettings: View {
                 Text("Reminders access")
                 Spacer()
                 switch service.access {
-                case .granted: Label("Allowed", systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(.caption)
+                case .granted: Label("Allowed", systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(DS.font(TypeScale.caption))
                 case .notAsked: Button("Allow Reminders Access") { Task { await widget.allow() } }
                 case .denied: Button("Open System Settings") { service.openSettings() }
-                case .unavailable: Text("Needs the installed app.").foregroundStyle(.secondary).font(.caption)
+                case .unavailable: Text("Needs the installed app.").foregroundStyle(.secondary).font(DS.font(TypeScale.caption))
                 }
             }
             if service.access == .granted {
@@ -122,16 +122,16 @@ struct RemindersSettings: View {
                 Text("Events from quick add")
                 Spacer()
                 if widget.calendar.access == .granted {
-                    Text(verbatim: widget.calendar.defaultCalendarTitle ?? "Default calendar").foregroundStyle(.secondary).font(.caption)
+                    Text(verbatim: widget.calendar.defaultCalendarTitle ?? "Default calendar").foregroundStyle(.secondary).font(DS.font(TypeScale.caption))
                 } else if widget.calendar.access == .notAsked {
                     Button("Allow Calendar Access") { Task { await widget.calendar.requestAccess() } }
                 } else {
-                    Text("Saved as reminders (Calendar access is off)").foregroundStyle(.secondary).font(.caption)
+                    Text("Saved as reminders (Calendar access is off)").foregroundStyle(.secondary).font(DS.font(TypeScale.caption))
                 }
             }
             Text("Text with a date and \"meeting\", \"call with\", \"lunch\" or a length (\"for 30 min\") becomes a calendar event; "
                  + "everything else is a reminder. Reminders and Calendar data stay on your Mac.")
-                .font(.caption)
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

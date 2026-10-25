@@ -22,13 +22,13 @@ struct ShelfTile: View {
     private func statusLine(_ text: String) -> some View {
         HStack(spacing: 4) {
             Text(verbatim: text)
-                .font(.system(size: 10))
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
             Spacer(minLength: 0)
             Button { host.fileActions?.dismissStatus() } label: { Image(systemName: "xmark") }
                 .buttonStyle(.borderless)
-                .font(.system(size: 9))
+                .font(DS.font(TypeScale.caption))
                 .accessibilityLabel("Dismiss")
         }
     }
@@ -87,19 +87,20 @@ struct ShelfCard: View {
     private func progress(_ run: FileActionCenter.Run) -> some View {
         VStack(spacing: 4) {
             ProgressView().controlSize(.small)
-            Text(verbatim: run.title).font(.system(size: 9)).lineLimit(1)
+            Text(verbatim: run.title).font(DS.font(TypeScale.caption)).lineLimit(1)
             Button("Cancel") { host.fileActions?.cancel(item.id) }
                 .buttonStyle(.borderless)
-                .font(.system(size: 9))
+                .font(DS.font(TypeScale.caption))
         }
         .frame(width: Self.size.width, height: Self.size.height)
-        .background(RoundedRectangle(cornerRadius: 8).fill(.background.opacity(0.85)))
+        .background(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).fill(.background.opacity(0.85)))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(run.title) \(item.title)")
     }
 
     private var content: some View {
-        VStack(spacing: 3) {
+        // Spacing 1: two 11 pt title lines fit under the thumbnail in the fixed card.
+        VStack(spacing: 1) {
             ZStack(alignment: .topTrailing) {
                 ShelfThumbnail(item: item, missing: missing).frame(width: 40, height: 40)
                 if missing {
@@ -107,8 +108,15 @@ struct ShelfCard: View {
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.color(.attention))
                         .accessibilityLabel("Missing")
-                } else if item.pinned {
-                    Image(systemName: "pin.fill").font(.system(size: 9)).foregroundStyle(.secondary)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                if !missing, item.pinned {
+                    // Beside the thumbnail's top-right corner, not over it; an overlay, so
+                    // the thumbnail stays centred.
+                    Image(systemName: "pin.fill").font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
+                        .fixedSize()
+                        .offset(x: TypeScale.caption.size + 1)
                 }
             }
             if missing {
@@ -121,18 +129,24 @@ struct ShelfCard: View {
                         .accessibilityLabel("Remove \(item.title)")
                 }
                 .buttonStyle(.borderless)
-                .font(.system(size: 10))
+                .font(DS.font(TypeScale.caption))
             } else {
+                // A one-word name ("example.com") takes one line in regular weight, tightened
+                // if need be, and truncates in the middle rather than breaking mid-word;
+                // names with spaces wrap to two lines.
+                let oneLine = !item.title.contains(" ")
                 Text(verbatim: item.title)
-                    .font(.system(size: 10))
-                    .lineLimit(2)
+                    .font(DS.font(TypeScale.caption).weight(oneLine ? .regular : .medium))
+                    .allowsTightening(true)
+                    .lineLimit(oneLine ? 1 : 2)
                     .multilineTextAlignment(.center)
                     .truncationMode(.middle)
             }
         }
-        .padding(4)
+        .padding(.vertical, 4)
+        .padding(.horizontal, 2)
         .frame(width: Self.size.width, height: Self.size.height)
-        .background(RoundedRectangle(cornerRadius: 8).fill(.primary.opacity(selected ? 0.18 : 0.06)))
+        .background(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).fill(.primary.opacity(selected ? 0.18 : 0.06)))
         .overlay {
             if !missing {
                 // Clicks, drags out and the menu (AppKit: a real NSDraggingSource with file URLs).

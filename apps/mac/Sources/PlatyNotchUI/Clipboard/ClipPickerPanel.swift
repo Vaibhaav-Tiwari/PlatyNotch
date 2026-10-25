@@ -293,7 +293,7 @@ struct ClipPickerView: View {
             Divider()
             Text(trusted() ? "↩ paste   ⌘1–9 pick   ⌘P pin   ⌫ delete   esc close"
                            : "↩ copy (paste needs Accessibility, see Settings)   ⌘P pin   ⌫ delete   esc")
-                .font(.system(size: 10))
+                .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
@@ -312,7 +312,7 @@ struct ClipPickerView: View {
         HStack(spacing: 6) {
             ClipRow(item: item, imageURL: imageURL(item))
             if index < ClipPicker.quickPickCount {
-                Text("⌘\(index + 1)").font(.system(size: 10)).foregroundStyle(.tertiary)
+                Text("⌘\(index + 1)").font(DS.font(TypeScale.caption)).foregroundStyle(.tertiary)
             }
         }
         .padding(.horizontal, 8)
