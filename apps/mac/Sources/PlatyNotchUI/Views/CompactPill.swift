@@ -128,8 +128,7 @@ struct CompactPill: View {
     /// connection, the top live item and every indicator.
     static func accessibilitySummary(content: PillContent, connection: ConnectionState, platy: PlatyMood?) -> String {
         var parts: [String] = []
-        let live: Int = content.dots.dots.count + content.dots.overflow
-        parts.append(live == 1 ? "1 agent session" : "\(live) agent sessions")
+        parts.append(content.sessionsSummary)
         if let platy { parts.append(platy.accessibilityLabel) }
         if content.approvalCount > 0 { parts.append("\(content.approvalCount) waiting for approval") }
         if connection != .connected { parts.append("reconnecting to core") }
@@ -212,7 +211,8 @@ private struct OverflowBadge: View {
             .foregroundStyle(.white)
             .padding(.horizontal, PlatyEarFit.badgePadding)
             .background(Color(white: 0.25), in: Capsule())
-            .offset(y: 2)
+            // Level with Platy's bottom (not below it), so the mood's cue still reads.
+            .offset(y: 0)
     }
 }
 

@@ -61,7 +61,7 @@ enum ThemeRenders {
         host.layoutSubtreeIfNeeded()
         if settle > 0 {
             // In an off-screen window at 2x, so every layer draws at the window's scale.
-            let window = NSWindow(contentRect: CGRect(x: -10_000, y: -10_000, width: host.frame.width,
+            let window = NSWindow(contentRect: CGRect(x: -10_000, y: 10_000, width: host.frame.width,
                                                       height: host.frame.height),
                                   styleMask: .borderless, backing: .buffered, defer: false)
             window.appearance = host.appearance

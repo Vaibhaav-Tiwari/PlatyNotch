@@ -32,6 +32,7 @@ struct HeroFrame<Content: View>: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             if let position, let onStep {
                 HeroControls(position: position, onStep: onStep)
+                    .panelChrome()
                     .frame(width: Self.controlsWidth)
                     .layoutPriority(1)
             }

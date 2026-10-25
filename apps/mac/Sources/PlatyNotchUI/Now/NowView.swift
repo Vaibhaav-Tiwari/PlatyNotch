@@ -67,7 +67,7 @@ struct NowView: View {
 
     /// The glance row (when any glance has something to show) and the quiet line.
     @ViewBuilder private var rows: some View {
-        if !heroOnly { glanceAndQuietRows }
+        if !heroOnly { glanceAndQuietRows.panelChrome() }
     }
 
     @ViewBuilder private var glanceAndQuietRows: some View {

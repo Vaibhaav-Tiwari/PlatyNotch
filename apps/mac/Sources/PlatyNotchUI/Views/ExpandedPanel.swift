@@ -38,6 +38,7 @@ struct ExpandedPanel: View {
         VStack(alignment: .leading, spacing: NowMetrics.gap) {
             tabBar(tabs)
                 .frame(height: NowMetrics.nav)
+                .panelChrome()
             if !store.approvals.isEmpty {
                 approvals
                     .frame(maxHeight: 240, alignment: .top)
@@ -45,8 +46,9 @@ struct ExpandedPanel: View {
             }
             (tabs.first { $0.id == selectedTab } ?? tabs[0]).view
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                // Now fits without clipping (`NowMetrics`), and must not clip Platy or the
-                // live glyph while they morph in from the pill; other tabs stay clipped.
+                // Now is left unclipped: it relies on the fit tests (`NowMetrics`,
+                // `NowViewTests`, `HeroViewsTests`) to stay inside, and must not clip Platy or
+                // the live glyph while they morph in from the pill. Other tabs stay clipped.
                 .clipped(unless: selectedTab == BuiltinTab.now)
                 .environment(\.selectPanelTab, { selectedTab = $0 })   // the games tile opens its tab
         }

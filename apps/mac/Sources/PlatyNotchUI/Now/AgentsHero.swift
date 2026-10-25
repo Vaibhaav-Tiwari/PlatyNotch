@@ -39,17 +39,34 @@ struct AgentsHero: View {
                     .frame(width: 44, height: 44)
             }
         } value: {
-            Label {
-                Text(verbatim: counts)
-                    .contentTransition(.numericText())
-                    .lineLimit(1)
-            } icon: {
-                Image(systemName: tone.symbol).foregroundStyle(DS.dynamicColor(tone))
+            // The full counts where they fit; else the lead state alone ("2 working"), as
+            // in the hover peek's narrower hero, never a truncated line.
+            ViewThatFits(in: .horizontal) {
+                countsLabel(counts).preference(key: AgentsCountsShownKey.self, value: .full)
+                countsLabel(shortCounts).preference(key: AgentsCountsShownKey.self, value: .short)
             }
-            .font(DS.font(TypeScale.caption))
-            .foregroundStyle(.secondary)
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private func countsLabel(_ text: String) -> some View {
+        Label {
+            Text(verbatim: text)
+                .contentTransition(.numericText())
+                .lineLimit(1)
+                .fixedSize()
+        } icon: {
+            Image(systemName: tone.symbol).foregroundStyle(DS.dynamicColor(tone))
+        }
+        .font(DS.font(TypeScale.caption))
+        .foregroundStyle(.secondary)
+    }
+
+    /// The lead state only: "1 needs you", "2 working", else the state word.
+    var shortCounts: String {
+        if agents.needsYou > 0 { return "\(agents.needsYou) needs you" }
+        if agents.working > 0 { return "\(agents.working) working" }
+        return tone.word
     }
 
     private var symbol: String {
@@ -66,5 +83,15 @@ struct AgentsHero: View {
         if parts.isEmpty { parts.append(tone.word) }
         parts.append(agents.total == 1 ? "1 session" : "\(agents.total) sessions")
         return parts.joined(separator: " · ")
+    }
+}
+
+/// Which counts line the agents hero shows (tests).
+enum AgentsCountsShown: Sendable { case full, short }
+
+struct AgentsCountsShownKey: PreferenceKey {
+    static let defaultValue: AgentsCountsShown? = nil
+    static func reduce(value: inout AgentsCountsShown?, nextValue: () -> AgentsCountsShown?) {
+        value = value ?? nextValue()
     }
 }

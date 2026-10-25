@@ -117,7 +117,7 @@ enum Theme {
     /// pill reads the environment's scheme instead.
     static func tint(_ tint: LiveTint, scheme: ColorScheme) -> Color {
         switch tint {
-        case .neutral: scheme == .light ? Color.black : Color.white
+        case .neutral: Color(nsColor: .labelColor)
         case .accent: DS.color(.working, scheme)
         case .warning: DS.color(.needsYou, scheme)
         case .critical: DS.color(.error, scheme)

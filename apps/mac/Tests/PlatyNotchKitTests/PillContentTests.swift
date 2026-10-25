@@ -170,6 +170,41 @@ final class PillContentTests: DefaultsTestCase {
         XCTAssertFalse(content([], sessions: [session("a", .idle)]).keepsMinimalUp)
     }
 
+    // MARK: - Fix round 1
+
+    /// Every live session is counted by state, overflow included; errored and finished
+    /// come from the finish log.
+    func testSessionsSummaryNamesStates() {
+        let sessions = (0..<12).map { i in session("s\(i)", i == 3 ? .waitingInput : .active) }
+        let c = content([], sessions: sessions)
+        XCTAssertEqual(c.sessionsSummary, "12 agent sessions: 1 needs you, 11 working")
+        var log = AgentFinishLog()
+        log.record(SessionChanges(finished: ["f"], enteredNeedsYou: [], allFinished: false), now: now)
+        log.noteFailure(sessionKey: "e", at: now)
+        let mixed = PillContent(activities: [], sessions: [session("f", .idle), session("e", .idle), session("i", .idle),
+                                                          session("x", .exited), session("w", .active)],
+                                approvals: 0, hiddenKinds: [], log: log, now: now)
+        XCTAssertEqual(mixed.sessionsSummary, "4 agent sessions: 1 errored, 1 working, 1 finished, 1 idle")
+        XCTAssertEqual(content([]).sessionsSummary, "No agent sessions")
+        XCTAssertEqual(content([], sessions: [session("a", .idle)]).sessionsSummary, "1 agent session: 1 idle")
+    }
+
+    /// Ruling 4 with agents counted as live: ambient items leave the pill while an agent
+    /// works or waits, or an approval is pending.
+    func testAmbientLeavesWhileAgentsAreLive() {
+        let shelf = act("shelf", LivePriority.shelfItems)
+        let charging = act("charging", LivePriority.batteryCharging)
+        XCTAssertEqual(content([shelf, charging]).trailing?.id, "shelf")
+        let working = content([shelf, charging], sessions: [session("a", .active)])
+        XCTAssertNil(working.trailing)
+        XCTAssertEqual(working.indicators, [])
+        XCTAssertNil(content([shelf], sessions: [session("a", .waitingInput)]).trailing)
+        XCTAssertNil(content([shelf], approvals: 1).trailing)
+        XCTAssertEqual(content([shelf], sessions: [session("a", .idle)]).trailing?.id, "shelf", "idle agents are not live")
+        let music = content([act("music", LivePriority.musicPlaying), shelf], sessions: [session("a", .active)])
+        XCTAssertEqual(music.trailing?.id, "music")
+    }
+
     /// The pill's badge width: 11 pt bold rounded, rounded up, plus `badgePadding` each side.
     private func measuredBadge(_ text: String) throws -> CGFloat {
         let base = NSFont.systemFont(ofSize: 11, weight: .bold)

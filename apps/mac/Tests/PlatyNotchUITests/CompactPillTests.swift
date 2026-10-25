@@ -79,4 +79,15 @@ final class CompactPillTests: DefaultsTestCase {
                                                          platy: nil)
         XCTAssertTrue(approvals.contains("2 waiting for approval"), approvals)
     }
+
+    /// Fix round 1: the summary names how sessions stand, even with Platy off.
+    func testSummaryNamesSessionStatesWithoutPlaty() {
+        let t = Date(timeIntervalSince1970: 0)
+        let waiting = Session(key: "a", agent: "codex", agentName: "Codex", sessionID: "a", state: .waitingInput,
+                              startedAt: t, updatedAt: t)
+        let text = CompactPill.accessibilitySummary(content: content([], sessions: [waiting]), connection: .connected,
+                                                    platy: nil)
+        XCTAssertTrue(text.contains("needs you"), text)
+        XCTAssertTrue(text.contains("1 agent session"), text)
+    }
 }

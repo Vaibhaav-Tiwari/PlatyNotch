@@ -188,8 +188,8 @@ enum MorphRenders {
         case agents, timer, reduced
     }
 
-    /// Seconds after the mode change for the start, middle and end frames.
-    static let times: [(String, Double)] = [("start", 0.0), ("middle", 0.08), ("end", 0.8)]
+    /// Seconds after the mode change for the start, middle, settling (chrome fading in) and end frames.
+    static let times: [(String, Double)] = [("start", 0.0), ("middle", 0.08), ("settle", 0.16), ("end", 0.8)]
 
     /// Writes `morph-<scene>-<open|close>-<start|middle|end>-<dark|light>.png`; returns how many.
     static func write(to dir: URL) -> Result<Int, PlatyRenders.Failure> {

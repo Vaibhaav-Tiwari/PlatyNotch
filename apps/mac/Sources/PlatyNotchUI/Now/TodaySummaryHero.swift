@@ -51,6 +51,7 @@ struct TodaySummaryHero: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .panelChrome()
             if let platyMood {
                 PlatyView(mood: platyMood, size: 96, morphID: MorphID.platy)
             }

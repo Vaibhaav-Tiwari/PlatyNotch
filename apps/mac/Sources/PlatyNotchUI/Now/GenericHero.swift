@@ -143,6 +143,7 @@ struct HeroLayout<Leading: View, Value: View>: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .panelChrome()
         }
         .coordinateSpace(name: Self.space)
         .accessibilityElement(children: .contain)

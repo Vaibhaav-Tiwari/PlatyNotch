@@ -244,7 +244,9 @@ public struct PanelStateMachine: Sendable {
         case .notice:
             // Shown unless something above a notice is up (else dropped, as before).
             switch mode {
-            case .hidden, .compact, .peek(.hud), .peek(.widget), .peek(.notice): state.notice = true
+            // Held under the hover peek, as under the open panel's precedence: it shows
+            // once the peek ends.
+            case .hidden, .compact, .peek(.hud), .peek(.widget), .peek(.notice), .peek(.hover): state.notice = true
             default: break
             }
         case .noticeTimeout:
@@ -264,6 +266,7 @@ public struct PanelStateMachine: Sendable {
             state.ringing.removeAll { $0 == id }
         case .dragBegan:
             state.dragging = true
+            state.hoverPeek = false   // after the drag, only a new hover shows it again
             // A drag near the open panel turns it into the drop zone (remembered, so a
             // drop gives it back). With an approval pending the panel stays as it is (rule 1).
             if state.approvals == 0 {

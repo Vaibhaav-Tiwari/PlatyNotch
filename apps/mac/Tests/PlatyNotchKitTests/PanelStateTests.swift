@@ -186,4 +186,26 @@ final class PanelStateTests: XCTestCase {
         let back = try JSONDecoder().decode(AppearanceSettings.self, from: JSONEncoder().encode(s))
         XCTAssertEqual(back.openOn, .peekOnHover)
     }
+
+    /// Fix round 1 (M2): a drag ends the hover peek; it comes back only with a new hover.
+    func testDragEndsTheHoverPeek() {
+        var m = hoverPeekMachine()
+        m.handle(.hoverEnter)
+        m.handle(.dragBegan)
+        XCTAssertEqual(m.mode, .peek(.drop))
+        m.handle(.dragEnded)
+        XCTAssertEqual(m.mode, .compact)
+        m.handle(.hoverEnter)
+        XCTAssertEqual(m.mode, .peek(.hover))
+    }
+
+    /// Fix round 1 (M3): a notice during the hover peek is held, then shows.
+    func testNoticeHeldUnderHoverPeek() {
+        var m = hoverPeekMachine()
+        m.handle(.hoverEnter)
+        m.handle(.notice)
+        XCTAssertEqual(m.mode, .peek(.hover))
+        m.handle(.hoverExit)
+        XCTAssertEqual(m.mode, .peek(.notice))
+    }
 }

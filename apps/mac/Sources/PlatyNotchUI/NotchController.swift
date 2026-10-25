@@ -293,7 +293,10 @@ public final class NotchController {
         // debouncer saw the cursor arrive. When that surface goes, start over so hovering
         // the pill afterwards opens the panel.
         // A drop that gives back the open panel counts as hovering it, so moving away closes it.
-        if before != machine.mode, Self.isNonOpening(before) { debouncer.reset(hovering: machine.mode == .expanded) }
+        if before != machine.mode, Self.isNonOpening(before) {
+            let mode: PanelMode = machine.mode
+            debouncer.reset(hovering: mode == .expanded || mode == .peek(.hover))
+        }
         apply()
         scheduleExpiry()
     }
@@ -562,6 +565,9 @@ extension NotchController: PanelSurfaceSink {
         case setFullScreen(Bool)
         case layout(PanelLayout)
         case display(CGDirectDisplayID)
+        /// Re-reads the store and live activities now (the store observer's work; tests
+        /// have no window, so nothing observes the store).
+        case syncStore
     }
 
     func debugHandle(_ input: DebugInput) {
@@ -577,6 +583,8 @@ extension NotchController: PanelSurfaceSink {
         case .display(let id):
             displayID = id
             surfaces.sinkStateChanged()
+        case .syncStore:
+            syncFromStore()
         }
     }
 

@@ -161,7 +161,8 @@ struct PanelRootView: View {
         case .compact:
             // `hiddenKinds` stays empty until Settings › Notifications (Task 22).
             let pill = PillContent(activities: widgets.liveActivities, sessions: store.sessions,
-                                   approvals: store.approvals.count, hiddenKinds: [], now: Date())
+                                   approvals: store.approvals.count, hiddenKinds: [],
+                                   log: today.agentActivity.log, now: Date())
             CompactPill(content: pill, connection: store.connection, hasNotch: layout.hasNotch,
                         notchWidth: layout.hasNotch ? layout.anchor.width : 0,
                         liveSide: model.appearance.liveSide, earWidth: layout.liveEarWidth,
@@ -182,12 +183,16 @@ struct PanelRootView: View {
             .contentShape(Rectangle())
             .onTapGesture { model.onClick() }
         case .expanded:
+            // Approval cards are not chrome: they show at once (arming counts from then).
+            ChromeSettle {
             ExpandedPanel(store: store, responder: responder, arming: model.arming, today: today,
                           widgets: widgets, memory: memory, extraTabs: extraTabs,
                           selectedTab: Binding(get: { model.selectedTab }, set: { model.selectedTab = $0 }),
                           onCollapse: model.onClick, onOpenSettings: model.onOpenSettings,
                           deck: Binding(get: { model.heroDeck }, set: { model.heroDeck = $0 }),
                           onDecide: decide, onOpenTerminal: onOpenTerminal)
+            }
+            .transition(ChromeSettle<EmptyView>.transition)
                 .padding(EdgeInsets(top: top, leading: Space.panelMargin, bottom: 10, trailing: Space.panelMargin))
                 .overlay(alignment: .bottom) { hudIndicator }
         case .peek(.widget(let id)):
@@ -209,10 +214,13 @@ struct PanelRootView: View {
         case .peek(.hover):
             // Peek on hover, open on click: Now's hero alone; a click anywhere else opens
             // the panel. No approval card is ever drawn here (an approval replaces it).
+            ChromeSettle {
             NowView(store: store, widgets: widgets, today: today,
                     deck: Binding(get: { model.heroDeck }, set: { model.heroDeck = $0 }),
                     onOpenTool: { _ in model.onClick() }, onOpenAgents: model.onClick,
                     onOpenTerminal: onOpenTerminal, heroOnly: true)
+            }
+            .transition(ChromeSettle<EmptyView>.transition)
                 // 6 at the bottom: the 160 pt hero fits the 176 pt peek without a notch too.
                 .padding(EdgeInsets(top: top, leading: 12, bottom: 6, trailing: 12))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
