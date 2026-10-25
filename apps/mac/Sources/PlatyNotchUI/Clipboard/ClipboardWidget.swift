@@ -287,7 +287,8 @@ final class ClipboardWidget: NotchWidget, ClipboardMenuControl {
             guard let self, !Task.isCancelled, self.isRunning else { return }
             self.copiedOnly = outcome == .copied
             if outcome == .copied, let context = self.context {
-                context.peek(id: Self.copiedPeekID, until: self.clock().addingTimeInterval(Self.copiedPeekDuration))
+                context.peek(id: Self.copiedPeekID, until: self.clock().addingTimeInterval(Self.copiedPeekDuration),
+                             as: nil)
             }
         }
     }

@@ -251,7 +251,7 @@ final class WellbeingWidget: NotchWidget {
         let length = Self.cardLength(kind)
         let n = Nudge(kind: kind, shownAt: now, until: now.addingTimeInterval(length))
         nudge = n
-        guard context.peek(id: Self.peekID, until: n.until) else {
+        guard context.peek(id: Self.peekID, until: n.until, as: .reminder) else {
             nudge = nil
             reschedule(now: now)
             return

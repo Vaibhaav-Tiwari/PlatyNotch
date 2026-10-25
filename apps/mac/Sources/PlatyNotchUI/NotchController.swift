@@ -473,6 +473,7 @@ public final class NotchController {
             _ = store.connection
             _ = widgets.liveActivities   // Minimal mode: music, focus, timers keep the pill up
             _ = widgets.layout
+            _ = surfaces.notificationPolicy   // Settings › Notifications: the pill's hidden kinds
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self, self.panel != nil else { return }
@@ -486,14 +487,22 @@ public final class NotchController {
         responder.sync(store: store)
         // What the pill shows keeps Minimal up (approvals, sessions working or waiting,
         // non-ambient live items), from the same `PillContent` the pill draws.
+        let policy: NotificationPolicy = surfaces.notificationPolicy
+        let hidden: Set<NotificationKind> = policy.hiddenInPill
+        if model.hiddenKinds != hidden { model.hiddenKinds = hidden }
         let pill = PillContent(activities: widgets.liveActivities, sessions: store.sessions,
-                               approvals: store.approvals.count, hiddenKinds: [], now: Date())
+                               approvals: store.approvals.count, hiddenKinds: hidden, now: Date())
         machine.setLive(pill.keepsMinimalUp)
-        // During focus, notices are consumed without peeking; approvals still peek.
-        // A session left running while the focus widget is off holds nothing.
-        let holdNotices = today.focus.focusActive && widgets.isEnabled(FocusWidget.widgetID)
+        // A focus session left running while the focus widget is off holds nothing.
+        let focus: Bool = today.focus.focusActive && widgets.isEnabled(FocusWidget.widgetID)
+        // An agent notice follows its row of Settings › Notifications (can open, quiet
+        // during Focus); the app's own info notices keep today's focus hold. Approvals
+        // are never gated.
+        let kind: NotificationKind? = store.notices.last.flatMap { NotificationPolicy.kind(noticeKind: $0.kind) }
+        let holdNotices: Bool = kind == nil && focus
+        let allowNotice: Bool = kind.map { policy.mayOpen($0, focusActive: focus) } ?? true
         for event in feed.update(approvalCount: store.approvals.count, noticeSequence: store.noticeSequence,
-                                 holdNotices: holdNotices) {
+                                 holdNotices: holdNotices, allowNotice: allowNotice) {
             machine.handle(event)
             if event == .notice { scheduleNoticeTimeout() }
         }

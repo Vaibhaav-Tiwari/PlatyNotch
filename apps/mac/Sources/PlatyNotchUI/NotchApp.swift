@@ -188,6 +188,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                           body: "Your coding agents' sessions and approvals live here."))
         }
         today.agentActivity.start(store: store)
+        today.agentActivity.postNeedsInputNotices(to: store)
+        // Settings › Notifications (kept current in `appearanceMayHaveChanged`); "quiet
+        // during Focus" follows the focus session, as the notice hold always has.
+        surfaces.notificationPolicy = NotificationPolicy.load(from: .standard)
+        let today = self.today, widgets = self.widgets
+        surfaces.focusActive = { [weak today, weak widgets] in
+            guard let today, let widgets else { return false }
+            return today.focus.focusActive && widgets.isEnabled(FocusWidget.widgetID)
+        }
         Task { await client.start() }
 
         watchConfig()
@@ -390,6 +399,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// pill width rebuild the panels; everything else is applied to them live.
     private func appearanceMayHaveChanged() {
         today.agentActivity.reloadVisibility()   // Settings › Agents: "Show Agents before an agent connects"
+        let policy = NotificationPolicy.load(from: .standard)
+        if policy != surfaces.notificationPolicy { surfaces.notificationPolicy = policy }
         let now = AppearanceStore.load(from: .standard)
         guard now != appearance else { return }
         let rebuild = now.needsRebuild(from: appearance)

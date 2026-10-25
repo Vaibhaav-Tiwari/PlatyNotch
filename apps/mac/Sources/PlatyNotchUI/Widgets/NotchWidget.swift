@@ -178,8 +178,18 @@ public struct WidgetContext {
     /// 10 s). A pending approval, a ringing card, the open panel, a HUD or an agent notice
     /// shows first; over full screen the peek waits. Returns false (nothing shown) when no
     /// running widget supplies a view for `id`.
+    /// A plug-in that names no kind counts as "Plug-ins without a kind" (spec 6.3: it may
+    /// open the notch, quiet during Focus), which keeps today's behaviour.
     @discardableResult
-    public func peek(id: String, until: Date) -> Bool { surfaces.peek(id: id, until: until) }
+    public func peek(id: String, until: Date) -> Bool { peek(id: id, until: until, as: .pluginUndeclared) }
+
+    /// The same, governed by `kind`'s row of Settings › Notifications: false (nothing
+    /// shown) when that kind may not open the notch now. `nil`: a confirmation of
+    /// something the user just did (a "Copied" card), never governed.
+    @discardableResult
+    public func peek(id: String, until: Date, as kind: NotificationKind?) -> Bool {
+        surfaces.peek(id: id, until: until, kind: kind)
+    }
 
     /// Closes the peek early (e.g. after "+1 glass").
     public func endPeek(id: String) { surfaces.endPeek(id: id) }

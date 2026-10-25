@@ -266,13 +266,13 @@ final class SystemWidget: NotchWidget {
         if powerPeek != nil, let shown = powerPeekShownAt, let until = powerPeekUntil,
            now.timeIntervalSince(shown) < Self.powerPeekDebounce, until > now {
             powerPeek = PowerPeek(change: change, state: new)
-            if !context.peek(id: Self.powerPeekID, until: until) { clearPowerPeek() }
+            if !context.peek(id: Self.powerPeekID, until: until, as: .other) { clearPowerPeek() }
             return
         }
         clearPowerPeek()
         let until = now.addingTimeInterval(Self.powerPeekDuration)
         powerPeek = PowerPeek(change: change, state: new)
-        guard context.peek(id: Self.powerPeekID, until: until) else {
+        guard context.peek(id: Self.powerPeekID, until: until, as: .other) else {
             powerPeek = nil
             return
         }
@@ -389,7 +389,8 @@ final class SystemWidget: NotchWidget {
             upsert(h)
             guard !known else { return }
             headphonesPeek = h
-            if !context.peek(id: Self.headphonesPeekID, until: clock().addingTimeInterval(Self.headphonesPeekDuration)) {
+            if !context.peek(id: Self.headphonesPeekID, until: clock().addingTimeInterval(Self.headphonesPeekDuration),
+                              as: .reminder) {
                 headphonesPeek = nil
             }
         case .updated(let h):
@@ -526,7 +527,7 @@ final class SystemWidget: NotchWidget {
         downloadsActive = tracker.active
         guard let done = events.last(where: { $0.kind == .finished }) else { return }
         finishedDownload = URL(fileURLWithPath: done.path)
-        context.peek(id: Self.downloadPeekID, until: clock().addingTimeInterval(Self.downloadPeekDuration))
+        context.peek(id: Self.downloadPeekID, until: clock().addingTimeInterval(Self.downloadPeekDuration), as: .other)
     }
 
     /// The notice and tile buttons: the only ways a downloaded file is acted on.

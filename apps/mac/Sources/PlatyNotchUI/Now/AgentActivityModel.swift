@@ -88,6 +88,7 @@ final class AgentActivityModel {
             if let visibilityDefaults { visibility.save(to: visibilityDefaults) }
             onAgentsFirstShown?()
         }
+        lastSessions = sessions
         let changes = transitions.update(sessions)
         for s in sessions where s.state == .active && log.failed(s.key, now: now) {
             log.clearFailure(sessionKey: s.key)
@@ -109,6 +110,28 @@ final class AgentActivityModel {
     /// Hears every non-empty change (Platy's moods, the plip, the Agents notice).
     func observe(_ handler: @escaping @MainActor (SessionChanges) -> Void) {
         handlers.append(handler)
+    }
+
+    /// The sessions of the last change (what `observe` handlers' keys refer to).
+    @ObservationIgnored private(set) var lastSessions: [Session] = []
+
+    /// A session that starts waiting for your input posts a "needs-input" notice, which
+    /// Settings › Notifications governs as "Agent needs you or stopped". Approvals have
+    /// their own card and post nothing here.
+    func postNeedsInputNotices(to store: AppStore) {
+        observe { [weak self, weak store] changes in
+            guard let self, let store else { return }
+            for n in Self.needsInputNotices(changes, sessions: self.lastSessions) { store.postLocalNotice(n) }
+        }
+    }
+
+    /// "Claude Code needs your input" (body: the project) for each session that entered
+    /// waiting-for-input in `changes`.
+    static func needsInputNotices(_ changes: SessionChanges, sessions: [Session]) -> [Notice] {
+        changes.enteredNeedsYou.compactMap { key in
+            guard let s = sessions.first(where: { $0.key == key }), s.state == .waitingInput else { return nil }
+            return Notice(kind: "needs-input", title: "\(s.agentName) needs your input", body: s.project, sessionKey: s.key)
+        }
     }
 
     private func scheduleExpiry(now: Date) {

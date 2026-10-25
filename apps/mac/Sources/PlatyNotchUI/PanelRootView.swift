@@ -33,6 +33,8 @@ final class PanelViewModel {
     var onConnectAgent: () -> Void = {}
     /// Settings › Appearance, clamped (live side, theme, motion).
     var appearance: AppearanceSettings = AppearanceSettings()
+    /// Settings › Notifications: kinds the pill leaves out (never approvals).
+    var hiddenKinds: Set<NotificationKind> = []
 }
 
 /// Places the mode's content inside the fixed-size panel window.
@@ -135,7 +137,7 @@ struct PanelRootView: View {
         let now: Date = Date()
         let activities: [LiveActivity] = widgets.liveActivities
         let pill = PillContent(activities: activities, sessions: store.sessions, approvals: store.approvals.count,
-                               hiddenKinds: [], now: now)
+                               hiddenKinds: model.hiddenKinds, now: now)
         guard let trailing: String = pill.trailing?.id else { return MorphContext(namespace: morphSpace, liveID: nil) }
         let agents: AgentsLive? = AgentsLive.make(sessions: store.sessions, log: today.agentActivity.log, now: now)
         let items: [LiveItem] = HeroDeck.items(widgets.rankedLive(agents: agents, now: now))
@@ -163,9 +165,8 @@ struct PanelRootView: View {
         case .hidden:
             Color.clear
         case .compact:
-            // `hiddenKinds` stays empty until Settings › Notifications (Task 22).
             let pill = PillContent(activities: widgets.liveActivities, sessions: store.sessions,
-                                   approvals: store.approvals.count, hiddenKinds: [],
+                                   approvals: store.approvals.count, hiddenKinds: model.hiddenKinds,
                                    log: today.agentActivity.log, now: Date())
             CompactPill(content: pill, connection: store.connection, hasNotch: layout.hasNotch,
                         notchWidth: layout.hasNotch ? layout.anchor.width : 0,

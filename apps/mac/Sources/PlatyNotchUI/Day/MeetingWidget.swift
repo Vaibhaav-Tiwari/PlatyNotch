@@ -200,7 +200,7 @@ final class MeetingWidget: NotchWidget {
         guard let due, !focusSessionActive else { return }
         reminder = due
         let until = min(now.addingTimeInterval(Self.reminderPeekTime), due.meeting.start)
-        if !context.peek(id: Self.reminderPeekID, until: until) { reminder = nil }
+        if !context.peek(id: Self.reminderPeekID, until: until, as: .meetingStarting) { reminder = nil }
     }
 
     /// `FocusModel` publishes the end of a running focus session under `untilKey`.
