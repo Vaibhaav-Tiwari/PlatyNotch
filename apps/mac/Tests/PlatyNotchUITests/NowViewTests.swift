@@ -27,6 +27,26 @@ private final class NowFakeWidget: NotchWidget {
     }
 }
 
+/// A battery at 82 %.
+@MainActor
+private final class BatteryPower: PowerSourceReading {
+    func read() -> BatteryState? { BatteryState(percent: 82, charging: false, pluggedIn: false, minutesRemaining: nil) }
+    func start(onChange: @escaping @MainActor () -> Void) {}
+    func stop() {}
+}
+
+/// A glance widget that is off by default.
+@MainActor
+private final class OffGlance: NotchWidget {
+    let id: String
+    let title = "Off"
+    let systemImage = "star"
+    let defaultEnabled = false
+    var kind: WidgetKind { [.glance, .tool] }
+    init(_ id: String) { self.id = id }
+    func tileView() -> AnyView { AnyView(EmptyView()) }
+}
+
 @MainActor
 final class NowViewTests: DefaultsTestCase {
     /// A 14-inch MacBook Pro with a 38 pt camera housing.
@@ -170,6 +190,61 @@ final class NowViewTests: DefaultsTestCase {
         XCTAssertEqual(shown(), ["g2", "g3", "g4"], "no g5: nothing backfills")
         registry.setEnabled("g1", true)
         XCTAssertEqual(shown(), ["g1", "g2", "g3", "g4"], "back first")
+    }
+
+    /// A new user's slots: the glances on by default in registry order (meeting, loops,
+    /// System's battery), then usage; with content in each, four chips show.
+    func testStockDefaultsShowFourChips() {
+        let store = AppStore()
+        let client = CoreClient(socketPath: "/nonexistent")
+        let today = TodayServices(client: client, calendar: CalendarService(eventKit: false),
+                                  reminders: RemindersService(eventKit: false, defaults: defaults()),
+                                  focus: FocusModel(defaults: defaults()))
+        // The real built-ins give this order.
+        let stock = WidgetRegistry(defaults: defaults(), persist: false)
+        BuiltInWidgets.register(in: stock, store: store, today: today, persist: false)
+        let expected = [MeetingWidget.widgetID, LoopsWidget.widgetID, SystemWidget.widgetID, GlanceSlots.usageID]
+        XCTAssertEqual(Array(stock.defaultGlanceOrder.prefix(4)), expected)
+
+        // The glance widgets in the built-ins' order, each with content (System with a battery).
+        let registry = WidgetRegistry(defaults: defaults(), persist: false)
+        registry.register(MeetingWidget(calendar: today.calendar, defaults: defaults()))
+        registry.register(LoopsWidget(store: store, actions: today.loops))
+        registry.register(RemindersWidget.inert())
+        registry.register(WeatherWidget.inert())
+        registry.register(WellbeingWidget.inert())
+        registry.register(SystemWidget(power: BatteryPower(), asserter: NoPowerAsserter(), headphones: NoHeadphones(),
+                                       downloads: .none, defaults: defaults(), persist: false))
+        registry.register(MailWidget.inert())
+        XCTAssertEqual(Array(registry.defaultGlanceOrder.prefix(4)), expected)
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("pnstock\(UUID().uuidString)")
+        registry.start(context: WidgetContext(store: store, client: client,
+                                              config: ConfigFileStore(url: dir.appendingPathComponent("config.json")),
+                                              events: CoreEventHub(), defaults: defaults(), notify: NoopNotifier(),
+                                              openPanel: { _ in }))
+        let start = Date().addingTimeInterval(3600)
+        today.calendar.setForTesting(access: .granted, meetings: [
+            CalendarMeeting(id: "m", title: "Design", start: start, end: start.addingTimeInterval(1800)),
+        ])
+        let loop = Loop(id: "l", title: "Reply", kind: "promise", status: "open", detectedAt: Date())
+        let json = #"{"claude":{"five_hour":{"used_percent":40},"updated_at":"2026-10-25T09:00:00Z"}}"#
+        let usage = try? JSONCoding.decoder.decode(Usage.self, from: Data(json.utf8))
+        try? store.apply(Envelope.make(.snapshot, Snapshot(usage: usage ?? Usage(), loops: [loop])))
+        let shown = NowView.glanceEntries(widgets: registry, usage: store.usage, defaults: defaults()).map(\.id)
+        XCTAssertEqual(shown, expected, "four chips for a new user")
+        XCTAssertEqual(GlanceSlots.load(from: defaults(), glanceCapable: []).ids, expected, "saved once")
+        registry.stopAll()
+    }
+
+    /// Fewer than four on by default: the other registered glances fill the rest.
+    func testDefaultsFillFromOtherGlances() {
+        let registry = WidgetRegistry(defaults: defaults(), persist: false)
+        registry.register(NowFakeWidget("on", kind: [.glance]))
+        let offA = OffGlance("offA"), offB = OffGlance("offB"), offC = OffGlance("offC")
+        [offA, offB, offC].forEach { registry.register($0) }
+        XCTAssertEqual(Array(registry.defaultGlanceOrder.prefix(4)), ["on", GlanceSlots.usageID, "offA", "offB"])
+        let slots = GlanceSlots.resolve(from: defaults(), glanceCapable: registry.defaultGlanceOrder)
+        XCTAssertEqual(slots.ids, ["on", GlanceSlots.usageID, "offA", "offB"])
     }
 
     func testHeroFitsWithLongTitle() {

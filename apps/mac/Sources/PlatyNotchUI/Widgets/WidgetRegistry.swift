@@ -143,6 +143,16 @@ public final class WidgetRegistry {
         orderedWidgets.filter { $0.kind.contains(.glance) }.map(\.id)
     }
 
+    /// The order Now's default glance slots are taken from (the first four, saved once):
+    /// glance widgets that are on by default (`defaultEnabled`), in registry order, then the
+    /// app's usage glance, then every other registered glance widget.
+    public var defaultGlanceOrder: [String] {
+        let glances = orderedWidgets.filter { $0.kind.contains(.glance) }
+        let preferred = glances.filter(\.defaultEnabled).map(\.id)
+        let others = glances.filter { !$0.defaultEnabled }.map(\.id)
+        return preferred + [GlanceSlots.usageID] + others
+    }
+
     /// Every enabled glance widget, in the user's order.
     public var glanceCapableIDs: [String] {
         visibleWidgets.filter { $0.kind.contains(.glance) }.map(\.id)

@@ -139,10 +139,10 @@ struct NowView: View {
     }
 
     /// The chosen glances that have something to show, in slot order. The slots come from
-    /// every registered glance (saved on first use); one with nothing to show is skipped,
+    /// `defaultGlanceOrder` (saved on first use); one with nothing to show is skipped,
     /// never replaced (Ruling 6).
     static func glanceEntries(widgets: WidgetRegistry, usage: Usage, defaults: UserDefaults) -> [GlanceEntry] {
-        let capable: [String] = widgets.registeredGlanceIDs + [GlanceSlots.usageID]
+        let capable: [String] = widgets.defaultGlanceOrder
         let slots: GlanceSlots = GlanceSlotsCache.resolve(from: defaults, glanceCapable: capable)
         var views: [String: AnyView] = [:]
         for w in widgets.glanceWidgets {
