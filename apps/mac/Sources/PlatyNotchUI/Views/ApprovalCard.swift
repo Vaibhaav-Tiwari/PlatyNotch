@@ -285,11 +285,19 @@ struct ApprovalList: View {
                              arming: arming,
                              maxLines: maxLines,
                              shortcuts: index == 0,
-                             preview: ApprovalPreview(approval: approval),
+                             preview: ApprovalPreviewCache.shared.preview(for: approval),
                              cards: approvals.count,
                              onDecide: { onDecide(approval, $0) },
                              onOpenTerminal: onOpenTerminal)
+                .background(GeometryReader { g in
+                    Color.clear.preference(key: ApprovalCardFramesKey.self,
+                                           value: [approval.id: g.frame(in: .named(ExpandedPanel.space))])
+                })
             }
+        }
+        // Previews of answered approvals go (each is built once, `ApprovalPreviewCache`).
+        .onChange(of: approvals.map(\.id), initial: true) { _, ids in
+            ApprovalPreviewCache.shared.keep(ids: Set(ids))
         }
     }
 }

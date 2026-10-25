@@ -49,6 +49,9 @@ struct ExpandedPanel: View {
                     .frame(maxHeight: 240, alignment: .top)
                     // Its own height up to 240, so the destination below keeps the rest.
                     .fixedSize(horizontal: false, vertical: true)
+                    .background(GeometryReader { g in
+                        Color.clear.preference(key: ApprovalsRegionFrameKey.self, value: g.frame(in: .named(Self.space)))
+                    })
                     .layoutPriority(1)
             }
             (tabs.first { $0.id == selectedTab } ?? tabs[0]).view
@@ -59,7 +62,11 @@ struct ExpandedPanel: View {
                 .clipped(unless: selectedTab == BuiltinTab.now)
                 .environment(\.selectPanelTab, { selectedTab = $0 })   // the games tile opens its tab
         }
+        .coordinateSpace(name: Self.space)
     }
+
+    /// The coordinate space the approvals region and cards report their frames in (tests).
+    static var space: String { "expandedPanel" }
 
     /// Pending approvals, oldest first. With several, summaries are shorter (each still
     /// scrolls to its full text) so more cards fit, and the list scrolls.
@@ -206,5 +213,19 @@ extension View {
     /// `clipped()` unless `skip`.
     @ViewBuilder func clipped(unless skip: Bool) -> some View {
         if skip { self } else { clipped() }
+    }
+}
+
+/// The approvals region's frame in `ExpandedPanel.space` (layout tests).
+struct ApprovalsRegionFrameKey: PreferenceKey {
+    static let defaultValue: CGRect? = nil
+    static func reduce(value: inout CGRect?, nextValue: () -> CGRect?) { value = nextValue() ?? value }
+}
+
+/// Each approval card's frame in `ExpandedPanel.space`, by approval id (layout tests).
+struct ApprovalCardFramesKey: PreferenceKey {
+    static let defaultValue: [String: CGRect] = [:]
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue()) { $1 }
     }
 }

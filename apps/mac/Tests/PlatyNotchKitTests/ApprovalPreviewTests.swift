@@ -100,6 +100,13 @@ final class ApprovalPreviewTests: DefaultsTestCase {
     func testBoxLines() {
         XCTAssertEqual(ApprovalPreview.boxLines(diffCount: 40, cards: 1), 8)
         XCTAssertEqual(ApprovalPreview.boxLines(diffCount: 40, cards: 3), 4)
+        XCTAssertEqual(ApprovalPreview.boxLines(diffCount: 40, cards: 2), 4)
+        // Only "several or one" matters, like `ApprovalPlacement.expanded(header:)`.
+        for cards in 2...6 {
+            XCTAssertEqual(ApprovalPreview.boxLines(diffCount: 40, cards: cards), ApprovalPreview.boxLines(diffCount: 40, cards: 2))
+            XCTAssertEqual(ApprovalPlacement(mode: .expanded, count: cards), .expanded(header: true))
+        }
+        XCTAssertEqual(ApprovalPlacement(mode: .expanded, count: 1), .expanded(header: false))
         XCTAssertEqual(ApprovalPreview.boxLines(diffCount: 3, cards: 1), 3)
         XCTAssertEqual(ApprovalPreview.boxLines(diffCount: 0, cards: 2), 0)
     }
@@ -145,5 +152,39 @@ final class ApprovalPreviewTests: DefaultsTestCase {
         XCTAssertNil(ApprovalPreview(approval: wrongPrefix).command)
         let noEllipsis = approval("Bash", ["command": .string(long)], summary: String(long.prefix(120)))
         XCTAssertNil(ApprovalPreview(approval: noEllipsis).command, "a shorter summary without … is not a truncation")
+    }
+
+    // MARK: Fix round 1, I4
+
+    func testHasDiffMatchesTheBuiltDiff() {
+        let cases: [Approval] = [
+            approval("Edit", ["old_string": .string("a"), "new_string": .string("b")]),
+            approval("Edit", ["old_string": .string("a"), "new_string": .string("a")]),
+            approval("MultiEdit", ["edits": .array([.object(["old_string": .string("x"), "new_string": .string("x")])])]),
+            approval("MultiEdit", ["edits": .array([.object(["old_string": .string("x"), "new_string": .string("y")])])]),
+            approval("Write", ["content": .string("hello")]),
+            approval("Write", ["content": .string("")]),
+            approval("NotebookEdit", ["new_source": .string("print(1)")]),
+            approval("Bash", ["command": .string("ls")]),
+            approval("WebFetch", nil),
+        ]
+        for a in cases {
+            XCTAssertEqual(ApprovalPreview.hasDiff(a), !ApprovalPreview(approval: a).diff.isEmpty, "\(a.input as Any)")
+        }
+    }
+
+    func testPreviewCacheBuildsOncePerApproval() {
+        let cache = ApprovalPreviewCache()
+        let a = approval("Write", ["content": .string("one\ntwo")])
+        let first = cache.preview(for: a)
+        XCTAssertEqual(cache.preview(for: a), first)
+        XCTAssertEqual(cache.buildCount, 1)
+        var changed = a
+        changed.input = RawJSON(.object(["content": .string("three")]))
+        XCTAssertNotEqual(cache.preview(for: changed), first, "different content under the same id is rebuilt")
+        XCTAssertEqual(cache.buildCount, 2)
+        cache.keep(ids: [])
+        _ = cache.preview(for: a)
+        XCTAssertEqual(cache.buildCount, 3, "dropped when no longer pending")
     }
 }

@@ -76,8 +76,74 @@ public struct ApprovalPreview: Equatable, Sendable {
     public var hasMore: Bool { diff.count > Self.collapsedLines }
 
     /// The diff box's fixed height in lines (Ruling 11): 8 with one card, 4 with several,
-    /// never more than the diff has.
+    /// never more than the diff has. It depends only on `cards > 1`, the same split as
+    /// `ApprovalPlacement.expanded(header:)`: a card's height changes only when the
+    /// placement changes (one card ↔ several), and a new placement re-arms every card.
+    /// Going from two cards to three, or back, never resizes a card.
     public static func boxLines(diffCount: Int, cards: Int) -> Int {
-        min(diffCount, cards == 1 ? 8 : 4)
+        min(diffCount, cards > 1 ? 4 : 8)
+    }
+
+    /// Whether the payload carries something the diff would show, without building it (the
+    /// peek's "Show changes"): Edit's two strings differing, a MultiEdit edit doing so, or
+    /// non-empty Write `content` / NotebookEdit `new_source`. Same answer as
+    /// `!ApprovalPreview(approval:).diff.isEmpty`.
+    public static func hasDiff(_ approval: Approval) -> Bool {
+        guard case .object(let input)? = approval.input?.value else { return false }
+        func string(_ key: String, _ o: [String: JSONValue]) -> String? {
+            if case .string(let s)? = o[key] { return s }
+            return nil
+        }
+        if let old = string("old_string", input), let new = string("new_string", input) { return old != new }
+        if case .array(let edits)? = input["edits"] {
+            for case .object(let e) in edits {
+                if let old = string("old_string", e), let new = string("new_string", e), old != new { return true }
+            }
+            return false
+        }
+        if let added = string("content", input) ?? string("new_source", input) { return !added.isEmpty }
+        return false
+    }
+}
+
+/// Previews by approval id (approvals do not change once posted): each diff is built once,
+/// not on every redraw. An approval whose content differs from the cached one is rebuilt.
+public final class ApprovalPreviewCache: @unchecked Sendable {
+    public static let shared = ApprovalPreviewCache()
+
+    private let lock = NSLock()
+    /// Guarded by `lock`.
+    private var entries: [String: (Approval, ApprovalPreview)] = [:]
+    /// Guarded by `lock`: how many previews were built (tests).
+    private var builds = 0
+
+    public init() {}
+
+    public func preview(for approval: Approval) -> ApprovalPreview {
+        lock.lock()
+        if let (cached, preview) = entries[approval.id], cached == approval {
+            lock.unlock()
+            return preview
+        }
+        lock.unlock()
+        let preview = ApprovalPreview(approval: approval)
+        lock.lock()
+        entries[approval.id] = (approval, preview)
+        builds += 1
+        lock.unlock()
+        return preview
+    }
+
+    /// Drops previews of approvals no longer pending.
+    public func keep(ids: Set<String>) {
+        lock.lock()
+        entries = entries.filter { ids.contains($0.key) }
+        lock.unlock()
+    }
+
+    public var buildCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return builds
     }
 }

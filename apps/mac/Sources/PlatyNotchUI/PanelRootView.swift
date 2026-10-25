@@ -296,9 +296,9 @@ struct ApprovalPeek: View {
                             onOpenTerminal: onOpenTerminal)
     }
 
-    /// The payload carries a diff to show in the open panel.
+    /// The payload carries a diff to show in the open panel (never built here).
     static func showsChanges(_ approval: Approval) -> Bool {
-        !ApprovalPreview(approval: approval).diff.isEmpty
+        ApprovalPreview.hasDiff(approval)
     }
 
     var body: some View {
