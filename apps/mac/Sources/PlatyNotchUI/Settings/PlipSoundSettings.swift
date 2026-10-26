@@ -17,6 +17,16 @@ final class PlipSoundModel {
         self.defaults = defaults
         self.play = play
         settings = PlipSettings.load(from: defaults)
+        checkChosenFile()
+    }
+
+    /// A chosen file that no longer plays (gone, unreadable or now over 5 s): back to Platy
+    /// chatter, and the reason shows.
+    func checkChosenFile() {
+        guard let problem = PlipPlayer.sound(for: settings).fellBack else { return }
+        error = problem.message
+        settings.choice = .chatter
+        settings.save(to: defaults)
     }
 
     var enabled: Bool {
@@ -56,6 +66,7 @@ final class PlipSoundModel {
 
     /// Plays the current sound once, on or off.
     func preview() {
+        checkChosenFile()
         guard let url = PlipPlayer.url(for: settings) else { return }
         if !play(url, PlipPolicy.volume) { error = PlipValidation.unreadable.message }
     }

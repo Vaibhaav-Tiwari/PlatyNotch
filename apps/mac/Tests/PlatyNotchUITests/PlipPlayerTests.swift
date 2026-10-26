@@ -274,4 +274,34 @@ final class PlipPlayerTests: DefaultsTestCase {
         XCTAssertFalse(platy.celebrating)
         platy.stop()
     }
+
+    /// A chosen file that stopped working: Settings says why and the choice goes back to
+    /// Platy chatter (saved), and the player does the same when it next plays.
+    func testFallbackResetsTheChoiceAndSaysWhy() throws {
+        let file = try wav("gone-too.wav", seconds: 0.3)
+        let model = PlipSoundModel(defaults: defaults(), play: { _, _ in true })
+        XCTAssertEqual(model.choose(file), .ok)
+        XCTAssertEqual(model.choice, .custom)
+        try FileManager.default.removeItem(at: file)
+        model.preview()
+        XCTAssertEqual(model.error, PlipValidation.unreadable.message)
+        XCTAssertEqual(model.choice, .chatter)
+        XCTAssertEqual(PlipSettings.load(from: defaults()).choice, .chatter)
+        // A model opened later sees the same at once.
+        let long = try wav("long-later.wav", seconds: 6)
+        var s = PlipSettings.load(from: defaults())
+        s.choice = .custom
+        s.bookmark = try long.bookmarkData()
+        s.save(to: defaults())
+        let later = PlipSoundModel(defaults: defaults(), play: { _, _ in true })
+        XCTAssertEqual(later.choice, .chatter)
+        XCTAssertNotNil(later.error)
+        // The player resets it too.
+        s.choice = .custom
+        s.enabled = true
+        s.save(to: defaults())
+        player().agentNeedsYou(session(term: nil))
+        XCTAssertEqual(played.first?.0, CueSound.plip.url)
+        XCTAssertEqual(PlipSettings.load(from: defaults()).choice, .chatter)
+    }
 }

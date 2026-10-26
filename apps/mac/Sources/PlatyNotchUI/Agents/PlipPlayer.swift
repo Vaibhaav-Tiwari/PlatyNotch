@@ -68,7 +68,14 @@ final class PlipPlayer {
         guard audible else { return }
         let now = seams.now()
         if let lastPlayed, now.timeIntervalSince(lastPlayed) < Self.quietGap { return }
-        guard let url = Self.url(for: settings) else { return }
+        let sound = Self.sound(for: settings)
+        if sound.fellBack != nil {
+            // The chosen file no longer works: Platy chatter from now on (Settings says why).
+            var reset = settings
+            reset.choice = .chatter
+            reset.save(to: defaults)
+        }
+        guard let url = sound.url else { return }
         if seams.play(url, PlipPolicy.volume) { lastPlayed = now }
     }
 
@@ -101,12 +108,18 @@ final class PlipPlayer {
     /// The file that plays: the chosen file while its bookmark still leads to it and it
     /// still plays and lasts 5 s or less (it may have been replaced since), else Platy chatter.
     static func url(for settings: PlipSettings) -> URL? {
-        if settings.effectiveChoice == .custom, let url = resolve(settings),
-           FileManager.default.fileExists(atPath: url.path),
-           PlipPolicy.validate(duration: duration(of: url)) == .ok {
-            return url
+        sound(for: settings).url
+    }
+
+    /// The file that plays and, when a chosen file had to be passed over for Platy chatter,
+    /// why (missing or unreadable, or now longer than 5 s).
+    static func sound(for settings: PlipSettings) -> (url: URL?, fellBack: PlipValidation?) {
+        guard settings.effectiveChoice == .custom else { return (CueSound.plip.url, nil) }
+        guard let url = resolve(settings), FileManager.default.fileExists(atPath: url.path) else {
+            return (CueSound.plip.url, .unreadable)
         }
-        return CueSound.plip.url
+        let verdict = PlipPolicy.validate(duration: duration(of: url))
+        return verdict == .ok ? (url, nil) : (CueSound.plip.url, verdict)
     }
 
     /// The chosen file from its bookmark (nil when there is none or it cannot be found).
