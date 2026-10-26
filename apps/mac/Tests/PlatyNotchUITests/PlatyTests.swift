@@ -228,4 +228,56 @@ final class PlatyTests: DefaultsTestCase {
         let names = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasPrefix("pup-") }
         XCTAssertEqual(Set(names), Set(AgentIdentity.allCases.map { "pup-\($0.rawValue).png" }))
     }
+
+    // MARK: Moments (Task 30)
+
+    /// Every agent finishing is a 2-second moment, once, and never while an approval waits.
+    func testAllAgentsFinishedIsAMoment() {
+        var now = Date(timeIntervalSince1970: 2_000_000)
+        var approvals = 0
+        let activity = AgentActivityModel()
+        let platy = PlatyMoodModel(now: { now })
+        activity.celebrateAllFinished(on: platy, approvals: { approvals }, now: { now })
+        activity.sessionsChanged([session("a", .active)], now: now)
+        XCTAssertFalse(platy.celebrating)
+        activity.sessionsChanged([session("a", .idle)], now: now)
+        XCTAssertTrue(platy.celebrating)
+        now = now.addingTimeInterval(PlatyMoodFlags.celebrationLength + 0.1)
+        platy.refresh()
+        XCTAssertFalse(platy.celebrating)
+        // With an approval waiting: no moment.
+        approvals = 1
+        activity.sessionsChanged([session("a", .active)], now: now)
+        now = now.addingTimeInterval(30)
+        activity.sessionsChanged([session("a", .idle)], now: now)
+        XCTAssertFalse(platy.celebrating)
+        platy.stop()
+    }
+
+    /// `celebrate()` still works as before (ungated), and the gated form drops repeats.
+    func testCelebrateWrapperAndGate() {
+        let now = Date(timeIntervalSince1970: 3_000_000)
+        let platy = PlatyMoodModel(now: { now })
+        XCTAssertTrue(platy.celebrate(.newBest(game: "snake", score: 9), approvalsPending: 0))
+        XCTAssertFalse(platy.celebrate(.newBest(game: "snake", score: 9), approvalsPending: 0))
+        XCTAssertFalse(platy.celebrate(.focusComplete(endedAt: now), approvalsPending: 1))
+        platy.celebrate()
+        XCTAssertTrue(platy.celebrating)
+        platy.stop()
+    }
+
+    /// The focus session's end plays its sound and sends the moment.
+    func testFocusCompleteIsAMoment() {
+        let platy = PlatyMoodModel()
+        var sounds = 0
+        let focus = FocusModel(defaults: defaults(), onFinish: Moments.focusFinished(platy: platy, approvals: { 0 },
+                                                                                      playSound: { sounds += 1 }))
+        let start = Date()
+        focus.start(minutes: 1, now: start)
+        XCTAssertEqual(sounds, 0)
+        focus.reconcile(now: start.addingTimeInterval(61), announce: true)
+        XCTAssertEqual(sounds, 1)
+        XCTAssertTrue(platy.celebrating)
+        platy.stop()
+    }
 }

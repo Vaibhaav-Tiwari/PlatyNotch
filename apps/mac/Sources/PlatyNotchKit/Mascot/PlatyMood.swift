@@ -145,7 +145,8 @@ public struct PlatyFinishWatch: Sendable {
 /// celebrating (a game's new best, `GamesWidget.onNewBest`).
 public struct PlatyMoodFlags: Equatable, Sendable {
     public static let doneLength: TimeInterval = 4
-    public static let celebrationLength: TimeInterval = 4
+    /// A moment lasts at most 2 seconds (spec 8.4).
+    public static let celebrationLength: TimeInterval = 2
 
     public private(set) var doneUntil: Date?
     public private(set) var celebrationUntil: Date?

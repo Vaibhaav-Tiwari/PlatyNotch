@@ -92,9 +92,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var responder = ApprovalResponder(client: client)
     /// Now playing, calendar, focus and loop actions, shared by every display.
     /// Smoke runs never create a real audio tap (the visualiser gets one that does nothing).
-    private lazy var today = TodayServices(client: client, visualiser: MusicVisualiser(makeTap: { [options] in
-        options.smoke || options.smokeSettings ? NoAudioTap() as AudioTapping : SystemAudioTap()
-    }))
+    private lazy var today: TodayServices = {
+        // A focus session's end plays its sound and is a moment (never during an approval).
+        let platy = PlatyMoodModel()
+        let store = self.store
+        let focus = FocusModel(defaults: .standard,
+                               onFinish: Moments.focusFinished(platy: platy, approvals: { store.approvals.count }))
+        return TodayServices(client: client, visualiser: MusicVisualiser(makeTap: { [options] in
+            options.smoke || options.smokeSettings ? NoAudioTap() as AudioTapping : SystemAudioTap()
+        }), focus: focus, platy: platy)
+    }()
     /// Built-in and plugin widgets. Smoke runs read the saved layout but never write it.
     /// Smoke and perf runs never save the layout (perf-idle forces it through the argument domain).
     private lazy var widgets = WidgetRegistry(persist: !options.smoke && !options.smokeSettings && !options.perfRun)
@@ -205,6 +212,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         today.agentActivity.start(store: store)
         today.agentActivity.postNeedsInputNotices(to: store)
+        // Every agent finished: a 2-second moment (once, never during an approval).
+        let approvalsStore = store
+        today.agentActivity.celebrateAllFinished(on: today.platy, approvals: { approvalsStore.approvals.count })
         // Settings › Notifications (kept current in `appearanceMayHaveChanged`); "quiet
         // during Focus" follows the focus session, as the notice hold always has.
         surfaces.notificationPolicy = NotificationPolicy.load(from: .standard)
