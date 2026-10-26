@@ -1396,10 +1396,12 @@ This prints `SHOWCASE OK renders=10`. It writes ten PNGs: five scenes, each in d
 - `library`
 - `platy-idle`, which shows the evening pond
 
-Each PNG is the full 560 × 380 open panel at 2×, with the black band level with the
-camera housing, on a transparent background. The command uses inert models: it reads no
-player, calendar or agent and saves nothing. It draws in an off-screen window, so nothing
-appears on screen.
+Each PNG is 16:9 (800 × 450 points at 2×). It shows the open panel, cropped to its
+content, hanging from a drawn menu bar and camera notch over a gradient wallpaper drawn in
+code, so it uses no photograph and no Apple wallpaper.
+
+The command uses inert models: it reads no player, calendar or agent and saves nothing. It
+draws in an off-screen window, so nothing appears on screen.
 
 The README header is `docs/assets/showcase/now-agent-dark.png`.
 
@@ -1410,4 +1412,6 @@ The 20-second screen recording is scripted in `docs/showcase/recording-script.md
   - every scene shows "Now", "Agents" and "Library";
   - nothing is clipped;
   - the header is quiet: no "Connecting…";
-  - the light set uses the light surface under the black band.
+  - the light set uses the light surface under the black band;
+  - the same meeting name appears everywhere;
+  - the Library grid ends on a full row.
