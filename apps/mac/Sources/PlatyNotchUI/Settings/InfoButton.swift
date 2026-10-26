@@ -27,7 +27,7 @@ struct InfoButton: View {
             Text(verbatim: text)
                 .font(DS.font(TypeScale.body))
                 .fixedSize(horizontal: false, vertical: true)
-                .frame(width: 260, alignment: .leading)
+                .frame(width: text.count > 300 ? 380 : 260, alignment: .leading)
                 .padding(12)
         }
     }
@@ -163,8 +163,15 @@ extension EnvironmentValues {
     }
 }
 
-/// A setting's explanation. On a Settings page it is one quiet line (its first sentence)
-/// with the whole text behind an ⓘ; elsewhere (a Library tool page) it reads in full.
+/// The explanations a widget's settings page holds, gathered for its header's ⓘ.
+struct SettingsNotesKey: PreferenceKey {
+    static let defaultValue: [String] = []
+    static func reduce(value: inout [String], nextValue: () -> [String]) { value += nextValue() }
+}
+
+/// A setting's explanation. On a Settings page it takes no room: its text joins the page's
+/// one ⓘ beside the explicit summary line (`WidgetDetail`); elsewhere (a Library tool page)
+/// it reads in full.
 struct SettingsNote: View {
     let text: String
     @Environment(\.settingsDetail) private var detail
@@ -177,22 +184,11 @@ struct SettingsNote: View {
         self.text = text
     }
 
-    /// The first sentence, for the one-line form.
-    static func lead(_ text: String) -> String {
-        guard let r = text.range(of: ". ") else { return text }
-        return String(text[..<r.lowerBound]) + "."
-    }
-
     var body: some View {
         if detail {
-            HStack(alignment: .firstTextBaseline, spacing: 5) {
-                Text(verbatim: Self.lead(text))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                if Self.lead(text) != text { InfoButton(text) }
-            }
-            .font(DS.font(TypeScale.caption))
-            .foregroundStyle(.secondary)
+            Color.clear.frame(width: 0, height: 0)
+                .preference(key: SettingsNotesKey.self, value: [text])
+                .accessibilityHidden(true)
         } else {
             Text(verbatim: text)
         }

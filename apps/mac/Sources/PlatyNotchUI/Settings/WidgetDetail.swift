@@ -9,32 +9,35 @@ struct WidgetDetail: View {
     let widgets: WidgetRegistry
     let onBack: () -> Void
 
-    /// One line on what a built-in widget does; plug-ins say where they come from.
+    /// The page's summary: one line, under 60 characters, that reads well on its own
+    /// (credits and the fine print go behind the ⓘ beside it).
     static func summary(_ id: String) -> String {
         switch id {
-        case "music": "What is playing, with controls and the album's colour."
-        case "meeting": "Your next meeting, its Join button and reminders."
-        case "focus": "A focus timer that keeps notices quiet while it runs."
-        case "loops": "Promises and follow-ups Memory notices."
-        case "time": "Timers, a stopwatch, alarms and world clocks."
-        case "hud": "Volume and brightness in the notch instead of the system HUD."
-        case "shelf": "A place in the notch to keep files, links and text."
-        case "clipboard": "What you copied, ready to paste again."
-        case "reminders": "Reminders due today, ticked off from the notch."
-        case "weather": "The weather where you choose, refreshed every 30 minutes."
-        case "wellbeing": "Gentle nudges to drink water, stand and rest your eyes."
-        case "system": "Battery, keep awake, headphones and downloads."
-        case "games": "Five small games for a short break."
-        case "launch": "Pinned sites and shortcuts, a click away."
-        case "baskets": "Shake while dragging for a basket to drop things into."
-        case "fileActions": "Convert, compress and rename files on the shelf."
-        case "mail": "Mail's unread count and the newest messages."
-        case "notes": "Quick notes and tasks in your notes folder."
-        case "mirror": "Your camera, to check how you look before a call."
-        case "snap": "Move windows to halves, thirds and corners with shortcuts."
-        default: "From a plug-in."
+        case "music": "What is playing, with controls"
+        case "meeting": "Your next meeting and its Join button"
+        case "focus": "A focus timer that keeps the notch quiet"
+        case "loops": "Promises and follow-ups Memory notices"
+        case "time": "Timers, stopwatch, alarms and world clocks"
+        case "hud": "Volume and brightness in the notch"
+        case "shelf": "A place in the notch for files, links and text"
+        case "clipboard": "History of what you copy, kept on this Mac"
+        case "reminders": "Reminders due today, ticked off from the notch"
+        case "weather": "Local forecast for your city"
+        case "wellbeing": "Gentle nudges to drink, stand and rest your eyes"
+        case "system": "Battery, keep awake, headphones and downloads"
+        case "games": "Five small games for a short break"
+        case "launch": "Pinned sites and shortcuts, a click away"
+        case "baskets": "Shake while dragging to get a basket"
+        case "fileActions": "Convert, compress and rename shelf files"
+        case "mail": "Unread count and the newest messages"
+        case "notes": "Quick notes and tasks in your notes folder"
+        case "mirror": "Your camera, to check before a call"
+        case "snap": "Move windows to halves, thirds and corners"
+        default: "From a plug-in"
         }
     }
+
+    @State private var notes: [String] = []
 
     var body: some View {
         let on: Bool = widgets.isEnabled(widget.id)
@@ -50,6 +53,7 @@ struct WidgetDetail: View {
                                 settings
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .environment(\.settingsDetail, true)
+                                    .onPreferenceChange(SettingsNotesKey.self) { notes = $0 }
                             } footer: {
                                 if !on {
                                     Text("Turn \(widget.title) on to change its settings.")
@@ -89,9 +93,13 @@ struct WidgetDetail: View {
                             .background(SettingsTint.well, in: Capsule())
                     }
                 }
-                Text(verbatim: Self.summary(widget.id))
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 5) {
+                    Text(verbatim: Self.summary(widget.id))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    if !notes.isEmpty { InfoButton(notes.joined(separator: "\n\n")) }
+                }
             }
             Spacer()
             Toggle(isOn: Binding(get: { on }, set: { widgets.setEnabled(widget.id, $0) })) {
