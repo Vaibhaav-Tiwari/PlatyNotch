@@ -12,6 +12,12 @@ import SwiftUI
 @MainActor
 enum ShowcaseRenders {
     static let scenes = ["now-music", "now-agent", "approval-diff", "library", "platy-idle"]
+    /// The scenes' clock: today at 14:59 (the pond at 19:12), so a regeneration shows the
+    /// same times.
+    static var clock: Date {
+        Calendar.current.date(bySettingHour: 14, minute: 59, second: 0, of: Date()) ?? Date()
+    }
+
     /// The picture, 16:9 (points; written at 2x).
     static let canvas = CGSize(width: 800, height: 450)
 
@@ -52,7 +58,7 @@ enum ShowcaseRenders {
     /// A scene's content (what `NowRenders.panel` lays out below the housing), connected
     /// to the core so the header is quiet.
     static func scene(_ name: String) -> Scene {
-        let now = Date()
+        let now = clock
         var rig: NowRenders.Rig
         var route = PanelRoute(destination: .now)
         var time: Date = now
@@ -65,11 +71,13 @@ enum ShowcaseRenders {
         case "now-agent":
             rig = NowRenders.agentsHero(at: now)
         case "approval-diff":
+            // The card's countdown and the rows' times run on the real clock (as in the app),
+            // so the approval is 20 s old in real time; its "4:40" never changes.
             rig = AgentsRenders.approvals([diffApproval()])
             route = PanelRoute(destination: .agents)
             height = PanelLayout.expandedSize.height
         case "library":
-            rig = library()
+            rig = library(at: now)
             route = PanelRoute(destination: .library)
             height = 360
         default:
@@ -77,7 +85,10 @@ enum ShowcaseRenders {
             rig = NowRenders.pond(hour: 19)
         }
         rig.store.apply(.connected)
-        return Scene(content: NowRenders.panel(rig, route: route, now: time), height: height, time: time)
+        // The approval's rows count from the real clock, like its card; the others use the
+        // fixed one.
+        let panelNow: Date? = name == "approval-diff" ? nil : time
+        return Scene(content: NowRenders.panel(rig, route: route, now: panelNow), height: height, time: time)
     }
 
     /// A believable Edit: eight lines of Swift with a small, readable change.
@@ -112,8 +123,8 @@ enum ShowcaseRenders {
 
     /// Twelve tiles, every one set up with something to say: three full rows, so the grid
     /// ends cleanly.
-    static func library() -> NowRenders.Rig {
-        let rig = NowRenders.builtIns(meeting: true)
+    static func library(at now: Date) -> NowRenders.Rig {
+        let rig = NowRenders.builtIns(meeting: true, at: now)
         // Ten widgets, plus Platy Chase and Memory, which are always tools.
         let shown: Set<String> = [MusicWidget.widgetID, MeetingWidget.widgetID, FocusWidget.widgetID, LoopsWidget.widgetID,
                                   TimeWidget.widgetID, ShelfWidget.widgetID, RemindersWidget.widgetID,
@@ -122,7 +133,6 @@ enum ShowcaseRenders {
         rig.today.nowPlaying.debugApply(NowPlayingInfo(bundleIdentifier: "com.apple.Music", title: "Weightless",
                                                        artist: "Marconi Union", isPlaying: true))
         _ = (rig.registry.widget(TimeWidget.widgetID) as? TimeWidget)?.addTimer("25m")
-        let now = Date()
         (rig.registry.widget(ShelfWidget.widgetID) as? ShelfWidget)?.showForRendering([
             ShelfItem(kind: .text("Release checklist: notarise, tag, appcast"), addedAt: now),
             ShelfItem(kind: .url(URL(string: "https://example.com/specs/library")!), addedAt: now),
