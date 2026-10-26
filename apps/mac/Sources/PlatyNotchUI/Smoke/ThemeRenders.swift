@@ -230,7 +230,7 @@ enum NowRenders {
         out.append(("now-try-it-sample", panel(builtIns(meeting: false), tourSample: TryItSession.sample), true))
         // Platy's pond through the day (the summary above draws today's phase).
         for (phase, hour) in [("morning", 8), ("evening", 19), ("night", 23)] {
-            out.append(("now-pond-\(phase)", panel(builtIns(meeting: false, at: at(hour: hour)), now: at(hour: hour)), true))
+            out.append(("now-pond-\(phase)", panel(pond(hour: hour), now: at(hour: hour)), true))
         }
         out += AgentsRenders.views()
         out += LibraryRenders.views()
@@ -240,15 +240,25 @@ enum NowRenders {
     /// Every built-in on with glances, loops and tasks, and nothing live yet.
     static func builtIns(meeting: Bool, at now: Date = Date()) -> Rig {
         let rig = Rig()
-        BuiltInWidgets.register(in: rig.registry, store: rig.store, today: rig.today, persist: false)
+        BuiltInWidgets.register(in: rig.registry, store: rig.store, today: rig.today, persist: false,
+                                clock: { now })
         rig.startAll()
         seed(rig, meeting: meeting, at: now)
         return rig
     }
 
+    /// Nothing live at `hour`:12 with the meeting glance on the same clock, and Platy in the
+    /// mood for that hour (sleepy at night).
+    static func pond(hour: Int) -> Rig {
+        var rig = builtIns(meeting: false, at: at(hour: hour))
+        rig.mood = PlatyMoodResolver.mood(sessions: [], approvalsPending: 0, musicPlaying: false, focusActive: false,
+                                          justFinished: false, hour: hour)
+        return rig
+    }
+
     /// A track playing (no artwork in a smoke run: the placeholder).
-    static func musicHero() -> Rig {
-        let rig = builtIns(meeting: false)
+    static func musicHero(at now: Date = Date()) -> Rig {
+        let rig = builtIns(meeting: false, at: now)
         rig.today.nowPlaying.debugApply(NowPlayingInfo(bundleIdentifier: "com.apple.Music", title: "Weightless",
                                                        artist: "Marconi Union", isPlaying: true))
         return rig
@@ -267,10 +277,10 @@ enum NowRenders {
     }
 
     /// Two agents working.
-    static func agentsHero() -> Rig {
-        var rig = builtIns(meeting: false)
+    static func agentsHero(at now: Date = Date()) -> Rig {
+        var rig = builtIns(meeting: false, at: now)
         rig.mood = .working
-        let start = Date().addingTimeInterval(-252)
+        let start = now.addingTimeInterval(-252)
         let sessions = [
             Session(key: "a", agent: "claude-code", agentName: "Claude Code", sessionID: "a", project: "platynotch",
                     state: .active, title: "Running tests", startedAt: start, updatedAt: Date()),
@@ -313,7 +323,7 @@ enum NowRenders {
             registry = WidgetRegistry(defaults: glances, persist: false)
             // Inert: a render never reads the Mac's real player (its track is set by hand).
             let nowPlaying = NowPlaying()
-            nowPlaying.makeInertForRendering()
+            nowPlaying.inert = true
             today = TodayServices(client: client, nowPlaying: nowPlaying,
                                   visualiser: MusicVisualiser(defaults: glances),
                                   calendar: CalendarService(eventKit: false),
@@ -412,12 +422,11 @@ enum NowRenders {
         let usage: Usage = (try? JSONCoding.decoder.decode(Usage.self, from: Data(json.utf8))) ?? Usage()
         try? rig.store.apply(Envelope.make(.snapshot, Snapshot(usage: usage, loops: loops)))
         let start = now.addingTimeInterval(8 * 60)
-        // Today, and not yet live; never before the real clock, which the meeting glance reads.
-        let later = max(now, Date()).addingTimeInterval(45 * 60)
+        let later = now.addingTimeInterval(45 * 60)   // today, and not yet live
         let next = meeting ? CalendarMeeting(id: "design", title: "Design review", start: start,
                                              end: start.addingTimeInterval(1800),
                                              joinURL: URL(string: "https://meet.example.com/design"))
-                           : CalendarMeeting(id: "sync", title: "Team sync", start: later, end: later.addingTimeInterval(1800))
+                           : CalendarMeeting(id: "sync", title: "Design review", start: later, end: later.addingTimeInterval(1800))
         rig.today.calendar.setForTesting(access: .granted, meetings: [next])
         let tasks = ["Book flights", "Water the plants", "Call the bank"].enumerated().map { i, title in
             ReminderItem(id: "r\(i)", title: title, due: now, hasTime: false)

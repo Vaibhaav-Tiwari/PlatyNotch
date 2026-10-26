@@ -85,10 +85,11 @@ enum BuiltInWidgets {
     }
 
     /// `clipboard`: the app keeps its instance for the menu bar's pause item (C23).
+    /// `clock`: the meeting widget's time (renders pass a fixed one).
     static func register(in registry: WidgetRegistry, store: AppStore, today: TodayServices, persist: Bool = true,
-                         clipboard: ClipboardWidget? = nil) {
+                         clipboard: ClipboardWidget? = nil, clock: @escaping () -> Date = Date.init) {
         registry.register(MusicWidget(nowPlaying: today.nowPlaying, visualiser: today.visualiser))
-        let meeting = MeetingWidget(calendar: today.calendar)
+        let meeting = MeetingWidget(calendar: today.calendar, clock: clock)
         registry.register(meeting)
         registry.register(FocusWidget(focus: today.focus))
         registry.register(LoopsWidget(store: store, actions: today.loops))
