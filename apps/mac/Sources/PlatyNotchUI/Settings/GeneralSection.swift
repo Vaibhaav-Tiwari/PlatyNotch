@@ -13,7 +13,7 @@ struct GeneralSection: View {
     @State private var revision = 0
 
     var body: some View {
-        SettingsPage("General") {
+        SettingsPage("General", subtitle: "Startup, updates and your setup.") {
             Form {
                 Section {
                     Toggle(isOn: Binding(get: { loginEnabled }, set: { on in setLogin(on) })) {

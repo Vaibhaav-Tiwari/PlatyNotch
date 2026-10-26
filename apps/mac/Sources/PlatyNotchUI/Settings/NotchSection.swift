@@ -8,7 +8,7 @@ struct NotchSection: View {
     @State private var settings = AppearanceStore.load(from: .standard)
 
     var body: some View {
-        SettingsPage("Notch", systemImage: PlatyNotchKit.SettingsPage.notch.systemImage) {
+        SettingsPage("Notch", subtitle: "How the notch looks, opens and moves.") {
             NotchPreview(appearance: settings)
                 .padding(.horizontal, 4)
             Form {

@@ -16,7 +16,7 @@ struct MemorySection: View {
     private var config: ConfigFileStore { services.config }
 
     var body: some View {
-        SettingsPage("Memory", subtitle: "PlatyNotch can remember text from the windows you work in, so you and your agents can search it.") {
+        SettingsPage("Memory", subtitle: "Search the text of windows you work in. Off unless you turn it on.") {
             Form {
                 Section {
                     Toggle(isOn: $draft.enabled) { SettingLabel("Remember on-screen text", info: storageNote) }

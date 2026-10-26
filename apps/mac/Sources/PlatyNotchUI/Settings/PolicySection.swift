@@ -12,38 +12,38 @@ struct PolicySection: View {
     @State private var error: String?
 
     var body: some View {
-        SettingsPage("Policy", subtitle: "Rules run first, top to bottom; the first match wins. Patterns are globs: * matches anything, ? one character.") {
+        SettingsPage("Policy", subtitle: "Rules run first, top to bottom; the first match wins.", systemImage: "list.bullet.rectangle") {
             Table($draft, selection: $selection) {
                 TableColumn("Tool") { $rule in
                     TextField("Tool", text: $rule.tool).font(.system(.body, design: .monospaced))
                 }
-                .width(min: 70, ideal: 90)
+                .width(64)
                 TableColumn("Pattern") { $rule in
                     TextField("Pattern", text: $rule.pattern).font(.system(.body, design: .monospaced))
                 }
-                .width(min: 140, ideal: 200)
+                .width(min: 110, ideal: 150)
                 TableColumn("Action") { $rule in
                     Picker("Action", selection: $rule.action) {
                         ForEach(ConfigFile.Rule.actions, id: \.self) { Text($0).tag($0) }
                     }
                     .labelsHidden()
                 }
-                .width(min: 70, ideal: 80)
+                .width(78)
                 TableColumn("Reason") { $rule in
                     TextField("Reason", text: $rule.reason)
                 }
-                .width(min: 120, ideal: 200)
+                .width(min: 100)
             }
             .frame(minHeight: 180, idealHeight: 240)
 
-            Label {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(PolicyRuleCheck.allowNote)
-                    Text(PolicyRuleCheck.allowDetail).font(DS.font(TypeScale.caption))
-                }
-            } icon: { Image(systemName: "info.circle") }
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 5) {
+                Text("Allow rules only auto-approve plain commands, paths and URLs.")
+                    .font(DS.font(TypeScale.caption))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                InfoButton(PolicyRuleCheck.allowNote + " " + PolicyRuleCheck.allowDetail
+                           + " Patterns are globs: * matches anything, ? one character.")
+            }
 
             ForEach(Array(draft.enumerated()), id: \.element.id) { i, rule in
                 if let w = PolicyRuleCheck.warning(rule) {
@@ -52,16 +52,29 @@ struct PolicySection: View {
                 }
             }
 
-            HStack {
-                Button { add() } label: { Label("Add rule", systemImage: "plus") }
-                Button { remove() } label: { Label("Remove", systemImage: "minus") }
-                    .disabled(selection == nil)
-                Button { move(-1) } label: { Image(systemName: "arrow.up") }
-                    .disabled(selection == nil).help("Move up")
-                Button { move(1) } label: { Image(systemName: "arrow.down") }
-                    .disabled(selection == nil).help("Move down")
+            HStack(spacing: 10) {
+                ControlGroup {
+                    Button { add() } label: { Image(systemName: "plus") }
+                        .help("Add a rule").accessibilityLabel("Add rule")
+                    Button { remove() } label: { Image(systemName: "minus") }
+                        .disabled(selection == nil).help("Remove the selected rule").accessibilityLabel("Remove rule")
+                    Button { move(-1) } label: { Image(systemName: "arrow.up") }
+                        .disabled(selection == nil).help("Move up").accessibilityLabel("Move rule up")
+                    Button { move(1) } label: { Image(systemName: "arrow.down") }
+                        .disabled(selection == nil).help("Move down").accessibilityLabel("Move rule down")
+                }
+                .fixedSize()
+                Menu {
+                    Button("Restore Default Rules") { draft = ConfigFile.defaultRules }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("More")
+                .accessibilityLabel("More")
                 Spacer()
-                Button("Restore defaults") { draft = ConfigFile.defaultRules }
                 Button("Revert") { load() }.disabled(draft == base)
                 Button("Save") { save() }
                     .keyboardShortcut("s", modifiers: .command)

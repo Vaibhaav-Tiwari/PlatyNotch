@@ -7,7 +7,7 @@ struct ApprovalsSection: View {
 
     var body: some View {
         let a = config.config.approvals
-        SettingsPage("Approvals", subtitle: "Answer agents' permission prompts from the notch.") {
+        SettingsPage("Approvals", subtitle: "Answer agents' permission prompts from the notch.", systemImage: "checkmark.shield") {
             Form {
                 Toggle(isOn: Binding(get: { a.enabled }, set: { on in config.set { $0.approvals.enabled = on } })) {
                     SettingLabel("Answer permission prompts in the notch",

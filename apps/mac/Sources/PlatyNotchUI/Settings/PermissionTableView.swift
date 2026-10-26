@@ -21,7 +21,7 @@ struct PermissionTableView: View {
                 line(row)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, compact ? 2 : 4)
         .padding(.horizontal, 14)
         .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.06)))
@@ -63,7 +63,7 @@ struct PermissionTableView: View {
             Spacer(minLength: 8)
             control(row)
         }
-        .padding(.vertical, compact ? 4 : 9)
+        .padding(.vertical, compact ? 2 : 9)
     }
 
     @ViewBuilder private func control(_ row: PermissionRow) -> some View {

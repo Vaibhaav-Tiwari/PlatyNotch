@@ -6,7 +6,7 @@ struct AboutSection: View {
     @Bindable var updater: AppUpdater
 
     var body: some View {
-        SettingsPage("About") {
+        SettingsPage("About", subtitle: "Version, source and licence.") {
             HStack(spacing: 14) {
                 PlatyView(mood: .idle, size: 56)
                 VStack(alignment: .leading, spacing: 3) {

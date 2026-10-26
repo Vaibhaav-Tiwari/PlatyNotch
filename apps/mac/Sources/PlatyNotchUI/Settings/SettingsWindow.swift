@@ -230,6 +230,7 @@ final class SettingsWindowController {
                          backing: .buffered, defer: false)
         w.title = "PlatyNotch Settings"
         w.titlebarAppearsTransparent = true
+        w.titleVisibility = .hidden
         w.toolbarStyle = .unified
         w.identifier = AppWindowID.settings
         // The window, not the SwiftUI content's ideal size, decides the size (see onboarding).
@@ -301,17 +302,27 @@ struct SettingsRootView: View {
     }
 }
 
-/// The sidebar: each page's symbol in a tinted well, the selected row on a soft teal
-/// wash (never the system's blue selection); plug-in sections under "Extensions".
+/// The sidebar: plain symbols, the selected page's in a filled teal well on a soft teal
+/// wash (never the system's blue selection), in three groups; ↑ and ↓ move between pages.
 private struct SettingsSidebar: View {
     @Bindable var model: SettingsModel
     let pluginSections: [SettingsSection]
+    @FocusState private var focused: Bool
+
+    /// General, Notch, Now, Notifications · Widgets, Agents, Memory · Privacy, About.
+    static let groups: [[SettingsPageID]] = [[.general, .notch, .now, .notifications], [.widgets, .agents, .memory],
+                                              [.privacy, .about]]
+
+    private var ids: [String] { SettingsModel.builtIn.map(\.id) + pluginSections.map(\.id) }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(SettingsModel.builtIn, id: \.id) { page in
-                    row(id: page.id, title: page.title, image: page.image)
+            VStack(alignment: .leading, spacing: 1) {
+                ForEach(Array(Self.groups.enumerated()), id: \.offset) { index, group in
+                    if index > 0 { Divider().padding(.vertical, 7).padding(.horizontal, 8) }
+                    ForEach(group.filter { p in SettingsModel.pages.contains(p) }, id: \.self) { p in
+                        row(id: p.rawValue, title: p.title, image: p.systemImage)
+                    }
                 }
                 if !pluginSections.isEmpty {
                     Text("Extensions")
@@ -325,27 +336,49 @@ private struct SettingsSidebar: View {
         }
         .scrollIndicators(.never)
         .background(Color.primary.opacity(0.035))
+        .focusable()
+        .focused($focused)
+        .focusEffectDisabled()
+        .onKeyPress(.upArrow) { step(-1) }
+        .onKeyPress(.downArrow) { step(1) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Settings pages")
+    }
+
+    private func step(_ delta: Int) -> KeyPress.Result {
+        guard let i = ids.firstIndex(of: model.selection), ids.indices.contains(i + delta) else { return .ignored }
+        model.selection = ids[i + delta]
+        return .handled
     }
 
     private func row(id: String, title: String, image: String) -> some View {
         let selected: Bool = model.selection == id
         return Button { model.selection = id } label: {
             HStack(spacing: 9) {
-                SymbolWell(systemImage: image, size: 24, filled: selected)
+                ZStack {
+                    if selected {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous).fill(SettingsTint.accent)
+                    }
+                    Image(systemName: image)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(selected ? AnyShapeStyle(Color.white) : AnyShapeStyle(.secondary))
+                }
+                .frame(width: 22, height: 22)
+                .accessibilityHidden(true)
                 Text(verbatim: title)
                     .font(.system(size: 13, weight: selected ? .semibold : .regular))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
-            .padding(EdgeInsets(top: 4, leading: 6, bottom: 4, trailing: 6))
+            .padding(.horizontal, 6)
+            .frame(height: 28)
             .background(selected ? SettingsTint.well : .clear,
                         in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .focusable(false)
         .accessibilityLabel(title)
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
@@ -389,15 +422,20 @@ struct SettingsPage<Content: View>: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .center, spacing: 12) {
-                    if let systemImage { SymbolWell(systemImage: systemImage, size: 32) }
-                    VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 8) {
+                        if let systemImage {
+                            Image(systemName: systemImage)
+                                .font(.system(size: 17, weight: .medium))
+                                .foregroundStyle(SettingsTint.accent)
+                                .accessibilityHidden(true)
+                        }
                         Text(verbatim: title).font(.system(size: 20, weight: .semibold))
                             .accessibilityAddTraits(.isHeader)
-                        if let subtitle {
-                            Text(verbatim: subtitle).font(.system(size: 12)).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+                    }
+                    if let subtitle {
+                        Text(verbatim: subtitle).font(.system(size: 12)).foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
                 .padding(.bottom, 2)

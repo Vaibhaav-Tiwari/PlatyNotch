@@ -1,117 +1,138 @@
 import PlatyNotchKit
 import SwiftUI
 
-/// Settings › Notch's live preview: the resting pill beside a notch and the open panel
-/// below it, drawn from the settings as they are now (pill width, live side, Platy,
-/// theme, surface, Minimal). Changing Motion replays the open with that motion; so does
-/// a click. Fixed sample content (music and two agents); nothing is read.
+/// Settings › Notch's preview: the top of a 14-inch MacBook Pro's screen at true
+/// proportions, zoomed to `scale` — the menu bar, the camera housing with the real pill
+/// in its ears, and (Open) the panel hanging from it — drawn from the settings as they are
+/// now (pill width, live side, Platy, theme, surface, Minimal). Still unless you switch
+/// between Resting and Open, which plays the chosen motion once (a fade with Reduce Motion).
+/// Fixed sample content (music and two agents); nothing is read.
 struct NotchPreview: View {
     let appearance: AppearanceSettings
     @Environment(\.colorScheme) private var systemScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var open = true
+    @State private var open: Bool
 
-    static let height: CGFloat = 188
+    static let scale: CGFloat = 0.6
+    static let height: CGFloat = 268
+    /// Resting, the strip is just tall enough for the menu bar, the pill and some desktop.
+    static let restingHeight: CGFloat = 96
 
-    init(appearance: AppearanceSettings) {
+    init(appearance: AppearanceSettings, open: Bool = false) {
         self.appearance = appearance
+        _open = State(initialValue: open)
     }
 
     var body: some View {
-        HStack(spacing: 14) {
-            vignette(caption: appearance.mode == .minimal ? "Resting (hidden until something is live)" : "Resting") {
-                restingPill
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Preview", selection: Binding(get: { open }, set: { show($0) })) {
+                Text("Resting").tag(false)
+                Text("Open").tag(true)
             }
-            vignette(caption: "Open") { openPanel }
-                .contentShape(Rectangle())
-                .onTapGesture { replay() }
-                .accessibilityAddTraits(.isButton)
-                .accessibilityHint("Replays opening with the chosen motion")
-        }
-        .frame(height: Self.height)
-        .onChange(of: appearance.motion) { replay() }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Preview of the notch")
-    }
-
-    // MARK: - Pieces
-
-    private func vignette<Content: View>(caption: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(spacing: 8) {
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
             ZStack(alignment: .top) {
                 Wallpaper()
-                content()
+                menuBar
+                if open {
+                    openPanel
+                        .transition(.scale(scale: 0.3, anchor: .top).combined(with: .opacity))
+                } else {
+                    restingPill
+                        .transition(.opacity)
+                }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: Self.height - 26)
+            .frame(height: open ? Self.height - 36 : Self.restingHeight)
             .clipShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
-            Text(verbatim: caption)
-                .font(DS.font(TypeScale.caption))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(open ? "Preview: the open panel" : "Preview: the resting pill")
         }
     }
 
-    /// The notch's real pill at the chosen width, scaled to the vignette.
+    private var layout: PanelLayout { PillRenders.notchLayout(appearance.pillWidth) }
+
+    /// The menu bar at the preview's scale: faint menus on the left, status items on the right.
+    private var menuBar: some View {
+        let h: CGFloat = layout.anchor.height * Self.scale
+        return HStack(spacing: 8) {
+            Image(systemName: "apple.logo").font(.system(size: 11)).foregroundStyle(.white.opacity(0.8))
+            ForEach([34, 26, 26, 30], id: \.self) { w in
+                Capsule().fill(Color.white.opacity(0.35)).frame(width: CGFloat(w), height: 5)
+            }
+            Spacer()
+            ForEach([14, 14, 30], id: \.self) { w in
+                Capsule().fill(Color.white.opacity(0.35)).frame(width: CGFloat(w), height: 5)
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(height: h)
+        .background(Color.white.opacity(0.10))
+        .accessibilityHidden(true)
+    }
+
+    /// The real pill beside the camera housing, at the preview's scale.
     private var restingPill: some View {
-        let layout = PillRenders.notchLayout(appearance.pillWidth)
         let size: CGSize = layout.contentRect(for: .compact).size
-        let scale: CGFloat = Self.pillScale
         let (content, mood) = PillRenders.content(.music)
         let pill = CompactPill(content: content, connection: .connected, hasNotch: true,
                                notchWidth: layout.anchor.width, liveSide: appearance.liveSide,
                                earWidth: layout.liveEarWidth, platy: appearance.showPlaty ? mood : nil)
-        return ZStack {
-            Theme.panelShape(hasNotch: true).fill(Color(PanelPalette.darkSurface))
-            pill
+        let minimal: Bool = appearance.mode == .minimal
+        return VStack(spacing: 10) {
+            ZStack {
+                Theme.panelShape(hasNotch: true).fill(Color(PanelPalette.darkSurface))
+                if !minimal { pill }
+            }
+            .frame(width: minimal ? layout.anchor.width : size.width, height: size.height)
+            .environment(\.colorScheme, .dark)
+            .environment(\.panelTicking, false)
+            .scaleEffect(Self.scale, anchor: .top)
+            .frame(width: (minimal ? layout.anchor.width : size.width) * Self.scale, height: size.height * Self.scale,
+                   alignment: .top)
+            if minimal {
+                Text("Hidden until something is live")
+                    .font(DS.font(TypeScale.caption))
+                    .foregroundStyle(.white.opacity(0.75))
+            }
         }
-        .frame(width: size.width, height: size.height)
-        .environment(\.colorScheme, .dark)
-        .environment(\.panelTicking, false)
-        .scaleEffect(scale, anchor: .top)
-        .frame(width: size.width * scale, height: size.height * scale, alignment: .top)
-        .opacity(appearance.mode == .minimal ? 0.35 : 1)
     }
 
-    /// The open panel in miniature: the notch band, the destinations, a hero and four glances.
+    /// The open panel at the preview's scale: the notch band, the destinations, a hero
+    /// and four glances.
     private var openPanel: some View {
         let scheme: ColorScheme = Theme.scheme(appearance.theme, system: systemScheme, mode: .expanded, hasNotch: true)
-        let width: CGFloat = PanelLayout.expandedSize.width * Self.panelScale
-        let height: CGFloat = PanelLayout.expandedSize.height * Self.panelScale
+        let design: CGFloat = MiniPanel.designScale
+        let width: CGFloat = PanelLayout.expandedSize.width * design
+        let height: CGFloat = PanelLayout.expandedSize.height * design
+        let zoom: CGFloat = Self.scale / design
         return MiniPanel(showPlaty: appearance.showPlaty)
             .frame(width: width, height: height)
             .background {
                 ZStack(alignment: .top) {
                     Theme.surface(scheme, mode: .expanded, hasNotch: true, style: appearance.surface)
-                    Color(PanelPalette.darkSurface).frame(height: Self.bandHeight)
+                    Color(PanelPalette.darkSurface).frame(height: MiniPanel.bandHeight)
                 }
             }
             .clipShape(Theme.panelShape(hasNotch: true))
             .environment(\.colorScheme, scheme)
-            .scaleEffect(x: 1, y: open ? 1 : 0.18, anchor: .top)
-            .opacity(open ? 1 : 0)
-            .shadow(color: .black.opacity(0.25), radius: 6, y: 3)
+            .scaleEffect(zoom, anchor: .top)
+            .frame(width: width * zoom, height: height * zoom, alignment: .top)
+            .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
     }
 
-    private func replay() {
+    private func show(_ next: Bool) {
         let preset: MotionPreset = appearance.effectiveMotion(reduceMotion: reduceMotion)
-        withAnimation(Self.animation(preset, .close)) { open = false }
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(380))
-            withAnimation(Self.animation(preset, .open)) { open = true }
-        }
+        withAnimation(Self.animation(preset, next ? .open : .close)) { open = next }
     }
 
     static func animation(_ preset: MotionPreset, _ direction: MotionDirection) -> Animation {
         guard let spring = preset.spring(direction) else { return .easeInOut(duration: MotionPreset.reducedFade) }
         return .spring(response: spring.response, dampingFraction: spring.damping)
     }
-
-    static let pillScale: CGFloat = 0.72
-    static let panelScale: CGFloat = 0.38
-    static var bandHeight: CGFloat { 38 * panelScale }
 }
 
 /// A calm desktop behind the preview: pond blues with a soft light at the top.
@@ -120,9 +141,7 @@ private struct Wallpaper: View {
         ZStack(alignment: .top) {
             LinearGradient(colors: [Color(red: 0.16, green: 0.33, blue: 0.40), Color(red: 0.07, green: 0.16, blue: 0.22)],
                            startPoint: .top, endPoint: .bottom)
-            RadialGradient(colors: [Color.white.opacity(0.18), .clear], center: .top, startRadius: 4, endRadius: 160)
-            // The menu bar.
-            Rectangle().fill(Color.white.opacity(0.10)).frame(height: 10)
+            RadialGradient(colors: [Color.white.opacity(0.18), .clear], center: .top, startRadius: 4, endRadius: 220)
         }
     }
 }
@@ -130,6 +149,9 @@ private struct Wallpaper: View {
 /// The open panel's content in miniature, in shapes only.
 private struct MiniPanel: View {
     let showPlaty: Bool
+    /// The scale the miniature is drawn at (then zoomed to the preview's).
+    static let designScale: CGFloat = 0.38
+    static var bandHeight: CGFloat { 38 * designScale }
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
@@ -141,7 +163,7 @@ private struct MiniPanel: View {
                 Capsule().fill(ink.opacity(0.07)).frame(width: 26, height: 8)
                 Spacer()
             }
-            .padding(.top, NotchPreview.bandHeight + 4)
+            .padding(.top, MiniPanel.bandHeight + 4)
             // The hero: artwork, a title and a scrubber.
             HStack(spacing: 7) {
                 RoundedRectangle(cornerRadius: 5, style: .continuous)

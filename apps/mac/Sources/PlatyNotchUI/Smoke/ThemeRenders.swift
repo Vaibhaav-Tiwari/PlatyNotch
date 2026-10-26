@@ -122,6 +122,8 @@ enum ThemeRenders {
         out.append(("pill-agents-music", PillRenders.pill(.music, width: .standard, notch: true), true))
         out.append(("pill-indicators", PillRenders.pill(.timer, width: .wide, notch: true), true))
         out.append(("settings-notch-preview", AnyView(NotchPreview(appearance: AppearanceSettings()).frame(width: 540)), true))
+        out.append(("settings-notch-preview-open",
+                    AnyView(NotchPreview(appearance: AppearanceSettings(), open: true).frame(width: 540)), true))
         return out
     }
 

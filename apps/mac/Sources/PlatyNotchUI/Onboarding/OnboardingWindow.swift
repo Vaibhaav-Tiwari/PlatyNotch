@@ -282,7 +282,7 @@ struct OnboardingView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .padding(.horizontal, 36)
-            .padding(.top, 34)
+            .padding(.top, 28)
             bar
         }
         .background(Color(nsColor: .windowBackgroundColor))
@@ -452,7 +452,7 @@ struct PresetCard: View {
     var current = false
     let choose: () -> Void
 
-    static let size = CGSize(width: 170, height: 236)
+    static let size = CGSize(width: 170, height: 292)
     static let compactSize = CGSize(width: 150, height: 120)
 
     var body: some View {
@@ -491,7 +491,7 @@ struct PresetCard: View {
 
     private func fullBody(_ shape: RoundedRectangle) -> some View {
             VStack(alignment: .leading, spacing: 10) {
-                PresetSketch(preset: preset)
+                PresetSketch(preset: preset, height: 108)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(verbatim: preset.title).font(.system(size: 15, weight: .semibold))
                     Text(verbatim: preset.summary)
@@ -619,9 +619,9 @@ private struct PermissionsPage: View {
     let services: SettingsServices
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 8) {
             PageTitle(title: "Permissions (optional)",
-                      text: "macOS asks only when you click Allow, and you can change your mind later.")
+                      text: "macOS asks only when you click Allow. Change your mind any time.")
             FadingScroll(fillsRoom: false, indicators: .visible) {
                 PermissionTableView(permissions: services.permissions,
                                     openSettings: { services.openSettingsHandler($0) }, compact: true)

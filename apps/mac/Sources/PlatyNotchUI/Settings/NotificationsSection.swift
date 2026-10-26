@@ -81,7 +81,7 @@ final class NotificationsModel {
         switch field {
         case .showInPill: "Show in pill"
         case .canOpen: "Can open"
-        case .quietDuringFocus: "Quiet in Focus"
+        case .quietDuringFocus: "Quiet in focus sessions"
         }
     }
 }
@@ -99,7 +99,8 @@ struct NotificationsSection: View {
         self.sound = sound
     }
 
-    static let columnWidth: CGFloat = 80
+    static let columnWidth: CGFloat = 96
+    static let columnSpacing: CGFloat = 8
 
     var body: some View {
         SettingsPage("Notifications", subtitle: "What may show in the pill and open the notch by itself.") {
@@ -123,34 +124,28 @@ struct NotificationsSection: View {
     }
 
     private var header: some View {
-        HStack(spacing: 0) {
+        HStack(alignment: .bottom, spacing: Self.columnSpacing) {
             Spacer(minLength: 0)
             ForEach(NotificationsModel.fields, id: \.self) { field in
-                Text(verbatim: NotificationsModel.column(field))
-                    .font(DS.font(TypeScale.caption))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(width: Self.columnWidth)
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text(verbatim: NotificationsModel.column(field))
+                        .font(DS.font(TypeScale.caption))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if field == .quietDuringFocus {
+                        InfoButton("A PlatyNotch focus session (the Focus timer), not macOS Focus. While one runs, kinds set to quiet do not open the notch; they still show in the pill.")
+                    }
+                }
+                .frame(width: Self.columnWidth)
             }
         }
         .padding(.vertical, 6)
-        .accessibilityHidden(true)
     }
 
     private func row(_ kind: NotificationKind) -> some View {
-        HStack(spacing: 10) {
-            SymbolWell(systemImage: NotificationsModel.systemImage(kind), size: 26)
-            SettingLabel(NotificationsModel.title(kind), info: NotificationsModel.detail(kind))
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 4)
-            ForEach(NotificationsModel.fields, id: \.self) { field in
-                cell(kind, field).frame(width: Self.columnWidth)
-            }
-        }
-        .padding(.vertical, 7)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(NotificationsModel.title(kind))
+        NotificationRow(kind: kind) { field in cell(kind, field) }
     }
 
     @ViewBuilder private func cell(_ kind: NotificationKind, _ field: NotificationField) -> some View {
@@ -170,5 +165,36 @@ struct NotificationsSection: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(label): \(word), cannot be changed")
         }
+    }
+}
+
+/// One kind: its symbol, its title (the ⓘ shows on hover or keyboard focus) and its cells.
+private struct NotificationRow<Cell: View>: View {
+    let kind: NotificationKind
+    @ViewBuilder let cell: (NotificationField) -> Cell
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: NotificationsSection.columnSpacing) {
+            SymbolWell(systemImage: NotificationsModel.systemImage(kind), size: 26)
+                .padding(.trailing, 2)
+            HStack(spacing: 5) {
+                Text(verbatim: NotificationsModel.title(kind))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                InfoButton(NotificationsModel.detail(kind))
+                    .opacity(hovering ? 1 : 0)
+            }
+            Spacer(minLength: 4)
+            ForEach(NotificationsModel.fields, id: \.self) { field in
+                cell(field).frame(width: NotificationsSection.columnWidth)
+            }
+        }
+        .padding(.vertical, 7)
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(NotificationsModel.title(kind))
+        .accessibilityHint(NotificationsModel.detail(kind))
     }
 }
