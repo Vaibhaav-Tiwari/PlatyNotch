@@ -145,6 +145,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         t.onCelebrate = { today.platy.celebrate() }
         return t
     }()
+    /// Settings › Notifications › Sound: Platy chatter or the user's file.
+    private lazy var plip = PlipPlayer()
     /// Settings › Appearance; the panels are built from it (`AppearanceStore`, C32).
     private var appearance = AppearanceStore.load(from: .standard)
     /// The one runtime shortcut catalog every widget claims global shortcuts in (M1).
@@ -212,6 +214,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         today.agentActivity.start(store: store)
         today.agentActivity.postNeedsInputNotices(to: store)
+        // The optional sound when an agent needs you or an approval arrives (off by default;
+        // smoke runs never play it).
+        if !options.smoke, !options.smokeSettings, !options.perfRun { plip.follow(today.agentActivity, store: store) }
         // Every agent finished: a 2-second moment (once, never during an approval).
         let approvalsStore = store
         today.agentActivity.celebrateAllFinished(on: today.platy, approvals: { approvalsStore.approvals.count })
@@ -583,8 +588,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            !menuBar.menuTitles.contains("Pause clipboard history") || menuBar.menuAutoenables {
             failure = "menu bar clipboard item missing or menu autoenables"
         }
-        let sounds = TimeSound.allCases.filter { $0.url != nil }.count
-        if failure == nil, sounds != TimeSound.allCases.count {
+        let sounds = TimeSound.allCases.filter { $0.url != nil }.count + CueSound.allCases.filter { $0.url != nil }.count
+        if failure == nil, sounds != TimeSound.allCases.count + CueSound.allCases.count {
             failure = "bundled sounds missing (\(UIResources.bundleName))"
         }
         widgets.stopAll()

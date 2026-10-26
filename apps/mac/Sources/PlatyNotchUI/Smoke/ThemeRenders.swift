@@ -122,9 +122,22 @@ enum ThemeRenders {
         out.append(("pill-agents-music", PillRenders.pill(.music, width: .standard, notch: true), true))
         out.append(("pill-indicators", PillRenders.pill(.timer, width: .wide, notch: true), true))
         out.append(("settings-notch-preview", AnyView(NotchPreview(appearance: AppearanceSettings()).frame(width: 540)), true))
+        out.append(("settings-sound", soundSettings(error: false), true))
+        out.append(("settings-sound-refused", soundSettings(error: true), true))
         out.append(("settings-notch-preview-open",
                     AnyView(NotchPreview(appearance: AppearanceSettings(), open: true).frame(width: 540)), true))
         return out
+    }
+
+    /// Settings › Notifications › Sound, on, with a chosen file (or one refused for being too long).
+    private static func soundSettings(error: Bool) -> AnyView {
+        let suite = "dev.platynotch.render-sound"
+        let d = UserDefaults(suiteName: suite) ?? .standard
+        d.removePersistentDomain(forName: suite)
+        PlipSettings(enabled: true, choice: .chatter).save(to: d)
+        let model = PlipSoundModel(defaults: d, play: { _, _ in true })
+        if error { model.showRefusal(.tooLong(7.4)) }
+        return AnyView(PlipSoundSettings(model: model).frame(width: 540))
     }
 
     /// The resting pill beside a 14-inch MacBook Pro notch at `width`, with `sessions`

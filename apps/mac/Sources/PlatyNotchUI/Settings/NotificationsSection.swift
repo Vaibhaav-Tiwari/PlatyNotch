@@ -90,8 +90,8 @@ final class NotificationsModel {
 /// cells are fixed. "Quiet in Focus" follows PlatyNotch's focus session.
 struct NotificationsSection: View {
     @State private var model: NotificationsModel
-    /// Settings › Notifications › Sound (Phase 7: the optional "plip" and "Choose sound
-    /// file…"); nothing until then.
+    /// Settings › Notifications › Sound (`PlipSoundSettings`: the optional sound, Platy
+    /// chatter or a chosen file, and Play); nil shows no Sound group.
     let sound: AnyView?
 
     init(defaults: UserDefaults = .standard, sound: AnyView? = nil) {
