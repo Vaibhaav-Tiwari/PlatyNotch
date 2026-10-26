@@ -86,7 +86,8 @@ final class DesignLintTests: DefaultsTestCase {
     /// Where tile containers live: the six tile directories and the two widget files that
     /// draw their own tiles (relative to `Sources/PlatyNotchUI`).
     static let tileDirectories = ["Views/", "Day/Views/", "Shelf/Views/", "System/Views/", "Launch/Views/",
-                                  "Wellbeing/Views/", "Games/", "Games/Views/", "Camera/", "Basket/", "Library/"]
+                                  "Wellbeing/Views/", "Games/", "Games/Views/", "Camera/", "Basket/", "Library/",
+                                  "Settings/", "Onboarding/"]
     static let tileFiles = ["Clipboard/ClipboardWidget.swift", "Notes/NotesWidget.swift"]
 
     /// `path:line` → reason for literal radii outside the scale on shapes that are not

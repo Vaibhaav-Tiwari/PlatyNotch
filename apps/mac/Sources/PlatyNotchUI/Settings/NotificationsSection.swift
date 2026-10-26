@@ -114,8 +114,7 @@ struct NotificationsSection: View {
             .padding(.vertical, 6)
             .padding(.leading, 14)
             .padding(.trailing, 6)
-            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.06)))
+            .settingsGroup()
             if let sound {
                 Text("Sound").font(.system(size: 13, weight: .semibold)).padding(.top, 8)
                 sound

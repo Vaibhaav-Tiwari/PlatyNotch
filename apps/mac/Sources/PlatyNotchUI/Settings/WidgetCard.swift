@@ -46,7 +46,7 @@ struct WidgetCard: View {
     private var title: String { (widget as? LibraryLiveLine)?.libraryTitle ?? widget.title }
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
         let status: String = Self.status(isOn: isOn, needsSetup: widget.needsSetup,
                                          inLibrary: widget.kind.contains(.tool) || widget.hasTile)
         ZStack(alignment: .topTrailing) {
@@ -85,9 +85,7 @@ struct WidgetCard: View {
                 .padding(12)
                 .frame(minWidth: Self.minWidth, maxWidth: .infinity)
                 .frame(height: Self.height)
-                .background(Color.primary.opacity(hovering ? 0.07 : 0.045), in: shape)
-                .overlay(shape.strokeBorder(targeted ? SettingsTint.accent : Color.primary.opacity(0.06),
-                                            lineWidth: targeted ? 1.5 : 1))
+                .settingsGroup(fill: hovering ? 0.07 : 0.045, accent: targeted ? SettingsTint.accent : nil)
                 .contentShape(shape)
             }
             .buttonStyle(.plain)
