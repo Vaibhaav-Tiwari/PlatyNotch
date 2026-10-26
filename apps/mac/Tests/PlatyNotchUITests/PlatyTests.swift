@@ -234,10 +234,12 @@ final class PlatyTests: DefaultsTestCase {
     /// Every agent finishing is a 2-second moment, once, and never while an approval waits.
     func testAllAgentsFinishedIsAMoment() {
         var now = Date(timeIntervalSince1970: 2_000_000)
-        var approvals = 0
+        // A reference the approvals closure reads (a captured var mutated later warns in Swift 6).
+        final class Box { var approvals = 0 }
+        let box = Box()
         let activity = AgentActivityModel()
         let platy = PlatyMoodModel(now: { now })
-        activity.celebrateAllFinished(on: platy, approvals: { approvals }, now: { now })
+        activity.celebrateAllFinished(on: platy, approvals: { box.approvals }, now: { now })
         activity.sessionsChanged([session("a", .active)], now: now)
         XCTAssertFalse(platy.celebrating)
         activity.sessionsChanged([session("a", .idle)], now: now)
@@ -246,7 +248,7 @@ final class PlatyTests: DefaultsTestCase {
         platy.refresh()
         XCTAssertFalse(platy.celebrating)
         // With an approval waiting: no moment.
-        approvals = 1
+        box.approvals = 1
         activity.sessionsChanged([session("a", .active)], now: now)
         now = now.addingTimeInterval(30)
         activity.sessionsChanged([session("a", .idle)], now: now)
