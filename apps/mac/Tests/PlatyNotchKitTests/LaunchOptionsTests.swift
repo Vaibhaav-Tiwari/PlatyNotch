@@ -77,3 +77,12 @@ extension LaunchOptionsTests {
         XCTAssertFalse(LaunchOptions(arguments: ["--smoke-power"], env: [:]).smokePower, "argv[0] is the program")
     }
 }
+
+extension LaunchOptionsTests {
+    func testShowcaseFlag() {
+        XCTAssertEqual(LaunchOptions(arguments: ["PlatyNotch", "--render-showcase", "/tmp/s"], env: [:]).renderShowcaseDir,
+                       "/tmp/s")
+        XCTAssertNil(LaunchOptions(arguments: ["PlatyNotch", "--render-showcase", "--smoke"], env: [:]).renderShowcaseDir)
+        XCTAssertNil(LaunchOptions(arguments: ["PlatyNotch"], env: [:]).renderShowcaseDir)
+    }
+}

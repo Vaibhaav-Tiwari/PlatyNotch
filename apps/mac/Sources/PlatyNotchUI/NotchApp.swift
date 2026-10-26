@@ -17,6 +17,12 @@ public enum NotchApp {
             let morph = pills.flatMap { n in MorphRenders.write(to: url(dir)).map { n + $0 } }
             finishRender("PILL GALLERY", morph)
         }
+        if let dir = options.renderShowcaseDir {
+            switch ShowcaseRenders.write(to: url(dir)) {
+            case .success(let n): print("SHOWCASE OK renders=\(n)"); fflush(stdout); exit(0)
+            case .failure(let e): print("SHOWCASE FAIL \(e.message)"); fflush(stdout); exit(1)
+            }
+        }
         if options.smokePower { finishPowerSmoke() }
         let delegate = AppDelegate(coreBinary: coreBinary, plugins: plugins, options: options)
         app.delegate = delegate

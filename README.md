@@ -1,5 +1,10 @@
 # PlatyNotch
 
+<p align="center">
+  <img src="docs/assets/showcase/now-agent-dark.png" width="560"
+       alt="PlatyNotch open below a MacBook notch: Now shows Claude Code running tests in the platynotch project with Platy paddling, an Open terminal button and four glances: the next meeting, Claude usage, water and open loops.">
+</p>
+
 PlatyNotch is an open-source MacBook notch app. It combines an agent hub
 (approve and monitor Claude Code and other coding agents from the notch),
 everyday widgets, and local memory that stays on your Mac. Its mascot is Platy

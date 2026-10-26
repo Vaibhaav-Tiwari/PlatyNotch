@@ -230,7 +230,7 @@ enum NowRenders {
         out.append(("now-try-it-sample", panel(builtIns(meeting: false), tourSample: TryItSession.sample), true))
         // Platy's pond through the day (the summary above draws today's phase).
         for (phase, hour) in [("morning", 8), ("evening", 19), ("night", 23)] {
-            out.append(("now-pond-\(phase)", panel(builtIns(meeting: false), now: at(hour: hour)), true))
+            out.append(("now-pond-\(phase)", panel(builtIns(meeting: false, at: at(hour: hour)), now: at(hour: hour)), true))
         }
         out += AgentsRenders.views()
         out += LibraryRenders.views()
@@ -238,11 +238,11 @@ enum NowRenders {
     }
 
     /// Every built-in on with glances, loops and tasks, and nothing live yet.
-    static func builtIns(meeting: Bool) -> Rig {
+    static func builtIns(meeting: Bool, at now: Date = Date()) -> Rig {
         let rig = Rig()
         BuiltInWidgets.register(in: rig.registry, store: rig.store, today: rig.today, persist: false)
         rig.startAll()
-        seed(rig, meeting: meeting)
+        seed(rig, meeting: meeting, at: now)
         return rig
     }
 
@@ -311,7 +311,10 @@ enum NowRenders {
             glances = UserDefaults(suiteName: "dev.platynotch.render-now") ?? .standard
             glances.removePersistentDomain(forName: "dev.platynotch.render-now")
             registry = WidgetRegistry(defaults: glances, persist: false)
-            today = TodayServices(client: client, nowPlaying: NowPlaying(),
+            // Inert: a render never reads the Mac's real player (its track is set by hand).
+            let nowPlaying = NowPlaying()
+            nowPlaying.makeInertForRendering()
+            today = TodayServices(client: client, nowPlaying: nowPlaying,
                                   visualiser: MusicVisualiser(defaults: glances),
                                   calendar: CalendarService(eventKit: false),
                                   reminders: RemindersService(eventKit: false, defaults: glances),
@@ -401,8 +404,7 @@ enum NowRenders {
     }
 
     /// Loops, usage, tasks, the glance choice and (with `meeting`) a meeting in 8 minutes.
-    static func seed(_ rig: Rig, meeting: Bool) {
-        let now = Date()
+    static func seed(_ rig: Rig, meeting: Bool, at now: Date = Date()) {
         let loops = [Loop(id: "l1", title: "Send Priya the deck", kind: "promise", status: "open", detectedAt: now),
                      Loop(id: "l2", title: "Review the PR", kind: "follow-up", status: "open", detectedAt: now)]
         // Limits have no public initialiser: decoded the way the core sends them.

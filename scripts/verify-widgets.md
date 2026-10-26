@@ -1376,3 +1376,38 @@ block containing `- [ ] in code`.
 - [ ] **270. Ticks in quick succession.** Tick three tasks in today's note quickly and add
   a quick note at once: all three are `[x]` and the note line is there (every write runs
   one after another).
+
+## Showcase renders (spec 12)
+
+The README header and the website hero come from these renders. They are the project's
+own renders, so nothing in them is someone else's artwork.
+
+Regenerate them from `apps/mac` with:
+
+```sh
+swift build && PLATYNOTCH_HOME=$(mktemp -d) .build/debug/PlatyNotch --render-showcase ../../docs/assets/showcase
+```
+
+This prints `SHOWCASE OK renders=10`. It writes ten PNGs: five scenes, each in dark and light:
+
+- `now-music`
+- `now-agent`
+- `approval-diff`
+- `library`
+- `platy-idle`, which shows the evening pond
+
+Each PNG is the full 560 × 380 open panel at 2×, with the black band level with the
+camera housing, on a transparent background. The command uses inert models: it reads no
+player, calendar or agent and saves nothing. It draws in an off-screen window, so nothing
+appears on screen.
+
+The README header is `docs/assets/showcase/now-agent-dark.png`.
+
+The 20-second screen recording is scripted in `docs/showcase/recording-script.md`.
+
+- [ ] **Showcase renders.** After regenerating, compare the ten PNGs in `docs/assets/showcase`
+  with the app. Check that:
+  - every scene shows "Now", "Agents" and "Library";
+  - nothing is clipped;
+  - the header is quiet: no "Connecting…";
+  - the light set uses the light surface under the black band.

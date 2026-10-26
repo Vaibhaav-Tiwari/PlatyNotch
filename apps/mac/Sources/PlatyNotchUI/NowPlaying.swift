@@ -107,6 +107,10 @@ public final class NowPlaying {
         }
     }
 
+    /// Renders: never read the Mac's real player (`start` then does nothing); a render sets
+    /// its track with `debugApply`.
+    func makeInertForRendering() { started = true }
+
     public func stop() {
         started = false
         for (center, token) in clockObservers { center.removeObserver(token) }
