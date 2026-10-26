@@ -86,7 +86,7 @@ struct MusicSettingsView: View {
                 }
                 .font(.system(size: 11))
             }
-            Text("""
+            SettingsNote("""
             The music bars follow what your Mac is playing. macOS asks for System Audio \
             Recording when you turn this on. PlatyNotch listens only while music plays and the \
             bars are on screen; the sound is reduced to bar heights in memory and never \

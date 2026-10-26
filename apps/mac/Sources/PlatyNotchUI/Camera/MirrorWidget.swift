@@ -322,7 +322,7 @@ struct MirrorTileView: View {
 /// Settings › Widgets › Mirror.
 struct MirrorSettingsView: View {
     var body: some View {
-        Text("""
+        SettingsNote("""
         Click Show Mirror in the Today tab to see your camera. It turns off when you hide it, \
         close the panel, lock the screen or the display sleeps. macOS asks for the camera the \
         first time you click. Nothing is recorded, saved or sent.

@@ -20,7 +20,6 @@ struct InfoButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .focusable(false)
         .help(text)
         .accessibilityLabel("More about this setting")
         .accessibilityHint(text)
@@ -149,5 +148,53 @@ final class AppSettingsWindow: NSWindow {
 
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
         keepsOffScreen ? frameRect : super.constrainFrameRect(frameRect, to: screen)
+    }
+}
+
+private struct SettingsDetailKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// True on a Settings page: explanations collapse behind an ⓘ (controls first).
+    var settingsDetail: Bool {
+        get { self[SettingsDetailKey.self] }
+        set { self[SettingsDetailKey.self] = newValue }
+    }
+}
+
+/// A setting's explanation. On a Settings page it is one quiet line (its first sentence)
+/// with the whole text behind an ⓘ; elsewhere (a Library tool page) it reads in full.
+struct SettingsNote: View {
+    let text: String
+    @Environment(\.settingsDetail) private var detail
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    init(verbatim text: String) {
+        self.text = text
+    }
+
+    /// The first sentence, for the one-line form.
+    static func lead(_ text: String) -> String {
+        guard let r = text.range(of: ". ") else { return text }
+        return String(text[..<r.lowerBound]) + "."
+    }
+
+    var body: some View {
+        if detail {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text(verbatim: Self.lead(text))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                if Self.lead(text) != text { InfoButton(text) }
+            }
+            .font(DS.font(TypeScale.caption))
+            .foregroundStyle(.secondary)
+        } else {
+            Text(verbatim: text)
+        }
     }
 }

@@ -82,4 +82,26 @@ final class WidgetsSettingsTests: DefaultsTestCase {
         XCTAssertFalse(source?.contains("chevron.down") ?? true)
         XCTAssertFalse(source?.contains("swapAt") ?? true)
     }
+
+    /// Keyboard and VoiceOver: "Move earlier" and "Move later" step a card within its group.
+    func testMoveActionsStepWithinTheGroup() {
+        let model = WidgetsSettingsModel(widgets: registry())
+        let before = model.shown(.everyday).map(\.id)
+        model.moveLater(before[0])
+        XCTAssertEqual(Array(model.shown(.everyday).map(\.id).prefix(2)), [before[1], before[0]])
+        model.moveEarlier(before[0])
+        XCTAssertEqual(model.shown(.everyday).map(\.id), before)
+        model.moveEarlier(before[0])
+        XCTAssertEqual(model.shown(.everyday).map(\.id), before, "the first stays first")
+        let power = model.shown(.power).map(\.id)
+        model.moveLater(power.last!)
+        XCTAssertEqual(model.shown(.power).map(\.id), power, "the last stays last; never into another group")
+    }
+
+    func testCardStatusLine() {
+        XCTAssertEqual(WidgetCard.status(isOn: true, needsSetup: false, inLibrary: true), "On · in Library")
+        XCTAssertEqual(WidgetCard.status(isOn: true, needsSetup: true, inLibrary: true), "Needs setup")
+        XCTAssertEqual(WidgetCard.status(isOn: false, needsSetup: true, inLibrary: true), "Off")
+        XCTAssertEqual(WidgetCard.status(isOn: true, needsSetup: false, inLibrary: false), "On")
+    }
 }

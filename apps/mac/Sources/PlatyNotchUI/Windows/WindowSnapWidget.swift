@@ -240,7 +240,7 @@ struct WindowSnapSettingsView: View {
             } else {
                 shortcuts(SnapTarget.allCases)
             }
-            Text("""
+            SettingsNote("""
             Reads the focused window's position and size and sets them; never its content. \
             A window that cannot be resized is only moved. Full-screen windows are left alone.
             """)

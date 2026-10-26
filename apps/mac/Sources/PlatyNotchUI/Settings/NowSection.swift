@@ -1,5 +1,6 @@
 import PlatyNotchKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Settings › Now's state: the four glance slots (`GlanceSlots`) and hero cycling
 /// (`NowSettings`), saved on every change.
@@ -68,6 +69,19 @@ final class NowSettingsModel {
     }
 }
 
+/// A glance slot being dragged (its own type: only another slot takes the drop).
+struct GlanceSlotDrag: Codable, Transferable {
+    let slot: Int
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .platyNotchGlanceSlot)
+    }
+}
+
+extension UTType {
+    static let platyNotchGlanceSlot = UTType(exportedAs: "dev.platynotch.glance-slot")
+}
+
 /// Settings › Now: the four glances under the hero, in order (drag the handle), and
 /// whether the hero steps through what is live.
 struct NowSection: View {
@@ -129,11 +143,11 @@ struct NowSection: View {
         }
         .padding(.vertical, 1)
         .background(dragging == slot ? SettingsTint.well : .clear, in: RoundedRectangle(cornerRadius: 6))
-        .draggable(String(slot)) {
+        .draggable(GlanceSlotDrag(slot: slot)) {
             Text(verbatim: "Glance \(slot + 1)").padding(6)
         }
-        .dropDestination(for: String.self) { items, _ in
-            guard let from = items.first.flatMap(Int.init) else { return false }
+        .dropDestination(for: GlanceSlotDrag.self) { items, _ in
+            guard let from = items.first?.slot else { return false }
             model.move(from: from, to: slot)
             return true
         } isTargeted: { over in dragging = over ? slot : (dragging == slot ? nil : dragging) }

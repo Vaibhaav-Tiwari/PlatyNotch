@@ -359,7 +359,7 @@ struct MailTileView: View {
 /// Settings › Widgets › Mail.
 struct MailSettingsView: View {
     var body: some View {
-        Text("""
+        SettingsNote("""
         Shows Mail's unread count and the sender and subject of the newest unread messages, \
         read every 5 minutes while Mail is open. PlatyNotch never opens Mail itself, asks for \
         Automation only from the tile's Allow button, and keeps nothing: what it reads stays \

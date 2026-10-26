@@ -44,6 +44,17 @@ final class WidgetsSettingsModel {
         widgets.reorder(ids, in: a.category)
     }
 
+    /// VoiceOver and keyboard: one place earlier or later within the card's group.
+    func moveEarlier(_ id: String) { step(id, by: -1) }
+    func moveLater(_ id: String) { step(id, by: 1) }
+
+    private func step(_ id: String, by delta: Int) {
+        guard let w = widgets.widget(id) else { return }
+        let ids = widgets.orderedWidgets(in: w.category).map(\.id)
+        guard let i = ids.firstIndex(of: id), ids.indices.contains(i + delta) else { return }
+        move(from: id, to: ids[i + delta])
+    }
+
     /// The widget a "widgets/<id>" link names (case-insensitive: links are lowercased).
     func widget(named id: String?) -> (any NotchWidget)? {
         guard let id else { return nil }
@@ -72,7 +83,7 @@ struct WidgetsSection: View {
     }
 
     private var grid: some View {
-        SettingsPage("Widgets", subtitle: "Turn widgets on or off; click one for its settings. Drag to reorder.") {
+        SettingsPage("Widgets", subtitle: "Turn widgets on or off; open one for its settings. Drag to reorder.") {
             Picker("Show", selection: $model.filter) {
                 ForEach(WidgetsSettingsModel.Filter.allCases) { Text(verbatim: $0.title).tag($0) }
             }
@@ -84,7 +95,8 @@ struct WidgetsSection: View {
                     WidgetCard(widget: w, isOn: model.widgets.isEnabled(w.id),
                                setOn: { model.widgets.setEnabled(w.id, $0) },
                                open: { detail = w.id },
-                               move: { model.move(from: $0, to: w.id) })
+                               move: { model.move(from: $0, to: w.id) },
+                               moveEarlier: { model.moveEarlier(w.id) }, moveLater: { model.moveLater(w.id) })
                 }
             }
         }

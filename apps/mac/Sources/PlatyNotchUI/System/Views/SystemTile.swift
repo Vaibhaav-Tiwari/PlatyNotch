@@ -311,7 +311,7 @@ struct SystemSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Battery: a peek with the percent when you plug in or unplug, and the pill shows low battery "
+            SettingsNote("Battery: a peek with the percent when you plug in or unplug, and the pill shows low battery "
                  + "(10% or less) and charging. Keep awake: stops the display sleeping for the time you pick; "
                  + "it ends when the time is up, when you turn this widget off, or when you quit. "
                  + "Neither needs a permission.")

@@ -194,8 +194,8 @@ struct WellbeingSettings: View {
                     Text("\(widget.settings.dailyWaterGoal) glasses").foregroundStyle(.secondary)
                 }
             }
-            Text("Set an interval to 0 to turn that nudge off. Same start and end turns quiet hours off. "
-                 + "Nudges wait during a focus session, a meeting (with the Meetings widget and calendar access), "
+            SettingsNote("Set an interval to 0 to turn that nudge off. Same start and end turns quiet hours off. "
+                 + "Nudges wait during a focus session (unless Settings › Notifications says otherwise), a meeting (with the Meetings widget and calendar access), "
                  + "full screen and quiet hours, and 5 minutes away from the keyboard counts as a break. "
                  + "No permission needed.")
                 .font(DS.font(TypeScale.caption))

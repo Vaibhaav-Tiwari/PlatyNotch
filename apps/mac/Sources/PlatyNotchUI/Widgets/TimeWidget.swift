@@ -590,11 +590,11 @@ final class TimeWidget: NotchWidget, TimerStarter {
 private struct TimeSettings: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Each running timer and each alarm also schedules a system notification, so it still goes off when PlatyNotch is not running or the Mac restarted. PlatyNotch asks for notification permission when you make your first timer or alarm.")
+            SettingsNote("Each running timer and each alarm also schedules a system notification, so it still goes off when PlatyNotch is not running or the Mac restarted. PlatyNotch asks for notification permission when you make your first timer or alarm.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Timers that finish during a focus session do not ring; alarms always ring.")
+            SettingsNote("Alarms and timers ring during focus sessions too, unless Settings › Notifications keeps them quiet.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Button("Notification Settings…") { Permissions.open(.notifications) }

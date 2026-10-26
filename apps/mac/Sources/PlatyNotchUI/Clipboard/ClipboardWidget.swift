@@ -548,15 +548,15 @@ struct ClipboardSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("PlatyNotch keeps what you copy so you can paste it again: press \(widget.hotKeyChoice.display) anywhere to search history, ↩ to paste, ⌘1–9 for the first nine, ⌘P to pin, ⌫ to delete.")
+            SettingsNote("PlatyNotch keeps what you copy so you can paste it again: press \(widget.hotKeyChoice.display) anywhere to search history, ↩ to paste, ⌘1–9 for the first nine, ⌘P to pin, ⌫ to delete.")
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Never recorded: anything copied in a password manager (1Password, Bitwarden, LastPass, KeePassXC, MacPass, Strongbox, Enpass, Proton Pass, NordPass, Keychain Access, Passwords and others) or in an app on Memory's excluded list, and anything an app marks as a password or as temporary. The app is the one in front when the copy happens, a best guess, since macOS does not say which app copied.")
+            SettingsNote("Never recorded: anything copied in a password manager (1Password, Bitwarden, LastPass, KeePassXC, MacPass, Strongbox, Enpass, Proton Pass, NordPass, Keychain Access, Passwords and others) or in an app on Memory's excluded list, and anything an app marks as a password or as temporary. The app is the one in front when the copy happens, a best guess, since macOS does not say which app copied.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Also never saved: text that looks like an API key, token, private key or card number. A password copied from somewhere else, such as a note, can be saved; Clear History (or Clear All, Including Pinned, for a pinned one) deletes it.")
+            SettingsNote("Also never saved: text that looks like an API key, token, private key or card number. A password copied from somewhere else, such as a note, can be saved; Clear History (or Clear All, Including Pinned, for a pinned one) deletes it.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("History stays on this Mac in PlatyNotch's private folder. Turning the widget off keeps it. Clear History deletes every unpinned item and its image; Clear All, Including Pinned, deletes everything.")
+            SettingsNote("History stays on this Mac in PlatyNotch's private folder. Turning the widget off keeps it. Clear History deletes every unpinned item and its image; Clear All, Including Pinned, deletes everything.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -601,7 +601,7 @@ struct ClipboardSettings: View {
                 Label("↩ pastes into the app you were using.", systemImage: "checkmark.circle")
                     .foregroundStyle(.secondary)
             } else {
-                Text("To paste with ↩, PlatyNotch needs Accessibility (to press ⌘V for you). Without it, ↩ copies and you press ⌘V.")
+                SettingsNote("To paste with ↩, PlatyNotch needs Accessibility (to press ⌘V for you). Without it, ↩ copies and you press ⌘V.")
                     .fixedSize(horizontal: false, vertical: true)
                 if let text = advice.text {
                     Text(verbatim: text)
