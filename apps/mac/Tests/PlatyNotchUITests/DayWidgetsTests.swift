@@ -174,7 +174,8 @@ final class DayWidgetsTests: DefaultsTestCase {
 
     // MARK: - Meetings
 
-    private func meetingWidget(now: Date, meetings: [CalendarMeeting], focusUntil: Date? = nil)
+    private func meetingWidget(now: Date, meetings: [CalendarMeeting], focusUntil: Date? = nil,
+                               policy: NotificationPolicy = NotificationPolicy())
         -> (MeetingWidget, WidgetRegistry, PanelSurfaces) {
         let d = defaults()
         if let focusUntil { d.set(focusUntil, forKey: FocusModel.untilKey) }
@@ -183,6 +184,10 @@ final class DayWidgetsTests: DefaultsTestCase {
         let widget = MeetingWidget(calendar: calendar, defaults: d, clock: { now })
         let registry = WidgetRegistry(defaults: d)
         let surfaces = PanelSurfaces(registry: registry)
+        // The app's focus signal for Settings › Notifications (a running focus session).
+        let focusActive: Bool = focusUntil.map { $0 > now } ?? false
+        surfaces.focusActive = { focusActive }
+        surfaces.notificationPolicy = policy
         registry.register(widget)
         registry.start(context: context(registry, surfaces: surfaces))
         return (widget, registry, surfaces)
@@ -212,9 +217,16 @@ final class DayWidgetsTests: DefaultsTestCase {
         let start = now.addingTimeInterval(60)
         let m = CalendarMeeting(id: "1on1", title: "1:1", start: start, end: start.addingTimeInterval(900))
         let (widget, registry, _) = meetingWidget(now: now, meetings: [m], focusUntil: now.addingTimeInterval(600))
-        XCTAssertNil(widget.reminder, "no peek during a focus session")
+        XCTAssertNil(widget.reminder, "Meeting starting is quiet during focus sessions by default")
         XCTAssertEqual(widget.liveActivities.count, 1, "the pill countdown still shows")
         registry.stopAll()
+        // Settings › Notifications decides: not quiet, it peeks during a focus session.
+        var policy = NotificationPolicy()
+        policy[.meetingStarting] = NotificationRule(showInPill: true, canOpen: true, quietDuringFocus: false)
+        let (loud, loudRegistry, _) = meetingWidget(now: now, meetings: [m], focusUntil: now.addingTimeInterval(600),
+                                                     policy: policy)
+        XCTAssertEqual(loud.reminder, MeetingWidget.Reminder(meeting: m, minutes: 1))
+        loudRegistry.stopAll()
     }
 
     func testInMeetingAndNothingSoon() {

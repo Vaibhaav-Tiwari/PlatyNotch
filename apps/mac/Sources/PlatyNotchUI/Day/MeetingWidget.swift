@@ -197,16 +197,13 @@ final class MeetingWidget: NotchWidget {
             context.endPeek(id: Self.reminderPeekID)
             reminder = nil
         }
-        guard let due, !focusSessionActive else { return }
+        // Settings › Notifications decides (meeting starting: quiet during focus sessions by default).
+        guard let due else { return }
         reminder = due
         let until = min(now.addingTimeInterval(Self.reminderPeekTime), due.meeting.start)
         if !context.peek(id: Self.reminderPeekID, until: until, as: .meetingStarting) { reminder = nil }
     }
 
-    /// `FocusModel` publishes the end of a running focus session under `untilKey`.
-    private var focusSessionActive: Bool {
-        (defaults.object(forKey: FocusModel.untilKey) as? Date).map { $0 > now } ?? false
-    }
 
     /// Opens a join link (only ever from a Join button).
     func join(_ meeting: CalendarMeeting) {

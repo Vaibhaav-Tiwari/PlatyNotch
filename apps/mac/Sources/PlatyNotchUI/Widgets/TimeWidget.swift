@@ -210,8 +210,8 @@ final class TimeWidget: NotchWidget, TimerStarter {
         case .timer(let id):
             finished[id] = e.dueAt
             guard e.ring, let timer = storedTimer(id) else { return }
-            // A focus session holds timers (notice only); alarms always ring.
-            if focusSessionActive(at: clock()) { return }
+            // Settings › Notifications decides whether it opens the notch (spec 6.3: alarms and
+            // timers are not quiet during focus sessions by default); it always rings.
             let title = timer.label.isEmpty ? "Timer" : timer.label
             ring(Ring(id: TimeBackup.timerID(id), kind: .timer(id), title: title,
                       subtitle: "\(DurationParser.describe(timer.duration)) timer is done"), sound: .chime)
@@ -223,11 +223,6 @@ final class TimeWidget: NotchWidget, TimerStarter {
     }
 
     private func storedTimer(_ timer: UUID) -> CountdownTimer? { store.state.timers.first { $0.id == timer } }
-
-    /// `FocusModel` publishes the end of a running session under `untilKey`.
-    private func focusSessionActive(at t: Date) -> Bool {
-        (defaults.object(forKey: FocusModel.untilKey) as? Date).map { $0 > t } ?? false
-    }
 
     // MARK: - Backups (system notifications)
 

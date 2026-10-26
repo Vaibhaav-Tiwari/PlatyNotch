@@ -225,21 +225,40 @@ final class TimeWidgetTests: DefaultsTestCase {
         relaunched.widget.stop()
     }
 
-    func testFocusSessionHoldsTimersButNotAlarms() {
+    /// Spec 6.3: alarms and timers are not quiet during focus sessions by default; both ring.
+    func testTimersAndAlarmsRingDuringFocusByDefault() {
         let d = defaults()
         d.set(t0 + 3600, forKey: "focusUntil")
         let r = rig(defaults: d)
+        r.surfaces.focusActive = { true }
+        XCTAssertTrue(r.surfaces.mayOpen(.ringing))
         r.widget.addTimer("1m")
         r.widget.addAlarm(hour: 6, minute: 2)
         r.clock.now = t0 + 60
         r.widget.tick()
-        XCTAssertEqual(r.widget.ringing, [])           // timer: notice only
-        XCTAssertNil(r.sound.playing)
-        XCTAssertEqual(r.widget.liveActivities.first?.priority, LivePriority.timerFinished)
+        XCTAssertEqual(r.widget.ringing.count, 1, "the timer rings")
+        XCTAssertEqual(r.sound.playing, .chime)
         r.clock.now = t0 + 120
         r.widget.tick()
-        XCTAssertEqual(r.widget.ringing.count, 1)      // the alarm still rings
-        XCTAssertEqual(r.sound.playing, .alarm)
+        XCTAssertEqual(r.widget.ringing.count, 2, "the alarm rings")
+        r.widget.stop()
+    }
+
+    /// Ringing set quiet during focus sessions: it still rings and is listed for Stop, but
+    /// may not open the notch.
+    func testRingingQuietInFocusWhenChosen() {
+        let d = defaults()
+        let r = rig(defaults: d)
+        var policy = NotificationPolicy()
+        policy[.ringing] = NotificationRule(showInPill: true, canOpen: true, quietDuringFocus: true)
+        r.surfaces.notificationPolicy = policy
+        r.surfaces.focusActive = { true }
+        r.widget.addTimer("1m")
+        r.clock.now = t0 + 60
+        r.widget.tick()
+        XCTAssertEqual(r.widget.ringing.count, 1, "still rings")
+        XCTAssertEqual(r.surfaces.rings.count, 1, "menu bar Stop")
+        XCTAssertFalse(r.surfaces.mayOpen(.ringing), "but the notch stays shut")
         r.widget.stop()
     }
 

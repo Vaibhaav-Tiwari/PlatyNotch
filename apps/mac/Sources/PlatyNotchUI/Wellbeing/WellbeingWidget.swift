@@ -208,7 +208,10 @@ final class WellbeingWidget: NotchWidget {
         let away = idleSeconds >= NudgeScheduler.idleBreak
         if wasAway, !away { resumeAt = now.addingTimeInterval(NudgeScheduler.resumeGrace) }   // just sat down
         wasAway = away
-        let focusEnd = focusSessionEnd(now)
+        // A focus session holds nudges only while Settings › Notifications keeps reminders
+        // quiet during focus sessions (the default).
+        let quietInFocus: Bool = !context.surfaces.notificationPolicy.mayOpen(.reminder, focusActive: true)
+        let focusEnd = quietInFocus ? focusSessionEnd(now) : nil
         let c = NudgeContext(now: now, lastDone: p.lastDone, inFocusSession: focusEnd != nil,
                              inMeeting: inMeeting(), fullScreen: context.panel.fullScreen,
                              idleSeconds: idleSeconds, snoozedUntil: p.snoozedUntil)
