@@ -274,6 +274,8 @@ struct SettingsRootView: View {
         .ignoresSafeArea()
         // One accent: brand teal for switches, checkboxes and prominent buttons.
         .tint(SettingsTint.accent)
+        // Switches everywhere (a table's checkboxes say so themselves).
+        .toggleStyle(.switch)
     }
 
     static let sidebarWidth: CGFloat = 228
