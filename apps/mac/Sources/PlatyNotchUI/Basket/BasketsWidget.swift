@@ -206,14 +206,13 @@ struct BasketsSettingsView: View {
                     .foregroundStyle(.secondary)
             }
             damagedRow
-            HStack(spacing: 6) {
-                Text("How baskets work").foregroundStyle(.secondary)
-                InfoButton(Self.about)
-                Text("Where copies go").foregroundStyle(.secondary).padding(.leading, 8)
-                InfoButton(Self.privacy)
-            }
         }
         .font(.system(size: 12))
+        // Behind the page's one ⓘ (Settings › Widgets › Baskets), taking no row of their own.
+        .background {
+            SettingsNote(Self.about)
+            SettingsNote(Self.privacy)
+        }
     }
 
     /// Damaged basket indexes: the count, then Delete Kept Copies, then a confirming click.

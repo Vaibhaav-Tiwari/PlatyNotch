@@ -377,6 +377,13 @@ private struct SettingsSidebar: View {
             .frame(height: 28)
             .background(selected ? SettingsTint.well : .clear,
                         in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            // The keyboard's place while the sidebar has focus (↑ ↓ move it).
+            .overlay {
+                if selected, focused {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(SettingsTint.accent, lineWidth: 2)
+                }
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

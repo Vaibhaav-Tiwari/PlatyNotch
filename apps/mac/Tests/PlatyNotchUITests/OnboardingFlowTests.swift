@@ -172,4 +172,17 @@ final class OnboardingFlowTests: DefaultsTestCase {
         XCTAssertTrue(summary.contains("Claude/Codex usage"), "glances are named, not ids: \(summary)")
         XCTAssertTrue(summary.contains("The notch hides until something is live."))
     }
+
+    /// Settings › General never applies a setup without asking: it asks, or nothing changes.
+    func testSettingsAlwaysAsks() {
+        for p in SetupPreset.allCases {
+            for enabled in [Set<String>(), Set(["music"]), Set(SetupPreset.builtIns)] {
+                let plan = PresetPlan.plan(p, enabled: enabled, glances: [], mode: .alwaysOn)
+                XCTAssertEqual(GeneralSection.action(for: plan), plan.isCurrent ? .alreadyCurrent : .ask, "\(p)")
+                XCTAssertEqual(GeneralSection.action(for: plan), .ask, "\(p): glances always differ here")
+            }
+        }
+        let current = PresetPlan.plan(.minimal, enabled: ["music"], glances: [GlanceSlots.usageID], mode: .minimal)
+        XCTAssertEqual(GeneralSection.action(for: current), .alreadyCurrent)
+    }
 }

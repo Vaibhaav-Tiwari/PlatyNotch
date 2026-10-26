@@ -84,7 +84,9 @@ struct WeatherSettings: View {
                 }
             }
             HStack {
-                TextField(widget.place == nil ? "City, e.g. Lisbon" : "Change city", text: $widget.query)
+                TextField(text: $widget.query, prompt: Text(widget.place == nil ? "e.g. Lisbon" : "Change city")) {
+                    Text("City")
+                }
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 240)
                     .onSubmit { widget.search() }

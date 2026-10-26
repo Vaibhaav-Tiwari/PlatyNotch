@@ -47,6 +47,9 @@ final class PanelViewModel {
 
 /// Places the mode's content inside the fixed-size panel window.
 struct PanelRootView: View {
+    /// Settings › Now › hero cycling, as both the open panel's Now and the hover peek get it.
+    static func heroCycling(_ model: PanelViewModel) -> Bool { model.nowSettings.heroCycling }
+
     let model: PanelViewModel
     let store: AppStore
     let responder: ApprovalResponder
@@ -206,7 +209,7 @@ struct PanelRootView: View {
                           agentsVisible: today.agentActivity.agentsVisibility.isVisible,
                           onConnectAgent: model.onConnectAgent,
                           tourOffer: model.tourOffer, tourSample: model.tourSample,
-                          heroCycling: model.nowSettings.heroCycling,
+                          heroCycling: Self.heroCycling(model),
                           onDecide: decide, onOpenTerminal: onOpenTerminal)
             }
             .transition(ChromeSettle<EmptyView>.transition)
@@ -236,7 +239,7 @@ struct PanelRootView: View {
                     deck: Binding(get: { model.heroDeck }, set: { model.heroDeck = $0 }),
                     onOpenTool: { _ in model.onClick() }, onOpenAgents: model.onClick,
                     onOpenTerminal: onOpenTerminal, heroOnly: true,
-                    cycling: model.nowSettings.heroCycling, tourSample: model.tourSample)
+                    cycling: Self.heroCycling(model), tourSample: model.tourSample)
             }
             .transition(ChromeSettle<EmptyView>.transition)
                 // 6 at the bottom: the 160 pt hero fits the 176 pt peek without a notch too.

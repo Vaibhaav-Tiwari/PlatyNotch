@@ -84,8 +84,15 @@ struct GeneralSection: View {
 
     /// Asks first, with every change listed (spec 14); a setup that is already current
     /// changes nothing.
+    enum SetupAction: Equatable { case ask, alreadyCurrent }
+
+    /// Settings never applies a setup straight away: it asks, or there is nothing to change.
+    static func action(for plan: PresetPlan) -> SetupAction {
+        plan.asks(firstRun: false) ? .ask : .alreadyCurrent
+    }
+
     private func choose(_ p: SetupPreset) {
-        if services.presetPlan(p).asks(firstRun: false) { pending = p }
+        if Self.action(for: services.presetPlan(p)) == .ask { pending = p }
     }
 
     private func apply(_ p: SetupPreset) {

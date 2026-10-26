@@ -173,6 +173,7 @@ private struct NotificationRow<Cell: View>: View {
     let kind: NotificationKind
     @ViewBuilder let cell: (NotificationField) -> Cell
     @State private var hovering = false
+    @FocusState private var infoFocused: Bool
 
     var body: some View {
         HStack(spacing: NotificationsSection.columnSpacing) {
@@ -183,7 +184,8 @@ private struct NotificationRow<Cell: View>: View {
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
                 InfoButton(NotificationsModel.detail(kind))
-                    .opacity(hovering ? 1 : 0)
+                    .focused($infoFocused)
+                    .opacity(hovering || infoFocused ? 1 : 0)
             }
             Spacer(minLength: 4)
             ForEach(NotificationsModel.fields, id: \.self) { field in

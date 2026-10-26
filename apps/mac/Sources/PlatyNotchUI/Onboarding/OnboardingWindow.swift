@@ -689,8 +689,13 @@ private struct TryItPage: View {
         }
         .onAppear {
             if !reduceMotion, !model.inert {
-                withAnimation(.easeInOut(duration: 0.5).delay(0.4)) { nudge = true }
-                withAnimation(.easeInOut(duration: 0.5).delay(0.9)) { nudge = false }
+                // One nudge toward the notch and back (none with Reduce Motion).
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(400))
+                    withAnimation(.easeInOut(duration: 0.45)) { nudge = true }
+                    try? await Task.sleep(for: .milliseconds(450))
+                    withAnimation(.easeInOut(duration: 0.45)) { nudge = false }
+                }
             }
             guard !model.inert, !model.tryItDone else { return }
             services.armTryIt { model.tryItDone = true }

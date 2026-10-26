@@ -190,7 +190,8 @@ final class NotificationGateTests: DefaultsTestCase {
         XCTAssertTrue(r.controller.panelModel.nowSettings.heroCycling)
         r.controller.nowSettingsChanged(NowSettings(heroCycling: false))
         XCTAssertFalse(r.controller.panelModel.nowSettings.heroCycling)
-        XCTAssertFalse(NowView.showsSteps(count: 3, cycling: r.controller.panelModel.nowSettings.heroCycling))
+        XCTAssertFalse(PanelRootView.heroCycling(r.controller.panelModel), "what the open panel and hover peek get")
+        XCTAssertFalse(NowView.showsSteps(count: 3, cycling: PanelRootView.heroCycling(r.controller.panelModel)))
     }
 
     /// Two notices at once: the toast is the newest one that may open, not merely the newest.

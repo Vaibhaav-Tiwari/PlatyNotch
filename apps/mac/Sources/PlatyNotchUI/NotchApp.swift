@@ -196,9 +196,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Agents shows from the first session on (saved; never in smoke runs), with a
         // one-time notice.
         if !options.smoke, !options.smokeSettings { today.agentActivity.loadVisibility(from: .standard) }
-        today.agentActivity.onAgentsFirstShown = { [weak store] in
-            store?.postLocalNotice(Notice(kind: "agents-visible", title: "Agents is in your notch now",
-                                          body: "Your coding agents' sessions and approvals live here."))
+        // The one-time notice; never in smoke runs (it would hold the panel in a notice peek).
+        if !options.smoke, !options.smokeSettings {
+            today.agentActivity.onAgentsFirstShown = { [weak store] in
+                store?.postLocalNotice(Notice(kind: "agents-visible", title: "Agents is in your notch now",
+                                              body: "Your coding agents' sessions and approvals live here."))
+            }
         }
         today.agentActivity.start(store: store)
         today.agentActivity.postNeedsInputNotices(to: store)

@@ -83,7 +83,8 @@ enum SettingsRenders {
     /// loop settles, in `scheme`'s appearance.
     static func render(_ view: AnyView, size: CGSize, scheme: ColorScheme, settle: TimeInterval = 0.3) -> Data? {
         let appearance = NSAppearance(named: scheme == .light ? .aqua : .darkAqua)
-        let host = NSHostingView(rootView: view.environment(\.colorScheme, scheme))
+        // Drawn as the key window would be: teal controls, not the inactive grey.
+        let host = NSHostingView(rootView: view.environment(\.colorScheme, scheme).environment(\.controlActiveState, .key))
         host.appearance = appearance
         let window = NSWindow(contentRect: CGRect(x: -10_000, y: 10_000, width: size.width, height: size.height),
                               styleMask: .borderless, backing: .buffered, defer: false)
