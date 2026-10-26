@@ -23,18 +23,25 @@ struct TodaySummaryHero: View {
 
     private func content(at now: Date) -> some View {
         let hour: Int = Calendar.current.component(.hour, from: now)
+        let phase: DayPhase = DayPhase.at(hour: hour)
+        // With Platy shown, the hero is Platy's pond and the text is cream and white on it
+        // (each ≥ 4.5:1 on every phase, `PondPalette`); without Platy, the plain card.
+        let pond: Bool = platyMood != nil
+        let soft: Color = pond ? Color(Brand.cream) : .secondary
+        let strong: Color = pond ? .white : .primary
         return HStack(alignment: .center, spacing: Space.l) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: DayPhase.at(hour: hour).greeting)
+                Text(verbatim: phase.greeting)
                     .font(DS.font(TypeScale.headline))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(soft)
                     .lineLimit(1)
                 Text(verbatim: now.formatted(.dateTime.weekday(.wide).day().month(.wide)))
                     .font(DS.font(TypeScale.body))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(soft)
                     .lineLimit(1)
                 Text(verbatim: now.formatted(date: .omitted, time: .shortened))
                     .font(DS.font(TypeScale.display))
+                    .foregroundStyle(strong)
                     .monospacedDigit()
                     .lineLimit(1)
                     .contentTransition(.numericText())
@@ -47,17 +54,34 @@ struct TodaySummaryHero: View {
                         DS.icon("calendar", size: TypeScale.caption.size)
                     }
                     .font(DS.font(TypeScale.caption))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(soft)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .panelChrome()
             if let platyMood {
                 PlatyView(mood: platyMood, size: 96, morphID: MorphID.platy)
+                    // Feet at the waterline.
+                    .offset(y: Self.platyDrop)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            if pond {
+                // Edge to edge inside the hero card (its padding), clipped to its corners.
+                // The clip is laid out at the content's size, so it is inset outwards by the
+                // padding (which also grows its radius by the padding, back to the hero's).
+                let inner: CGFloat = Radius.hero - Space.heroPadding
+                PondSceneView(phase: phase, platyInset: Space.heroPadding + 48)
+                    .padding(-Space.heroPadding)
+                    .clipShape(RoundedRectangle(cornerRadius: inner, style: .continuous).inset(by: -Space.heroPadding))
             }
         }
         .accessibilityElement(children: .combine)
     }
+
+    /// How far Platy sits below the hero's centre so its feet meet the pond's waterline.
+    static let platyDrop: CGFloat = 14
 
     /// "Next: 10:30 Design review"; "No more events today" with access and nothing left
     /// today; nil without calendar access (never asks).

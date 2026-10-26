@@ -215,6 +215,10 @@ enum NowRenders {
         // Existing users' tour card at the top of Now (spec 14), and the first run's "Try it" sample.
         out.append(("now-tour-card", panel(everythingOn(), tourOffer: TourOffer(onTake: {}, onDismiss: {})), true))
         out.append(("now-try-it-sample", panel(builtIns(meeting: false), tourSample: TryItSession.sample), true))
+        // Platy's pond through the day (the summary above draws today's phase).
+        for (phase, hour) in [("morning", 8), ("evening", 19), ("night", 23)] {
+            out.append(("now-pond-\(phase)", panel(builtIns(meeting: false), now: at(hour: hour)), true))
+        }
         out += AgentsRenders.views()
         out += LibraryRenders.views()
         return out
@@ -271,6 +275,11 @@ enum NowRenders {
                                     auxLeft: CGRect(x: 0, y: 944, width: 654, height: 38),
                                     auxRight: CGRect(x: 858, y: 944, width: 654, height: 38))
 
+    /// Today at `hour`:12 (the pond renders).
+    static func at(hour: Int) -> Date {
+        Calendar.current.date(bySettingHour: hour, minute: 12, second: 0, of: Date()) ?? Date()
+    }
+
     /// The summary's clock: the real time, so its "Next: …" line and the meeting glance
     /// agree with the seeded calendar.
     static var fixedNow: Date { Date() }
@@ -320,14 +329,14 @@ enum NowRenders {
     /// camera housing, 10 pt at the bottom; clipped, so anything too tall shows.
     static func panel(_ rig: Rig, route: PanelRoute = PanelRoute(destination: .now), extraTabs: [PanelTab] = [],
                       memory: MemoryServices? = nil, memoryMode: MemoryTab.Mode = .search,
-                      tourOffer: TourOffer? = nil, tourSample: LiveActivity? = nil) -> AnyView {
+                      tourOffer: TourOffer? = nil, tourSample: LiveActivity? = nil, now: Date? = nil) -> AnyView {
         let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelMargin
         let height: CGFloat = NowMetrics.available(in: layout)
         var current = route
         let view = ExpandedPanel(store: rig.store, responder: ApprovalResponder(client: rig.client), arming: ApprovalArming(),
                                  today: rig.today, widgets: rig.registry, memory: memory ?? MemoryServices(client: rig.client),
                                  extraTabs: extraTabs, route: Binding(get: { current }, set: { current = $0 }),
-                                 onCollapse: {}, fixedNow: fixedNow, glanceDefaults: rig.glances, memoryMode: memoryMode,
+                                 onCollapse: {}, fixedNow: now ?? fixedNow, glanceDefaults: rig.glances, memoryMode: memoryMode,
                                  tourOffer: tourOffer, tourSample: tourSample,
                                  onDecide: { _, _ in }, onOpenTerminal: { _ in })
             .frame(width: width, height: height, alignment: .top)
