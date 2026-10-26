@@ -34,11 +34,32 @@ final class PondSceneViewTests: XCTestCase {
         XCTAssertEqual(view.visibleStarCount, 0)
     }
 
-    /// The ripple is one bounded animation: never longer than 4 s per cycle, never over the
-    /// 2 s rule for one-off motion because it runs only while the panel is open.
-    func testRippleDurationIsFourSeconds() {
+    /// One ripple per open, within the 2-second rule (spec 9), and again on the next open.
+    func testOneShortRipplePerOpen() {
         let view = PondSceneNSView(frame: CGRect(x: 0, y: 0, width: 300, height: 140))
         view.configure(phase: .day, animates: true)
-        XCTAssertEqual(view.rippleDuration, 4, accuracy: 0.001)
+        XCTAssertLessThanOrEqual(view.rippleDuration, 2)
+        XCTAssertEqual(view.rippleRepeatCount, 1)
+        view.configure(phase: .day, animates: false)
+        XCTAssertFalse(view.isAnimating)
+        view.configure(phase: .day, animates: true)
+        XCTAssertTrue(view.isAnimating)
+        XCTAssertEqual(view.rippleRepeatCount, 1)
+    }
+
+    /// Morning and day read differently: a low warm sun or a high pale one; no orb at dusk.
+    func testOrbFollowsThePhase() {
+        let view = PondSceneNSView(frame: CGRect(x: 0, y: 0, width: 300, height: 140))
+        for phase in DayPhase.allCases {
+            view.configure(phase: phase, animates: false)
+            XCTAssertEqual(view.showsOrb, phase != .evening, "\(phase)")
+        }
+        let morning = PondSceneNSView.orbPlacement(.morning), day = PondSceneNSView.orbPlacement(.day)
+        XCTAssertNotNil(morning)
+        XCTAssertNotNil(day)
+        XCTAssertLessThan(morning?.lift ?? 99, day?.lift ?? 0)
+        XCTAssertGreaterThan(morning?.size ?? 0, day?.size ?? 99)
+        // Clear of the greeting on the left.
+        for phase in DayPhase.allCases { XCTAssertGreaterThan(PondSceneNSView.orbPlacement(phase)?.x ?? 1, 0.45) }
     }
 }

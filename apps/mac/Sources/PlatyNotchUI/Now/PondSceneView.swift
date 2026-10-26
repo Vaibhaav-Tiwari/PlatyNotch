@@ -4,10 +4,10 @@ import QuartzCore
 import SwiftUI
 
 /// Platy's pond behind Now's idle hero (spec 8.2): a sky and water that follow the time of
-/// day (`PondPalette`), stars at night, a soft sun or moon, and a ripple at Platy's feet.
-/// Drawn with Core Animation layers only; SwiftUI draws nothing per frame. The ripple (one
-/// 4 s cycle) runs only while the panel is open and shown and Reduce Motion is off; else
-/// the scene is a still picture.
+/// day (`PondPalette`), stars at night, a sun or moon with its light on the water, a soft
+/// horizon haze, and a ripple at Platy's feet. Drawn with Core Animation layers only;
+/// SwiftUI draws nothing per frame. One 1.8 s ripple plays each time the panel opens (shown,
+/// Reduce Motion off); otherwise the scene is a still picture.
 struct PondSceneView: View {
     let phase: DayPhase
     /// Where Platy's centre sits from the trailing edge (the ripple goes under it).
@@ -46,12 +46,18 @@ final class PondSceneNSView: NSView {
     static let rippleKey = "pond.ripple"
     /// The share of the height that is sky; the rest is water.
     static let horizon: CGFloat = 0.6
+    /// One ripple per open (spec 9: no animation over 2 seconds).
+    static let rippleLength: CFTimeInterval = 1.8
 
     private let sky = CAGradientLayer()
     private let water = CAGradientLayer()
+    private let haze = CAGradientLayer()
     private let shoreline = CALayer()
     private let glow = CAGradientLayer()
-    private let moon = CALayer()
+    /// The sun (morning, day) or the moon (night); none at dusk, where the glow is the sunset.
+    private let orb = CALayer()
+    /// The orb's light on the water: a soft vertical streak below it.
+    private let orbReflection = CAGradientLayer()
     private let reflection = CAGradientLayer()
     private let ripple = CAShapeLayer()
     private var stars: [CALayer] = []
@@ -66,6 +72,17 @@ final class PondSceneNSView: NSView {
         (0.71, 0.16, 1.2, 0.45), (0.86, 0.28, 1.0, 0.35), (0.93, 0.08, 1.3, 0.5),
     ]
 
+    /// Where the orb sits (fraction of the width, points above the horizon) and its size. It
+    /// stays in the open sky between the greeting (left) and Platy (right).
+    static func orbPlacement(_ phase: DayPhase) -> (x: CGFloat, lift: CGFloat, size: CGFloat)? {
+        switch phase {
+        case .morning: (0.60, 5, 24)     // low, warm and large, just risen
+        case .day: (0.50, 44, 16)        // high, small and pale
+        case .evening: nil               // the warm glow behind Platy is the sunset
+        case .night: (0.58, 40, 11)      // a small moon
+        }
+    }
+
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
@@ -73,16 +90,17 @@ final class PondSceneNSView: NSView {
         let still: [String: CAAction] = ["bounds": NSNull(), "position": NSNull(), "colors": NSNull(),
                                          "opacity": NSNull(), "hidden": NSNull(), "path": NSNull(),
                                          "backgroundColor": NSNull(), "frame": NSNull()]
-        for l in [sky, water, shoreline, glow, moon, reflection, ripple] as [CALayer] {
+        for l in [sky, water, orbReflection, haze, shoreline, glow, orb, reflection, ripple] as [CALayer] {
             l.actions = still
             layer?.addSublayer(l)
         }
-        glow.type = .radial
-        glow.startPoint = CGPoint(x: 0.5, y: 0.5)
-        glow.endPoint = CGPoint(x: 1, y: 1)
-        reflection.type = .radial
-        reflection.startPoint = CGPoint(x: 0.5, y: 0.5)
-        reflection.endPoint = CGPoint(x: 1, y: 1)
+        for radial in [glow, reflection, orbReflection] {
+            radial.type = .radial
+            radial.startPoint = CGPoint(x: 0.5, y: 0.5)
+            radial.endPoint = CGPoint(x: 1, y: 1)
+        }
+        haze.startPoint = CGPoint(x: 0.5, y: 1)
+        haze.endPoint = CGPoint(x: 0.5, y: 0)
         ripple.fillColor = nil
         ripple.lineWidth = 1
         ripple.opacity = 0
@@ -102,18 +120,24 @@ final class PondSceneNSView: NSView {
 
     /// Whether the ripple is running (tests).
     var isAnimating: Bool { ripple.animation(forKey: Self.rippleKey) != nil }
-    /// One ripple cycle in seconds (tests).
+    /// The ripple's length in seconds (tests).
     var rippleDuration: CFTimeInterval { ripple.animation(forKey: Self.rippleKey)?.duration ?? 0 }
+    /// How often the ripple plays (tests): once.
+    var rippleRepeatCount: Float { ripple.animation(forKey: Self.rippleKey)?.repeatCount ?? 0 }
     /// Stars drawn now (tests).
     var visibleStarCount: Int { stars.filter { !$0.isHidden }.count }
+    /// Whether the sun or moon shows (tests).
+    var showsOrb: Bool { !orb.isHidden }
 
     func configure(phase new: DayPhase, animates: Bool) {
         if new != phase {
             phase = new
             paint(new)
+            needsLayout = true
         }
         if animates != animating {
             animating = animates
+            // One ripple each time the panel opens; closing removes any that is still running.
             animates ? startRipple() : ripple.removeAnimation(forKey: Self.rippleKey)
         }
     }
@@ -127,13 +151,20 @@ final class PondSceneNSView: NSView {
         // AppKit layers are not flipped: y = 0 is the bottom (the water).
         water.frame = CGRect(x: 0, y: 0, width: b.width, height: waterHeight)
         sky.frame = CGRect(x: 0, y: waterHeight, width: b.width, height: b.height - waterHeight)
-        shoreline.frame = CGRect(x: 0, y: waterHeight - 0.5, width: b.width, height: 1)
+        let hazeHeight: CGFloat = 10
+        haze.frame = CGRect(x: 0, y: waterHeight - hazeHeight / 2, width: b.width, height: hazeHeight)
+        shoreline.frame = CGRect(x: 0, y: waterHeight - 0.25, width: b.width, height: 0.5)
         let cx: CGFloat = b.width - platyInset
         let glowSize: CGFloat = 180
         glow.frame = CGRect(x: cx - glowSize / 2, y: waterHeight - glowSize / 2 + 26, width: glowSize, height: glowSize)
-        let moonSize: CGFloat = 11
-        moon.frame = CGRect(x: b.width * 0.58, y: b.height - 30, width: moonSize, height: moonSize)
-        moon.cornerRadius = moonSize / 2
+        if let phase, let place = Self.orbPlacement(phase) {
+            let ox: CGFloat = b.width * place.x
+            orb.frame = CGRect(x: ox - place.size / 2, y: waterHeight + place.lift - place.size / 2,
+                               width: place.size, height: place.size)
+            orb.cornerRadius = place.size / 2
+            let streak: CGFloat = place.size * 1.6
+            orbReflection.frame = CGRect(x: ox - streak / 2, y: waterHeight - 34, width: streak, height: 32)
+        }
         // Platy's feet stand in the shallows near the bottom: a soft light pool and the ripple there.
         let feet: CGFloat = 18
         reflection.frame = CGRect(x: cx - 60, y: feet - 12, width: 120, height: 24)
@@ -162,40 +193,60 @@ final class PondSceneNSView: NSView {
         water.startPoint = CGPoint(x: 0.5, y: 1)
         water.endPoint = CGPoint(x: 0.5, y: 0)
         let cream = NSColor(Brand.cream)
-        shoreline.backgroundColor = cream.withAlphaComponent(night ? 0.10 : 0.16).cgColor
-        // The sun's soft light behind Platy (warm at dusk); at night a small moon instead.
+        // Warm morning light; pale daylight; moonlight.
+        let light: NSColor = switch phase {
+        case .morning: NSColor(srgbRed: 0.96, green: 0.78, blue: 0.56, alpha: 1)
+        case .day: NSColor(srgbRed: 0.98, green: 0.95, blue: 0.86, alpha: 1)
+        case .evening, .night: cream
+        }
+        // The horizon is a soft haze, not a hard line.
+        let hazeAlpha: CGFloat = night ? 0.06 : 0.12
+        haze.colors = [light.withAlphaComponent(0).cgColor, light.withAlphaComponent(hazeAlpha).cgColor,
+                       light.withAlphaComponent(0).cgColor]
+        shoreline.backgroundColor = cream.withAlphaComponent(night ? 0.06 : 0.10).cgColor
+        // The glow behind Platy: warm at dusk (the sunset), faint otherwise.
         let strength: CGFloat = switch phase {
-        case .night: 0.07
+        case .night: 0.06
         case .evening: 0.16
-        case .morning, .day: 0.12
+        case .morning: 0.07
+        case .day: 0.09
         }
         glow.colors = [cream.withAlphaComponent(strength).cgColor, cream.withAlphaComponent(0).cgColor]
-        moon.isHidden = !night
-        moon.backgroundColor = cream.withAlphaComponent(0.75).cgColor
-        moon.shadowColor = cream.cgColor
-        moon.shadowOpacity = 0.5
-        moon.shadowRadius = 6
-        moon.shadowOffset = .zero
+        let hasOrb: Bool = Self.orbPlacement(phase) != nil
+        orb.isHidden = !hasOrb
+        orbReflection.isHidden = !hasOrb
+        let orbAlpha: CGFloat = switch phase {
+        case .morning: 0.55
+        case .day: 0.35
+        case .evening: 0
+        case .night: 0.75
+        }
+        orb.backgroundColor = light.withAlphaComponent(orbAlpha).cgColor
+        orb.shadowColor = light.cgColor
+        orb.shadowOpacity = Float(orbAlpha * 0.8)
+        orb.shadowRadius = phase == .morning ? 14 : 6
+        orb.shadowOffset = .zero
+        orbReflection.colors = [light.withAlphaComponent(orbAlpha * 0.22).cgColor, light.withAlphaComponent(0).cgColor]
         reflection.colors = [cream.withAlphaComponent(night ? 0.06 : 0.10).cgColor, cream.withAlphaComponent(0).cgColor]
         ripple.strokeColor = cream.withAlphaComponent(0.35).cgColor
         for star in stars { star.isHidden = !p.stars }
         CATransaction.commit()
     }
 
-    /// One soft ring that widens and fades under Platy, every 4 s, in the render server.
+    /// One soft ring that widens and fades under Platy, once, in the render server.
     private func startRipple() {
         let scale = CABasicAnimation(keyPath: "transform.scale")
         scale.fromValue = 0.55
         scale.toValue = 1.25
         let fade = CAKeyframeAnimation(keyPath: "opacity")
         fade.values = [0, 0.9, 0, 0]
-        fade.keyTimes = [0, 0.15, 0.7, 1]
+        fade.keyTimes = [0, 0.15, 0.75, 1]
         let group = CAAnimationGroup()
         group.animations = [scale, fade]
-        group.duration = 4
+        group.duration = Self.rippleLength
         group.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        group.repeatCount = .infinity
-        group.isRemovedOnCompletion = false
+        group.repeatCount = 1
+        group.isRemovedOnCompletion = true
         ripple.add(group, forKey: Self.rippleKey)
     }
 }

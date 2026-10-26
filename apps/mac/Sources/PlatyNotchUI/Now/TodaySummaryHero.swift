@@ -72,9 +72,12 @@ struct TodaySummaryHero: View {
                 // The clip is laid out at the content's size, so it is inset outwards by the
                 // padding (which also grows its radius by the padding, back to the hero's).
                 let inner: CGFloat = Radius.hero - Space.heroPadding
+                let card = RoundedRectangle(cornerRadius: inner, style: .continuous).inset(by: -Space.heroPadding)
                 PondSceneView(phase: phase, platyInset: Space.heroPadding + 48)
                     .padding(-Space.heroPadding)
-                    .clipShape(RoundedRectangle(cornerRadius: inner, style: .continuous).inset(by: -Space.heroPadding))
+                    .clipShape(card)
+                    // The heroes' inner keyline, in white over the pond in both themes.
+                    .overlay(card.strokeBorder(Color.white.opacity(0.08), lineWidth: 0.5))
             }
         }
         .accessibilityElement(children: .combine)
