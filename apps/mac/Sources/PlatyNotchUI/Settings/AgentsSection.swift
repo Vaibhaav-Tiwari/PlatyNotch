@@ -5,31 +5,58 @@ import SwiftUI
 /// per agent, and Claude Code's status line. The app never edits agent configs itself.
 struct AgentsSection: View {
     let services: SettingsServices
+    /// A sub-page: "approvals" or "policy" (Ruling 12); nil for Agents itself.
+    @Binding var detail: String?
+
+    init(services: SettingsServices, detail: Binding<String?> = .constant(nil)) {
+        self.services = services
+        _detail = detail
+    }
 
     var body: some View {
+        switch detail {
+        case "approvals": subPage { ApprovalsSection(config: services.config) }
+        case "policy": subPage { PolicySection(config: services.config) }
+        default: main
+        }
+    }
+
+    private func subPage<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SettingsBackHeader(parent: "Agents") { detail = nil }
+                .padding(EdgeInsets(top: 14, leading: 24, bottom: 0, trailing: 24))
+            content()
+        }
+    }
+
+    private var main: some View {
         let agents = services.agents
-        SettingsPage("Agents", subtitle: "PlatyNotch listens to your coding agents through their hooks.") {
+        return SettingsPage("Agents", subtitle: "PlatyNotch listens to your coding agents through their hooks.") {
             AgentList(services: services, compact: false)
 
-            GroupBox {
-                VStack(alignment: .leading, spacing: 6) {
+            Form {
+                Section {
+                    SettingsLinkRow(title: "Approvals", systemImage: "checkmark.shield",
+                                    value: services.config.config.approvals.enabled ? "On" : "Off") { detail = "approvals" }
+                    SettingsLinkRow(title: "Policy", systemImage: "list.bullet.rectangle",
+                                    value: Self.rulesCount(services.config.config.policy.rules.count)) { detail = "policy" }
+                }
+                Section {
                     Toggle(isOn: Binding(
                         get: { agents.statuslineInstalled },
                         set: { on in
                             Task { await agents.run(on ? "Status line installed" : "Status line removed",
                                                     ["statusline", on ? "install" : "uninstall"]) }
                         })) {
-                        Text("Claude Code status line")
+                        SettingLabel("Claude Code status line",
+                                     info: "Shows Claude's 5-hour and weekly limits in the notch. Your own status line keeps running after ours.")
                     }
+                    .toggleStyle(.switch)
                     .disabled(agents.busy)
-                    Text("Shows Claude's 5-hour and weekly limits in the notch. Your own status line keeps running after ours.")
-                        .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
+                    ShowAgentsToggle()
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(4)
             }
-
-            ShowAgentsToggle()
+            .settingsForm()
 
             HStack {
                 Button("Run diagnostics") { Task { await agents.run("notch doctor", ["doctor"]) } }
@@ -44,6 +71,8 @@ struct AgentsSection: View {
         }
         .task { await agents.refresh() }
     }
+
+    static func rulesCount(_ n: Int) -> String { n == 1 ? "1 rule" : "\(n) rules" }
 }
 
 /// "Show Agents before an agent connects" (`AgentsVisibility.forcedOn`): the panel's
@@ -52,26 +81,20 @@ private struct ShowAgentsToggle: View {
     @State private var visibility = AgentsVisibility.load(from: .standard)
 
     var body: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 6) {
-                Toggle(isOn: Binding(
-                    get: { visibility.forcedOn },
-                    set: { on in
-                        var v = AgentsVisibility.load(from: .standard)
-                        v.forcedOn = on
-                        v.save(to: .standard)
-                        visibility = v
-                    })) {
-                    Text("Show Agents before an agent connects")
-                }
-                Text(visibility.everConnected
-                     ? "An agent has connected, so Agents is in the panel."
-                     : "Agents appears in the panel the first time an agent connects.")
-                    .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(4)
+        Toggle(isOn: Binding(
+            get: { visibility.forcedOn },
+            set: { on in
+                var v = AgentsVisibility.load(from: .standard)
+                v.forcedOn = on
+                v.save(to: .standard)
+                visibility = v
+            })) {
+            SettingLabel("Show Agents before an agent connects",
+                         info: visibility.everConnected
+                             ? "An agent has connected, so Agents is in the panel."
+                             : "Agents appears in the panel the first time an agent connects.")
         }
+        .toggleStyle(.switch)
     }
 }
 
@@ -123,6 +146,8 @@ private struct AgentHookRow: View {
             Spacer(minLength: 8)
             if !compact, row.supportsApprovals, row.installed {
                 Toggle("Approvals", isOn: approvalsBinding)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
                     .toggleStyle(.switch)
                     .controlSize(.small)
                     .help(row.approvalsExperimental

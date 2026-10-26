@@ -1,15 +1,25 @@
 import PlatyNotchKit
 import SwiftUI
 
+/// Settings › Privacy & Permissions: the permission table (the first run's), then each
+/// permission in detail (Automation per app, Accessibility advice).
 struct PermissionsSection: View {
     let services: SettingsServices
+    /// Opens another Settings page (a widget's, for camera and Bluetooth).
+    var openSettings: (String) -> Void = { _ in }
+    @State private var details = false
 
     var body: some View {
-        SettingsPage("Permissions", subtitle: "Each one is optional. PlatyNotch asks only when you click Allow.") {
-            PermissionRows(permissions: services.permissions,
-                           mailWidgetOn: services.widgets.isEnabled(MailWidget.widgetID))
-            Divider()
-            Button("Show the welcome guide again") { services.showOnboarding() }
+        SettingsPage("Privacy & Permissions", subtitle: "Each one is optional. PlatyNotch asks only when you click Allow.") {
+            PermissionTableView(permissions: services.permissions, openSettings: openSettings)
+            DisclosureGroup(isExpanded: $details) {
+                PermissionRows(permissions: services.permissions,
+                               mailWidgetOn: services.widgets.isEnabled(MailWidget.widgetID))
+                    .padding(.top, 10)
+            } label: {
+                Text("Details for each permission").font(.system(size: 13, weight: .medium))
+            }
+            .padding(.top, 6)
         }
     }
 }

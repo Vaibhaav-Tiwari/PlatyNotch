@@ -20,8 +20,12 @@ struct TimeTile: View {
             }
         }
         if inTool {
-            // Full-panel: no card, body-size text.
-            content.font(DS.font(TypeScale.body))
+            // Full-panel: no card, body-size text in a readable column; an empty section's
+            // state is centred in the room below the picker.
+            content
+                .font(DS.font(TypeScale.body))
+                .frame(maxWidth: ToolPage<EmptyView>.column, maxHeight: .infinity, alignment: .top)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } else {
             content
                 .font(.system(size: 11))
@@ -41,6 +45,24 @@ private struct IconButton: View {
             .buttonStyle(.borderless)
             .help(label)
             .accessibilityLabel(label)
+    }
+}
+
+/// A section with nothing in it: one quiet line on the tile; full-panel, the symbol, a
+/// title and what to do, centred in the room under the picker.
+private struct TimeEmpty: View {
+    let systemImage: String
+    let title: String
+    let detail: String
+    let line: String
+    @Environment(\.inLibraryTool) private var inTool
+
+    var body: some View {
+        if inTool {
+            ToolEmptyState(systemImage: systemImage, title: title, detail: detail)
+        } else {
+            Text(verbatim: line).foregroundStyle(.secondary)
+        }
     }
 }
 
@@ -71,7 +93,8 @@ private struct TimersSection: View {
                     .foregroundStyle(.orange)
             }
             if widget.state.timers.isEmpty {
-                Text("No timers.").foregroundStyle(.tertiary)
+                TimeEmpty(systemImage: "timer", title: "No timers",
+                          detail: "Type a duration like 10m or 1h30 and press Start.", line: "No timers.")
             } else {
                 TimelineView(.periodic(from: .now, by: 1)) { ctx in
                     VStack(spacing: 2) {
@@ -91,7 +114,7 @@ private struct TimersSection: View {
         let name = timer.label.isEmpty ? "Timer" : timer.label
         return HStack(spacing: 6) {
             Image(systemName: done ? "checkmark.circle.fill" : "timer")
-                .foregroundStyle(done ? Color.orange : .secondary)
+                .foregroundStyle(done ? DS.dynamicColor(.working) : Color.secondary)
                 .accessibilityHidden(true)
             Text(verbatim: name).lineLimit(1)
             Spacer(minLength: 4)
@@ -169,7 +192,8 @@ private struct AlarmsSection: View {
             }
             .controlSize(.small)
             if widget.state.alarms.isEmpty {
-                Text("No alarms.").foregroundStyle(.tertiary)
+                TimeEmpty(systemImage: "alarm", title: "No alarms",
+                          detail: "Pick a time, add a label if you like, then Add.", line: "No alarms.")
             }
             ForEach(widget.state.alarms) { alarm in AlarmRow(widget: widget, alarm: alarm) }
         }
@@ -226,8 +250,9 @@ private struct WeekdayChips: View {
                     Text(verbatim: symbols[day - 1])
                         .font(DS.font(TypeScale.caption).weight(.semibold))
                         .frame(width: 18, height: 16)
-                        .foregroundStyle(on ? Color.black : .secondary)   // black on the orange chip
-                        .background(on ? Color.orange : Color.secondary.opacity(0.15), in: Capsule())
+                        .foregroundStyle(on ? AnyShapeStyle(DS.dynamicColor(.working)) : AnyShapeStyle(.secondary))
+                        .background(on ? DS.dynamicColor(.working, alpha: 0.18) : Color.secondary.opacity(0.15),
+                                    in: Capsule())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(names[day - 1])
@@ -263,7 +288,8 @@ private struct ClocksSection: View {
                 }
             }
             if widget.state.clocks.isEmpty {
-                Text("No clocks.").foregroundStyle(.tertiary)
+                TimeEmpty(systemImage: "globe", title: "No clocks",
+                          detail: "Search for a city or time zone to add a clock.", line: "No clocks.")
             } else {
                 TimelineView(.everyMinute) { ctx in
                     VStack(spacing: 2) {

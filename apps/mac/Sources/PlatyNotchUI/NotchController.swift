@@ -67,6 +67,24 @@ public final class NotchController {
     var graceSleep: @MainActor (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     /// The clock approval arming notes cards against (tests move it).
     var armingClock: () -> Date = { Date() }
+    /// Called each time Now comes on screen: the panel opens, or the hover peek shows its
+    /// hero (the first run's "Try it"). After the view model has the new mode.
+    var onExpanded: () -> Void = {}
+    /// Called when Now leaves the screen again.
+    var onCollapsed: () -> Void = {}
+    private var nowShown = false
+
+    /// The newest of `fresh` notices that may open the notch now: an agent notice by its row
+    /// of Settings › Notifications, the app's own info notices unless a focus session holds them.
+    static func toast(_ fresh: [Notice], policy: NotificationPolicy, focusActive: Bool) -> Notice? {
+        fresh.last { n in
+            guard let kind = NotificationPolicy.kind(noticeKind: n.kind) else { return !focusActive }
+            return policy.mayOpen(kind, focusActive: focusActive)
+        }
+    }
+
+    /// The modes that show Now's hero.
+    static func showsNow(_ mode: PanelMode) -> Bool { mode == .expanded || mode == .peek(.hover) }
     /// The open panel's gear (the menu bar icon may be hidden): the app shows Settings.
     var onOpenSettings: () -> Void = {}
     /// The Agents empty state's "Connect an agent": the app shows Settings › Agents.
@@ -199,6 +217,17 @@ public final class NotchController {
         handle(.click)
     }
 
+    /// Settings › Now changed (or the panel was built): hero cycling and the like.
+    public func nowSettingsChanged(_ settings: NowSettings) {
+        if model.nowSettings != settings { model.nowSettings = settings }
+    }
+
+    /// Closes the open panel (the first run's "Meet Platy" demo).
+    public func collapse() {
+        guard machine.mode == .expanded else { return }
+        handle(.click)
+    }
+
     /// Escape: an open Library tool goes back to the grid first; otherwise the state
     /// machine's `.escape` (the open panel closes).
     func escapePressed() {
@@ -262,7 +291,14 @@ public final class NotchController {
     /// Pushes the current mode, full-screen suppression and cursor into the view model and
     /// the window. Without a window (tests) only the view model.
     private func apply() {
-        defer { surfaces.sinkStateChanged() }   // the media-key tap's view of where a HUD would show
+        // Now shows (open, or the hover peek's hero): told after the view model has the mode.
+        let showsNow: Bool = Self.showsNow(machine.mode)
+        let shownBefore: Bool = nowShown
+        nowShown = showsNow
+        defer {
+            surfaces.sinkStateChanged()   // the media-key tap's view of where a HUD would show
+            if showsNow, !shownBefore { onExpanded() } else if !showsNow, shownBefore { onCollapsed() }
+        }
         guard let layout else { return }
         cursor = cursorLocation()   // never decide pass-through from a stale position
         let mode = machine.mode
@@ -473,6 +509,7 @@ public final class NotchController {
             _ = store.connection
             _ = widgets.liveActivities   // Minimal mode: music, focus, timers keep the pill up
             _ = widgets.layout
+            _ = surfaces.notificationPolicy   // Settings › Notifications: the pill's hidden kinds
         } onChange: { [weak self] in
             Task { @MainActor in
                 guard let self, self.panel != nil else { return }
@@ -486,16 +523,28 @@ public final class NotchController {
         responder.sync(store: store)
         // What the pill shows keeps Minimal up (approvals, sessions working or waiting,
         // non-ambient live items), from the same `PillContent` the pill draws.
+        let policy: NotificationPolicy = surfaces.notificationPolicy
+        let hidden: Set<NotificationKind> = policy.hiddenInPill
+        if model.hiddenKinds != hidden { model.hiddenKinds = hidden }
         let pill = PillContent(activities: widgets.liveActivities, sessions: store.sessions,
-                               approvals: store.approvals.count, hiddenKinds: [], now: Date())
+                               approvals: store.approvals.count, hiddenKinds: hidden, now: Date())
         machine.setLive(pill.keepsMinimalUp)
-        // During focus, notices are consumed without peeking; approvals still peek.
-        // A session left running while the focus widget is off holds nothing.
-        let holdNotices = today.focus.focusActive && widgets.isEnabled(FocusWidget.widgetID)
+        // A focus session left running while the focus widget is off holds nothing.
+        let focus: Bool = today.focus.focusActive && widgets.isEnabled(FocusWidget.widgetID)
+        // An agent notice follows its row of Settings › Notifications (can open, quiet
+        // during Focus); the app's own info notices keep today's focus hold. Approvals
+        // are never gated.
+        // Of the notices that arrived since the last look, the newest one that may open is
+        // the toast; none may: nothing peeks.
+        let fresh: Int = min(max(store.noticeSequence - feed.noticeSequence, 0), store.notices.count)
+        let shown: Notice? = Self.toast(Array(store.notices.suffix(fresh)), policy: policy, focusActive: focus)
         for event in feed.update(approvalCount: store.approvals.count, noticeSequence: store.noticeSequence,
-                                 holdNotices: holdNotices) {
+                                 holdNotices: false, allowNotice: shown != nil) {
             machine.handle(event)
-            if event == .notice { scheduleNoticeTimeout() }
+            if event == .notice {
+                model.toastNotice = shown
+                scheduleNoticeTimeout()
+            }
         }
         apply()
     }

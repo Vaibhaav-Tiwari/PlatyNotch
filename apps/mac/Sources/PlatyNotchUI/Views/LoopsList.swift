@@ -71,6 +71,8 @@ struct LoopsList: View {
     let actions: LoopActions
     /// The Library tool shows the count large above the list.
     @Environment(\.inLibraryTool) private var inTool
+    /// Settings › Memory (the empty state's one button); nil where Settings cannot open.
+    @Environment(\.openMemorySettings) private var openMemorySettings
 
     var body: some View {
         let open = LoopsFormat.open(loops)
@@ -85,7 +87,12 @@ struct LoopsList: View {
                 Text(memoryEnabled ? "Nothing open. Promises and follow-ups you make show up here."
                                    : "Turn on memory to track promises and follow-ups.")
                     .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
+                if !memoryEnabled, let openMemorySettings {
+                    Button("Memory Settings", action: openMemorySettings)
+                        .controlSize(.small)
+                        .padding(.top, 2)
+                }
             } else {
                 // The Today tab scrolls; a nested scroll view would collapse to no height.
                 LazyVStack(alignment: .leading, spacing: 4) {

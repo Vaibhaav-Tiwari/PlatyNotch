@@ -309,6 +309,35 @@ final class LibraryViewTests: DefaultsTestCase {
         XCTAssertNil(NotchPanel.commandDigit(try key("\r", [], code: 36)))
     }
 
+    /// The recents cache decodes once per saved value, and again when the saved data changes.
+    func testRecentsCacheRedecodesAfterChange() {
+        let d = defaults()
+        var first = LibraryRecents()
+        first.noteOpened("music", at: Date(timeIntervalSince1970: 100))
+        first.save(to: d)
+        XCTAssertEqual(LibraryRecentsCache.resolve(from: d), first)
+        var second = first
+        second.noteOpened("time", at: Date(timeIntervalSince1970: 200))
+        second.save(to: d)
+        XCTAssertEqual(LibraryRecentsCache.resolve(from: d), second, "a changed value is decoded again")
+        XCTAssertNotNil(LibraryRecentsCache.resolve(from: d).lastOpened("time"))
+        d.removeObject(forKey: LibraryRecents.key)
+        XCTAssertEqual(LibraryRecentsCache.resolve(from: d), LibraryRecents(), "nothing saved: empty")
+    }
+
+    /// ⌘1 reaches the panel's handler only while the panel is the key window.
+    func testNonKeyPanelIgnoresCommandDigit() throws {
+        let panel = NotchPanel(frame: CGRect(x: -10_000, y: 10_000, width: 10, height: 10))
+        var digits: [Int] = []
+        panel.onCommandDigit = { digits.append($0); return true }
+        let event = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command,
+                                                   timestamp: 0, windowNumber: 0, context: nil, characters: "1",
+                                                   charactersIgnoringModifiers: "1", isARepeat: false, keyCode: 18))
+        XCTAssertFalse(panel.isKeyWindow)
+        XCTAssertFalse(panel.performKeyEquivalent(with: event))
+        XCTAssertEqual(digits, [], "a panel without the keyboard never takes the shortcut")
+    }
+
     /// ⌘1 / ⌘2 / ⌘3 switch destinations in the open panel, also from inside a tool.
     func testCommandDigitsSwitchDestinations() {
         let r = rig()

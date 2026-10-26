@@ -84,7 +84,9 @@ struct WeatherSettings: View {
                 }
             }
             HStack {
-                TextField(widget.place == nil ? "City, e.g. Lisbon" : "Change city", text: $widget.query)
+                TextField(text: $widget.query, prompt: Text(widget.place == nil ? "e.g. Lisbon" : "Change city")) {
+                    Text("City")
+                }
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 240)
                     .onSubmit { widget.search() }
@@ -109,7 +111,7 @@ struct WeatherSettings: View {
             }
             .pickerStyle(.segmented)
             .frame(maxWidth: 200)
-            Text("Weather data by Open-Meteo.com. Search sends the city name you type to Open-Meteo's geocoding service; "
+            SettingsNote("Weather data by Open-Meteo.com. Search sends the city name you type to Open-Meteo's geocoding service; "
                  + "the forecast request carries only the chosen place's coordinates, rounded to about a kilometre. "
                  + "No location access, account, cookies or tracking. Refreshes every 30 minutes while this widget is on, "
                  + "never while the Mac sleeps or is offline.")

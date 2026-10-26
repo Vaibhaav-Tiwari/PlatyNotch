@@ -361,7 +361,7 @@ final class LaunchWidget: NotchWidget {
             self.runTask = nil
             self.show(outcome.message(for: name), error: !outcome.succeeded)
             let until = Date().addingTimeInterval(Self.peekSeconds)
-            self.context?.peek(id: Self.resultPeekID, until: until)
+            self.context?.peek(id: Self.resultPeekID, until: until, as: nil)
         }
     }
 

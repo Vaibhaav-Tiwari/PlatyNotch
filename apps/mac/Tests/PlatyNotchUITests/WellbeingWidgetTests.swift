@@ -405,6 +405,17 @@ final class WellbeingWidgetTests: DefaultsTestCase {
         XCTAssertNotNil(r.widget.nudge)
     }
 
+    /// Settings › Notifications: reminders not quiet during focus sessions keep nudging.
+    func testNudgesFollowTheReminderRowDuringFocus() {
+        let r = rig()
+        var policy = NotificationPolicy()
+        policy[.reminder] = NotificationRule(showInPill: true, canOpen: true, quietDuringFocus: false)
+        r.surfaces.notificationPolicy = policy
+        r.defaults.set(r.now.addingTimeInterval(25 * 60), forKey: FocusModel.untilKey)
+        r.widget.sample()
+        XCTAssertNotNil(r.widget.nudge, "not quiet: the nudge shows during the focus session")
+    }
+
     func testMeetingHoldsNudges() {
         var meeting = true
         let r = rig(inMeeting: { meeting })

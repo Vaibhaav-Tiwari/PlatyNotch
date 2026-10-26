@@ -16,11 +16,11 @@ struct MemorySection: View {
     private var config: ConfigFileStore { services.config }
 
     var body: some View {
-        SettingsPage("Memory", subtitle: "PlatyNotch can remember text from the windows you work in, so you and your agents can search it.") {
+        SettingsPage("Memory", subtitle: "Search the text of windows you work in. Off unless you turn it on.") {
             Form {
                 Section {
-                    Toggle("Remember on-screen text", isOn: $draft.enabled)
-                    Text(verbatim: storageNote).font(DS.font(TypeScale.caption)).foregroundStyle(.secondary).textSelection(.enabled)
+                    Toggle(isOn: $draft.enabled) { SettingLabel("Remember on-screen text", info: storageNote) }
+                        .toggleStyle(.switch)
                     if draft.enabled, !services.permissions.accessibility {
                         HStack {
                             Label("Capture needs Accessibility access.", systemImage: "exclamationmark.triangle")
@@ -51,7 +51,7 @@ struct MemorySection: View {
                                    explanation: "Spots promises and requests in what you read and write. None turns open loops off.")
                 }
             }
-            .formStyle(.grouped)
+            .settingsForm()
 
             HStack {
                 if !services.store.approvals.isEmpty, draft != base {

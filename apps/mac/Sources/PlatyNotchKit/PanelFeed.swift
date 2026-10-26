@@ -14,7 +14,10 @@ public struct PanelFeed: Equatable, Sendable {
 
     /// With `holdNotices` (a focus session is running) a new notice is consumed without a
     /// `.notice` event, so it neither peeks now nor replays when focus ends. Approvals still pass.
-    public mutating func update(approvalCount n: Int, noticeSequence seq: Int, holdNotices: Bool = false) -> [PanelEvent] {
+    /// `allowNotice` false (Settings › Notifications: its kind may not open the notch now)
+    /// consumes the notice the same way; approvals are never gated.
+    public mutating func update(approvalCount n: Int, noticeSequence seq: Int, holdNotices: Bool = false,
+                                allowNotice: Bool = true) -> [PanelEvent] {
         var events: [PanelEvent] = []
         if n != approvalCount {
             approvalCount = n
@@ -22,7 +25,7 @@ public struct PanelFeed: Equatable, Sendable {
         }
         if seq > noticeSequence {
             noticeSequence = seq
-            if !holdNotices { events.append(.notice) }
+            if !holdNotices, allowNotice { events.append(.notice) }
         }
         return events
     }

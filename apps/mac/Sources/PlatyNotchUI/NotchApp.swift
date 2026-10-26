@@ -128,6 +128,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var restartTask: Task<Void, Never>?
     private var screenObserver: NSObjectProtocol?
     private var defaultsObserver: NSObjectProtocol?
+    /// First run, the tour card or neither (`prepareFirstRun`).
+    private var firstRun: FirstRunState = .settled
+    /// The tour card and the first run's "Try it" on every display's panel.
+    private lazy var tour: TourCoordinator = {
+        let t = TourCoordinator()
+        let store = self.store, today = self.today
+        t.approvals = { store.approvals.count }
+        t.onCelebrate = { today.platy.celebrate() }
+        return t
+    }()
     /// Settings › Appearance; the panels are built from it (`AppearanceStore`, C32).
     private var appearance = AppearanceStore.load(from: .standard)
     /// The one runtime shortcut catalog every widget claims global shortcuts in (M1).
@@ -156,6 +166,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before anything builds the widget registry: a layout saved by an earlier version
+        // marks someone who used PlatyNotch before (spec 14).
+        let layoutSaved: Bool = UserDefaults.standard.data(forKey: WidgetLayout.key) != nil
         // Before any widget opens its folder: shelf, clipboard and favicons move to their
         // `.noindex` names (Spotlight). Smoke runs read and write nothing.
         if !options.smoke, !options.smokeSettings { PrivateFolder.migrateToNoIndex(home: CorePaths.home()) }
@@ -183,11 +196,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Agents shows from the first session on (saved; never in smoke runs), with a
         // one-time notice.
         if !options.smoke, !options.smokeSettings { today.agentActivity.loadVisibility(from: .standard) }
-        today.agentActivity.onAgentsFirstShown = { [weak store] in
-            store?.postLocalNotice(Notice(kind: "agents-visible", title: "Agents is in your notch now",
-                                          body: "Your coding agents' sessions and approvals live here."))
+        // The one-time notice; never in smoke runs (it would hold the panel in a notice peek).
+        if !options.smoke, !options.smokeSettings {
+            today.agentActivity.onAgentsFirstShown = { [weak store] in
+                store?.postLocalNotice(Notice(kind: "agents-visible", title: "Agents is in your notch now",
+                                              body: "Your coding agents' sessions and approvals live here."))
+            }
         }
         today.agentActivity.start(store: store)
+        today.agentActivity.postNeedsInputNotices(to: store)
+        // Settings › Notifications (kept current in `appearanceMayHaveChanged`); "quiet
+        // during Focus" follows the focus session, as the notice hold always has.
+        surfaces.notificationPolicy = NotificationPolicy.load(from: .standard)
+        let today = self.today, widgets = self.widgets
+        surfaces.focusActive = { [weak today, weak widgets] in
+            guard let today, let widgets else { return false }
+            return today.focus.focusActive && widgets.isEnabled(FocusWidget.widgetID)
+        }
         Task { await client.start() }
 
         watchConfig()
@@ -203,6 +228,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The Finder service is inert until picked; smoke runs never offer it.
         if !options.smoke, !options.smokeSettings { NSApp.servicesProvider = finderService }
         startPlugins()
+        if !options.smoke, !options.smokeSettings, !options.perfRun { prepareFirstRun(layoutSaved: layoutSaved) }
         startWidgets()
 
         rebuildControllers()
@@ -229,9 +255,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 try? await Task.sleep(for: .seconds(self.options.smokeDelay))
                 await self.finishSmoke()
             }
-        } else if !onboarding.isDone {
-            onboarding.show()
+        } else if OnboardingLaunch.showsFirstRun(firstRun) {
+            // A new install only: someone who used PlatyNotch before gets the tour card.
+            onboarding.show(flow: .firstRun)
         }
+    }
+
+    /// Who gets the first run and who the tour card (spec 10, 14), and the one-time upgrade
+    /// for existing users, before any widget starts: their widgets, layout and appearance
+    /// are kept exactly. A new install is marked so a layout saved during its first launch
+    /// never makes it an "existing user" later, and needs no upgrade.
+    private func prepareFirstRun(layoutSaved: Bool) {
+        firstRun = FirstRunState.prepare(defaults: .standard, onboardingDone: onboarding.isDone, layoutSaved: layoutSaved,
+                                         glanceCapable: widgets.glanceCapableIDs)
+        today.agentActivity.reloadVisibility()   // the upgrade keeps Agents shown
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -248,7 +285,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let route = AppURL.route(url) else { continue }
             switch route {
             case .settings(let section): openSettings(section: section)
-            case .onboarding: onboarding.show()
+            case .onboarding: onboarding.show(flow: .firstRun, confirmsPresets: !OnboardingLaunch.showsFirstRun(firstRun))
             case .open: openPanel(tab: nil)
             case .plugin(let u): _ = plugins.first { $0.handle(url: u) }
             case .shelfAdd, .timerStart, .clipboardOpen: router.handle(route)
@@ -333,15 +370,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func wireSettingsEntryPoints() {
         memory.onOpenSettings = { [weak self] in self?.openSettings(section: "memory") }
-        today.calendar.onOpenSettings = { [weak self] in self?.openSettings(section: "permissions") }
-        settingsServices.showOnboarding = { [weak self] in self?.onboarding.show() }
+        today.calendar.onOpenSettings = { [weak self] in self?.openSettings(section: SettingsPageID.privacy.rawValue) }
+        // "Take the tour again" replays the whole first run; presets ask before turning anything off.
+        settingsServices.showOnboarding = { [weak self] in self?.onboarding.show(flow: .firstRun, confirmsPresets: true) }
+        settingsServices.demoNotchHandler = { [weak self] in self?.demoNotch() }
+        settingsServices.tryItHandler = { [weak self] done in self?.armTryIt(onDone: done) }
+        settingsServices.cancelTryItHandler = { [weak self] in self?.cancelTryIt() }
+        settingsServices.openSettingsHandler = { [weak self] in self?.openSettings(section: $0) }
+        onboarding.onEnded = { [weak self] in self?.applyTourState() }
         settingsServices.restartCore = { [weak self] in self?.scheduleCoreRestart() }
-        // A widget's "Set up" asks for "widgets/<id>"; until the Settings detail pages
-        // (Task 24) this opens the Widgets section and ignores the detail.
-        widgets.openSettingsHandler = { [weak self] route in
-            let section: String = route.split(separator: "/").first.map(String.init) ?? "widgets"
-            self?.openSettings(section: section)
-        }
+        // A widget's "Set up" asks for "widgets/<id>": Settings opens that widget's page.
+        widgets.openSettingsHandler = { [weak self] route in self?.openSettings(section: route) }
     }
 
     private func openSettings(section: String?) {
@@ -390,6 +429,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// pill width rebuild the panels; everything else is applied to them live.
     private func appearanceMayHaveChanged() {
         today.agentActivity.reloadVisibility()   // Settings › Agents: "Show Agents before an agent connects"
+        let nowSettings = NowSettings.load(from: .standard)
+        for c in controllers { c.nowSettingsChanged(nowSettings) }
+        let policy = NotificationPolicy.load(from: .standard)
+        if policy != surfaces.notificationPolicy { surfaces.notificationPolicy = policy }
         let now = AppearanceStore.load(from: .standard)
         guard now != appearance else { return }
         let rebuild = now.needsRebuild(from: appearance)
@@ -445,10 +488,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                     carryOver: state)
             c.onOpenSettings = { [weak self] in self?.openSettings(section: nil) }
             c.onOpenAgentSettings = { [weak self] in self?.openSettings(section: "agents") }
+            c.nowSettingsChanged(NowSettings.load(from: .standard))
             c.attach(to: screen)
             return c
         }
+        applyTourState()
     }
+
+    // MARK: - First run, the tour card and "Try it"
+
+    /// Each panel's tour card (existing users, until taken or dismissed); the "Try it"
+    /// sample and its hooks live in `tour`.
+    private func applyTourState() {
+        let d = UserDefaults.standard
+        tour.tourOffer = OnboardingLaunch.offersTourCard(firstRun, tourOffered: d.bool(forKey: FirstRunState.tourOfferedKey))
+            ? TourOffer(onTake: { [weak self] in self?.takeTour() }, onDismiss: { [weak self] in self?.dismissTour() })
+            : nil
+        tour.controllers = controllers
+    }
+
+    private func takeTour() {
+        UserDefaults.standard.set(true, forKey: FirstRunState.tourOfferedKey)
+        applyTourState()
+        for c in controllers { c.collapse() }
+        onboarding.show(flow: .tour)
+    }
+
+    private func dismissTour() {
+        UserDefaults.standard.set(true, forKey: FirstRunState.tourOfferedKey)
+        applyTourState()
+    }
+
+    /// "Meet Platy": the notch on the main display opens and closes once.
+    private func demoNotch() {
+        let primary = NSScreen.screens.first?.displayID
+        guard let c = controllers.first(where: { $0.displayID == primary }) ?? controllers.first else { return }
+        c.expand()
+        Task { @MainActor [weak c] in
+            try? await Task.sleep(for: .milliseconds(1_200))
+            c?.collapse()
+        }
+    }
+
+    /// "Try it": a sample in Now until Now has shown it; then Platy celebrates.
+    private func armTryIt(onDone: @escaping () -> Void) {
+        tour.controllers = controllers
+        tour.arm(onDone: onDone)
+    }
+
+    private func cancelTryIt() { tour.cancel() }
 
     // MARK: - Smoke checks
 

@@ -180,7 +180,7 @@ struct GamesSettings: View {
             }
             Button("Reset High Scores") { host.resetScores() }
                 .disabled(host.session.scores.scores.isEmpty)
-            Text("Keys work after you click into a game. Games pause for approvals, alarms, full screen and when the panel closes.")
+            SettingsNote("Keys work after you click into a game. Games pause for approvals, alarms, full screen and when the panel closes.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

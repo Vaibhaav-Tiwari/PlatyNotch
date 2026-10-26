@@ -94,6 +94,8 @@ struct ToolBody: View {
 /// tall as the scroll view (`FillHeight`).
 struct FadingScroll<Content: View>: View {
     let fillsRoom: Bool
+    /// The panel hides its scroller; a window page (the first run) shows it.
+    var indicators: ScrollIndicatorVisibility = .hidden
     @ViewBuilder let content: Content
     @State private var edges = ScrollEdges()
     @State private var contentHeight: CGFloat = 0
@@ -106,7 +108,7 @@ struct FadingScroll<Content: View>: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { contentHeight = $0 }
             }
-            .scrollIndicators(.hidden)
+            .scrollIndicators(indicators)
             .scrollBounceBehavior(.basedOnSize)
             .onScrollGeometryChange(for: ScrollEdges.self) { g in
                 ScrollEdges(top: g.contentOffset.y > 1,
@@ -263,5 +265,57 @@ struct ToolPrimaryButtonStyle: ButtonStyle {
                 .background(DS.color(.working, scheme).opacity(pressed ? 0.75 : 1), in: Capsule())
                 .contentShape(Capsule())
         }
+    }
+}
+
+/// An icon-led tool page for a tool with no list to show (Baskets, Keep awake on a
+/// desktop): the tool's symbol in a large teal well, a title and one line, then its
+/// controls, the whole centred in the room.
+struct ToolIconPage<Content: View>: View {
+    let systemImage: String
+    let title: String
+    let detail: String
+    @ViewBuilder let content: Content
+
+    static var well: CGFloat { 52 }
+
+    var body: some View {
+        VStack(spacing: Space.m) {
+            Image(systemName: systemImage)
+                .symbolRenderingMode(.monochrome)
+                .font(.system(size: 24, weight: .medium))
+                .foregroundStyle(DS.dynamicColor(.working))
+                .frame(width: Self.well, height: Self.well)
+                .background(DS.dynamicColor(.working, alpha: 0.12),
+                            in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+                .accessibilityHidden(true)
+            VStack(spacing: Space.xs) {
+                Text(verbatim: title)
+                    .font(DS.font(TypeScale.headline))
+                    .accessibilityAddTraits(.isHeader)
+                Text(verbatim: detail)
+                    .font(DS.font(TypeScale.body))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 380)
+            }
+            content
+                .padding(.top, Space.xs)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Settings-style rows on one soft card (the Library tile's fill), for a tool page's
+/// few controls.
+struct ToolControlCard<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.s) { content }
+            .padding(EdgeInsets(top: Space.s, leading: Space.m, bottom: Space.s, trailing: Space.m))
+            .frame(width: 360)
+            .background { LibraryTileCard(hovering: false) }
     }
 }

@@ -76,7 +76,7 @@ struct LibraryTile: View {
         } else if let custom {
             custom
                 .font(DS.font(TypeScale.caption))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .clipped()
@@ -90,7 +90,7 @@ struct LibraryTile: View {
                 }
                 Text(verbatim: item.liveLine ?? "")
                     .font(DS.font(TypeScale.caption))
-                    .foregroundStyle(item.isLive ? AnyShapeStyle(DS.dynamicColor(.working)) : AnyShapeStyle(.tertiary))
+                    .foregroundStyle(item.isLive ? AnyShapeStyle(DS.dynamicColor(.working)) : AnyShapeStyle(.secondary))
                     .lineLimit(1)
                     .truncationMode(.tail)
             }

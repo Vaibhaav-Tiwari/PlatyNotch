@@ -266,13 +266,13 @@ final class SystemWidget: NotchWidget {
         if powerPeek != nil, let shown = powerPeekShownAt, let until = powerPeekUntil,
            now.timeIntervalSince(shown) < Self.powerPeekDebounce, until > now {
             powerPeek = PowerPeek(change: change, state: new)
-            if !context.peek(id: Self.powerPeekID, until: until) { clearPowerPeek() }
+            if !context.peek(id: Self.powerPeekID, until: until, as: .other) { clearPowerPeek() }
             return
         }
         clearPowerPeek()
         let until = now.addingTimeInterval(Self.powerPeekDuration)
         powerPeek = PowerPeek(change: change, state: new)
-        guard context.peek(id: Self.powerPeekID, until: until) else {
+        guard context.peek(id: Self.powerPeekID, until: until, as: .other) else {
             powerPeek = nil
             return
         }
@@ -389,7 +389,8 @@ final class SystemWidget: NotchWidget {
             upsert(h)
             guard !known else { return }
             headphonesPeek = h
-            if !context.peek(id: Self.headphonesPeekID, until: clock().addingTimeInterval(Self.headphonesPeekDuration)) {
+            if !context.peek(id: Self.headphonesPeekID, until: clock().addingTimeInterval(Self.headphonesPeekDuration),
+                              as: .reminder) {
                 headphonesPeek = nil
             }
         case .updated(let h):
@@ -526,7 +527,7 @@ final class SystemWidget: NotchWidget {
         downloadsActive = tracker.active
         guard let done = events.last(where: { $0.kind == .finished }) else { return }
         finishedDownload = URL(fileURLWithPath: done.path)
-        context.peek(id: Self.downloadPeekID, until: clock().addingTimeInterval(Self.downloadPeekDuration))
+        context.peek(id: Self.downloadPeekID, until: clock().addingTimeInterval(Self.downloadPeekDuration), as: .other)
     }
 
     /// The notice and tile buttons: the only ways a downloaded file is acted on.
@@ -631,9 +632,11 @@ final class SystemWidget: NotchWidget {
 
     func tileView() -> AnyView { AnyView(SystemTile(widget: self)) }
 
-    /// The Library tool: the battery large (a laptop), then keep-awake and the rest, centred.
+    /// The Library tool: the battery large (a laptop), then keep-awake and the rest,
+    /// centred; on a desktop (no battery), an icon-led Keep awake page with Start.
     func toolView() -> AnyView {
-        AnyView(ToolPage(value: battery.map { "\($0.percent)%" }, label: battery?.statusText) { SystemTile(widget: self) })
+        if battery == nil { return AnyView(KeepAwakeToolPage(widget: self)) }
+        return AnyView(ToolPage(value: battery.map { "\($0.percent)%" }, label: battery?.statusText) { SystemTile(widget: self) })
     }
 
     func settingsView() -> AnyView? { AnyView(SystemSettings(widget: self)) }

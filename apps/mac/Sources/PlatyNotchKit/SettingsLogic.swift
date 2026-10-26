@@ -138,7 +138,7 @@ public enum PolicyRuleCheck {
 public enum AppURL: Equatable, Sendable {
     public static let scheme = "platynotch"
 
-    /// `platynotch://settings[/<section>]`
+    /// `platynotch://settings[/<section>[/<detail>]]`
     case settings(section: String?)
     /// `platynotch://onboarding`
     case onboarding
@@ -159,10 +159,14 @@ public enum AppURL: Equatable, Sendable {
     /// hosts are the app's; they never reach plugins).
     public static func route(_ url: URL) -> AppURL? {
         guard url.scheme?.lowercased() == scheme else { return nil }
-        let path = url.pathComponents.filter { $0 != "/" }.map { $0.lowercased() }
+        let raw = url.pathComponents.filter { $0 != "/" }
+        let path = raw.map { $0.lowercased() }
         switch url.host?.lowercased() {
         case "settings":
-            return .settings(section: path.first)
+            // The whole path ("widgets/music"): the page lowercased, a detail (a widget id)
+            // as given.
+            guard let first = path.first else { return .settings(section: nil) }
+            return .settings(section: ([first] + raw.dropFirst()).joined(separator: "/"))
         case "onboarding": return .onboarding
         case "open", "panel": return .open
         case "shelf":

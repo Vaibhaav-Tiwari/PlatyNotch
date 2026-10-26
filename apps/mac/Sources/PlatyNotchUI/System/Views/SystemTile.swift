@@ -212,6 +212,74 @@ struct KeepAwakeRow: View {
     }
 }
 
+/// System as a Library tool on a Mac without a battery: Keep awake leads, with its symbol,
+/// one line and Start (a menu of durations); while on, the time left, Change and Stop.
+/// The opt-in rows (headphones, downloads) follow on a card when there are any.
+struct KeepAwakeToolPage: View {
+    let widget: SystemWidget
+
+    var body: some View {
+        let session = widget.keepAwake.session
+        ToolIconPage(systemImage: session == nil ? "cup.and.saucer" : "cup.and.saucer.fill",
+                     title: session == nil ? "Keep awake" : "Awake",
+                     detail: session == nil ? "Keeps your Mac from sleeping for as long as you choose." : "") {
+            VStack(spacing: Space.m) {
+                if let s = session {
+                    if let until = s.until {
+                        TimelineView(.periodic(from: s.startedAt, by: 1)) { ctx in
+                            Text(verbatim: "\(TodayFormat.clock(until.timeIntervalSince(ctx.date))) left")
+                                .font(DS.font(TypeScale.title))
+                                .monospacedDigit()
+                        }
+                    } else {
+                        Text("Until turned off").font(DS.font(TypeScale.title))
+                    }
+                    Button("Stop") { widget.stopKeepAwake() }
+                        .buttonStyle(ToolPrimaryButtonStyle())
+                } else {
+                    CapsuleSegments(selection: $duration,
+                                    options: KeepAwakeDuration.allCases.map { ($0, Self.short($0)) },
+                                    label: "Keep awake for", size: TypeScale.body.size)
+                        .fixedSize()
+                    Button("Start") { widget.startKeepAwake(duration) }
+                        .buttonStyle(ToolPrimaryButtonStyle())
+                        .accessibilityLabel("Keep awake for \(duration.label)")
+                }
+                if let error = widget.keepAwake.lastError {
+                    Text(error).font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
+                }
+                if hasExtras {
+                    ToolControlCard {
+                        if widget.options.headphones {
+                            ForEach(widget.headphones) { h in HeadphonesRow(info: h) }
+                        }
+                        if widget.options.downloads {
+                            if let url = widget.finishedDownload { FinishedDownloadRow(widget: widget, url: url) }
+                        }
+                    }
+                }
+            }
+        }
+        .onAppear { widget.refreshHeadphones() }
+    }
+
+    private var hasExtras: Bool {
+        (widget.options.headphones && !widget.headphones.isEmpty)
+            || (widget.options.downloads && widget.finishedDownload != nil)
+    }
+
+    @State private var duration: KeepAwakeDuration = .oneHour
+
+    static func short(_ d: KeepAwakeDuration) -> String {
+        switch d {
+        case .thirtyMinutes: "30 min"
+        case .oneHour: "1 hour"
+        case .twoHours: "2 hours"
+        case .untilOff: "Until off"
+        }
+    }
+}
+
 /// The plug-in / unplug peek below the notch (`PanelLayout.widgetPeekHeight`).
 struct PowerPeekView: View {
     let peek: SystemWidget.PowerPeek
@@ -243,7 +311,7 @@ struct SystemSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Battery: a peek with the percent when you plug in or unplug, and the pill shows low battery "
+            SettingsNote("Battery: a peek with the percent when you plug in or unplug, and the pill shows low battery "
                  + "(10% or less) and charging. Keep awake: stops the display sleeping for the time you pick; "
                  + "it ends when the time is up, when you turn this widget off, or when you quit. "
                  + "Neither needs a permission.")

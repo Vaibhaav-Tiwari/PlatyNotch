@@ -70,9 +70,9 @@ struct FileActionsTool: View {
 struct FileActionsSettings: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Right-click a shelf item › Actions to convert images, video and audio, compress a video, combine images into a PDF, zip or unzip, copy the text in an image or PDF, remove a photo's background, or rename files.")
+            SettingsNote("Right-click a shelf item › Actions to convert images, video and audio, compress a video, combine images into a PDF, zip or unzip, copy the text in an image or PDF, remove a photo's background, or rename files.")
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Everything runs on this Mac. Results are new shelf items, kept 7 days unless pinned; Save As… puts a copy where you want it. Nothing is written next to your files. Rename changes your files' names (never replacing one) and can be undone once.")
+            SettingsNote("Everything runs on this Mac. Results are new shelf items, kept 7 days unless pinned; Save As… puts a copy where you want it. Nothing is written next to your files. Rename changes your files' names (never replacing one) and can be undone once.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }

@@ -189,10 +189,16 @@ struct MemoryTab: View {
                 .foregroundStyle(Theme.color(.attention))
         case .results(let hits):
             if hits.isEmpty {
-                Text(memory.search.query.trimmingCharacters(in: .whitespaces).isEmpty
-                     ? "Nothing captured yet." : "No matches.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
+                let unsearched: Bool = memory.search.query.trimmingCharacters(in: .whitespaces).isEmpty
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(unsearched ? "Nothing captured yet." : "No matches.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    if unsearched {
+                        Button("Memory Settings") { memory.onOpenSettings() }
+                            .controlSize(.small)
+                    }
+                }
             } else {
                 VStack(alignment: .leading, spacing: 2) {
                     if memory.search.query.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -327,5 +333,17 @@ private struct CaptureActivityLines: View {
             .font(DS.font(TypeScale.caption))
             .lineLimit(1)
         }
+    }
+}
+
+private struct OpenMemorySettingsKey: EnvironmentKey {
+    static let defaultValue: (@MainActor () -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    /// Opens Settings › Memory (empty states' one button); nil outside the panel.
+    var openMemorySettings: (@MainActor () -> Void)? {
+        get { self[OpenMemorySettingsKey.self] }
+        set { self[OpenMemorySettingsKey.self] = newValue }
     }
 }

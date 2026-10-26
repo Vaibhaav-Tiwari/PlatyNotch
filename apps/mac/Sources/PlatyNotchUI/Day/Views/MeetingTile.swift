@@ -203,7 +203,7 @@ struct MeetingSettings: View {
                 case .unavailable: Text("Needs the installed app.").foregroundStyle(.secondary).font(DS.font(TypeScale.caption))
                 }
             }
-            Text("Reminders peek at 10, 5 and 1 minutes before a meeting (not during a focus session). "
+            SettingsNote("Reminders peek at 10, 5 and 1 minutes before a meeting (quiet during focus sessions unless Settings › Notifications says otherwise). "
                  + "Join opens the meeting link only when you click it.")
                 .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)

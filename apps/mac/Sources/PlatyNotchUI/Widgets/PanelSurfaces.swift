@@ -77,6 +77,14 @@ public final class PanelSurfaces {
     public private(set) var fullScreenDisplays: Set<CGDirectDisplayID> = []
     @ObservationIgnored private var fullScreenHandlers: [ObjectIdentifier: (Set<CGDirectDisplayID>) -> Void] = [:]
 
+    /// Settings › Notifications (the app loads it and keeps it current); tests set their own.
+    public var notificationPolicy = NotificationPolicy()
+    /// Whether "quiet during Focus" applies now (a focus session is running).
+    @ObservationIgnored public var focusActive: () -> Bool = { false }
+    /// Rings that may not open the notch (`mayOpen(.ringing)` was false when they began):
+    /// they still sound and show "Stop" in the menu bar, but no panel is told.
+    @ObservationIgnored private var quietRings: Set<String> = []
+
     @ObservationIgnored private weak var registry: WidgetRegistry?
     @ObservationIgnored private var sinks: [WeakSink] = []
     @ObservationIgnored private var currentPeek: WidgetPeek?
@@ -117,7 +125,7 @@ public final class PanelSurfaces {
         guard !sinks.contains(where: { $0.sink === sink }) else { return }
         sinks.append(WeakSink(sink: sink))
         let t = now()
-        for r in rings { sink.receive(.ring(id: r.id)) }
+        for r in rings where !quietRings.contains(r.id) { sink.receive(.ring(id: r.id)) }
         if let p = currentPeek, p.until > t { sink.receive(.peek(id: p.id, until: p.until)) }
         if let h = currentHUD, h.state.until > t, Self.matches(sink, h.display) {
             sink.receive(.hud(h.state.kind, level: h.state.level, until: h.state.until))
@@ -163,11 +171,19 @@ public final class PanelSurfaces {
 
     // MARK: - Widget API (through WidgetContext)
 
+    /// Whether a `kind` may open the notch now (Settings › Notifications and Focus).
+    public func mayOpen(_ kind: NotificationKind) -> Bool {
+        notificationPolicy.mayOpen(kind, focusActive: focusActive())
+    }
+
     /// Peeks `id` (a widget's own id, conventionally "<widget>.<what>") until `until`.
-    /// False, and nothing shown, when no running widget supplies `peekView(id:)`.
+    /// False, and nothing shown, when no running widget supplies `peekView(id:)`, or when
+    /// `kind` may not open the notch now. `kind` nil: not governed (a confirmation the
+    /// user just asked for, an app link's card).
     @discardableResult
-    public func peek(id: String, until: Date) -> Bool {
+    public func peek(id: String, until: Date, kind: NotificationKind? = nil) -> Bool {
         guard hasView(id) else { return false }
+        if let kind, !mayOpen(kind) { return false }
         currentPeek = WidgetPeek(id: id, until: until)
         send(.peek(id: id, until: until))
         return true
@@ -180,16 +196,24 @@ public final class PanelSurfaces {
 
     /// Starts a sticky ringing surface (alarm, timer) shown until `stopRinging(id:)`. The
     /// view is the widget's `peekView(id:)`; `title` names it in "Stop <title>" (menu bar,
-    /// chip). False when no running widget supplies a view.
+    /// chip). False when no running widget supplies a view. When ringing may not open the
+    /// notch (Settings › Notifications), it still rings (sound, menu bar "Stop", the pill
+    /// and the hero) but no panel opens for it.
     @discardableResult
     public func ring(id: String, title: String) -> Bool {
         guard hasView(id) else { return false }
         if !rings.contains(where: { $0.id == id }) { rings.append(RingingItem(id: id, title: title)) }
+        guard mayOpen(.ringing) else {
+            quietRings.insert(id)
+            return true
+        }
+        quietRings.remove(id)
         send(.ring(id: id))
         return true
     }
 
     public func stopRinging(id: String) {
+        quietRings.remove(id)
         rings.removeAll { $0.id == id }
         send(.stopRinging(id: id))
     }

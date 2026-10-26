@@ -96,5 +96,28 @@
 	<string>https://vaibhaav-tiwari.github.io/PlatyNotch/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string></string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>dev.platynotch.widget-card</string>
+			<key>UTTypeDescription</key>
+			<string>PlatyNotch widget card</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>dev.platynotch.glance-slot</string>
+			<key>UTTypeDescription</key>
+			<string>PlatyNotch glance slot</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

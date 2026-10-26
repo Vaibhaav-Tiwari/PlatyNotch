@@ -126,6 +126,18 @@ struct ShelfCard: View {
         .accessibilityLabel("\(run.title) \(item.title)")
     }
 
+    /// In the Library tool, the Library tile's own card (a soft fill on dark, a near-white
+    /// card on light), outlined in teal while selected; on the tile, the quiet wash.
+    @ViewBuilder private var cardBackground: some View {
+        let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+        if inTool {
+            LibraryTileCard(hovering: selected)
+                .overlay { if selected { shape.strokeBorder(DS.dynamicColor(.working), lineWidth: 1.5) } }
+        } else {
+            shape.fill(.primary.opacity(selected ? 0.18 : 0.06))
+        }
+    }
+
     private var content: some View {
         // Spacing 1: two 11 pt title lines fit under the thumbnail in the fixed card.
         VStack(spacing: 1) {
@@ -174,7 +186,7 @@ struct ShelfCard: View {
         .padding(.vertical, 4)
         .padding(.horizontal, 2)
         .frame(width: cardSize.width, height: cardSize.height)
-        .background(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).fill(.primary.opacity(selected ? 0.18 : 0.06)))
+        .background { cardBackground }
         .overlay {
             if !missing {
                 // Clicks, drags out and the menu (AppKit: a real NSDraggingSource with file URLs).
@@ -475,17 +487,17 @@ struct ShelfSettings: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Drag anything to the notch to keep it on the shelf. Files stay where they are; the shelf remembers them, even if you rename or move them, and never deletes them.")
+            SettingsNote("Drag anything to the notch to keep it on the shelf. Files stay where they are; the shelf remembers them, even if you rename or move them, and never deletes them.")
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Images and files from apps like Photos or Mail are copied into PlatyNotch's private folder, and dropped text is kept there too. Unless pinned, they are deleted 7 days after you added them: while the shelf is on, at that time; while it is off, the next time PlatyNotch starts.")
+            SettingsNote("Images and files from apps like Photos or Mail are copied into PlatyNotch's private folder, and dropped text is kept there too. Unless pinned, they are deleted 7 days after you added them: while the shelf is on, at that time; while it is off, the next time PlatyNotch starts.")
                 .fixedSize(horizontal: false, vertical: true)
-            Text("The shelf can't tell which app a drag comes from, so Memory's excluded apps don't apply to it. Items marked as passwords or transient by the app that copied them are never kept.")
+            SettingsNote("The shelf can't tell which app a drag comes from, so Memory's excluded apps don't apply to it. Items marked as passwords or transient by the app that copied them are never kept.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Items from Downloads, Desktop or Documents may ask macOS for access when shown.")
+            SettingsNote("Items from Downloads, Desktop or Documents may ask macOS for access when shown.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Turning the shelf off keeps its items. Clear Shelf deletes every unpinned item and its copy now.")
+            SettingsNote("Turning the shelf off keeps its items. Clear Shelf deletes every unpinned item and its copy now.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack {

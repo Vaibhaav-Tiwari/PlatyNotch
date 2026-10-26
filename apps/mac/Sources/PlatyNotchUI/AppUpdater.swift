@@ -45,6 +45,11 @@ final class AppUpdater {
     func openReleases() { NSWorkspace.shared.open(UpdaterConfig.releasesURL) }
 
     /// "0.1.0 (42)", or "development build" outside a bundle.
+    /// "Version 1.2 (34)", or "Development build" outside an installed app.
+    static var versionLine: String {
+        Bundle.main.bundleURL.pathExtension == "app" ? "Version \(versionDescription)" : "Development build"
+    }
+
     static var versionDescription: String {
         let info = Bundle.main.infoDictionary ?? [:]
         guard Bundle.main.bundleURL.pathExtension == "app",

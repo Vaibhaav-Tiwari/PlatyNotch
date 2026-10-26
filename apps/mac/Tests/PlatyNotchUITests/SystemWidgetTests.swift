@@ -198,7 +198,7 @@ final class SystemWidgetTests: DefaultsTestCase {
     /// `enabled: false` turns the widget off before the app starts widgets.
     private func rig(battery: BatteryState? = onBattery, enabled: Bool = true,
                      bluetooth: BluetoothAccess = .notDetermined,
-                     defaults givenDefaults: UserDefaults? = nil) -> Rig {
+                     defaults givenDefaults: UserDefaults? = nil, otherMayOpen: Bool = true) -> Rig {
         let d = givenDefaults ?? defaults()
         let power = FakePower(battery)
         let asserter = FakeAsserter()
@@ -234,6 +234,12 @@ final class SystemWidgetTests: DefaultsTestCase {
         let registry = WidgetRegistry(defaults: defaults(), persist: false)
         registries.append(registry)
         let surfaces = PanelSurfaces(registry: registry)
+        // The power and download peeks are "Everything else", which may not open the notch
+        // by default (Settings › Notifications; NotificationGateTests): these tests check
+        // the peeks themselves, so that row may open here.
+        var policy = NotificationPolicy()
+        if otherMayOpen { policy[.other] = NotificationRule(showInPill: true, canOpen: true, quietDuringFocus: true) }
+        surfaces.notificationPolicy = policy
         registry.register(w)
         if !enabled { registry.setEnabled(SystemWidget.widgetID, false) }
         let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("pnsys\(UUID().uuidString)")
@@ -501,6 +507,25 @@ final class SystemWidgetTests: DefaultsTestCase {
     private func turnOnDownloads(_ r: Rig) async {
         r.widget.setDownloads(true)
         await r.widget.downloadsTask?.value
+    }
+
+    /// Settings › Notifications defaults (spec 6.3): a finished download and plugging in are
+    /// "Everything else" and do not open the notch; AirPods connecting is a reminder that does.
+    func testDownloadPeekOffByDefault() async {
+        let r = rig(otherMayOpen: false)
+        await turnOnDownloads(r)
+        let temp = "\(folder)/report.pdf.crdownload", final = "\(folder)/report.pdf"
+        r.disk.files = [temp]
+        r.watches.live?.onPaths([temp])
+        r.disk.files = [final]
+        r.watches.live?.onPaths([temp, final])
+        XCTAssertEqual(r.controller.mode, .compact, "a finished download does not open the notch")
+        r.power.set(charging)
+        XCTAssertEqual(r.controller.mode, .compact, "plugging in does not open the notch")
+        XCTAssertNil(r.widget.powerPeek)
+        r.widget.setHeadphones(true)
+        r.headphones.send(.connected(airPods))
+        XCTAssertEqual(r.controller.mode, peek(SystemWidget.headphonesPeekID), "AirPods connecting still peeks")
     }
 
     func testDownloadsButtonAsksThenWatches() async {

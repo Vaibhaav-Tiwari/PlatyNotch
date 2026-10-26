@@ -33,10 +33,23 @@ final class PanelViewModel {
     var onConnectAgent: () -> Void = {}
     /// Settings › Appearance, clamped (live side, theme, motion).
     var appearance: AppearanceSettings = AppearanceSettings()
+    /// Settings › Notifications: kinds the pill leaves out (never approvals).
+    var hiddenKinds: Set<NotificationKind> = []
+    /// Existing users' one-time tour card at the top of Now (spec 14).
+    var tourOffer: TourOffer?
+    /// The first run's "Try it" sample ("This is Now") in Now's deck.
+    var tourSample: LiveActivity?
+    /// The notice the toast shows (the one that opened it, not merely the newest).
+    var toastNotice: Notice?
+    /// Settings › Now (hero cycling), refreshed when the saved settings change.
+    var nowSettings = NowSettings()
 }
 
 /// Places the mode's content inside the fixed-size panel window.
 struct PanelRootView: View {
+    /// Settings › Now › hero cycling, as both the open panel's Now and the hover peek get it.
+    static func heroCycling(_ model: PanelViewModel) -> Bool { model.nowSettings.heroCycling }
+
     let model: PanelViewModel
     let store: AppStore
     let responder: ApprovalResponder
@@ -135,7 +148,7 @@ struct PanelRootView: View {
         let now: Date = Date()
         let activities: [LiveActivity] = widgets.liveActivities
         let pill = PillContent(activities: activities, sessions: store.sessions, approvals: store.approvals.count,
-                               hiddenKinds: [], now: now)
+                               hiddenKinds: model.hiddenKinds, now: now)
         guard let trailing: String = pill.trailing?.id else { return MorphContext(namespace: morphSpace, liveID: nil) }
         let agents: AgentsLive? = AgentsLive.make(sessions: store.sessions, log: today.agentActivity.log, now: now)
         let items: [LiveItem] = HeroDeck.items(widgets.rankedLive(agents: agents, now: now))
@@ -163,9 +176,8 @@ struct PanelRootView: View {
         case .hidden:
             Color.clear
         case .compact:
-            // `hiddenKinds` stays empty until Settings › Notifications (Task 22).
             let pill = PillContent(activities: widgets.liveActivities, sessions: store.sessions,
-                                   approvals: store.approvals.count, hiddenKinds: [],
+                                   approvals: store.approvals.count, hiddenKinds: model.hiddenKinds,
                                    log: today.agentActivity.log, now: Date())
             CompactPill(content: pill, connection: store.connection, hasNotch: layout.hasNotch,
                         notchWidth: layout.hasNotch ? layout.anchor.width : 0,
@@ -180,7 +192,7 @@ struct PanelRootView: View {
                 .overlay(alignment: .bottom) { hudIndicator }
         case .peek(.notice):
             Group {
-                if let notice = store.notices.last { NoticeToast(notice: notice) } else { Color.clear }
+                if let notice = model.toastNotice ?? store.notices.last { NoticeToast(notice: notice) } else { Color.clear }
             }
             .padding(EdgeInsets(top: top, leading: 14, bottom: 10, trailing: 14))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -196,6 +208,8 @@ struct PanelRootView: View {
                           deck: Binding(get: { model.heroDeck }, set: { model.heroDeck = $0 }),
                           agentsVisible: today.agentActivity.agentsVisibility.isVisible,
                           onConnectAgent: model.onConnectAgent,
+                          tourOffer: model.tourOffer, tourSample: model.tourSample,
+                          heroCycling: Self.heroCycling(model),
                           onDecide: decide, onOpenTerminal: onOpenTerminal)
             }
             .transition(ChromeSettle<EmptyView>.transition)
@@ -224,7 +238,8 @@ struct PanelRootView: View {
             NowView(store: store, widgets: widgets, today: today,
                     deck: Binding(get: { model.heroDeck }, set: { model.heroDeck = $0 }),
                     onOpenTool: { _ in model.onClick() }, onOpenAgents: model.onClick,
-                    onOpenTerminal: onOpenTerminal, heroOnly: true)
+                    onOpenTerminal: onOpenTerminal, heroOnly: true,
+                    cycling: Self.heroCycling(model), tourSample: model.tourSample)
             }
             .transition(ChromeSettle<EmptyView>.transition)
                 // 6 at the bottom: the 160 pt hero fits the 176 pt peek without a notch too.

@@ -1,25 +1,38 @@
 import PlatyNotchKit
 import SwiftUI
 
-/// Version, updates and license.
+/// Version and license (updates live in General).
 struct AboutSection: View {
     @Bindable var updater: AppUpdater
 
     var body: some View {
-        SettingsPage("About") {
-            Form {
-                LabeledContent("Version") { Text(verbatim: AppUpdater.versionDescription).textSelection(.enabled) }
-                if updater.isEnabled {
-                    Toggle("Automatically check for updates", isOn: $updater.automaticallyChecks)
-                    Button("Check for Updates…") { updater.checkForUpdates() }
-                } else {
-                    Text("Updates: download new versions from GitHub Releases")
-                    Link("github.com/Vaibhaav-Tiwari/PlatyNotch/releases", destination: UpdaterConfig.releasesURL)
+        SettingsPage("About", subtitle: "Version, source and licence.") {
+            HStack(spacing: 14) {
+                PlatyView(mood: .idle, size: 56)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("PlatyNotch").font(.system(size: 17, weight: .semibold))
+                    Text(verbatim: AppUpdater.versionLine)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
                 }
-                Text("PlatyNotch is open source under the Apache-2.0 license. The bundled mediaremote-adapter is BSD-3-Clause; Sparkle is MIT. License texts are in the app's Resources folder.")
-                    .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
             }
-            .formStyle(.grouped)
+            .padding(.vertical, 4)
+            Form {
+                Section {
+                    LabeledContent("License") { Text("Apache-2.0") }
+                    LabeledContent("Source") {
+                        SettingsLink("github.com/Vaibhaav-Tiwari/PlatyNotch",
+                             destination: URL(string: "https://github.com/Vaibhaav-Tiwari/PlatyNotch")!)
+                    }
+                    LabeledContent("Releases") {
+                        SettingsLink("GitHub Releases", destination: UpdaterConfig.releasesURL)
+                    }
+                } footer: {
+                    Text("The bundled mediaremote-adapter is BSD-3-Clause and Sparkle is MIT. License texts are in the app's Resources folder.")
+                        .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
+                }
+            }
+            .settingsForm()
         }
     }
 }
