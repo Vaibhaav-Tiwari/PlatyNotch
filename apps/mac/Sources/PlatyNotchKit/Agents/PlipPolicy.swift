@@ -18,12 +18,12 @@ public enum PlipPolicy {
     /// The playback volume, 0…1.
     public static let volume: Float = 0.45
 
-    /// Whether the sound plays for `session` (nil: an approval whose session is unknown).
-    /// Muted when the session's own terminal is frontmost; for a terminal that cannot be
-    /// told (`pidAncestry`: tmux, unknown, absent), when any known terminal is frontmost.
-    public static func shouldPlay(enabled: Bool, session: Session?, frontmostBundleID: String?,
+    /// Whether the sound plays for `session` (nil: an approval whose session is unknown),
+    /// once the sound is on (`PlipSettings.enabled`). Muted when the session's own terminal
+    /// is frontmost; for a terminal that cannot be told (`pidAncestry`: tmux, unknown,
+    /// absent), when any known terminal is frontmost.
+    public static func shouldPlay(session: Session?, frontmostBundleID: String?,
                                   isRunning: (String) -> Bool) -> Bool {
-        guard enabled else { return false }
         guard let front = frontmostBundleID else { return true }
         let target = TerminalApps.target(termProgram: session?.termProgram, isRunning: isRunning)
         switch target {

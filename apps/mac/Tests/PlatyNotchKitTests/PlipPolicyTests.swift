@@ -15,8 +15,6 @@ final class PlipPolicyTests: DefaultsTestCase {
         XCTAssertFalse(settings.enabled)
         XCTAssertEqual(settings.choice, .chatter)
         XCTAssertNil(settings.customName)
-        XCTAssertFalse(PlipPolicy.shouldPlay(enabled: settings.enabled, session: session(term: "iTerm.app"),
-                                             frontmostBundleID: "com.apple.Safari", isRunning: none))
     }
 
     func testSettingsRoundTrip() {
@@ -43,29 +41,29 @@ final class PlipPolicyTests: DefaultsTestCase {
 
     func testMutedWhenItsTerminalIsFrontmost() {
         let iterm = session(term: "iTerm.app")
-        XCTAssertFalse(PlipPolicy.shouldPlay(enabled: true, session: iterm, frontmostBundleID: "com.googlecode.iterm2",
+        XCTAssertFalse(PlipPolicy.shouldPlay(session: iterm, frontmostBundleID: "com.googlecode.iterm2",
                                              isRunning: none))
-        XCTAssertTrue(PlipPolicy.shouldPlay(enabled: true, session: iterm, frontmostBundleID: "com.apple.Safari",
+        XCTAssertTrue(PlipPolicy.shouldPlay(session: iterm, frontmostBundleID: "com.apple.Safari",
                                             isRunning: none))
         let apple = session(term: "Apple_Terminal")
-        XCTAssertFalse(PlipPolicy.shouldPlay(enabled: true, session: apple, frontmostBundleID: "com.apple.Terminal",
+        XCTAssertFalse(PlipPolicy.shouldPlay(session: apple, frontmostBundleID: "com.apple.Terminal",
                                              isRunning: none))
         // Another terminal in front is not the agent's: it plays.
-        XCTAssertTrue(PlipPolicy.shouldPlay(enabled: true, session: apple, frontmostBundleID: "com.googlecode.iterm2",
+        XCTAssertTrue(PlipPolicy.shouldPlay(session: apple, frontmostBundleID: "com.googlecode.iterm2",
                                             isRunning: none))
     }
 
     func testUnknownTerminalMutedByAnyKnownTerminal() {
         let tmux = session(term: "tmux")
         for id in TerminalApps.knownTerminalIDs {
-            XCTAssertFalse(PlipPolicy.shouldPlay(enabled: true, session: tmux, frontmostBundleID: id, isRunning: none), id)
+            XCTAssertFalse(PlipPolicy.shouldPlay(session: tmux, frontmostBundleID: id, isRunning: none), id)
         }
-        XCTAssertTrue(PlipPolicy.shouldPlay(enabled: true, session: tmux, frontmostBundleID: "com.apple.finder",
+        XCTAssertTrue(PlipPolicy.shouldPlay(session: tmux, frontmostBundleID: "com.apple.finder",
                                             isRunning: none))
         // An approval whose session is unknown behaves the same.
-        XCTAssertFalse(PlipPolicy.shouldPlay(enabled: true, session: nil, frontmostBundleID: TerminalApps.iTermID,
+        XCTAssertFalse(PlipPolicy.shouldPlay(session: nil, frontmostBundleID: TerminalApps.iTermID,
                                              isRunning: none))
-        XCTAssertTrue(PlipPolicy.shouldPlay(enabled: true, session: nil, frontmostBundleID: nil, isRunning: none))
+        XCTAssertTrue(PlipPolicy.shouldPlay(session: nil, frontmostBundleID: nil, isRunning: none))
     }
 
     /// A chosen file must play and last at most 5 seconds.
@@ -89,11 +87,11 @@ final class PlipPolicyTests: DefaultsTestCase {
     func testVSCodeFamilyMutes() {
         let code = session(term: "vscode")
         let cursor = "com.todesktop.230313mzl4w4u92"
-        XCTAssertFalse(PlipPolicy.shouldPlay(enabled: true, session: code, frontmostBundleID: cursor,
+        XCTAssertFalse(PlipPolicy.shouldPlay(session: code, frontmostBundleID: cursor,
                                              isRunning: { $0 == "com.microsoft.VSCode" }))
-        XCTAssertFalse(PlipPolicy.shouldPlay(enabled: true, session: code, frontmostBundleID: "com.microsoft.VSCode",
+        XCTAssertFalse(PlipPolicy.shouldPlay(session: code, frontmostBundleID: "com.microsoft.VSCode",
                                              isRunning: none))
-        XCTAssertTrue(PlipPolicy.shouldPlay(enabled: true, session: code, frontmostBundleID: TerminalApps.iTermID,
+        XCTAssertTrue(PlipPolicy.shouldPlay(session: code, frontmostBundleID: TerminalApps.iTermID,
                                             isRunning: none))
     }
 

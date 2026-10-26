@@ -63,7 +63,7 @@ final class PlipPlayer {
         guard !PlipPolicy.quietForFocus(kind, policy: policy, focusActive: focusActive()) else { return }
         let front: String? = seams.frontmost()
         let audible: Bool = sessions.contains { s in
-            PlipPolicy.shouldPlay(enabled: true, session: s, frontmostBundleID: front, isRunning: seams.isRunning)
+            PlipPolicy.shouldPlay(session: s, frontmostBundleID: front, isRunning: seams.isRunning)
         }
         guard audible else { return }
         let now = seams.now()
