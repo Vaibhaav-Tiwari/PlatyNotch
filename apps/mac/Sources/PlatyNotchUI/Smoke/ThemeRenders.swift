@@ -412,7 +412,8 @@ enum NowRenders {
         let usage: Usage = (try? JSONCoding.decoder.decode(Usage.self, from: Data(json.utf8))) ?? Usage()
         try? rig.store.apply(Envelope.make(.snapshot, Snapshot(usage: usage, loops: loops)))
         let start = now.addingTimeInterval(8 * 60)
-        let later = now.addingTimeInterval(45 * 60)   // today, and not yet live
+        // Today, and not yet live; never before the real clock, which the meeting glance reads.
+        let later = max(now, Date()).addingTimeInterval(45 * 60)
         let next = meeting ? CalendarMeeting(id: "design", title: "Design review", start: start,
                                              end: start.addingTimeInterval(1800),
                                              joinURL: URL(string: "https://meet.example.com/design"))
