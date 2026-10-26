@@ -66,7 +66,21 @@ final class AgentsOrderTests: DefaultsTestCase {
         XCTAssertEqual(line(session("a", .idle), .idle), "Idle")
         XCTAssertEqual(line(session("a", .exited), .exited), "Ended")
         // A clock that went backwards never shows a negative time.
-        XCTAssertEqual(line(session("a", .active, started: 600), .working), "Working · 0 m")
+        XCTAssertEqual(line(session("a", .active, started: 600), .working), "Working · just now")
+    }
+
+    /// Under a minute reads "just now", never "0 m".
+    func testUnderAMinuteSaysJustNow() {
+        let now = Date(timeIntervalSince1970: 10_000)
+        let t = now.addingTimeInterval(-45)
+        let working = Session(key: "a", agent: "codex", agentName: "Codex", sessionID: "a", state: .active,
+                              title: "Running tests", startedAt: t, updatedAt: t)
+        XCTAssertEqual(SessionStatusLine.text(working, attention: .working, now: now), "Running tests · just now")
+        let done = Session(key: "b", agent: "codex", agentName: "Codex", sessionID: "b", state: .idle,
+                           startedAt: t, updatedAt: t)
+        XCTAssertEqual(SessionStatusLine.text(done, attention: .finished, now: now), "Finished · just now")
+        XCTAssertEqual(SessionStatusLine.text(done, attention: .finished, now: now.addingTimeInterval(60)),
+                       "Finished · 1 m ago")
     }
 
     func testLastActionHidesNothing() {
