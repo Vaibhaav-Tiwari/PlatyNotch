@@ -158,4 +158,18 @@ final class OnboardingFlowTests: DefaultsTestCase {
         XCTAssertFalse(s.widgets.isEnabled("snap"))
         XCTAssertTrue(s.widgets.isEnabled("music"))
     }
+
+    /// The first run applies the picked setup directly; the replay from Settings asks with a
+    /// summary of every change.
+    func testOnboardingConfirmation() {
+        let s = services()
+        let plan = s.presetPlan(.minimal, defaults: defaults())
+        XCTAssertEqual(OnboardingView.continueStep(page: .pickSetup, confirmsPresets: false, plan: plan), .apply)
+        XCTAssertEqual(OnboardingView.continueStep(page: .pickSetup, confirmsPresets: true, plan: plan), .confirm)
+        XCTAssertEqual(OnboardingView.continueStep(page: .meetPlaty, confirmsPresets: true, plan: plan), .nextPage)
+        let summary = s.presetSummary(plan)
+        XCTAssertTrue(summary.contains("Turns off"), summary)
+        XCTAssertTrue(summary.contains("Claude/Codex usage"), "glances are named, not ids: \(summary)")
+        XCTAssertTrue(summary.contains("The notch hides until something is live."))
+    }
 }

@@ -56,4 +56,34 @@ final class WindowSizeTests: DefaultsTestCase {
             XCTAssertLessThanOrEqual(size.height, 900, section)
         }
     }
+
+    /// Every first-run page and every Settings page (sub-pages too) keeps its exact size,
+    /// off screen at (-10000, 10000).
+    func testWindowsKeepExactSizeOffScreen() {
+        let away = NSPoint(x: -10_000, y: 10_000)
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        addTeardownBlock { try? FileManager.default.removeItem(at: home) }
+        let o = OnboardingWindowController(services: services(), home: home, defaults: defaults())
+        o.showForSmoke()
+        for page in 0..<OnboardingWindowController.pageCount {
+            o.model.page = page
+            settle(o.hostingView)
+            XCTAssertEqual(o.window?.contentView?.frame.size, NSSize(width: 620, height: 520), "page \(page)")
+            XCTAssertEqual(o.window?.frame.origin, away, "page \(page)")
+        }
+        o.close()
+        let c = SettingsWindowController(services: services(), pluginSections: [])
+        c.showForSmoke()
+        defer { c.close() }
+        let targets: [SettingsTarget] = c.sectionIDs.map { SettingsTarget(section: $0) }
+            + [SettingsTarget(section: "agents", detail: "approvals"), SettingsTarget(section: "agents", detail: "policy"),
+               SettingsTarget(section: "widgets", detail: "weather")]
+        for t in targets {
+            c.model.go(to: t, ids: c.sectionIDs)
+            settle(c.hostingView)
+            let name = t.section + (t.detail.map { "/" + $0 } ?? "")
+            XCTAssertEqual(c.hostingView?.window?.contentView?.frame.size, NSSize(width: 800, height: 580), name)
+            XCTAssertEqual(c.hostingView?.window?.frame.origin, away, name)
+        }
+    }
 }

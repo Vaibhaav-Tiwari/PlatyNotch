@@ -121,4 +121,56 @@ final class SetupPresetTests: DefaultsTestCase {
         UpgradeMigration.run(defaults: d, existingUser: false, glanceCapable: ["weather"])
         XCTAssertEqual(UserDefaults.standard.persistentDomain(forName: suiteName)?.keys.sorted() ?? [], [])
     }
+
+    /// A new install across launches: quit during the first run twice, then finish it. It
+    /// stays a first run until finished, and Agents is never "upgraded" into view.
+    func testNewInstallAcrossLaunches() {
+        let d = defaults()
+        // Launch 1: nothing saved.
+        XCTAssertEqual(FirstRunState.prepare(defaults: d, onboardingDone: false, layoutSaved: false,
+                                             glanceCapable: ["weather"]), .firstRun)
+        d.set(WidgetLayout(order: ["music"], enabled: ["music"]).encoded(), forKey: WidgetLayout.key)   // saved meanwhile
+        // Launches 2 and 3: quit mid first run, a layout now saved.
+        for _ in 0..<2 {
+            XCTAssertEqual(FirstRunState.prepare(defaults: d, onboardingDone: false, layoutSaved: true,
+                                                 glanceCapable: ["weather"]), .firstRun)
+            XCTAssertFalse(AgentsVisibility.load(from: d).everConnected, "never upgraded into view")
+        }
+        // Finished: settled, still no upgrade.
+        FirstRunState.finish(defaults: d)
+        XCTAssertEqual(FirstRunState.prepare(defaults: d, onboardingDone: true, layoutSaved: true,
+                                             glanceCapable: ["weather"]), .settled)
+        XCTAssertFalse(AgentsVisibility.load(from: d).everConnected)
+        XCTAssertNil(d.object(forKey: GlanceSlots.key), "the first run chose (or left) the glances")
+    }
+
+    /// Someone updating: the tour card, the upgrade once, and finishing settles it.
+    func testExistingUserPrepare() {
+        let d = defaults()
+        d.set(WidgetLayout(order: ["music"], enabled: ["music"]).encoded(), forKey: WidgetLayout.key)
+        XCTAssertEqual(FirstRunState.prepare(defaults: d, onboardingDone: true, layoutSaved: true,
+                                             glanceCapable: ["weather"]), .offerTour)
+        XCTAssertTrue(AgentsVisibility.load(from: d).everConnected)
+        XCTAssertFalse(d.bool(forKey: FirstRunState.pendingKey))
+        FirstRunState.finish(defaults: d)
+        XCTAssertEqual(FirstRunState.prepare(defaults: d, onboardingDone: true, layoutSaved: true,
+                                             glanceCapable: ["weather"]), .settled)
+    }
+
+    func testPresetPlanAsksOutsideTheFirstRun() {
+        let plan = PresetPlan.plan(.everyday, enabled: ["music"], glances: ["music"], mode: .minimal)
+        XCTAssertEqual(plan.turnOn, ["meeting", "time", "weather", "shelf", "clipboard"])
+        XCTAssertEqual(plan.glances, ["meeting", "weather", "system", "loops"])
+        XCTAssertEqual(plan.mode, .alwaysOn)
+        XCTAssertFalse(plan.asks(firstRun: true), "a new install's first run applies directly")
+        XCTAssertTrue(plan.asks(firstRun: false), "Settings always asks, even with nothing turned off")
+        XCTAssertEqual(plan.summary(title: { $0.capitalized }), [
+            "Turns on Meeting, Time, Weather, Shelf, Clipboard.",
+            "Glances become Meeting, Weather, System, Loops.",
+            "The notch stays on.",
+        ])
+        let current = PresetPlan.plan(.minimal, enabled: ["music"], glances: [GlanceSlots.usageID], mode: .minimal)
+        XCTAssertTrue(current.isCurrent)
+        XCTAssertFalse(current.asks(firstRun: false), "nothing to change: nothing to ask")
+    }
 }

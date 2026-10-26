@@ -7,9 +7,10 @@ struct GeneralSection: View {
     let services: SettingsServices
     @State private var loginEnabled = SMAppService.mainApp.status == .enabled
     @State private var loginNote: String?
-    /// A setup that would turn widgets off, waiting for a yes.
+    /// A setup waiting for a yes.
     @State private var pending: SetupPreset?
-    @State private var applied: SetupPreset?
+    /// Bumped after applying, so the "Current" badges are read again.
+    @State private var revision = 0
 
     var body: some View {
         SettingsPage("General") {
@@ -25,41 +26,37 @@ struct GeneralSection: View {
                 }
                 Section("Updates") { updateRows }
                 Section {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 10) {
                         ForEach(SetupPreset.allCases, id: \.self) { p in
-                            Button(p.title) { choose(p) }
-                                .help(p.summary)
+                            PresetCard(preset: p, selected: false, compact: true,
+                                       current: services.presetPlan(p).isCurrent) { choose(p) }
                         }
                         Spacer(minLength: 0)
-                        if let applied {
-                            Label("\(applied.title) applied", systemImage: "checkmark.circle.fill")
-                                .font(DS.font(TypeScale.caption))
-                                .foregroundStyle(SettingsTint.accent)
-                        }
                     }
-                } header: {
-                    SettingLabel("Setup", info: "Everyday, Developer or Minimal turn widgets on or off and choose the four glances. You are asked before anything is turned off.")
-                }
-                Section("Getting started") {
+                    .padding(.vertical, 4)
+                    .id(revision)
                     LabeledContent {
                         Button("Start") { services.showOnboarding() }
                     } label: {
                         SettingLabel("Take the tour again",
-                                     info: "Replays the first run: meet Platy, pick a setup, permissions, then try the notch. Nothing changes until you choose.")
+                                     info: "Replays the first run: meet Platy, pick a setup, permissions, then try the notch. Nothing changes until you confirm.")
                     }
+                } header: {
+                    SettingLabel("Setup", info: "Everyday, Developer or Minimal choose which widgets are on, the four glances and whether the notch hides. You see every change and confirm first.")
                 }
             }
             .settingsForm()
         }
         .onAppear(perform: readLogin)
-        .confirmationDialog(confirmTitle, isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
+        .confirmationDialog("Apply \(pending?.title ?? "")?",
+                            isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
                             titleVisibility: .visible) {
-            Button("Turn Off and Apply", role: .destructive) {
+            Button("Apply \(pending?.title ?? "")") {
                 if let p = pending { apply(p) }
             }
             Button("Cancel", role: .cancel) { pending = nil }
         } message: {
-            Text(verbatim: confirmMessage)
+            Text(verbatim: pending.map { services.presetSummary(services.presetPlan($0)) } ?? "")
         }
     }
 
@@ -73,38 +70,28 @@ struct GeneralSection: View {
             LabeledContent {
                 Button("Check Now") { updater.checkForUpdates() }
             } label: {
-                Text(verbatim: "Version \(AppUpdater.versionDescription)")
+                Text(verbatim: AppUpdater.versionLine)
             }
         } else {
             LabeledContent {
                 SettingsLink("Releases", destination: UpdaterConfig.releasesURL)
             } label: {
-                SettingLabel("Version \(AppUpdater.versionDescription)",
+                SettingLabel(AppUpdater.versionLine,
                              info: "This build does not update itself. New versions are on GitHub Releases.")
             }
         }
     }
 
-    /// Applies `p`, asking first when it would turn anything off (spec 14).
+    /// Asks first, with every change listed (spec 14); a setup that is already current
+    /// changes nothing.
     private func choose(_ p: SetupPreset) {
-        if services.presetChange(p).needsConfirmation { pending = p } else { apply(p) }
+        if services.presetPlan(p).asks(firstRun: false) { pending = p }
     }
 
     private func apply(_ p: SetupPreset) {
         services.applyPreset(p)
-        applied = p
         pending = nil
-    }
-
-    private var offTitles: [String] {
-        guard let p = pending else { return [] }
-        return services.presetChange(p).turnOff.compactMap { services.widgets.widget($0)?.title }
-    }
-
-    private var confirmTitle: String { "Turn off \(offTitles.count == 1 ? "1 widget" : "\(offTitles.count) widgets")?" }
-
-    private var confirmMessage: String {
-        "\(pending?.title ?? "") turns off \(offTitles.joined(separator: ", ")). You can turn them on again in Settings › Widgets."
+        revision += 1
     }
 
     private func readLogin() {

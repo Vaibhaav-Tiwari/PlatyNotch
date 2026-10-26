@@ -225,8 +225,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true,
                                                  attributes: [.posixPermissions: 0o700])
         FileManager.default.createFile(atPath: markerURL.path, contents: Data(), attributes: [.posixPermissions: 0o600])
-        defaults.set(true, forKey: FirstRunState.tourOfferedKey)
-        defaults.removeObject(forKey: FirstRunState.pendingKey)
+        FirstRunState.finish(defaults: defaults)
     }
 
     private func makeWindow() -> NSWindow {
@@ -287,11 +286,11 @@ struct OnboardingView: View {
             bar
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .confirmationDialog(confirmTitle, isPresented: $confirming, titleVisibility: .visible) {
-            Button("Turn Off and Continue", role: .destructive) { applyAndContinue() }
+        .confirmationDialog("Apply \(model.preset.title)?", isPresented: $confirming, titleVisibility: .visible) {
+            Button("Apply \(model.preset.title)") { applyAndContinue() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(verbatim: confirmMessage)
+            Text(verbatim: services.presetSummary(services.presetPlan(model.preset)))
         }
     }
 
@@ -327,16 +326,22 @@ struct OnboardingView: View {
         .overlay(alignment: .top) { Divider() }
     }
 
+    enum ContinueStep: Equatable { case nextPage, apply, confirm }
+
+    /// What Continue does: on "Pick your setup", apply the preset, or ask first unless this
+    /// is a new install's first run (`PresetPlan.asks`).
+    static func continueStep(page: OnboardingFlow.Page, confirmsPresets: Bool, plan: PresetPlan) -> ContinueStep {
+        guard page == .pickSetup else { return .nextPage }
+        return plan.asks(firstRun: !confirmsPresets) ? .confirm : .apply
+    }
+
     private func next() {
-        if model.current == .pickSetup {
-            if model.confirmsPresets, services.presetChange(model.preset).needsConfirmation {
-                confirming = true
-                return
-            }
-            applyAndContinue()
-            return
+        switch Self.continueStep(page: model.current, confirmsPresets: model.confirmsPresets,
+                                 plan: services.presetPlan(model.preset)) {
+        case .nextPage: model.page += 1
+        case .apply: applyAndContinue()
+        case .confirm: confirming = true
         }
-        model.page += 1
     }
 
     private func applyAndContinue() {
@@ -344,15 +349,6 @@ struct OnboardingView: View {
         model.page += 1
     }
 
-    private var confirmTitle: String { "Turn off \(offTitles.count == 1 ? "1 widget" : "\(offTitles.count) widgets")?" }
-
-    private var confirmMessage: String {
-        "\(model.preset.title) turns off " + offTitles.joined(separator: ", ") + ". You can turn them on again in Settings › Widgets."
-    }
-
-    private var offTitles: [String] {
-        services.presetChange(model.preset).turnOff.compactMap { services.widgets.widget($0)?.title }
-    }
 }
 
 // MARK: - Pages
@@ -451,13 +447,49 @@ private struct PickSetupPage: View {
 struct PresetCard: View {
     let preset: SetupPreset
     let selected: Bool
+    /// Settings' small card: the sketch, the name and a "Current" badge.
+    var compact = false
+    var current = false
     let choose: () -> Void
 
     static let size = CGSize(width: 170, height: 236)
+    static let compactSize = CGSize(width: 150, height: 120)
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         Button(action: choose) {
+            if compact { compactBody(shape) } else { fullBody(shape) }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(preset.title): \(preset.summary)\(current ? ", current setup" : "")")
+        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
+        .help(preset.summary)
+    }
+
+    private func compactBody(_ shape: RoundedRectangle) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            PresetSketch(preset: preset, height: 56)
+            HStack(spacing: 6) {
+                Text(verbatim: preset.title).font(.system(size: 13, weight: .semibold))
+                Spacer(minLength: 0)
+                if current {
+                    Text("Current")
+                        .font(DS.font(TypeScale.caption))
+                        .foregroundStyle(SettingsTint.accent)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(SettingsTint.well, in: Capsule())
+                }
+            }
+        }
+        .padding(10)
+        .frame(width: Self.compactSize.width, height: Self.compactSize.height, alignment: .topLeading)
+        .background(Color.primary.opacity(0.035), in: shape)
+        .overlay(shape.strokeBorder(current ? SettingsTint.accent : Color.primary.opacity(0.08), lineWidth: current ? 1.5 : 1))
+        .contentShape(shape)
+    }
+
+    private func fullBody(_ shape: RoundedRectangle) -> some View {
             VStack(alignment: .leading, spacing: 10) {
                 PresetSketch(preset: preset)
                 VStack(alignment: .leading, spacing: 4) {
@@ -487,10 +519,6 @@ struct PresetCard: View {
                 }
             }
             .contentShape(shape)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(preset.title): \(preset.summary)")
-        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 
     static func symbols(_ p: SetupPreset) -> [String] {
@@ -507,6 +535,7 @@ struct PresetCard: View {
 /// agents and usage, Minimal's notch with nothing until something is live.
 private struct PresetSketch: View {
     let preset: SetupPreset
+    var height: CGFloat = 64
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -514,7 +543,7 @@ private struct PresetSketch: View {
                            startPoint: .top, endPoint: .bottom)
             pill
         }
-        .frame(height: 64)
+        .frame(height: height)
         .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         .environment(\.colorScheme, .dark)
         .accessibilityHidden(true)

@@ -46,6 +46,23 @@ final class SettingsServices {
 
     func cancelTryIt() { cancelTryItHandler() }
 
+    /// Everything `p` would change now: widgets, glances and mode (Settings asks with it).
+    func presetPlan(_ p: SetupPreset, defaults: UserDefaults = .standard) -> PresetPlan {
+        let on: Set<String> = Set(widgets.orderedWidgets.map(\.id).filter { widgets.isEnabled($0) })
+        let glances: [String] = GlanceSlots.load(from: defaults, glanceCapable: widgets.defaultGlanceOrder).ids
+        return PresetPlan.plan(p, enabled: on, glances: glances, mode: AppearanceStore.load(from: defaults).mode)
+    }
+
+    /// A widget's or glance's name for a preset summary.
+    func presetTitle(_ id: String) -> String {
+        id == GlanceSlots.usageID ? "Claude/Codex usage" : (widgets.widget(id)?.title ?? id)
+    }
+
+    /// The confirmation's message: one line per change.
+    func presetSummary(_ plan: PresetPlan) -> String {
+        plan.summary(title: presetTitle).joined(separator: "\n")
+    }
+
     /// What `p` would change from the widgets on now (plug-ins never).
     func presetChange(_ p: SetupPreset) -> PresetChange {
         let on: Set<String> = Set(widgets.orderedWidgets.map(\.id).filter { widgets.isEnabled($0) })

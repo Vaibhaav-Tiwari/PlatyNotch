@@ -11,7 +11,7 @@ struct AboutSection: View {
                 PlatyView(mood: .idle, size: 56)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("PlatyNotch").font(.system(size: 17, weight: .semibold))
-                    Text(verbatim: "Version \(AppUpdater.versionDescription)")
+                    Text(verbatim: AppUpdater.versionLine)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }

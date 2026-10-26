@@ -170,4 +170,26 @@ final class NotificationGateTests: DefaultsTestCase {
         r.controller.debugHandle(.syncStore)
         XCTAssertEqual(r.controller.mode, .peek(.notice), "needs you: not quiet during Focus")
     }
+
+    /// Settings › Notifications' "Show in pill" reaches the panel's view model, and a change
+    /// to the policy is picked up on the next store sync.
+    func testHiddenKindsReachThePill() {
+        var policy = NotificationPolicy()
+        policy[.other] = NotificationRule(showInPill: false, canOpen: false, quietDuringFocus: true)
+        let r = rig(policy: policy)
+        r.controller.debugHandle(.syncStore)
+        XCTAssertEqual(r.controller.panelModel.hiddenKinds, [.other])
+        r.surfaces.notificationPolicy = NotificationPolicy()
+        r.controller.debugHandle(.syncStore)
+        XCTAssertEqual(r.controller.panelModel.hiddenKinds, [])
+    }
+
+    /// Settings › Now's hero cycling reaches the panel's view model (Now and the hover peek read it).
+    func testHeroCyclingReachesThePanel() {
+        let r = rig()
+        XCTAssertTrue(r.controller.panelModel.nowSettings.heroCycling)
+        r.controller.nowSettingsChanged(NowSettings(heroCycling: false))
+        XCTAssertFalse(r.controller.panelModel.nowSettings.heroCycling)
+        XCTAssertFalse(NowView.showsSteps(count: 3, cycling: r.controller.panelModel.nowSettings.heroCycling))
+    }
 }
