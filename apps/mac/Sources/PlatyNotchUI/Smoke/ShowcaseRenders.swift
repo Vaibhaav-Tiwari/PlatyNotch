@@ -173,7 +173,14 @@ enum ShowcaseRenders {
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
         host.layoutSubtreeIfNeeded()
         host.display()
-        guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return nil }
+        // Always 2x, so the committed images are 1600 x 900 on any Mac (CI renders at 1x).
+        let size = host.bounds.size
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * 2),
+                                         pixelsHigh: Int(size.height * 2), bitsPerSample: 8,
+                                         samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                         colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
+        else { return nil }
+        rep.size = size
         host.cacheDisplay(in: host.bounds, to: rep)
         return rep.representation(using: .png, properties: [:])
     }
