@@ -94,6 +94,8 @@ struct ToolBody: View {
 /// tall as the scroll view (`FillHeight`).
 struct FadingScroll<Content: View>: View {
     let fillsRoom: Bool
+    /// The panel hides its scroller; a window page (the first run) shows it.
+    var indicators: ScrollIndicatorVisibility = .hidden
     @ViewBuilder let content: Content
     @State private var edges = ScrollEdges()
     @State private var contentHeight: CGFloat = 0
@@ -106,7 +108,7 @@ struct FadingScroll<Content: View>: View {
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { contentHeight = $0 }
             }
-            .scrollIndicators(.hidden)
+            .scrollIndicators(indicators)
             .scrollBounceBehavior(.basedOnSize)
             .onScrollGeometryChange(for: ScrollEdges.self) { g in
                 ScrollEdges(top: g.contentOffset.y > 1,

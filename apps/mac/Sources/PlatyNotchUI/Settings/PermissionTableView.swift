@@ -45,26 +45,25 @@ struct PermissionTableView: View {
 
     private func line(_ row: PermissionRow) -> some View {
         HStack(alignment: .center, spacing: 12) {
-            SymbolWell(systemImage: Self.systemImage(row.id), size: 28)
-            VStack(alignment: .leading, spacing: 2) {
+            SymbolWell(systemImage: Self.systemImage(row.id), size: compact ? 26 : 28)
+            VStack(alignment: .leading, spacing: compact ? 0 : 2) {
                 Text(verbatim: row.title).font(.system(size: 13, weight: .semibold))
                 Text(verbatim: row.powers)
                     .font(.system(size: 12))
+                    .foregroundStyle(.primary.opacity(0.75))
+                    .lineLimit(compact ? 1 : nil)
+                    .fixedSize(horizontal: false, vertical: !compact)
+                Text(verbatim: "Without it: \(row.withoutIt)")
+                    .font(DS.font(TypeScale.caption))
                     .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                if !compact {
-                    Text(verbatim: "Without it: \(row.withoutIt)")
-                        .font(DS.font(TypeScale.caption))
-                        .foregroundStyle(.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                    .lineLimit(compact ? 1 : nil)
+                    .fixedSize(horizontal: false, vertical: !compact)
             }
             .accessibilityElement(children: .combine)
-            .accessibilityHint(compact ? "Without it: \(row.withoutIt)" : "")
             Spacer(minLength: 8)
             control(row)
         }
-        .padding(.vertical, compact ? 7 : 9)
+        .padding(.vertical, compact ? 4 : 9)
     }
 
     @ViewBuilder private func control(_ row: PermissionRow) -> some View {
@@ -82,8 +81,11 @@ struct PermissionTableView: View {
         case (.denied, .request), (_, .openSystemSettings):
             Button("Open Settings") { Self.openSystemPane(row.id) }
                 .help("Opens System Settings › Privacy & Security")
+                .accessibilityLabel("Open System Settings for \(row.title)")
         case (_, .openOwner(let section)):
             Button(row.id == .camera ? "Set up in Mirror" : "Set up in System") { openSettings(section) }
+                .accessibilityLabel(row.id == .camera ? "Set up the camera in Mirror settings"
+                                                      : "Set up Bluetooth in System settings")
         default:
             Button("Allow") { request(row.id) }
                 .buttonStyle(.borderedProminent)

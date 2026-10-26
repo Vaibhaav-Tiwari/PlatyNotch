@@ -13,37 +13,108 @@ enum OnboardingLaunch {
     }
 }
 
-/// The first run's "Try it" (spec 10, step 4): armed with a sample in Now, done the first
-/// time the panel opens while no approval holds Now.
+/// The first run's "Try it" (spec 10, step 4): armed with a sample in Now; showing once
+/// Now first comes on screen while no approval holds it (Platy celebrates, the page says
+/// so); done when Now leaves the screen or `showingLimit` passes, and the sample goes.
 @MainActor
 final class TryItSession {
+    enum Phase: Equatable { case idle, armed, showing, done }
+
     /// Now's hero during "Try it".
     static let sample = LiveActivity(id: "tour.sample", widgetID: "tour", priority: LivePriority.alarmRinging,
                                      glyph: .symbol("sparkles"), tint: .accent, accessibilityLabel: "This is Now",
                                      title: "This is Now", subtitle: "What is live shows here first; glances sit below")
 
-    private(set) var armed = false
+    private(set) var phase: Phase = .idle
     private var onDone: (() -> Void)?
 
+    var armed: Bool { phase == .armed }
+    /// The sample stays in Now from arming until Now closes after showing it.
+    var showsSample: Bool { phase == .armed || phase == .showing }
+
     func arm(onDone: @escaping () -> Void) {
-        armed = true
+        phase = .armed
         self.onDone = onDone
     }
 
-    /// The panel opened. True (and done) unless an approval holds Now or nothing is armed.
+    /// Now came on screen. True (showing; `onDone` runs) unless an approval holds Now or
+    /// nothing is armed.
     @discardableResult
     func panelExpanded(approvals: Int) -> Bool {
-        guard armed, approvals == 0 else { return false }
-        armed = false
+        guard phase == .armed, approvals == 0 else { return false }
+        phase = .showing
         let done = onDone
         onDone = nil
         done?()
         return true
     }
 
+    /// Now left the screen (or the time ran out): the sample goes. True when it was showing.
+    @discardableResult
+    func panelCollapsed() -> Bool {
+        guard phase == .showing else { return false }
+        phase = .done
+        return true
+    }
+
     func cancel() {
-        armed = false
+        if phase == .armed || phase == .showing { phase = .idle }
         onDone = nil
+    }
+}
+
+/// The tour card and the "Try it" sample on every display's panel, and the hooks that
+/// move "Try it" along (one per app; the panels are rebuilt on display changes).
+@MainActor
+final class TourCoordinator {
+    let session = TryItSession()
+    /// How long the sample stays after Now first shows it, if Now stays open.
+    var showingLimit: Duration = .seconds(8)
+    var approvals: () -> Int = { 0 }
+    /// Platy celebrates when "Try it" is done.
+    var onCelebrate: () -> Void = {}
+    var controllers: [NotchController] = [] { didSet { apply() } }
+    var tourOffer: TourOffer? { didSet { apply() } }
+    private var limitTask: Task<Void, Never>?
+
+    func arm(onDone: @escaping () -> Void) {
+        session.arm { [weak self] in
+            guard let self else { return }
+            self.onCelebrate()
+            onDone()
+            self.limitTask?.cancel()
+            let limit = self.showingLimit
+            self.limitTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: limit)
+                guard !Task.isCancelled, let self, self.session.panelCollapsed() else { return }
+                self.apply()
+            }
+        }
+        apply()
+    }
+
+    func cancel() {
+        session.cancel()
+        limitTask?.cancel()
+        apply()
+    }
+
+    /// Writes the card, the sample and the hooks into every panel.
+    func apply() {
+        let sample: LiveActivity? = session.showsSample ? TryItSession.sample : nil
+        for c in controllers {
+            c.panelModel.tourOffer = tourOffer
+            c.panelModel.tourSample = sample
+            c.onExpanded = { [weak self] in
+                guard let self else { return }
+                if self.session.panelExpanded(approvals: self.approvals()) { self.apply() }
+            }
+            c.onCollapsed = { [weak self] in
+                guard let self, self.session.panelCollapsed() else { return }
+                self.limitTask?.cancel()
+                self.apply()
+            }
+        }
     }
 }
 
@@ -514,30 +585,50 @@ private struct AgentHooksRow: View {
     }
 }
 
-/// 3. Permissions, optional: the table; nothing is asked without a click.
+/// 3. Permissions (optional): the table; nothing is asked without a click.
 private struct PermissionsPage: View {
     let services: SettingsServices
 
     var body: some View {
-        VStack(spacing: 16) {
-            PageTitle(title: "Permissions, if you like",
-                      text: "All optional. macOS asks only when you click Allow, and you can change your mind later.")
-            ScrollView {
+        VStack(spacing: 12) {
+            PageTitle(title: "Permissions (optional)",
+                      text: "macOS asks only when you click Allow, and you can change your mind later.")
+            FadingScroll(fillsRoom: false, indicators: .visible) {
                 PermissionTableView(permissions: services.permissions,
                                     openSettings: { services.openSettingsHandler($0) }, compact: true)
             }
-            .scrollIndicators(.automatic)
         }
     }
 }
 
-/// 4. Try it: move the pointer to the notch; the panel opens on Now with a sample; Platy
-/// celebrates.
+/// What "Try it" asks, by how the notch opens (Settings › Notch › Open on).
+enum TryItCopy {
+    static func title(_ openOn: AppearanceSettings.OpenTrigger) -> String {
+        switch openOn {
+        case .hover: "Move your pointer to the notch"
+        case .click: "Click the notch"
+        case .peekOnHover: "Hover, then click"
+        }
+    }
+
+    static func detail(_ openOn: AppearanceSettings.OpenTrigger) -> String {
+        switch openOn {
+        case .hover: "The panel opens on Now with a sample at the top. Move away to close it."
+        case .click: "The panel opens on Now with a sample at the top. Click again to close it."
+        case .peekOnHover: "Hovering shows Now's top item; a click opens the whole panel."
+        }
+    }
+}
+
+/// 4. Try it: open the notch the way it is set to open; Now shows a sample; Platy celebrates.
 private struct TryItPage: View {
     let model: OnboardingWindowController.Model
     let services: SettingsServices
+    @State private var nudge = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        let openOn: AppearanceSettings.OpenTrigger = AppearanceStore.load(from: .standard).openOn
         VStack(spacing: 22) {
             PondBanner(height: 230) {
                 if model.tryItDone {
@@ -549,10 +640,12 @@ private struct TryItPage: View {
                         Image(systemName: "arrow.up")
                             .font(.system(size: 22, weight: .semibold))
                             .foregroundStyle(DS.teal)
-                        Image(systemName: "cursorarrow")
+                        Image(systemName: openOn == .hover ? "cursorarrow" : "cursorarrow.click")
                             .font(.system(size: 34, weight: .regular))
                             .foregroundStyle(.white)
                     }
+                    // One nudge toward the notch, then still (none with Reduce Motion).
+                    .offset(y: nudge ? -10 : 0)
                     .padding(.top, 54)
                     .accessibilityHidden(true)
                 }
@@ -562,11 +655,14 @@ private struct TryItPage: View {
                 PageTitle(title: "That's Now",
                           text: "What is live shows first, glances below, Agents and Library one click away. Platy is pleased.")
             } else {
-                PageTitle(title: "Move your pointer to the notch",
-                          text: "The panel opens on Now with a sample at the top. Move away to close it.")
+                PageTitle(title: TryItCopy.title(openOn), text: TryItCopy.detail(openOn))
             }
         }
         .onAppear {
+            if !reduceMotion, !model.inert {
+                withAnimation(.easeInOut(duration: 0.5).delay(0.4)) { nudge = true }
+                withAnimation(.easeInOut(duration: 0.5).delay(0.9)) { nudge = false }
+            }
             guard !model.inert, !model.tryItDone else { return }
             services.armTryIt { model.tryItDone = true }
         }

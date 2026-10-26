@@ -67,9 +67,15 @@ public final class NotchController {
     var graceSleep: @MainActor (Duration) async -> Void = { try? await Task.sleep(for: $0) }
     /// The clock approval arming notes cards against (tests move it).
     var armingClock: () -> Date = { Date() }
-    /// Called each time the panel opens (the first run's "Try it").
+    /// Called each time Now comes on screen: the panel opens, or the hover peek shows its
+    /// hero (the first run's "Try it"). After the view model has the new mode.
     var onExpanded: () -> Void = {}
-    private var lastExpandedCheck: PanelMode?
+    /// Called when Now leaves the screen again.
+    var onCollapsed: () -> Void = {}
+    private var nowShown = false
+
+    /// The modes that show Now's hero.
+    static func showsNow(_ mode: PanelMode) -> Bool { mode == .expanded || mode == .peek(.hover) }
     /// The open panel's gear (the menu bar icon may be hidden): the app shows Settings.
     var onOpenSettings: () -> Void = {}
     /// The Agents empty state's "Connect an agent": the app shows Settings › Agents.
@@ -202,6 +208,11 @@ public final class NotchController {
         handle(.click)
     }
 
+    /// Settings › Now changed (or the panel was built): hero cycling and the like.
+    public func nowSettingsChanged(_ settings: NowSettings) {
+        if model.nowSettings != settings { model.nowSettings = settings }
+    }
+
     /// Closes the open panel (the first run's "Meet Platy" demo).
     public func collapse() {
         guard machine.mode == .expanded else { return }
@@ -271,9 +282,14 @@ public final class NotchController {
     /// Pushes the current mode, full-screen suppression and cursor into the view model and
     /// the window. Without a window (tests) only the view model.
     private func apply() {
-        defer { surfaces.sinkStateChanged() }   // the media-key tap's view of where a HUD would show
-        if machine.mode == .expanded, lastExpandedCheck != .expanded { onExpanded() }
-        lastExpandedCheck = machine.mode
+        // Now shows (open, or the hover peek's hero): told after the view model has the mode.
+        let showsNow: Bool = Self.showsNow(machine.mode)
+        let shownBefore: Bool = nowShown
+        nowShown = showsNow
+        defer {
+            surfaces.sinkStateChanged()   // the media-key tap's view of where a HUD would show
+            if showsNow, !shownBefore { onExpanded() } else if !showsNow, shownBefore { onCollapsed() }
+        }
         guard let layout else { return }
         cursor = cursorLocation()   // never decide pass-through from a stale position
         let mode = machine.mode

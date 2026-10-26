@@ -48,6 +48,8 @@ struct ExpandedPanel: View {
     var tourOffer: TourOffer?
     /// The first run's "Try it" sample in Now.
     var tourSample: LiveActivity?
+    /// Settings › Now › hero cycling (`PanelViewModel.nowSettings`).
+    var heroCycling: Bool = true
     let onDecide: (Approval, ApprovalBehavior) -> Void
     let onOpenTerminal: (Session) -> Void
 
@@ -135,7 +137,7 @@ struct ExpandedPanel: View {
         NowView(store: store, widgets: widgets, today: today, deck: deck, glanceDefaults: glanceDefaults,
                 onOpenTool: { openTool($0) },
                 onOpenAgents: { route = PanelRoute(destination: .agents) }, onOpenTerminal: onOpenTerminal,
-                fixedNow: fixedNow, cycling: NowSettings.load(from: glanceDefaults).heroCycling,
+                fixedNow: fixedNow, cycling: heroCycling,
                 tourOffer: tourOffer, tourSample: tourSample)
     }
 

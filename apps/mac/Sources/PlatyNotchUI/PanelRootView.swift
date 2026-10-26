@@ -39,6 +39,8 @@ final class PanelViewModel {
     var tourOffer: TourOffer?
     /// The first run's "Try it" sample ("This is Now") in Now's deck.
     var tourSample: LiveActivity?
+    /// Settings › Now (hero cycling), refreshed when the saved settings change.
+    var nowSettings = NowSettings()
 }
 
 /// Places the mode's content inside the fixed-size panel window.
@@ -202,6 +204,7 @@ struct PanelRootView: View {
                           agentsVisible: today.agentActivity.agentsVisibility.isVisible,
                           onConnectAgent: model.onConnectAgent,
                           tourOffer: model.tourOffer, tourSample: model.tourSample,
+                          heroCycling: model.nowSettings.heroCycling,
                           onDecide: decide, onOpenTerminal: onOpenTerminal)
             }
             .transition(ChromeSettle<EmptyView>.transition)
@@ -231,7 +234,7 @@ struct PanelRootView: View {
                     deck: Binding(get: { model.heroDeck }, set: { model.heroDeck = $0 }),
                     onOpenTool: { _ in model.onClick() }, onOpenAgents: model.onClick,
                     onOpenTerminal: onOpenTerminal, heroOnly: true,
-                    cycling: NowSettings.load(from: .standard).heroCycling)
+                    cycling: model.nowSettings.heroCycling, tourSample: model.tourSample)
             }
             .transition(ChromeSettle<EmptyView>.transition)
                 // 6 at the bottom: the 160 pt hero fits the 176 pt peek without a notch too.

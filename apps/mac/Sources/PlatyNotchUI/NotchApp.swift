@@ -130,8 +130,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var defaultsObserver: NSObjectProtocol?
     /// First run, the tour card or neither (`prepareFirstRun`).
     private var firstRun: FirstRunState = .settled
-    /// The first run's "Try it" (one for every display's panel).
-    private let tryIt = TryItSession()
+    /// The tour card and the first run's "Try it" on every display's panel.
+    private lazy var tour: TourCoordinator = {
+        let t = TourCoordinator()
+        let store = self.store, today = self.today
+        t.approvals = { store.approvals.count }
+        t.onCelebrate = { today.platy.celebrate() }
+        return t
+    }()
     /// Settings › Appearance; the panels are built from it (`AppearanceStore`, C32).
     private var appearance = AppearanceStore.load(from: .standard)
     /// The one runtime shortcut catalog every widget claims global shortcuts in (M1).
@@ -425,6 +431,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// pill width rebuild the panels; everything else is applied to them live.
     private func appearanceMayHaveChanged() {
         today.agentActivity.reloadVisibility()   // Settings › Agents: "Show Agents before an agent connects"
+        let nowSettings = NowSettings.load(from: .standard)
+        for c in controllers { c.nowSettingsChanged(nowSettings) }
         let policy = NotificationPolicy.load(from: .standard)
         if policy != surfaces.notificationPolicy { surfaces.notificationPolicy = policy }
         let now = AppearanceStore.load(from: .standard)
@@ -482,6 +490,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                     carryOver: state)
             c.onOpenSettings = { [weak self] in self?.openSettings(section: nil) }
             c.onOpenAgentSettings = { [weak self] in self?.openSettings(section: "agents") }
+            c.nowSettingsChanged(NowSettings.load(from: .standard))
             c.attach(to: screen)
             return c
         }
@@ -490,20 +499,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - First run, the tour card and "Try it"
 
-    /// Each panel's tour card (existing users, until taken or dismissed), the "Try it"
-    /// sample while it is armed, and the open hook that finishes it.
+    /// Each panel's tour card (existing users, until taken or dismissed); the "Try it"
+    /// sample and its hooks live in `tour`.
     private func applyTourState() {
         let d = UserDefaults.standard
-        let offer: TourOffer? = OnboardingLaunch.offersTourCard(firstRun, tourOffered: d.bool(forKey: FirstRunState.tourOfferedKey))
+        tour.tourOffer = OnboardingLaunch.offersTourCard(firstRun, tourOffered: d.bool(forKey: FirstRunState.tourOfferedKey))
             ? TourOffer(onTake: { [weak self] in self?.takeTour() }, onDismiss: { [weak self] in self?.dismissTour() })
             : nil
-        let sample: LiveActivity? = tryIt.armed ? TryItSession.sample : nil
-        let store = self.store
-        for c in controllers {
-            c.panelModel.tourOffer = offer
-            c.panelModel.tourSample = sample
-            c.onExpanded = { [weak self] in self?.tryIt.panelExpanded(approvals: store.approvals.count) }
-        }
+        tour.controllers = controllers
     }
 
     private func takeTour() {
@@ -529,22 +532,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// "Try it": a sample in Now until the panel opens; then Platy celebrates.
+    /// "Try it": a sample in Now until Now has shown it; then Platy celebrates.
     private func armTryIt(onDone: @escaping () -> Void) {
-        tryIt.arm { [weak self] in
-            guard let self else { return }
-            self.today.platy.celebrate()
-            self.applyTourState()
-            onDone()
-        }
-        applyTourState()
+        tour.controllers = controllers
+        tour.arm(onDone: onDone)
     }
 
-    private func cancelTryIt() {
-        guard tryIt.armed else { return }
-        tryIt.cancel()
-        applyTourState()
-    }
+    private func cancelTryIt() { tour.cancel() }
 
     // MARK: - Smoke checks
 

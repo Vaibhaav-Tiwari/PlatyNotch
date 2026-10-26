@@ -70,18 +70,55 @@ final class OnboardingFlowTests: DefaultsTestCase {
         let client = CoreClient(socketPath: "/nonexistent")
         let c = NotchController(store: store, client: client, plugins: [], appearance: AppearanceSettings())
         c.cursorLocation = { CGPoint(x: 100, y: 100) }
-        let session = TryItSession()
-        var done = 0
-        c.onExpanded = { _ = session.panelExpanded(approvals: store.approvals.count) }
-        session.arm { done += 1 }
-        XCTAssertTrue(session.armed)
+        let tour = TourCoordinator()
+        tour.approvals = { store.approvals.count }
+        var celebrated = 0, done = 0
+        tour.onCelebrate = { celebrated += 1 }
+        tour.controllers = [c]
+        tour.arm { done += 1 }
+        XCTAssertEqual(c.panelModel.tourSample?.id, TryItSession.sample.id, "armed: the sample waits in Now")
         c.expand()
         XCTAssertEqual(c.mode, .expanded)
         XCTAssertEqual(done, 1, "opening the panel finishes Try it")
-        XCTAssertFalse(session.armed)
-        // Only once.
-        XCTAssertFalse(session.panelExpanded(approvals: 0))
-        XCTAssertEqual(done, 1)
+        XCTAssertEqual(celebrated, 1)
+        XCTAssertEqual(tour.session.phase, .showing)
+        XCTAssertNotNil(c.panelModel.tourSample, "the sample stays while Now shows it")
+        c.collapse()
+        XCTAssertEqual(tour.session.phase, .done)
+        XCTAssertNil(c.panelModel.tourSample, "gone once Now closes")
+        c.expand()
+        XCTAssertEqual(done, 1, "only once")
+        XCTAssertNil(c.panelModel.tourSample)
+    }
+
+    /// The hover peek shows Now's hero: with Open on "Peek, then click" it completes Try it.
+    func testTryItCompletesOnHoverPeek() {
+        XCTAssertTrue(NotchController.showsNow(.peek(.hover)))
+        XCTAssertTrue(NotchController.showsNow(.expanded))
+        XCTAssertFalse(NotchController.showsNow(.peek(.approval)))
+        XCTAssertFalse(NotchController.showsNow(.compact))
+    }
+
+    /// The sample leaves after the time limit even if Now stays open.
+    func testTryItSampleExpires() async {
+        let store = AppStore()
+        let c = NotchController(store: store, client: CoreClient(socketPath: "/nonexistent"), plugins: [],
+                                appearance: AppearanceSettings())
+        c.cursorLocation = { CGPoint(x: 100, y: 100) }
+        let tour = TourCoordinator()
+        tour.showingLimit = .milliseconds(50)
+        tour.controllers = [c]
+        tour.arm {}
+        c.expand()
+        XCTAssertNotNil(c.panelModel.tourSample)
+        let gone = await eventually { c.panelModel.tourSample == nil }
+        XCTAssertTrue(gone)
+    }
+
+    func testTryItCopyFollowsOpenOn() {
+        XCTAssertEqual(TryItCopy.title(.hover), "Move your pointer to the notch")
+        XCTAssertEqual(TryItCopy.title(.click), "Click the notch")
+        XCTAssertEqual(TryItCopy.title(.peekOnHover), "Hover, then click")
     }
 
     func testSampleIgnoredDuringApproval() {
@@ -98,6 +135,9 @@ final class OnboardingFlowTests: DefaultsTestCase {
         XCTAssertTrue(session.armed)
         XCTAssertTrue(session.panelExpanded(approvals: 0))
         XCTAssertTrue(done)
+        XCTAssertTrue(session.showsSample)
+        XCTAssertTrue(session.panelCollapsed())
+        XCTAssertFalse(session.showsSample)
     }
 
     /// Settings asks before a preset turns anything off; turning things on needs no question.
