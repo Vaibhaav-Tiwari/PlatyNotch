@@ -192,4 +192,24 @@ final class NotificationGateTests: DefaultsTestCase {
         XCTAssertFalse(r.controller.panelModel.nowSettings.heroCycling)
         XCTAssertFalse(NowView.showsSteps(count: 3, cycling: r.controller.panelModel.nowSettings.heroCycling))
     }
+
+    /// Two notices at once: the toast is the newest one that may open, not merely the newest.
+    func testToastIsTheNoticeThatMayOpen() {
+        let done = Notice(kind: "session-done", title: "Done")
+        let needs = Notice(kind: "needs-input", title: "Claude Code needs your input")
+        let policy = NotificationPolicy()
+        XCTAssertEqual(NotchController.toast([needs, done], policy: policy, focusActive: true), needs,
+                       "agent finished is quiet in a focus session; needs-you is not")
+        XCTAssertEqual(NotchController.toast([needs, done], policy: policy, focusActive: false), done)
+        XCTAssertNil(NotchController.toast([done, Notice(kind: "info", title: "x")], policy: policy, focusActive: true))
+        let r = rig()
+        r.registry.setEnabled(FocusWidget.widgetID, true)
+        r.today.focus.start(minutes: 25)
+        defer { r.today.focus.stop() }
+        r.store.postLocalNotice(needs)
+        r.store.postLocalNotice(done)
+        r.controller.debugHandle(.syncStore)
+        XCTAssertEqual(r.controller.mode, .peek(.notice))
+        XCTAssertEqual(r.controller.panelModel.toastNotice, needs)
+    }
 }

@@ -74,6 +74,15 @@ public final class NotchController {
     var onCollapsed: () -> Void = {}
     private var nowShown = false
 
+    /// The newest of `fresh` notices that may open the notch now: an agent notice by its row
+    /// of Settings › Notifications, the app's own info notices unless a focus session holds them.
+    static func toast(_ fresh: [Notice], policy: NotificationPolicy, focusActive: Bool) -> Notice? {
+        fresh.last { n in
+            guard let kind = NotificationPolicy.kind(noticeKind: n.kind) else { return !focusActive }
+            return policy.mayOpen(kind, focusActive: focusActive)
+        }
+    }
+
     /// The modes that show Now's hero.
     static func showsNow(_ mode: PanelMode) -> Bool { mode == .expanded || mode == .peek(.hover) }
     /// The open panel's gear (the menu bar icon may be hidden): the app shows Settings.
@@ -525,13 +534,17 @@ public final class NotchController {
         // An agent notice follows its row of Settings › Notifications (can open, quiet
         // during Focus); the app's own info notices keep today's focus hold. Approvals
         // are never gated.
-        let kind: NotificationKind? = store.notices.last.flatMap { NotificationPolicy.kind(noticeKind: $0.kind) }
-        let holdNotices: Bool = kind == nil && focus
-        let allowNotice: Bool = kind.map { policy.mayOpen($0, focusActive: focus) } ?? true
+        // Of the notices that arrived since the last look, the newest one that may open is
+        // the toast; none may: nothing peeks.
+        let fresh: Int = min(max(store.noticeSequence - feed.noticeSequence, 0), store.notices.count)
+        let shown: Notice? = Self.toast(Array(store.notices.suffix(fresh)), policy: policy, focusActive: focus)
         for event in feed.update(approvalCount: store.approvals.count, noticeSequence: store.noticeSequence,
-                                 holdNotices: holdNotices, allowNotice: allowNotice) {
+                                 holdNotices: false, allowNotice: shown != nil) {
             machine.handle(event)
-            if event == .notice { scheduleNoticeTimeout() }
+            if event == .notice {
+                model.toastNotice = shown
+                scheduleNoticeTimeout()
+            }
         }
         apply()
     }

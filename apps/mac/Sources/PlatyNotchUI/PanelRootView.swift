@@ -39,6 +39,8 @@ final class PanelViewModel {
     var tourOffer: TourOffer?
     /// The first run's "Try it" sample ("This is Now") in Now's deck.
     var tourSample: LiveActivity?
+    /// The notice the toast shows (the one that opened it, not merely the newest).
+    var toastNotice: Notice?
     /// Settings › Now (hero cycling), refreshed when the saved settings change.
     var nowSettings = NowSettings()
 }
@@ -187,7 +189,7 @@ struct PanelRootView: View {
                 .overlay(alignment: .bottom) { hudIndicator }
         case .peek(.notice):
             Group {
-                if let notice = store.notices.last { NoticeToast(notice: notice) } else { Color.clear }
+                if let notice = model.toastNotice ?? store.notices.last { NoticeToast(notice: notice) } else { Color.clear }
             }
             .padding(EdgeInsets(top: top, leading: 14, bottom: 10, trailing: 14))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
