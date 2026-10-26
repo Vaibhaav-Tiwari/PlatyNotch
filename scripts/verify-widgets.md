@@ -1482,4 +1482,17 @@ MacBook Pro, with every widget on unless a check says otherwise.
   stays closed. Approvals stay locked to Always / Always / Never.
 - [ ] **286. Idle budget.** Run `scripts/perf-idle.sh`, then `scripts/perf-idle.sh --state
   music`, with the pointer away from the notch: both PASS under 1%.
+- [ ] **287. Long diffs and the keyboard.** Trigger an approval for an edit with a 200-line
+  diff. The diff box keeps a fixed height and scrolls inside the card, and the card never
+  grows past the panel. Tab moves focus through the card in order, and the focus ring is
+  visible.
+- [ ] **288. Camera and permission prompts.** On a fresh account, open the panel and every
+  Library tool without clicking anything that asks for access: no permission prompt
+  appears. Open Mirror: the camera light turns on, and turns off within a second of leaving
+  Mirror or closing the panel. Camera, microphone and file prompts appear only after a
+  click.
+- [ ] **289. Upgrading from v0.2.** Install the v0.2 build, change a few settings, then
+  install this build over it. Your settings and widget choices carry over, the tour shows
+  as a card on Now and is never forced, and old links to tabs and settings pages still
+  open the right place.
 
