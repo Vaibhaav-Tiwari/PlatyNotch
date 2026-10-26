@@ -222,7 +222,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         today.agentActivity.postNeedsInputNotices(to: store)
         // The optional sound when an agent needs you or an approval arrives (off by default;
         // smoke runs never play it).
-        if !options.smoke, !options.smokeSettings, !options.perfRun { plip.follow(today.agentActivity, store: store) }
+        if !options.smoke, !options.smokeSettings, !options.perfRun {
+            let focusToday = self.today, focusWidgets = self.widgets
+            plip.focusActive = { [weak focusToday, weak focusWidgets] in
+                guard let focusToday, let focusWidgets else { return false }
+                return focusToday.focus.focusActive && focusWidgets.isEnabled(FocusWidget.widgetID)
+            }
+            plip.follow(today.agentActivity, store: store)
+        }
         // Every agent finished: a 2-second moment (once, never during an approval).
         let approvalsStore = store
         today.agentActivity.celebrateAllFinished(on: today.platy, approvals: { approvalsStore.approvals.count })

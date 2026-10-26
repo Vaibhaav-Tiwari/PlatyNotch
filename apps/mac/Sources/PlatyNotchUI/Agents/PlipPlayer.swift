@@ -37,11 +37,35 @@ final class PlipPlayer {
         self.seams = seams
     }
 
-    /// A session needs you (`session` nil: an approval whose session is not known).
+    /// A PlatyNotch focus session is running (the app passes the Focus widget's state).
+    var focusActive: @MainActor () -> Bool = { false }
+
+    /// Sessions that started needing you (nil: unknown). Plays unless every one of them is
+    /// muted by its terminal being in front, or the "Agent needs you" row is quiet in focus.
+    func agentNeedsYou(_ sessions: [Session?]) {
+        play(.agentNeedsYou, sessions: sessions)
+    }
+
+    /// One session needs you.
     func agentNeedsYou(_ session: Session?) {
+        agentNeedsYou([session])
+    }
+
+    /// A new approval (its session when known). Approvals are never quiet in focus.
+    func approvalArrived(_ session: Session?) {
+        play(.approval, sessions: [session])
+    }
+
+    private func play(_ kind: NotificationKind, sessions: [Session?]) {
         let settings = PlipSettings.load(from: defaults)
-        guard PlipPolicy.shouldPlay(enabled: settings.enabled, session: session,
-                                    frontmostBundleID: seams.frontmost(), isRunning: seams.isRunning) else { return }
+        guard settings.enabled, !sessions.isEmpty else { return }
+        let policy = NotificationPolicy.load(from: defaults)
+        guard !PlipPolicy.quietForFocus(kind, policy: policy, focusActive: focusActive()) else { return }
+        let front: String? = seams.frontmost()
+        let audible: Bool = sessions.contains { s in
+            PlipPolicy.shouldPlay(enabled: true, session: s, frontmostBundleID: front, isRunning: seams.isRunning)
+        }
+        guard audible else { return }
         let now = seams.now()
         if let lastPlayed, now.timeIntervalSince(lastPlayed) < Self.quietGap { return }
         guard let url = Self.url(for: settings) else { return }
@@ -49,14 +73,14 @@ final class PlipPlayer {
     }
 
     /// Follows the app's one session tracker (sessions entering "needs you") and the
-    /// store's approvals (each new one once).
+    /// store's approvals (each new one once; those already there make no sound).
     func follow(_ activity: AgentActivityModel, store: AppStore) {
         self.store = store
         seenApprovals = Set(store.approvals.map(\.id))
         activity.observe { [weak self, weak activity] changes in
             guard let self, let activity, !changes.enteredNeedsYou.isEmpty else { return }
-            let first = changes.enteredNeedsYou.first.flatMap { key in activity.lastSessions.first { $0.key == key } }
-            self.agentNeedsYou(first)
+            let entering: [Session?] = changes.enteredNeedsYou.map { key in activity.lastSessions.first { $0.key == key } }
+            self.agentNeedsYou(entering)
         }
         observeApprovals()
     }
@@ -71,14 +95,15 @@ final class PlipPlayer {
         let fresh = approvals.filter { !seenApprovals.contains($0.id) }
         seenApprovals = Set(approvals.map(\.id))
         guard let approval = fresh.first else { return }
-        agentNeedsYou(store.sessions.first { $0.key == approval.sessionKey })
+        approvalArrived(store.sessions.first { $0.key == approval.sessionKey })
     }
 
-    /// The file that plays: the chosen file while its bookmark still leads to it, else
-    /// Platy chatter.
+    /// The file that plays: the chosen file while its bookmark still leads to it and it
+    /// still plays and lasts 5 s or less (it may have been replaced since), else Platy chatter.
     static func url(for settings: PlipSettings) -> URL? {
         if settings.effectiveChoice == .custom, let url = resolve(settings),
-           FileManager.default.fileExists(atPath: url.path) {
+           FileManager.default.fileExists(atPath: url.path),
+           PlipPolicy.validate(duration: duration(of: url)) == .ok {
             return url
         }
         return CueSound.plip.url
@@ -229,8 +254,6 @@ struct PlipSoundSettings: View {
                 .accessibilityLabel("Play the sound")
             }
             .padding(.vertical, 8)
-            .disabled(!model.enabled)
-            .opacity(model.enabled ? 1 : 0.55)
             if let error = model.error {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(DS.font(TypeScale.caption))

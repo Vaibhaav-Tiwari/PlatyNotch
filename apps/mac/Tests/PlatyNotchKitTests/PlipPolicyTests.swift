@@ -84,4 +84,31 @@ final class PlipPolicyTests: DefaultsTestCase {
         XCTAssertGreaterThan(PlipPolicy.volume, 0.2)
         XCTAssertLessThanOrEqual(PlipPolicy.volume, 0.6)
     }
+
+    /// VS Code and its forks report the same TERM_PROGRAM: Cursor in front mutes a vscode session.
+    func testVSCodeFamilyMutes() {
+        let code = session(term: "vscode")
+        let cursor = "com.todesktop.230313mzl4w4u92"
+        XCTAssertFalse(PlipPolicy.shouldPlay(enabled: true, session: code, frontmostBundleID: cursor,
+                                             isRunning: { $0 == "com.microsoft.VSCode" }))
+        XCTAssertFalse(PlipPolicy.shouldPlay(enabled: true, session: code, frontmostBundleID: "com.microsoft.VSCode",
+                                             isRunning: none))
+        XCTAssertTrue(PlipPolicy.shouldPlay(enabled: true, session: code, frontmostBundleID: TerminalApps.iTermID,
+                                            isRunning: none))
+    }
+
+    func testQuietForFocusFollowsTheRow() {
+        var policy = NotificationPolicy()
+        XCTAssertFalse(PlipPolicy.quietForFocus(.agentNeedsYou, policy: policy, focusActive: true))
+        var rule = policy[.agentNeedsYou]
+        rule.quietDuringFocus = true
+        policy[.agentNeedsYou] = rule
+        XCTAssertTrue(PlipPolicy.quietForFocus(.agentNeedsYou, policy: policy, focusActive: true))
+        XCTAssertFalse(PlipPolicy.quietForFocus(.agentNeedsYou, policy: policy, focusActive: false))
+        // Approvals cannot be made quiet.
+        var approval = policy[.approval]
+        approval.quietDuringFocus = true
+        policy[.approval] = approval
+        XCTAssertFalse(PlipPolicy.quietForFocus(.approval, policy: policy, focusActive: true))
+    }
 }

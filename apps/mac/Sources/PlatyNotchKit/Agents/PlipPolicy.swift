@@ -37,6 +37,13 @@ public enum PlipPolicy {
         }
     }
 
+    /// Settings › Notifications' "Quiet in focus sessions" row for `kind` (ruling m6): quiet
+    /// while a focus session runs when that row says so. Approvals' row is locked to never,
+    /// so an approval always sounds when the sound is on.
+    public static func quietForFocus(_ kind: NotificationKind, policy: NotificationPolicy, focusActive: Bool) -> Bool {
+        focusActive && policy[kind].quietDuringFocus
+    }
+
     /// Whether a chosen file can be the sound (`duration`: nil when it does not open).
     public static func validate(duration: TimeInterval?) -> PlipValidation {
         guard let duration, duration > 0 else { return .unreadable }

@@ -145,4 +145,133 @@ final class PlipPlayerTests: DefaultsTestCase {
         let duration = try XCTUnwrap(PlipPlayer.duration(of: url))
         XCTAssertLessThanOrEqual(duration, 0.6)
     }
+
+    // MARK: Wiring (fix round 1)
+
+    private func waiting(_ key: String, term: String? = nil, state: SessionState = .waitingInput) -> Session {
+        Session(key: key, agent: "claude-code", agentName: "Claude Code", sessionID: key, state: state,
+                termProgram: term, startedAt: clock, updatedAt: clock)
+    }
+
+    private func approval(_ id: String, session: String) -> Approval {
+        Approval(id: id, sessionKey: session, agent: "claude-code", agentName: "Claude Code", project: "p",
+                 tool: "Bash", summary: "ls", createdAt: clock, expiresAt: clock.addingTimeInterval(300))
+    }
+
+    /// Through the app's one tracker: a session entering "needs you" makes one sound.
+    func testFollowPlaysOncePerNeedsYou() {
+        enable()
+        let activity = AgentActivityModel()
+        let store = AppStore()
+        let p = player()
+        p.follow(activity, store: store)
+        activity.sessionsChanged([waiting("a", state: .active)], now: clock)
+        XCTAssertTrue(played.isEmpty)
+        activity.sessionsChanged([waiting("a")], now: clock)
+        XCTAssertEqual(played.count, 1)
+        // Still waiting: no new change, no new sound.
+        clock = clock.addingTimeInterval(10)
+        activity.sessionsChanged([waiting("a")], now: clock)
+        XCTAssertEqual(played.count, 1)
+    }
+
+    /// Each new approval sounds once; approvals already there when the app starts do not.
+    func testFollowPlaysOncePerNewApproval() async throws {
+        enable()
+        let activity = AgentActivityModel()
+        let store = AppStore()
+        store.apply(.connected)
+        store.apply(try Envelope.make(.approvalAdded, approval("old", session: "s")))
+        let p = player()
+        p.follow(activity, store: store)
+        await drainMainQueue()
+        XCTAssertTrue(played.isEmpty, "an approval already waiting makes no sound")
+        store.apply(try Envelope.make(.approvalAdded, approval("new", session: "s")))
+        let heard = await eventually { self.played.count == 1 }
+        XCTAssertTrue(heard)
+        clock = clock.addingTimeInterval(PlipPlayer.quietGap + 1)
+        store.apply(try Envelope.make(.approvalAdded, approval("third", session: "s")))
+        let again = await eventually { self.played.count == 2 }
+        XCTAssertTrue(again)
+    }
+
+    /// Several sessions enter at once: it plays unless every one of them is muted.
+    func testPlaysUnlessEveryEnteringSessionIsMuted() {
+        enable()
+        front = TerminalApps.iTermID
+        let p = player()
+        p.agentNeedsYou([waiting("a", term: "iTerm.app"), waiting("b", term: "iTerm.app")])
+        XCTAssertTrue(played.isEmpty)
+        p.agentNeedsYou([waiting("a", term: "iTerm.app"), waiting("b", term: "Apple_Terminal")])
+        XCTAssertEqual(played.count, 1)
+    }
+
+    /// "Agent needs you" set to quiet in focus sessions: no sound while one runs.
+    /// Approvals' row is locked to never quiet: they still sound.
+    func testFocusRowsAreHonoured() {
+        enable()
+        var policy = NotificationPolicy.load(from: defaults())
+        var rule = policy[.agentNeedsYou]
+        rule.quietDuringFocus = true
+        policy[.agentNeedsYou] = rule
+        policy.save(to: defaults())
+        let p = player()
+        p.focusActive = { true }
+        p.agentNeedsYou(session(term: nil))
+        XCTAssertTrue(played.isEmpty)
+        p.approvalArrived(session(term: nil))
+        XCTAssertEqual(played.count, 1)
+        // Out of focus, needs-you sounds again.
+        clock = clock.addingTimeInterval(PlipPlayer.quietGap + 1)
+        p.focusActive = { false }
+        p.agentNeedsYou(session(term: nil))
+        XCTAssertEqual(played.count, 2)
+    }
+
+    /// By default (the row is not quiet in focus) needs-you sounds during a focus session.
+    func testNeedsYouSoundsInFocusByDefault() {
+        enable()
+        let p = player()
+        p.focusActive = { true }
+        p.agentNeedsYou(session(term: nil))
+        XCTAssertEqual(played.count, 1)
+    }
+
+    /// A chosen file replaced by a long one falls back to Platy chatter.
+    func testReplacedLongFileFallsBackToChatter() throws {
+        let file = try wav("swap.wav", seconds: 0.4)
+        let model = PlipSoundModel(defaults: defaults(), play: { _, _ in true })
+        XCTAssertEqual(model.choose(file), .ok)
+        let long = try wav("long-swap.wav", seconds: 6)
+        _ = try FileManager.default.replaceItemAt(file, withItemAt: long)
+        XCTAssertEqual(PlipPlayer.url(for: PlipSettings.load(from: defaults())), CueSound.plip.url)
+    }
+
+    /// A new best while an approval waits: no celebration.
+    func testNewBestDuringApprovalDoesNotCelebrate() throws {
+        let registry = WidgetRegistry(defaults: defaults())
+        let today = TodayServices(client: CoreClient(socketPath: "/nonexistent"))
+        let store = AppStore()
+        store.apply(.connected)
+        store.apply(try Envelope.make(.approvalAdded, approval("a", session: "s")))
+        BuiltInWidgets.register(in: registry, store: store, today: today, persist: false)
+        let games = try XCTUnwrap(registry.widget(GamesWidget.widgetID) as? GamesWidget)
+        games.onNewBest?(GameResult(kind: .snake, score: 77))
+        XCTAssertFalse(today.platy.celebrating)
+        today.platy.stop()
+    }
+
+    /// A focus session that ends while an approval waits: its sound, but no celebration.
+    func testFocusFinishedDuringApprovalDoesNotCelebrate() {
+        let platy = PlatyMoodModel()
+        var sounds = 0
+        let focus = FocusModel(defaults: defaults(), onFinish: Moments.focusFinished(platy: platy, approvals: { 1 },
+                                                                                      playSound: { sounds += 1 }))
+        let start = Date()
+        focus.start(minutes: 1, now: start)
+        focus.reconcile(now: start.addingTimeInterval(61), announce: true)
+        XCTAssertEqual(sounds, 1)
+        XCTAssertFalse(platy.celebrating)
+        platy.stop()
+    }
 }
