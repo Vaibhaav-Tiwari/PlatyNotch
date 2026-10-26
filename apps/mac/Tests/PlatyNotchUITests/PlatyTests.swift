@@ -184,4 +184,48 @@ final class PlatyTests: DefaultsTestCase {
         XCTAssertEqual(PlatyDetail(points: 48), .small)
         XCTAssertEqual(PlatyDetail(points: 96), .full)
     }
+
+    // MARK: Agent pups (Task 29)
+
+    func testPupForEveryAgentAndTone() {
+        var count = 0
+        for agent in AgentIdentity.allCases {
+            for tone in StateTone.allCases {
+                XCTAssertNotNil(PupImages.image(agent: agent, tone: tone, size: 28, scale: 2, dark: true),
+                                "\(agent) \(tone)")
+                count += 1
+            }
+        }
+        XCTAssertEqual(count, 25)
+    }
+
+    func testPupsAreCached() throws {
+        let a = try XCTUnwrap(PupImages.image(agent: .codex, tone: .working, size: 28, scale: 2, dark: false))
+        let b = try XCTUnwrap(PupImages.image(agent: .codex, tone: .working, size: 28, scale: 2, dark: false))
+        XCTAssertTrue(a === b)
+        // Another agent is another picture.
+        let c = try XCTUnwrap(PupImages.image(agent: .cursor, tone: .working, size: 28, scale: 2, dark: false))
+        XCTAssertFalse(a === c)
+    }
+
+    /// The bandana is the agent's colour: the pixel at the knot differs between agents.
+    func testPupBandanaFollowsTheAgent() throws {
+        let claude = try XCTUnwrap(PupImages.image(agent: .claude, tone: .idle, size: 64, scale: 1, dark: true,
+                                                   badge: false))
+        let gemini = try XCTUnwrap(PupImages.image(agent: .gemini, tone: .idle, size: 64, scale: 1, dark: true,
+                                                   badge: false))
+        let knot = PlatyShapes.bandanaKnot
+        let x = Int(knot.x * 0.64), y = Int(knot.y * 0.64)
+        let a = try XCTUnwrap(NSBitmapImageRep(cgImage: claude).colorAt(x: x, y: y))
+        let b = try XCTUnwrap(NSBitmapImageRep(cgImage: gemini).colorAt(x: x, y: y))
+        XCTAssertNotEqual(a, b)
+    }
+
+    func testGalleryIncludesPups() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pn-gallery-pups-\(getpid())")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        guard case .success = PlatyRenders.writeGallery(to: dir) else { return XCTFail("gallery failed") }
+        let names = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasPrefix("pup-") }
+        XCTAssertEqual(Set(names), Set(AgentIdentity.allCases.map { "pup-\($0.rawValue).png" }))
+    }
 }

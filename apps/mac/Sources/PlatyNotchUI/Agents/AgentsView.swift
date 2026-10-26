@@ -122,12 +122,25 @@ struct AgentsEmptyState: View {
 
     static let texts: [String] = ["No agents running", "Connect an agent"]
 
+    private func pups(_ agents: [AgentIdentity]) -> some View {
+        HStack(alignment: .bottom, spacing: Space.xs) {
+            ForEach(agents, id: \.self) { PlatyPupView(agent: $0, tone: .idle, size: 30, badge: false) }
+        }
+        .padding(.bottom, 2)
+    }
+
     func connect() { onConnect() }
 
     var body: some View {
         VStack(spacing: Space.s) {
             if let platyMood {
-                PlatyView(mood: platyMood, size: 96)
+                // Platy with the four known agents' pups at its feet, waiting (no state
+                // badge: nothing is running). The rows keep app icons as the identity.
+                HStack(alignment: .bottom, spacing: Space.s) {
+                    pups([.claude, .codex])
+                    PlatyView(mood: platyMood, size: 88)
+                    pups([.cursor, .gemini])
+                }
             } else {
                 DS.icon("terminal", size: IconSize.hero).foregroundStyle(.secondary)
             }
