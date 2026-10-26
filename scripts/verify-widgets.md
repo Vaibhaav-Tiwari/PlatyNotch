@@ -21,14 +21,14 @@ cd apps/mac && PLATYNOTCH_EXTERNAL_CORE=1 PLATYNOTCH_HOME=… PLATYNOTCH_SOCKET=
 Widget order and on/off live in `UserDefaults.standard` under `widgets.layout` (JSON).
 Under `swift run` the domain is the executable name: reset with
 `defaults delete PlatyNotch widgets.layout`. The live ear side, Minimal mode and the other
-panel settings are in Settings › Appearance and apply at once (one JSON value,
+panel settings are in Settings › Notch and apply at once (one JSON value,
 `appearance.settings`; `defaults delete PlatyNotch appearance.settings` resets them).
 
 Note the Mac model and macOS version next to each tick.
 
 ## Task 1a: widget API, registry, live arbiter
 
-- [ ] **1. Today tab is widget tiles.** Expand the panel, open Today: the nine widgets that are
+- [ ] **1. Library is widget tiles.** Expand the panel, open Library: the nine widgets that are
   on by default, in this order: Music, Meetings, Focus, Open loops, Time, Shelf, System, Games,
   Sites & Shortcuts, scrolling when they do not fit. With no
   music app open the music tile says "Nothing playing".
@@ -36,7 +36,7 @@ Note the Mac model and macOS version next to each tick.
   Spotify, launch PlatyNotch and do not open the panel. Within a few seconds the right
   ear shows the green music bars. (Bundled app: immediately, via the media adapter.
   `swift run` without the adapter: within ~6 s only if PlatyNotch already has Automation
-  permission for that player; otherwise after the Today tab is opened once. No
+  permission for that player; otherwise after the Library is opened once. No
   Automation prompt may appear at launch.) Pause the music: the bars go away.
 - [ ] **3. Arbiter: focus beats music.** Music playing, then start a 25 min focus
   session from the Focus tile. The right ear shows the moon and a `24:59` countdown
@@ -46,18 +46,18 @@ Note the Mac model and macOS version next to each tick.
   (`fake-events.sh` step). While the panel is compact (after the peek, or answer from the
   expanded panel and wait), the ear shows the amber count, never the live glyphs. When the
   core is down the amber bolt shows instead.
-- [ ] **5. liveSide swaps the ears.** Settings › Appearance › Live activities: Left. The live
+- [ ] **5. liveSide swaps the ears.** Settings › Notch › Live side: Left. The live
   glyph and badge move to the left ear, the agent dots to the right, at once. Right: back to
   dots left, live right.
-- [ ] **6. Minimal mode.** Settings › Appearance › Notch: Minimal, no agent sessions: the
+- [ ] **6. Minimal mode.** Settings › Notch › Show the notch: Minimal, no agent sessions: the
   pill is hidden at once. Start music: the pill appears with the
   bars. Stop music: hidden again. Start focus: the pill appears. (Shelf/weather, once
   they exist, never bring it back on their own.)
 - [ ] **7. Settings › Widgets.** Lists the four widgets with a switch each. Turn Music
-  off: its tile leaves the Today tab and the music bars leave the pill even while music
+  off: its tile leaves the Library and the music bars leave the pill even while music
   plays (and, under `swift run` without the adapter, Activity Monitor shows no more
   `osascript`/perl children from PlatyNotch). Turn it back on: tile and bars return.
-  Drag Open loops to the top (or use the arrow buttons): the Today tab follows at once.
+  Drag Open loops to the top (or use the arrow buttons): the Library follows at once.
   Quit and relaunch: order and switches are kept.
 - [ ] **8. Focus off hides the Focus tab.** Turn Focus off in Settings › Widgets: the
   panel's Focus tab disappears; a session that was running no longer holds notices.
@@ -113,7 +113,7 @@ rules being checked are `PanelPrecedence` in `PlatyNotchKit/PanelState.swift`.
   PlatyNotch; hovering it does not open the panel. During a full-screen app a nudge waits
   and shows after leaving full screen if it has not expired. An agent notice shows on top
   of a nudge and the nudge returns after it.
-- [ ] **18. Two displays.** With Settings › Appearance › Show on: All displays, a ringing card shows on both
+- [ ] **18. Two displays.** With Settings › Notch › Show on: All displays, a ringing card shows on both
   panels and Stop on one clears both. The drop zone opens only on the display whose notch
   the drag approaches.
 - [ ] **19. Menu bar Stop.** While anything rings, the menu bar menu starts with one
@@ -201,7 +201,7 @@ Apple Music and a YouTube video in Safari, bundled app (adapter) and `swift run`
   No heart for Spotify or Safari.
 - [ ] **36. Visualiser off by default, no prompt on play.** Fresh install
   (`tccutil reset All dev.platynotch.app`, `defaults delete dev.platynotch.app
-  music.visualiser`): play music, open the panel, show the Today tab: no System Audio
+  music.visualiser`): play music, open the panel, show the Library: no System Audio
   Recording prompt; the bars bounce on their synthetic animation (as before this task).
 - [ ] **37. Prompt timing.** Settings › Widgets › Music › Live visualiser on: the System
   Audio Recording prompt appears now (first time only), even with nothing playing. Allow:
@@ -322,7 +322,7 @@ lives in `$PLATYNOTCH_HOME/shelf.noindex` (0700; `items.json` 0600; owned copies
 - [ ] **54. Real drag-enter after the pass-through flip (closes #16).** Drag a file from
   Finder slowly towards the notch. Within about 60 pt the drop zone opens ("Drop to keep
   on the Shelf"); keep moving onto it: the border turns solid accent on the **first**
-  pass (the drag-enter reached the panel). Drop: the item is on the shelf (Today tab
+  pass (the drag-enter reached the panel). Drop: the item is on the shelf (Library
   tile, pill ear shows a tray and the count when nothing else is live). If the zone
   opens but never highlights, note it: the panel's view is registered for drags at
   creation, so this would mean AppKit withholds drag-enter after `ignoresMouseEvents`
@@ -390,7 +390,7 @@ lives in `$PLATYNOTCH_HOME/shelf.noindex` (0700; `items.json` 0600; owned copies
   `.corrupt-` file by hand instead: folders older than 7 days go at the next start.)
 - [ ] **71a. No file checks at launch.** Put a file from ~/Downloads on the shelf, rebuild
   the app (a new ad-hoc signature), relaunch and wait: no Files & Folders prompt until you
-  open the panel's Today tab and the shelf tile shows.
+  open the panel's Library and the shelf tile shows.
 
 ## Task 6: clipboard history and picker
 
@@ -615,14 +615,14 @@ System; that button is the only place their prompts can appear. Automated checks
 ### Battery and keep-awake
 
 - [ ] **118. On by default, no prompt.** Fresh defaults: System is on in Settings ›
-  Widgets; the Today tab shows the battery row (percent, "On battery · … left" or
+  Widgets; the Library shows the battery row (percent, "On battery · … left" or
   "Charging · … until full") and Keep awake. No permission prompt of any kind.
 - [ ] **119. Plug in / unplug.** Plug in the charger: within a second a peek below the
   notch says "Plugged in" with the percent, for about 4 s. Unplug: "On battery" with the
   percent and time left. While a peek shows, an approval (`scripts/fake-events.sh`) still
   takes over at once.
 - [ ] **120. Charging is ambient.** While charging with nothing else live, the pill's
-  live ear shows ⚡ and the percent. Turn on Settings › Appearance › Minimal: the pill
+  live ear shows ⚡ and the percent. Turn on Settings › Notch › Show the notch: Minimal: the pill
   hides while charging (charging never keeps Minimal up).
 - [ ] **121. Low battery.** Unplugged at 10% or less (or simulate with a nearly empty
   battery): the pill shows the battery glyph and percent in red, and in Minimal mode the
@@ -785,7 +785,7 @@ with an inert widget (no network, no Shortcuts, no Apple Events). Pins live in
 `UserDefaults.standard` under `launch.pins` (`defaults delete PlatyNotch launch.pins`);
 icons in `<home>/favicons` (0700).
 
-- [ ] **158. On by default, quiet until used.** Fresh home, launch: the Today tab shows the
+- [ ] **158. On by default, quiet until used.** Fresh home, launch: the Library shows the
   "Sites & Shortcuts" tile with its hint. Little Snitch / `nettop -p PlatyNotch` shows no
   connection from it, and no Automation or Shortcuts prompt appears.
 - [ ] **159. Add current tab, Safari.** Open Safari on an https page, open the panel and
@@ -862,9 +862,9 @@ cd apps/mac && swift build && PLATYNOTCH_RENDER_DIR=/tmp/pn-renders PLATYNOTCH_H
 - [ ] **171. Idle under 1%.** On a notched M1 both runs print PASS (mean of 60 one-second
   `top` samples, the first dropped). Note the Mac, macOS and which of Music / Spotify ran.
 - [ ] **172. Settings migrate.** Before updating, set Minimal, the old "Show on all displays"
-  and live side left (Plan 3 keys). After: Settings › Appearance shows Minimal, "All displays",
+  and live side left (Plan 3 keys). After: Settings › Notch shows Minimal, "All displays",
   Live activities Left; the panels look as before.
-- [ ] **173. Live changes.** In Settings › Appearance change each control with the panel in
+- [ ] **173. Live changes.** In Settings › Notch change each control with the panel in
   view: Minimal hides the resting pill at once; Theme repaints the open panel; Live
   activities swaps the ears; Spring sliders change the next open / close; Blur 0 opens
   with no blur; Width and Show on rebuild the panels (an open panel stays open, no notice
@@ -903,7 +903,7 @@ cd apps/mac && swift build && PLATYNOTCH_RENDER_DIR=/tmp/pn-renders PLATYNOTCH_H
 
 ## Platy (Task 13)
 
-- [ ] **181. Platy in the pill.** Settings › Appearance › Show Platy is on by default:
+- [ ] **181. Platy in the pill.** Settings › Notch › Show Platy is on by default:
   Platy sits in the agents ear before the dots, about 22 pt tall, with no clipping beside
   the camera housing. Pill width Compact shows Platy, one dot and a small "+n" badge on
   Platy for the rest; Standard shows Platy, the dots that fit and "+n" for the rest (every
@@ -1306,11 +1306,11 @@ screen). Turn on Settings › Widgets › Power features › Baskets.
 - [ ] **256. Quit and pin.** Pin one basket, leave another unpinned, quit and relaunch: only
   the pinned one comes back, where it was. `ls ~/Library/Application\ Support/PlatyNotch/baskets.noindex`
   lists only its folder.
-- [ ] **257. Full screen.** With Appearance › Hide in full screen on, make a basket, then
+- [ ] **257. Full screen.** With Settings › Notch › Hide in full screen on, make a basket, then
   enter a full-screen app on that display: the basket hides (one on another display
   stays); shake a file drag or press ⌃⌥B: it shows. At the default sensitivity a
   brisk shake (about 3 per second) is enough; a slow wiggle never is.
-  On a display that shows no notch panel (Appearance › Displays set to the main one
+  On a display that shows no notch panel (Settings › Notch › Show on set to the main display
   only), baskets there do not hide for a full-screen app: hiding follows the panels.
 - [ ] **258. Off means off.** Turn Baskets off: every basket closes (unpinned ones cleared),
   ⌃⌥B does nothing and shaking a drag makes nothing.
@@ -1407,7 +1407,7 @@ The README header is `docs/assets/showcase/now-agent-dark.png`.
 
 The 20-second screen recording is scripted in `docs/showcase/recording-script.md`.
 
-- [ ] **Showcase renders.** After regenerating, compare the ten PNGs in `docs/assets/showcase`
+- [ ] **271. Showcase renders.** After regenerating, compare the ten PNGs in `docs/assets/showcase`
   with the app. Check that:
   - every scene shows "Now", "Agents" and "Library";
   - nothing is clipped;
@@ -1415,3 +1415,71 @@ The 20-second screen recording is scripted in `docs/showcase/recording-script.md
   - the light set uses the light surface under the black band;
   - the same meeting name appears everywhere;
   - the Library grid ends on a full row.
+
+## UI redesign (Now, Agents, Library)
+
+Automated: the whole `swift test` suite. That includes the fit tests (`NowViewTests`,
+`CompactPillTests`, `AgentsViewTests`), the approval suites (`ApprovalSafetyTests` and
+`ApprovalArmingControllerTests`, unchanged), `PondSceneViewTests`, `MomentsTests`,
+`PlipPolicyTests`, `PlipPlayerTests` and the render harness (`--smoke` with
+`PLATYNOTCH_RENDER_DIR`).
+
+The checks below need a real MacBook with a notch and real agents. Use a 14-inch or 16-inch
+MacBook Pro, with every widget on unless a check says otherwise.
+
+- [ ] **272. Now fits.** Open the panel with music playing, a meeting today, usage limits and
+  open loops. Now shows at most one hero, four glances and one quiet line, and nothing
+  scrolls. Start a timer: the hero steps with ‹ ›, and "2 of 2" stays inside the card.
+- [ ] **273. Long titles.** Play a track with a very long title and rename a project
+  folder to 200 characters, then start an agent in it. The hero, the glance chips, the
+  Agents row and the pill truncate with "…". The ‹ ›, "2 of 3" and the main button stay in
+  the frame.
+- [ ] **274. Twelve sessions.** Run twelve agent sessions over four agents, with one
+  waiting for input. The pill shows Platy, three dots and "+9" inside the ear, with nothing
+  over Platy. Agents lists the needs-you row first, and Now shows one Agents hero.
+- [ ] **275. Approval safety.** Trigger an approval while the pointer rests where Allow will
+  appear. The card never moves under the pointer. Allow and Deny wait 0.7 s before they
+  answer, and Return answers nothing. A command with a hidden character says "Contains
+  hidden characters". The card shows the agent's app icon or monogram.
+- [ ] **276. The morph.** Open and close the panel slowly and quickly. Platy and the live
+  glyph move between the pill and the hero, and nothing disappears and comes back. With
+  Settings › Notch › Motion set to Reduced, or Reduce Motion on, it cross-fades.
+- [ ] **277. Peek on hover, open on click.** Set Settings › Notch › Open on to "Peek, then
+  click". Hovering shows the hero alone at 420 pt wide. A click opens Now. Moving the
+  pointer away closes the peek.
+- [ ] **278. The pond through the day.** Open Now with nothing live in the morning, the
+  afternoon, the evening and at night (or change the clock).
+  - The sky follows the time of day: a low warm sun, a high pale sun, a dusk glow, then
+    stars and the moon.
+  - One ripple plays under Platy each time the panel opens, and none under Reduce Motion.
+  - Activity Monitor shows no CPU for PlatyNotch once the panel closes.
+- [ ] **279. Moments.** Let every agent session finish: Platy celebrates for 2 s, once. Get
+  a new best score in a game, then finish a 1-minute focus session: one moment each. Do
+  each again while an approval waits: no celebration.
+- [ ] **280. Platy chatter.** In Settings › Notifications › Sound, turn the sound on and
+  press Play: a soft half-second chatter at a moderate volume. Then check:
+  - An agent waiting for input makes one sound, and so does a new approval.
+  - With that agent's terminal in front, there is no sound.
+  - With "Agent needs you" set to quiet in focus sessions and a focus session running,
+    needs-you is silent but approvals still sound.
+- [ ] **281. Your own sound.** Click "Choose sound file…" and pick a short sound of your
+  own: it plays on the next event, and the file stays where it was. Pick a 10-second file:
+  Settings refuses it and says why. Move the chosen file away: the next event plays Platy
+  chatter, and Settings says the file can't be played.
+- [ ] **282. Agents.** The rows show each agent's installed app icon, or a monogram, with a
+  state symbol (bolt, hand, warning, check, moon), never colour alone. The status lines read
+  "· just now" under a minute. With no sessions, Platy and the four pups say "No agents
+  running".
+- [ ] **283. Library.** Open Library and press ⌘1, ⌘2 and ⌘3. Every tile opens its tool
+  full-panel with a back chevron, and Esc goes back. The tiles that need setup are dimmed
+  and say "Set up ›".
+- [ ] **284. Settings and the first run.** Open Settings and visit every page. Nothing is
+  clipped, and the selection is teal, never system blue. Take "Take the tour again" from
+  Settings › General: four screens, every one with Skip, and choosing a setup confirms
+  every change first.
+- [ ] **285. Notifications follow their rows.** In Settings › Notifications, turn off
+  "Can open" for Everything else, then plug in the charger: the pill shows it and the notch
+  stays closed. Approvals stay locked to Always / Always / Never.
+- [ ] **286. Idle budget.** Run `scripts/perf-idle.sh`, then `scripts/perf-idle.sh --state
+  music`, with the pointer away from the notch: both PASS under 1%.
+
