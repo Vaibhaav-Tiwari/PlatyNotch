@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 import PlatyNotchKit
@@ -15,6 +16,8 @@ public final class PlatyMoodModel {
     public private(set) var hour: Int
 
     @ObservationIgnored private var flags = PlatyMoodFlags()
+    /// Moments: each event once, never during an approval.
+    @ObservationIgnored private var moments = MomentGate()
     @ObservationIgnored private var watch = PlatyFinishWatch()
     @ObservationIgnored private var expiry: Task<Void, Never>?
     @ObservationIgnored private var hourTask: Task<Void, Never>?
@@ -72,7 +75,16 @@ public final class PlatyMoodModel {
         zoneObserver = nil
     }
 
-    /// A game ended with a new best.
+    /// A moment (spec 8.4): plays for 2 seconds when the gate admits it (each event at most
+    /// once, never while an approval waits); returns whether it played.
+    @discardableResult
+    public func celebrate(_ event: MomentEvent, approvalsPending: Int) -> Bool {
+        guard moments.admit(event, approvalsPending: approvalsPending) else { return false }
+        celebrate()
+        return true
+    }
+
+    /// Celebrates now, ungated (the first run's "Try it", which checks approvals itself).
     public func celebrate() {
         flags.celebrate(at: now())
         refresh()
@@ -142,6 +154,19 @@ public final class PlatyMoodModel {
             try? await Task.sleep(for: .seconds(wait))
             guard !Task.isCancelled else { return }
             self?.scheduleHour()
+        }
+    }
+}
+
+/// Moments' wiring (spec 8.4) that is not a session change.
+@MainActor
+enum Moments {
+    /// A focus session's `onFinish`: its sound as before, then the focus-complete moment.
+    static func focusFinished(platy: PlatyMoodModel, approvals: @escaping @MainActor () -> Int,
+                              playSound: @escaping () -> Void = { NSSound(named: "Glass")?.play() }) -> () -> Void {
+        { [weak platy] in
+            playSound()
+            platy?.celebrate(.focusComplete(endedAt: Date()), approvalsPending: approvals())
         }
     }
 }

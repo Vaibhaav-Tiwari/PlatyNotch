@@ -129,15 +129,6 @@ enum Theme {
         DS.dynamicColor(level.tone)
     }
 
-    /// SF Symbol for an agent id ("claude-code", "codex", ...).
-    static func agentSymbol(_ agent: String) -> String {
-        switch agent {
-        case "claude-code": "sparkle"
-        case "codex": "chevron.left.forwardslash.chevron.right"
-        default: "terminal"
-        }
-    }
-
     static func noticeSymbol(_ kind: String) -> String {
         switch kind {
         case "session-done": "checkmark.circle.fill"

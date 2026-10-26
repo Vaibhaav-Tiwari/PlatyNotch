@@ -25,6 +25,9 @@ public struct LaunchOptions: Equatable, Sendable {
     /// `--pill-gallery <dir>` (hidden): write the compact pill in every state at every
     /// pill width (and the open/close morph frames) and exit.
     public var pillGalleryDir: String?
+    /// `--render-showcase <dir>` (hidden): write the five showcase scenes (the full open
+    /// panel at 2x, dark and light) and exit. No core, no window on screen.
+    public var renderShowcaseDir: String?
     /// `PLATYNOTCH_FAKE_NOWPLAYING=1` together with `--perf-run` (scripts/perf-idle.sh
     /// `--state music` passes both): now playing reports a fake track as playing instead of
     /// reading any player, so the pill shows the music bars. Either one alone does nothing.
@@ -43,6 +46,7 @@ public struct LaunchOptions: Equatable, Sendable {
         renderIconDir = Self.value(after: "--render-icon", in: arguments)
         platyGalleryDir = Self.value(after: "--platy-gallery", in: arguments)
         pillGalleryDir = Self.value(after: "--pill-gallery", in: arguments)
+        renderShowcaseDir = Self.value(after: "--render-showcase", in: arguments)
         perfRun = arguments.dropFirst().contains("--perf-run")
         fakeNowPlaying = env["PLATYNOTCH_FAKE_NOWPLAYING"] == "1" && perfRun
     }

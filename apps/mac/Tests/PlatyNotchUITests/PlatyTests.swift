@@ -184,4 +184,102 @@ final class PlatyTests: DefaultsTestCase {
         XCTAssertEqual(PlatyDetail(points: 48), .small)
         XCTAssertEqual(PlatyDetail(points: 96), .full)
     }
+
+    // MARK: Agent pups (Task 29)
+
+    func testPupForEveryAgentAndTone() {
+        var count = 0
+        for agent in AgentIdentity.allCases {
+            for tone in StateTone.allCases {
+                XCTAssertNotNil(PupImages.image(agent: agent, tone: tone, size: 28, scale: 2, dark: true),
+                                "\(agent) \(tone)")
+                count += 1
+            }
+        }
+        XCTAssertEqual(count, 25)
+    }
+
+    func testPupsAreCached() throws {
+        let a = try XCTUnwrap(PupImages.image(agent: .codex, tone: .working, size: 28, scale: 2, dark: false))
+        let b = try XCTUnwrap(PupImages.image(agent: .codex, tone: .working, size: 28, scale: 2, dark: false))
+        XCTAssertTrue(a === b)
+        // Another agent is another picture.
+        let c = try XCTUnwrap(PupImages.image(agent: .cursor, tone: .working, size: 28, scale: 2, dark: false))
+        XCTAssertFalse(a === c)
+    }
+
+    /// The bandana is the agent's colour: the pixel at the knot differs between agents.
+    func testPupBandanaFollowsTheAgent() throws {
+        let claude = try XCTUnwrap(PupImages.image(agent: .claude, tone: .idle, size: 64, scale: 1, dark: true,
+                                                   badge: false))
+        let gemini = try XCTUnwrap(PupImages.image(agent: .gemini, tone: .idle, size: 64, scale: 1, dark: true,
+                                                   badge: false))
+        let knot = PlatyShapes.bandanaKnot
+        let x = Int(knot.x * 0.64), y = Int(knot.y * 0.64)
+        let a = try XCTUnwrap(NSBitmapImageRep(cgImage: claude).colorAt(x: x, y: y))
+        let b = try XCTUnwrap(NSBitmapImageRep(cgImage: gemini).colorAt(x: x, y: y))
+        XCTAssertNotEqual(a, b)
+    }
+
+    func testGalleryIncludesPups() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pn-gallery-pups-\(getpid())")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        guard case .success = PlatyRenders.writeGallery(to: dir) else { return XCTFail("gallery failed") }
+        let names = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasPrefix("pup-") }
+        XCTAssertEqual(Set(names), Set(AgentIdentity.allCases.map { "pup-\($0.rawValue).png" }))
+    }
+
+    // MARK: Moments (Task 30)
+
+    /// Every agent finishing is a 2-second moment, once, and never while an approval waits.
+    func testAllAgentsFinishedIsAMoment() {
+        var now = Date(timeIntervalSince1970: 2_000_000)
+        // A reference the approvals closure reads (a captured var mutated later warns in Swift 6).
+        final class Box { var approvals = 0 }
+        let box = Box()
+        let activity = AgentActivityModel()
+        let platy = PlatyMoodModel(now: { now })
+        activity.celebrateAllFinished(on: platy, approvals: { box.approvals }, now: { now })
+        activity.sessionsChanged([session("a", .active)], now: now)
+        XCTAssertFalse(platy.celebrating)
+        activity.sessionsChanged([session("a", .idle)], now: now)
+        XCTAssertTrue(platy.celebrating)
+        now = now.addingTimeInterval(PlatyMoodFlags.celebrationLength + 0.1)
+        platy.refresh()
+        XCTAssertFalse(platy.celebrating)
+        // With an approval waiting: no moment.
+        box.approvals = 1
+        activity.sessionsChanged([session("a", .active)], now: now)
+        now = now.addingTimeInterval(30)
+        activity.sessionsChanged([session("a", .idle)], now: now)
+        XCTAssertFalse(platy.celebrating)
+        platy.stop()
+    }
+
+    /// `celebrate()` still works as before (ungated), and the gated form drops repeats.
+    func testCelebrateWrapperAndGate() {
+        let now = Date(timeIntervalSince1970: 3_000_000)
+        let platy = PlatyMoodModel(now: { now })
+        XCTAssertTrue(platy.celebrate(.newBest(game: "snake", score: 9), approvalsPending: 0))
+        XCTAssertFalse(platy.celebrate(.newBest(game: "snake", score: 9), approvalsPending: 0))
+        XCTAssertFalse(platy.celebrate(.focusComplete(endedAt: now), approvalsPending: 1))
+        platy.celebrate()
+        XCTAssertTrue(platy.celebrating)
+        platy.stop()
+    }
+
+    /// The focus session's end plays its sound and sends the moment.
+    func testFocusCompleteIsAMoment() {
+        let platy = PlatyMoodModel()
+        var sounds = 0
+        let focus = FocusModel(defaults: defaults(), onFinish: Moments.focusFinished(platy: platy, approvals: { 0 },
+                                                                                      playSound: { sounds += 1 }))
+        let start = Date()
+        focus.start(minutes: 1, now: start)
+        XCTAssertEqual(sounds, 0)
+        focus.reconcile(now: start.addingTimeInterval(61), announce: true)
+        XCTAssertEqual(sounds, 1)
+        XCTAssertTrue(platy.celebrating)
+        platy.stop()
+    }
 }

@@ -17,6 +17,12 @@ public enum NotchApp {
             let morph = pills.flatMap { n in MorphRenders.write(to: url(dir)).map { n + $0 } }
             finishRender("PILL GALLERY", morph)
         }
+        if let dir = options.renderShowcaseDir {
+            switch ShowcaseRenders.write(to: url(dir)) {
+            case .success(let n): print("SHOWCASE OK renders=\(n)"); fflush(stdout); exit(0)
+            case .failure(let e): print("SHOWCASE FAIL \(e.message)"); fflush(stdout); exit(1)
+            }
+        }
         if options.smokePower { finishPowerSmoke() }
         let delegate = AppDelegate(coreBinary: coreBinary, plugins: plugins, options: options)
         app.delegate = delegate
@@ -92,9 +98,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var responder = ApprovalResponder(client: client)
     /// Now playing, calendar, focus and loop actions, shared by every display.
     /// Smoke runs never create a real audio tap (the visualiser gets one that does nothing).
-    private lazy var today = TodayServices(client: client, visualiser: MusicVisualiser(makeTap: { [options] in
-        options.smoke || options.smokeSettings ? NoAudioTap() as AudioTapping : SystemAudioTap()
-    }))
+    private lazy var today: TodayServices = {
+        // A focus session's end plays its sound and is a moment (never during an approval).
+        let platy = PlatyMoodModel()
+        let store = self.store
+        let focus = FocusModel(defaults: .standard,
+                               onFinish: Moments.focusFinished(platy: platy, approvals: { store.approvals.count }))
+        return TodayServices(client: client, visualiser: MusicVisualiser(makeTap: { [options] in
+            options.smoke || options.smokeSettings ? NoAudioTap() as AudioTapping : SystemAudioTap()
+        }), focus: focus, platy: platy)
+    }()
     /// Built-in and plugin widgets. Smoke runs read the saved layout but never write it.
     /// Smoke and perf runs never save the layout (perf-idle forces it through the argument domain).
     private lazy var widgets = WidgetRegistry(persist: !options.smoke && !options.smokeSettings && !options.perfRun)
@@ -138,6 +151,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         t.onCelebrate = { today.platy.celebrate() }
         return t
     }()
+    /// Settings › Notifications › Sound: Platy chatter or the user's file.
+    private lazy var plip = PlipPlayer()
     /// Settings › Appearance; the panels are built from it (`AppearanceStore`, C32).
     private var appearance = AppearanceStore.load(from: .standard)
     /// The one runtime shortcut catalog every widget claims global shortcuts in (M1).
@@ -205,6 +220,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         today.agentActivity.start(store: store)
         today.agentActivity.postNeedsInputNotices(to: store)
+        // The optional sound when an agent needs you or an approval arrives (off by default;
+        // smoke runs never play it).
+        if !options.smoke, !options.smokeSettings, !options.perfRun {
+            let focusToday = self.today, focusWidgets = self.widgets
+            plip.focusActive = { [weak focusToday, weak focusWidgets] in
+                guard let focusToday, let focusWidgets else { return false }
+                return focusToday.focus.focusActive && focusWidgets.isEnabled(FocusWidget.widgetID)
+            }
+            plip.follow(today.agentActivity, store: store)
+        }
+        // Every agent finished: a 2-second moment (once, never during an approval).
+        let approvalsStore = store
+        today.agentActivity.celebrateAllFinished(on: today.platy, approvals: { approvalsStore.approvals.count })
         // Settings › Notifications (kept current in `appearanceMayHaveChanged`); "quiet
         // during Focus" follows the focus session, as the notice hold always has.
         surfaces.notificationPolicy = NotificationPolicy.load(from: .standard)
@@ -573,8 +601,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            !menuBar.menuTitles.contains("Pause clipboard history") || menuBar.menuAutoenables {
             failure = "menu bar clipboard item missing or menu autoenables"
         }
-        let sounds = TimeSound.allCases.filter { $0.url != nil }.count
-        if failure == nil, sounds != TimeSound.allCases.count {
+        let sounds = TimeSound.allCases.filter { $0.url != nil }.count + CueSound.allCases.filter { $0.url != nil }.count
+        if failure == nil, sounds != TimeSound.allCases.count + CueSound.allCases.count {
             failure = "bundled sounds missing (\(UIResources.bundleName))"
         }
         widgets.stopAll()

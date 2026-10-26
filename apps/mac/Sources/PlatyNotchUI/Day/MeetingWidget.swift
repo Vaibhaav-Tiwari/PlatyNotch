@@ -238,12 +238,19 @@ struct MeetingGlance: View {
     var body: some View {
         let m = widget.glanceMeeting
         GlanceChip(systemImage: "calendar", value: m.map { Self.value($0, now: widget.now) } ?? "—",
-                   label: m?.title ?? "No meetings")
+                   label: m.map { Self.label($0, now: widget.now) } ?? "No meetings")
     }
 
     /// "10:30", or "Now" for a meeting in progress (the chip reads "Now: Design" aloud).
     static func value(_ m: CalendarMeeting, now: Date) -> String {
         m.start <= now ? "Now" : MeetingWidget.time(m.start)
+    }
+
+    /// The title, after "Tomorrow · " for a meeting after midnight, so the chip reads
+    /// "8:30 / Tomorrow · Standup" (the time keeps the value's room; nothing truncates it).
+    static func label(_ m: CalendarMeeting, now: Date, calendar cal: Calendar = .current) -> String {
+        guard m.start > now, !cal.isDate(m.start, inSameDayAs: now) else { return m.title }
+        return "Tomorrow · \(m.title)"
     }
 }
 

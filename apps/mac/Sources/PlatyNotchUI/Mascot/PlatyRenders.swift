@@ -65,6 +65,11 @@ enum PlatyRenders {
             // Pill size on a Retina display (22 pt at 2x), blown up 4x without smoothing.
             try write(zoomed(png(PlatyPillStrip(), scale: 2), by: 4), to: dir.appendingPathComponent("pill-moods-22pt@2x-zoom4.png"))
             count += 1
+            // Each agent's pup: plain at 64 pt, then every state at 28 pt, on dark and light.
+            for agent in AgentIdentity.allCases {
+                try write(png(PupSheet(agent: agent), scale: 2), to: dir.appendingPathComponent("pup-\(agent.rawValue).png"))
+                count += 1
+            }
             // Every game in several states, mid-animation frames included.
             count += try GameRenders.write(to: dir.appendingPathComponent("games", isDirectory: true))
         } catch let f as Failure {
@@ -171,6 +176,30 @@ struct PlatyContactSheet: View {
         }
         .padding(10)
         .background(dark ? Color.black : Color(platyHex: 0xF4F4F2))
+    }
+}
+
+/// One agent's pup: plain at 64 pt, then with each state badge at 28 pt; dark row, light row.
+struct PupSheet: View {
+    let agent: AgentIdentity
+
+    var body: some View {
+        VStack(spacing: 0) {
+            row(dark: true)
+            row(dark: false)
+        }
+    }
+
+    private func row(dark: Bool) -> some View {
+        HStack(alignment: .bottom, spacing: 18) {
+            PlatyPupView(agent: agent, tone: .idle, size: 64, badge: false)
+            ForEach(StateTone.allCases, id: \.self) { tone in
+                PlatyPupView(agent: agent, tone: tone, size: 28)
+            }
+        }
+        .padding(14)
+        .background(dark ? Color(PanelPalette.panelDark) : Color(PanelPalette.lightSurface))
+        .environment(\.colorScheme, dark ? .dark : .light)
     }
 }
 

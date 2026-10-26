@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Generates the Time widget's sounds (original, CC0 / public domain dedication).
+"""Generates PlatyNotch's sounds (original, CC0 / public domain dedication).
 
-Writes apps/mac/Sources/PlatyNotchUI/Resources/Sounds/{alarm,chime}.wav: pure tones made
-from sine waves with simple envelopes, nothing sampled. Deterministic: running it again
+Writes apps/mac/Sources/PlatyNotchUI/Resources/Sounds/{alarm,chime,plip}.wav: pure tones
+made from sine waves with simple envelopes, nothing sampled and nothing imitated. plip.wav is
+"Platy chatter", the optional sound when an agent needs you: a few soft rising chirps and a
+short purr, about half a second. Deterministic: running it again
 writes the same bytes. Usage: scripts/make-sounds.py
 """
 import math
@@ -24,6 +26,33 @@ def tone(freqs, seconds, attack=0.01, decay=6.0, volume=0.5):
         env = min(1.0, t / attack) * math.exp(-decay * t)
         s = sum(w * math.sin(2 * math.pi * f * t) for f, w in freqs)
         out.append(volume * env * s)
+    return out
+
+
+def chirp(f0, f1, seconds, volume):
+    """A sine sweeping f0 -> f1 under a raised-cosine envelope (no clicks), a touch of 2nd harmonic."""
+    n = int(RATE * seconds)
+    out = []
+    phase = 0.0
+    for i in range(n):
+        x = i / max(1, n - 1)
+        f = f0 + (f1 - f0) * x
+        phase += 2 * math.pi * f / RATE
+        env = 0.5 - 0.5 * math.cos(2 * math.pi * x)
+        out.append(volume * env * (math.sin(phase) + 0.15 * math.sin(2 * phase)))
+    return out
+
+
+def purr(freq, seconds, rate_hz, volume):
+    """A short trill: a soft tone fluttering at rate_hz, fading out."""
+    n = int(RATE * seconds)
+    out = []
+    for i in range(n):
+        t = i / RATE
+        x = i / max(1, n - 1)
+        flutter = 0.55 + 0.45 * math.sin(2 * math.pi * rate_hz * t)
+        env = min(1.0, t / 0.015) * (1 - x) ** 1.5
+        out.append(volume * env * flutter * math.sin(2 * math.pi * freq * t))
     return out
 
 
@@ -60,6 +89,13 @@ def main():
         for i, s in enumerate(note):
             chime[start + i] += s
     write("chime.wav", chime + silence(0.4))
+    # Platy chatter: four quick chirps stepping gently down, then a short purr. Kept soft
+    # (peak about -8 dBFS); the app also plays it at a moderate volume.
+    chatter = []
+    for k, (f0, f1, amp) in enumerate([(1650, 2250, 0.40), (1600, 2150, 0.34), (1700, 2300, 0.36), (1500, 2000, 0.28)]):
+        chatter += chirp(f0, f1, 0.045 if k < 3 else 0.055, amp) + silence(0.03)
+    chatter += purr(1850, 0.15, 32, 0.22) + silence(0.04)
+    write("plip.wav", chatter)
 
 
 if __name__ == "__main__":

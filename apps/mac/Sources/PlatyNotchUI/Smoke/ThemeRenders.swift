@@ -122,9 +122,22 @@ enum ThemeRenders {
         out.append(("pill-agents-music", PillRenders.pill(.music, width: .standard, notch: true), true))
         out.append(("pill-indicators", PillRenders.pill(.timer, width: .wide, notch: true), true))
         out.append(("settings-notch-preview", AnyView(NotchPreview(appearance: AppearanceSettings()).frame(width: 540)), true))
+        out.append(("settings-sound", soundSettings(error: false), true))
+        out.append(("settings-sound-refused", soundSettings(error: true), true))
         out.append(("settings-notch-preview-open",
                     AnyView(NotchPreview(appearance: AppearanceSettings(), open: true).frame(width: 540)), true))
         return out
+    }
+
+    /// Settings › Notifications › Sound, on, with a chosen file (or one refused for being too long).
+    private static func soundSettings(error: Bool) -> AnyView {
+        let suite = "dev.platynotch.render-sound"
+        let d = UserDefaults(suiteName: suite) ?? .standard
+        d.removePersistentDomain(forName: suite)
+        PlipSettings(enabled: true, choice: .chatter).save(to: d)
+        let model = PlipSoundModel(defaults: d, play: { _, _ in true })
+        if error { model.showRefusal(.tooLong(7.4)) }
+        return AnyView(PlipSoundSettings(model: model).frame(width: 540))
     }
 
     /// The resting pill beside a 14-inch MacBook Pro notch at `width`, with `sessions`
@@ -215,23 +228,37 @@ enum NowRenders {
         // Existing users' tour card at the top of Now (spec 14), and the first run's "Try it" sample.
         out.append(("now-tour-card", panel(everythingOn(), tourOffer: TourOffer(onTake: {}, onDismiss: {})), true))
         out.append(("now-try-it-sample", panel(builtIns(meeting: false), tourSample: TryItSession.sample), true))
+        // Platy's pond through the day (the summary above draws today's phase).
+        for (phase, hour) in [("morning", 8), ("evening", 19), ("night", 23)] {
+            out.append(("now-pond-\(phase)", panel(pond(hour: hour), now: at(hour: hour)), true))
+        }
         out += AgentsRenders.views()
         out += LibraryRenders.views()
         return out
     }
 
     /// Every built-in on with glances, loops and tasks, and nothing live yet.
-    static func builtIns(meeting: Bool) -> Rig {
+    static func builtIns(meeting: Bool, at now: Date = Date()) -> Rig {
         let rig = Rig()
-        BuiltInWidgets.register(in: rig.registry, store: rig.store, today: rig.today, persist: false)
+        BuiltInWidgets.register(in: rig.registry, store: rig.store, today: rig.today, persist: false,
+                                clock: { now })
         rig.startAll()
-        seed(rig, meeting: meeting)
+        seed(rig, meeting: meeting, at: now)
+        return rig
+    }
+
+    /// Nothing live at `hour`:12 with the meeting glance on the same clock, and Platy in the
+    /// mood for that hour (sleepy at night).
+    static func pond(hour: Int) -> Rig {
+        var rig = builtIns(meeting: false, at: at(hour: hour))
+        rig.mood = PlatyMoodResolver.mood(sessions: [], approvalsPending: 0, musicPlaying: false, focusActive: false,
+                                          justFinished: false, hour: hour)
         return rig
     }
 
     /// A track playing (no artwork in a smoke run: the placeholder).
-    static func musicHero() -> Rig {
-        let rig = builtIns(meeting: false)
+    static func musicHero(at now: Date = Date()) -> Rig {
+        let rig = builtIns(meeting: false, at: now)
         rig.today.nowPlaying.debugApply(NowPlayingInfo(bundleIdentifier: "com.apple.Music", title: "Weightless",
                                                        artist: "Marconi Union", isPlaying: true))
         return rig
@@ -250,10 +277,10 @@ enum NowRenders {
     }
 
     /// Two agents working.
-    static func agentsHero() -> Rig {
-        var rig = builtIns(meeting: false)
+    static func agentsHero(at now: Date = Date()) -> Rig {
+        var rig = builtIns(meeting: false, at: now)
         rig.mood = .working
-        let start = Date().addingTimeInterval(-252)
+        let start = now.addingTimeInterval(-252)
         let sessions = [
             Session(key: "a", agent: "claude-code", agentName: "Claude Code", sessionID: "a", project: "platynotch",
                     state: .active, title: "Running tests", startedAt: start, updatedAt: Date()),
@@ -270,6 +297,11 @@ enum NowRenders {
                                     visibleFrame: CGRect(x: 0, y: 0, width: 1512, height: 944),
                                     auxLeft: CGRect(x: 0, y: 944, width: 654, height: 38),
                                     auxRight: CGRect(x: 858, y: 944, width: 654, height: 38))
+
+    /// Today at `hour`:12 (the pond renders).
+    static func at(hour: Int) -> Date {
+        Calendar.current.date(bySettingHour: hour, minute: 12, second: 0, of: Date()) ?? Date()
+    }
 
     /// The summary's clock: the real time, so its "Next: …" line and the meeting glance
     /// agree with the seeded calendar.
@@ -289,7 +321,10 @@ enum NowRenders {
             glances = UserDefaults(suiteName: "dev.platynotch.render-now") ?? .standard
             glances.removePersistentDomain(forName: "dev.platynotch.render-now")
             registry = WidgetRegistry(defaults: glances, persist: false)
-            today = TodayServices(client: client, nowPlaying: NowPlaying(),
+            // Inert: a render never reads the Mac's real player (its track is set by hand).
+            let nowPlaying = NowPlaying()
+            nowPlaying.inert = true
+            today = TodayServices(client: client, nowPlaying: nowPlaying,
                                   visualiser: MusicVisualiser(defaults: glances),
                                   calendar: CalendarService(eventKit: false),
                                   reminders: RemindersService(eventKit: false, defaults: glances),
@@ -320,14 +355,14 @@ enum NowRenders {
     /// camera housing, 10 pt at the bottom; clipped, so anything too tall shows.
     static func panel(_ rig: Rig, route: PanelRoute = PanelRoute(destination: .now), extraTabs: [PanelTab] = [],
                       memory: MemoryServices? = nil, memoryMode: MemoryTab.Mode = .search,
-                      tourOffer: TourOffer? = nil, tourSample: LiveActivity? = nil) -> AnyView {
+                      tourOffer: TourOffer? = nil, tourSample: LiveActivity? = nil, now: Date? = nil) -> AnyView {
         let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelMargin
         let height: CGFloat = NowMetrics.available(in: layout)
         var current = route
         let view = ExpandedPanel(store: rig.store, responder: ApprovalResponder(client: rig.client), arming: ApprovalArming(),
                                  today: rig.today, widgets: rig.registry, memory: memory ?? MemoryServices(client: rig.client),
                                  extraTabs: extraTabs, route: Binding(get: { current }, set: { current = $0 }),
-                                 onCollapse: {}, fixedNow: fixedNow, glanceDefaults: rig.glances, memoryMode: memoryMode,
+                                 onCollapse: {}, fixedNow: now ?? fixedNow, glanceDefaults: rig.glances, memoryMode: memoryMode,
                                  tourOffer: tourOffer, tourSample: tourSample,
                                  onDecide: { _, _ in }, onOpenTerminal: { _ in })
             .frame(width: width, height: height, alignment: .top)
@@ -379,8 +414,7 @@ enum NowRenders {
     }
 
     /// Loops, usage, tasks, the glance choice and (with `meeting`) a meeting in 8 minutes.
-    static func seed(_ rig: Rig, meeting: Bool) {
-        let now = Date()
+    static func seed(_ rig: Rig, meeting: Bool, at now: Date = Date()) {
         let loops = [Loop(id: "l1", title: "Send Priya the deck", kind: "promise", status: "open", detectedAt: now),
                      Loop(id: "l2", title: "Review the PR", kind: "follow-up", status: "open", detectedAt: now)]
         // Limits have no public initialiser: decoded the way the core sends them.
@@ -392,7 +426,7 @@ enum NowRenders {
         let next = meeting ? CalendarMeeting(id: "design", title: "Design review", start: start,
                                              end: start.addingTimeInterval(1800),
                                              joinURL: URL(string: "https://meet.example.com/design"))
-                           : CalendarMeeting(id: "sync", title: "Team sync", start: later, end: later.addingTimeInterval(1800))
+                           : CalendarMeeting(id: "sync", title: "Design review", start: later, end: later.addingTimeInterval(1800))
         rig.today.calendar.setForTesting(access: .granted, meetings: [next])
         let tasks = ["Book flights", "Water the plants", "Call the bank"].enumerated().map { i, title in
             ReminderItem(id: "r\(i)", title: title, due: now, hasTime: false)

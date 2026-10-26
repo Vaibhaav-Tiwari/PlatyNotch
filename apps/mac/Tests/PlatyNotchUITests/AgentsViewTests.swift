@@ -143,14 +143,14 @@ final class AgentsViewTests: DefaultsTestCase {
         XCTAssertEqual(shown.last, "Answer")
     }
 
-    /// A working session with only a tool says it once ("Edit · 0 m"), not again below.
+    /// A working session with only a tool says it once ("Edit · just now"), not again below.
     func testLastActionNotRepeated() {
         var s = session("p", .active)
         s.tool = "Edit"
-        XCTAssertEqual(AgentRow.texts(s, attention: .working, now: t0), ["p", "Edit · 0 m", "Open terminal"])
+        XCTAssertEqual(AgentRow.texts(s, attention: .working, now: t0), ["p", "Edit · just now", "Open terminal"])
         s.message = "Edit\u{200B} a.swift"
         XCTAssertEqual(AgentRow.texts(s, attention: .working, now: t0),
-                       ["p", "Edit · 0 m", "Edit⟨U+200B⟩ a.swift", "Open terminal"])
+                       ["p", "Edit · just now", "Edit⟨U+200B⟩ a.swift", "Open terminal"])
         var ask = session("q", .waitingInput)
         ask.tool = "AskUserQuestion"
         XCTAssertEqual(AgentRow.texts(ask, attention: .needsYou, now: t0),

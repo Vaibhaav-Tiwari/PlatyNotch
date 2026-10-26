@@ -239,6 +239,34 @@ enum PlatyShapes {
         return p
     }
 
+    /// An agent pup's bandana: a band round the neck under the bill, following the body's
+    /// curve (clipped to the silhouette when drawn).
+    /// `thick`: a wider band for small pups (under 40 pt), so the colour still reads.
+    static func bandana(thick: Bool = false) -> Path {
+        let depth: CGFloat = thick ? 11 : 7
+        var p = Path()
+        p.move(to: CGPoint(x: 16, y: 62))
+        p.addQuadCurve(to: CGPoint(x: 84, y: 62), control: CGPoint(x: 50, y: 74))
+        p.addLine(to: CGPoint(x: 84, y: 62 + depth))
+        p.addQuadCurve(to: CGPoint(x: 16, y: 62 + depth), control: CGPoint(x: 50, y: 74 + depth))
+        p.closeSubpath()
+        return p
+    }
+
+    /// The bandana's knot: a small triangle hanging at the front.
+    static func bandanaTip(thick: Bool = false) -> Path {
+        let grow: CGFloat = thick ? 3 : 0
+        var p = Path()
+        p.move(to: CGPoint(x: 42 - grow, y: 72))
+        p.addLine(to: CGPoint(x: 58 + grow, y: 72))
+        p.addLine(to: CGPoint(x: 50, y: 84 + grow))
+        p.closeSubpath()
+        return p
+    }
+
+    /// A point inside the knot (tests read the colour there).
+    static let bandanaKnot = CGPoint(x: 50, y: 77)
+
     /// The bottom of the waiting flag's pole (it swings about here).
     static let flagBase = CGPoint(x: 85, y: 76)
     static let flagTop = CGPoint(x: 85, y: 3)
@@ -299,7 +327,9 @@ enum PlatyShapes {
 /// Draws Platy into a `GraphicsContext` (the `Canvas` of `PlatyView`, the icon and the
 /// gallery). The context is in points; Platy fills a `size` × `size` square at the origin.
 enum PlatyArt {
-    static func draw(in ctx: GraphicsContext, size: CGFloat, pose: PlatyPose, detail: PlatyDetail? = nil) {
+    /// `bandana`: an agent pup's bandana colour (nil: plain Platy).
+    static func draw(in ctx: GraphicsContext, size: CGFloat, pose: PlatyPose, detail: PlatyDetail? = nil,
+                     bandana: Color? = nil) {
         let d: PlatyDetail = detail ?? PlatyDetail(points: size)
         var g = ctx
         let scale: CGFloat = size / 100
@@ -310,7 +340,7 @@ enum PlatyArt {
         fig.translateBy(x: 0, y: -lift)
         lean(&fig, degrees: pose.lean, breath: pose.breath)
         drawTail(fig, pose: pose, detail: d)
-        drawBody(fig, pose: pose, detail: d)
+        drawBody(fig, pose: pose, detail: d, bandana: bandana, size: size)
         drawFace(fig, pose: pose, detail: d)
         if pose.headphones { drawHeadphones(fig, detail: d) }
         if pose.flag { drawFlag(fig, angle: pose.flagAngle, detail: d) }
@@ -345,7 +375,8 @@ enum PlatyArt {
         if let tint = pose.tint { g.fill(tail, with: .color(tint.opacity(0.85))) }
     }
 
-    private static func drawBody(_ g: GraphicsContext, pose: PlatyPose, detail: PlatyDetail) {
+    private static func drawBody(_ g: GraphicsContext, pose: PlatyPose, detail: PlatyDetail, bandana: Color? = nil,
+                                 size: CGFloat = 100) {
         let shape = PlatyShapes.silhouette()
         if detail == .tiny {
             g.fill(shape, with: .color(PlatyPalette.body))
@@ -363,8 +394,23 @@ enum PlatyArt {
         } else if detail == .full {
             g.stroke(shape, with: .color(PlatyPalette.outline), lineWidth: 1.6)
         }
+        if let bandana { drawBandana(g, color: bandana, detail: detail, thick: size < 40) }
         drawFeet(g, detail: detail)
         if detail != .tiny { drawPaws(g, pose: pose, detail: detail) }
+    }
+
+    private static func drawBandana(_ g: GraphicsContext, color: Color, detail: PlatyDetail, thick: Bool) {
+        var band = g
+        band.clip(to: PlatyShapes.silhouette())
+        band.fill(PlatyShapes.bandana(thick: thick), with: .color(color))
+        let tip = PlatyShapes.bandanaTip(thick: thick)
+        g.fill(tip, with: .color(color))
+        if detail != .tiny {
+            // A darker edge keeps the bandana crisp on any agent colour.
+            let edge: Color = .black.opacity(0.28)
+            band.stroke(PlatyShapes.bandana(thick: thick), with: .color(edge), lineWidth: 1)
+            g.stroke(tip, with: .color(edge), style: StrokeStyle(lineWidth: 1, lineJoin: .round))
+        }
     }
 
     private static func drawFeet(_ g: GraphicsContext, detail: PlatyDetail) {

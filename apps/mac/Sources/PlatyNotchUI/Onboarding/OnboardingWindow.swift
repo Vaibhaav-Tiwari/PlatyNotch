@@ -391,7 +391,7 @@ private struct PondBanner<Content: View>: View {
         }
         .frame(height: height)
         .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.hero, style: .continuous))
         .environment(\.colorScheme, .dark)
     }
 }
@@ -456,7 +456,7 @@ struct PresetCard: View {
     static let compactSize = CGSize(width: 150, height: 120)
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
         Button(action: choose) {
             if compact { compactBody(shape) } else { fullBody(shape) }
         }
@@ -544,7 +544,7 @@ private struct PresetSketch: View {
             pill
         }
         .frame(height: height)
-        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
         .environment(\.colorScheme, .dark)
         .accessibilityHidden(true)
     }

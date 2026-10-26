@@ -336,14 +336,24 @@ and 10 moods are kept and extended.
 2. **Now idle hero**: Platy at 96 pt in a small pond scene that follows time of day
    (morning light, evening dusk, night stars), drawn with Core Animation layers and still
    unless the panel is open. Greeting text beside it.
-3. **Agent pups** **[call]**: each agent session gets a small Platy variant with a coloured
-   bandana (Claude orange, Codex green, Cursor blue, Gemini violet, others teal) so several
-   sessions are countable at a glance in the Agents list and the pill's indicator dots.
+3. **Agent pups** **[call]**: a small Platy variant with a coloured bandana (Claude orange,
+   Codex green, Cursor blue, Gemini violet, others teal). The user asked for recognisable
+   icons first, so the Agents rows keep each agent's installed app icon (or a monogram) with
+   the state symbol badge, and the pill keeps its agent dots. Pups appear only in the Agents empty state (Platy
+   with the four known agents' pups) and in the art gallery. They are still images, never
+   animated.
 4. **Moments**: a short celebration when all agents finish, a new game best, or a focus
    session completes. Each at most once per event, at most 2 seconds, never during an
    approval.
-5. **Sound** (off by default): an optional soft "plip" when an agent needs you. Mutes when
-   the agent's terminal is frontmost.
+5. **Sound** **[call]** (off by default): "Platy chatter", an original, licence-clean sound
+   (about half a second, synthesized by `scripts/make-sounds.py`; nothing sampled or
+   imitated), or a sound file of the user's own (5 seconds or less, kept as a bookmark and
+   never copied into the app). It plays when an agent needs you or an approval arrives, at a
+   moderate volume, once per burst. It mutes when the agent's terminal is frontmost, and
+   honours each kind's "Quiet in focus sessions" row in Settings › Notifications. The
+   approval row is locked to never quiet, so approvals always sound when the sound is on.
+   Settings › Notifications › Sound has the switch, the choice, "Choose sound file…" and
+   Play.
 6. **Restraint**: Platy never speaks text bubbles, never covers content, and is still under
    Reduce Motion and whenever the panel is collapsed with nothing live.
 

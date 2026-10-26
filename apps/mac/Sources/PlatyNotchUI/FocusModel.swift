@@ -64,7 +64,8 @@ public final class FocusModel {
     }
 
     /// Updates `focusActive` and wakes up when a running timer reaches zero.
-    private func reconcile(now: Date, announce: Bool) {
+    /// Works out whether focus is on at `now`; `announce`: a finish then calls `onFinish`.
+    func reconcile(now: Date, announce: Bool) {
         endTask?.cancel()
         endTask = nil
         let active = timer?.isRunning(at: now) ?? false

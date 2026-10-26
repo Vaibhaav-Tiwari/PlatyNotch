@@ -49,6 +49,14 @@ enum TimeSound: String, CaseIterable, Sendable {
     var url: URL? { UIResources.url(rawValue, ext: "wav", subdirectory: "Sounds") }
 }
 
+/// One-shot cue sounds (scripts/make-sounds.py; original, CC0).
+enum CueSound: String, CaseIterable, Sendable {
+    /// "Platy chatter": the optional sound when an agent needs you (file `plip.wav`).
+    case plip
+
+    var url: URL? { UIResources.url(rawValue, ext: "wav", subdirectory: "Sounds") }
+}
+
 /// Plays a ringing sound on a loop until stopped. A protocol so tests use a fake.
 @MainActor
 protocol RingSound: AnyObject {

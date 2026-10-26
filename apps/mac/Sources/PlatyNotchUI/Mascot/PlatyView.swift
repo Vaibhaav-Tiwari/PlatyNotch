@@ -195,10 +195,12 @@ struct PlatyCanvas: View {
     let pose: PlatyPose
     let size: CGFloat
     var detail: PlatyDetail?
+    /// An agent pup's bandana colour.
+    var bandana: Color?
 
     var body: some View {
         Canvas { ctx, _ in
-            PlatyArt.draw(in: ctx, size: size, pose: pose, detail: detail)
+            PlatyArt.draw(in: ctx, size: size, pose: pose, detail: detail, bandana: bandana)
         }
         .frame(width: size, height: size)
     }

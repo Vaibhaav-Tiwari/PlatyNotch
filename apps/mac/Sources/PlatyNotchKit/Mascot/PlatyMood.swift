@@ -44,24 +44,15 @@ public enum PlatyMood: String, CaseIterable, Sendable {
         }
     }
 
-    /// The fraction of the loop, from its start, in which the pose moves (every loop moves
-    /// throughout; a `playsOnce` mood holds still after its one loop instead).
-    public var movingFraction: Double { 1 }
-
     /// When the next frame is due after time `t` (seconds since the reference date): the
-    /// next tick of a grid of `frameInterval` steps from that epoch while the pose moves
-    /// (so Platy and the other pill timelines tick together and share frames); the start
-    /// of the next loop during a still stretch; the start of the still stretch for the last
-    /// moving frame. `t` itself for a still mood.
+    /// next tick of a grid of `frameInterval` steps from that epoch (so Platy and the other
+    /// pill timelines tick together and share frames). `t` itself for a still mood. Every
+    /// loop moves throughout; a `playsOnce` mood holds still after its one loop instead.
     public func nextFrame(after t: TimeInterval) -> TimeInterval {
         guard let interval = frameInterval else { return t }
         var tick: Double = ((t / interval).rounded(.down) + 1) * interval
         if tick <= t + 1e-9 { tick += interval }
-        if movingFraction >= 1 { return tick }
-        let loopStart: Double = (t / period).rounded(.down) * period
-        let stillStart: Double = loopStart + movingFraction * period
-        if t >= stillStart - 1e-9 { return loopStart + period }
-        return min(tick, stillStart)
+        return tick
     }
 
     /// The shared tick of the compact pill's timelines (12 fps, MusicBars' budget).
@@ -145,7 +136,8 @@ public struct PlatyFinishWatch: Sendable {
 /// celebrating (a game's new best, `GamesWidget.onNewBest`).
 public struct PlatyMoodFlags: Equatable, Sendable {
     public static let doneLength: TimeInterval = 4
-    public static let celebrationLength: TimeInterval = 4
+    /// A moment lasts at most 2 seconds (spec 8.4).
+    public static let celebrationLength: TimeInterval = 2
 
     public private(set) var doneUntil: Date?
     public private(set) var celebrationUntil: Date?

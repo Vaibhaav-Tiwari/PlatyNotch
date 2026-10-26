@@ -61,8 +61,9 @@ final class PlatyMoodTests: XCTestCase {
         flags.celebrate(at: start)
         XCTAssertTrue(flags.celebrating(at: start.addingTimeInterval(PlatyMoodFlags.celebrationLength - 0.1)))
         XCTAssertFalse(flags.celebrating(at: start.addingTimeInterval(PlatyMoodFlags.celebrationLength)))
-        XCTAssertGreaterThanOrEqual(PlatyMoodFlags.celebrationLength, 2)
-        XCTAssertLessThanOrEqual(PlatyMoodFlags.celebrationLength, 6)
+        // Spec 8.4: a moment lasts at most 2 seconds.
+        XCTAssertGreaterThan(PlatyMoodFlags.celebrationLength, 1)
+        XCTAssertLessThanOrEqual(PlatyMoodFlags.celebrationLength, 2)
         XCTAssertEqual(flags.nextChange(after: start), start.addingTimeInterval(PlatyMoodFlags.celebrationLength))
         XCTAssertNil(flags.nextChange(after: start.addingTimeInterval(60)))
     }

@@ -23,8 +23,7 @@ struct PermissionTableView: View {
         }
         .padding(.vertical, compact ? 2 : 4)
         .padding(.horizontal, 14)
-        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color.primary.opacity(0.06)))
+        .settingsGroup()
         .background(WindowReader(probe: probe))
         .onAppear { permissions.refresh() }
         .accessibilityElement(children: .contain)

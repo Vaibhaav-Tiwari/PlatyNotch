@@ -75,6 +75,9 @@ public final class NowPlaying {
     /// Perf runs only (`LaunchOptions.fakeNowPlaying`): `start` reports a fake track as
     /// playing and reads no player.
     @ObservationIgnored public var fakePlaying = false
+    /// Renders: never read the Mac's real player (`start` does nothing); a render sets its
+    /// track with `debugApply`.
+    @ObservationIgnored var inert = false
     /// Smoke runs: never send an Apple Event to a player (no AppleScript fallback, no heart).
     @ObservationIgnored var sendsAppleEvents = true
     /// The Apple Events behind the heart (tests pass their own).
@@ -89,7 +92,7 @@ public final class NowPlaying {
     /// Starts reading (idempotent). Called by the music widget when it starts (at launch
     /// when the widget is enabled).
     public func start() {
-        guard !started else { return }
+        guard !started, !inert else { return }
         started = true
         observeClock()
         if fakePlaying {

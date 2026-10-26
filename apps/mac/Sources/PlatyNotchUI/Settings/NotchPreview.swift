@@ -166,7 +166,7 @@ private struct MiniPanel: View {
             .padding(.top, MiniPanel.bandHeight + 4)
             // The hero: artwork, a title and a scrubber.
             HStack(spacing: 7) {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                RoundedRectangle(cornerRadius: Radius.chip, style: .continuous)
                     .fill(LinearGradient(colors: [DS.dynamicColor(.working), Color(red: 0.11, green: 0.23, blue: 0.29)],
                                          startPoint: .topLeading, endPoint: .bottomTrailing))
                     .frame(width: 34, height: 34)
@@ -181,10 +181,10 @@ private struct MiniPanel: View {
                 }
             }
             .padding(7)
-            .background(ink.opacity(0.06), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .background(ink.opacity(0.06), in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
             HStack(spacing: 4) {
                 ForEach(0..<4, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    RoundedRectangle(cornerRadius: Radius.chip, style: .continuous)
                         .fill(ink.opacity(0.06))
                         .frame(height: 22)
                 }

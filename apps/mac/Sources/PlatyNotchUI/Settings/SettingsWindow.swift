@@ -287,7 +287,7 @@ struct SettingsRootView: View {
         case SettingsPageID.general.rawValue: GeneralSection(services: services)
         case SettingsPageID.notch.rawValue: NotchSection()
         case SettingsPageID.now.rawValue: NowSection(widgets: services.widgets)
-        case SettingsPageID.notifications.rawValue: NotificationsSection()
+        case SettingsPageID.notifications.rawValue: NotificationsSection(sound: AnyView(PlipSoundSettings()))
         case SettingsPageID.widgets.rawValue: WidgetsSection(widgets: services.widgets, detail: $model.detail)
         case SettingsPageID.agents.rawValue: AgentsSection(services: services, detail: $model.detail)
         case SettingsPageID.memory.rawValue: MemorySection(services: services)
@@ -359,7 +359,7 @@ private struct SettingsSidebar: View {
             HStack(spacing: 9) {
                 ZStack {
                     if selected {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous).fill(SettingsTint.accent)
+                        RoundedRectangle(cornerRadius: Radius.chip, style: .continuous).fill(SettingsTint.accent)
                     }
                     Image(systemName: image)
                         .font(.system(size: 12, weight: .semibold))
@@ -376,11 +376,11 @@ private struct SettingsSidebar: View {
             .padding(.horizontal, 6)
             .frame(height: 28)
             .background(selected ? SettingsTint.well : .clear,
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
             // The keyboard's place while the sidebar has focus (↑ ↓ move it).
             .overlay {
                 if selected, focused {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: Radius.chip, style: .continuous)
                         .strokeBorder(SettingsTint.accent, lineWidth: 2)
                 }
             }
@@ -491,7 +491,7 @@ struct CommandOutputView: View {
             .frame(maxHeight: 140)
         }
         .padding(10)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
     }
 }
 

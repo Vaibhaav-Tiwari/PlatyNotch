@@ -142,7 +142,7 @@ struct NowSection: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 1)
-        .background(dragging == slot ? SettingsTint.well : .clear, in: RoundedRectangle(cornerRadius: 6))
+        .background(dragging == slot ? SettingsTint.well : .clear, in: RoundedRectangle(cornerRadius: Radius.chip))
         .draggable(GlanceSlotDrag(slot: slot)) {
             Text(verbatim: "Glance \(slot + 1)").padding(6)
         }
