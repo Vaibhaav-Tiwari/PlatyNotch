@@ -73,9 +73,8 @@ struct ApprovalCard: View {
 
     private func header(_ visible: VisibleApproval, _ status: ApprovalCardStatus, lookFirst: Bool) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: Theme.agentSymbol(approval.agent))
-                .foregroundStyle(Theme.color(.attention))
-                .accessibilityHidden(true)
+            // The agent's own icon (or monogram), as everywhere else.
+            AgentBadge(brand: AgentBrand(agent: approval.agent, agentName: approval.agentName), tone: nil, size: 16)
             Text(verbatim: visible.agentName)
                 .font(.system(size: 12, weight: .semibold))
                 .lineLimit(1)
@@ -230,9 +229,8 @@ struct ApprovalRow: View {
     var body: some View {
         let visible = VisibleApproval(approval)
         HStack(spacing: 6) {
-            Image(systemName: Theme.agentSymbol(approval.agent))
-                .foregroundStyle(Theme.color(.attention))
-                .accessibilityHidden(true)
+            // The agent's own icon (or monogram), as everywhere else.
+            AgentBadge(brand: AgentBrand(agent: approval.agent, agentName: approval.agentName), tone: nil, size: 16)
             if visible.hadHidden {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(Theme.color(.attention))
