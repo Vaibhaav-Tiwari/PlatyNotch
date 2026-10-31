@@ -58,6 +58,8 @@ public enum PanelTools {
     public static let search = "search"
     /// Platy Chase keeps its own entry beside Games.
     public static let chase = "games.chase"
+    /// A game picked from the Games tool, full-panel.
+    public static let gamesPlay = "games.play"
     /// A plugin `PanelTab` as a tool: "plugin:<tab id>".
     public static func plugin(_ tabID: String) -> String { pluginPrefix + tabID }
 

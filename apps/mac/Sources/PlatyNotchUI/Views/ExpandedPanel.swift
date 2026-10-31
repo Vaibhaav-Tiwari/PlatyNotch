@@ -136,7 +136,7 @@ struct ExpandedPanel: View {
         if let tool {
             // A tool with its own header controls (the Timer's modes) shows those alone (wireframe C).
             ToolHeader(title: tool.title, onBack: goBack, accessory: tool.accessory?(),
-                       trailing: tool.accessory == nil ? AnyView(controls) : nil)
+                       trailing: tool.hidesPanelControls ? nil : AnyView(controls))
         } else {
             PanelHeader(status: headerStatus, mono: headerIsUsage, nav: { nav }, controls: { controls })
         }
@@ -152,7 +152,7 @@ struct ExpandedPanel: View {
                     ToolCard(content: tool.view())
                         .id(tool.id)
                 } else {
-                    ToolBody(content: tool.view())
+                    ToolBody(content: tool.view(), card: !tool.bare)
                         .id(tool.id)
                 }
             } else {
@@ -248,7 +248,8 @@ struct ExpandedPanel: View {
         let memory = self.memory
         let mode = memoryMode
         return ToolCatalog.tool(id, widgets: widgets, extraTabs: extraTabs,
-                                memory: { AnyView(MemoryTab(store: store, memory: memory, mode: mode)) },
+                                memory: { [widgets] in ToolCatalog.memoryView(store: store, memory: memory, mode: mode,
+                                                                              widgets: widgets) },
                                 fixedNow: fixedNow)
     }
 
@@ -259,7 +260,8 @@ struct ExpandedPanel: View {
         let memory = self.memory
         let mode = memoryMode
         return ToolCatalog.tools(widgets: widgets, extraTabs: extraTabs,
-                                 memory: { AnyView(MemoryTab(store: store, memory: memory, mode: mode)) })
+                                 memory: { [widgets] in ToolCatalog.memoryView(store: store, memory: memory, mode: mode,
+                                                                               widgets: widgets) })
     }
 
     /// Opens a feature full-panel inside Home.

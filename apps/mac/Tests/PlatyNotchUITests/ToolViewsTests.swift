@@ -86,4 +86,69 @@ final class ToolViewsTests: DefaultsTestCase {
         XCTAssertEqual(ToolRow<EmptyView>.wellColor, DS.raised)
         XCTAssertEqual(ToolRow<EmptyView>.wellSize, 28)
     }
+
+    // MARK: - Shelf, Memory, Games
+
+    func testShelfRowsNameAndSize() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pnshelf-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let report = dir.appendingPathComponent("report.pdf"), photo = dir.appendingPathComponent("photo.png")
+        try Data(count: 1_200_000).write(to: report)
+        try Data(count: 340_000).write(to: photo)
+        let items = [ShelfItem(kind: .file(ShelfFileRef(path: report.path)), addedAt: now),
+                     ShelfItem(kind: .file(ShelfFileRef(path: photo.path)), addedAt: now)]
+        let rows = ShelfTool.rows(items)
+        XCTAssertEqual(rows.map(\.title), ["report.pdf", "photo.png"])
+        XCTAssertEqual(rows.map(\.detail), ["1.2 MB", "340 KB"])
+        let text = ShelfTool.rows([ShelfItem(kind: .text("Release checklist"), addedAt: now)])
+        XCTAssertEqual(text.first?.title, "Release checklist")
+        XCTAssertEqual(text.first?.detail, "Text")
+    }
+
+    func testShelfEmptyIsADropBox() {
+        XCTAssertEqual(ShelfTool.texts([]), ["Drop files here to keep them"])
+        XCTAssertTrue(ShelfTool.showsPlatyWhenEmpty)
+    }
+
+    func testShelfToolHasNoGrid() throws {
+        XCTAssertFalse(ShelfTool.usesGrid)
+        let source = try String(contentsOf: DesignLintTests.uiSources.appendingPathComponent("Tools/ShelfTool.swift"),
+                                encoding: .utf8)
+        XCTAssertFalse(source.contains("LazyVGrid"))
+        let tile = try String(contentsOf: DesignLintTests.uiSources.appendingPathComponent("Shelf/Views/ShelfTile.swift"),
+                              encoding: .utf8)
+        XCTAssertFalse(tile.contains("LazyVGrid"), "the tool's grid branch is gone")
+    }
+
+    func testAirDropAllInHeader() {
+        let one = [ShelfItem(kind: .text("x"), addedAt: now)]
+        XCTAssertEqual(ShelfTool.accessoryTitle(canAirDrop: true, items: one), "AirDrop all")
+        XCTAssertNil(ShelfTool.accessoryTitle(canAirDrop: false, items: one))
+        XCTAssertNil(ShelfTool.accessoryTitle(canAirDrop: true, items: []))
+    }
+
+    func testMemoryShowsLoopsOrEmpty() {
+        let loops = [Loop(id: "1", title: "Send Priya the deck", kind: "promise", status: "open", detectedAt: now),
+                     Loop(id: "2", title: "Review the PR", kind: "follow-up", status: "open", detectedAt: now)]
+        XCTAssertEqual(MemoryTool.texts(loops), ["Send Priya the deck", "Review the PR"])
+        XCTAssertEqual(MemoryTool.texts([]), ["No open loops. Platy's keeping watch."])
+    }
+
+    func testGamesRowsEveryKind() {
+        let scores = HighScores(scores: [GameKind.chase.rawValue: 4120])
+        let rows = GamesTool.rows(scores, locale: Locale(identifier: "en_US"))
+        XCTAssertEqual(rows.map(\.title), GameKind.allCases.map(\.title))
+        XCTAssertTrue(rows.last?.detail.hasSuffix("best 4,120") ?? false, rows.last?.detail ?? "")
+        XCTAssertFalse(rows.first?.detail.contains("best") ?? true, "no best at 0")
+    }
+
+    func testGameRowOpensGame() {
+        let model = GamesToolModel()
+        XCTAssertNil(model.picked)
+        model.open(.snake)
+        XCTAssertEqual(model.picked, .snake)
+        model.back()
+        XCTAssertNil(model.picked)
+    }
 }

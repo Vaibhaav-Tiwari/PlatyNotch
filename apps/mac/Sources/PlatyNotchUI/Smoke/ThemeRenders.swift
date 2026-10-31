@@ -861,6 +861,7 @@ enum ToolRenders {
         out.append(("tool-music", tool(MusicWidget.widgetID, rig: HomeRenders.musicHero()), true))
         out.append(("tool-clipboard", tool(ClipboardWidget.widgetID, rig: samples()), true))
         out.append(("tool-shelf", tool(ShelfWidget.widgetID, rig: samples()), true))
+        out.append(("tool-shelf-empty", tool(ShelfWidget.widgetID), true))
         out.append(("tool-memory-search", memory(.search), true))
         out.append(("tool-memory-graph", memory(.graph), true))
         out.append(("tool-games", tool(GamesWidget.widgetID), true))

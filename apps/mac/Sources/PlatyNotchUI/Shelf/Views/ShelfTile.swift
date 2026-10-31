@@ -58,17 +58,6 @@ struct ShelfTile: View {
         if host.items.isEmpty, inTool {
             ToolEmptyState(systemImage: "tray", title: "The shelf is empty",
                            detail: "Drag files, images, links or text to the notch to keep them here.")
-        } else if inTool {
-            // The tool has the room for every card: rows that wrap, not one row that scrolls.
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(ShelfCard.toolSize.width), spacing: ShelfCard.toolSpacing),
-                                     count: 5),
-                      alignment: .leading, spacing: ShelfCard.toolSpacing) {
-                ForEach(host.items) { item in
-                    ShelfCard(host: host, item: item, missing: host.missing.contains(item.id),
-                              selected: host.selection.contains(item.id),
-                              run: host.fileActions?.running[item.id])
-                }
-            }
         } else if host.items.isEmpty {
             Text("Drag files, images, links or text to the notch to keep them here.")
                 .font(.system(size: 11))

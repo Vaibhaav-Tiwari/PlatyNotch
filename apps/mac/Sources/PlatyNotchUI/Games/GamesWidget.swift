@@ -66,7 +66,8 @@ public final class GamesWidget: NotchWidget {
     }
 
     /// The Library tool: the game picker, score and board, full-panel.
-    public func toolView() -> AnyView { AnyView(GamesTab(host: host)) }
+    /// The panel tool: one row per game, a click plays it in the panel (Island spec 4).
+    public func toolView() -> AnyView { AnyView(GamesTool(host: host)) }
 
     public func settingsView() -> AnyView? { AnyView(GamesSettings(host: host)) }
 }

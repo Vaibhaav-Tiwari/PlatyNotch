@@ -83,13 +83,14 @@ struct ToolHeader: View {
 /// with a fade at the edge that has more.
 struct ToolBody: View {
     let content: AnyView
+    /// Island spec 4: the body is one `card` (radius 16, padding 14); a game board draws its own.
+    var card = true
 
     var body: some View {
-        // Island spec 4: the body is one `card` (radius 16, padding 14).
         FadingScroll(fillsRoom: true) { content }
-            .padding(HomeMetrics.toolPadding)
+            .padding(card ? HomeMetrics.toolPadding : 0)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(DS.card, in: RoundedRectangle(cornerRadius: Radius.island, style: .continuous))
+            .background(card ? DS.card : Color.clear, in: RoundedRectangle(cornerRadius: Radius.island, style: .continuous))
             .environment(\.inPanelTool, true)
     }
 }
