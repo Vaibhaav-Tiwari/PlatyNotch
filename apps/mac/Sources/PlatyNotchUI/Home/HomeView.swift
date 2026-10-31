@@ -3,8 +3,8 @@ import SwiftUI
 
 /// What Home shows now, gathered from the models (pure data, so tests read it).
 struct HomeData {
-    var chips: [LiveChip] = []
-    var overflow = 0
+    /// The dock's slots as they show now (badges, live states, off tools).
+    var dock: [DockItemState] = []
     /// The Today card's bottom part.
     var next: TodayNext = .noCalendar(days: [])
     /// The drop targets while a file drag is near; nil otherwise.
@@ -19,15 +19,23 @@ struct HomeData {
     @MainActor
     static func make(today: TodayServices, widgets: WidgetRegistry, settings: HomeSettings,
                      tourSample: LiveActivity?, now: Date, dropping: Bool, airDrop: Bool = ShelfActions.canAirDrop,
-                     calendar: Calendar = .current, locale: Locale = .current) -> HomeData {
+                     calendar: Calendar = .current, locale: Locale = .current, dock: DockLayout = .standard,
+                     toolTitles: [String: String] = [:], searchKey: String? = CommandHotKey.presets.first?.display)
+                     -> HomeData {
         var data = HomeData()
         let time = widgets.isEnabled(TimeWidget.widgetID) ? widgets.widget(TimeWidget.widgetID) as? TimeWidget : nil
         let shelf = widgets.isEnabled(ShelfWidget.widgetID) ? widgets.widget(ShelfWidget.widgetID) as? ShelfWidget : nil
         let focus: FocusTimer? = widgets.isEnabled(FocusWidget.widgetID) ? today.focus.timer : nil
-        let live = LiveChips.chips(focus: focus, timers: time?.state.timers ?? [], shelfCount: shelf?.items.count ?? 0,
-                                   now: now)
-        data.chips = live.shown
-        data.overflow = live.overflow
+        // The widget's own service (the app's shared one, except in renders and tests).
+        let reminders: RemindersService = (widgets.widget(RemindersWidget.widgetID) as? RemindersWidget)?.reminders
+            ?? today.reminders
+        let due: Int = widgets.isEnabled(RemindersWidget.widgetID) && reminders.access == .granted
+            ? RemindersDue.count(reminders.items, now: now, calendar: calendar) : 0
+        let enabled: Set<String> = Set(widgets.widgets.map(\.id).filter { widgets.isEnabled($0) })
+        data.dock = DockState.items(layout: dock, toolTitles: toolTitles, enabledWidgets: enabled, focus: focus,
+                                    timers: time?.state.timers ?? [], stopwatch: time?.state.stopwatch,
+                                    remindersDue: due, shelfCount: shelf?.items.count ?? 0, searchKey: searchKey,
+                                    now: now)
         if tourSample != nil {
             data.next = sample
         } else {
@@ -51,8 +59,8 @@ struct HomeHeightKey: PreferenceKey {
 }
 
 /// Home (Island spec 3): the Now Playing card beside the Today card (1.25 : 1, 10 apart,
-/// always the same height), then (until the dock) the live chips and the command line.
-/// While a file drag nears the notch the cards become drop targets.
+/// always the same height), 12 pt, then the dock. While a file drag nears the notch the
+/// drop box takes the cards' and the dock's place.
 struct HomeView: View {
     let today: TodayServices
     let widgets: WidgetRegistry
@@ -63,16 +71,19 @@ struct HomeView: View {
     var dropping = false
     /// Which drop target the pointer is over.
     var dropHover: DropTargetsView.Zone?
-    var onOpenTool: (String) -> Void = { _ in }
-    /// The command line below the cards.
-    var commandLine: AnyView = AnyView(EmptyView())
-    /// The command line has focus: the cards step aside so its rows (everything it can do,
-    /// or what the text suggests) have the room, like Spotlight. Esc brings them back.
-    var commandFocused = false
+    /// A dock slot was clicked.
+    var onOpen: (DockSlot) -> Void = { _ in }
+    var dockLayout: DockLayout = .standard
+    /// Non-core tools available now, by tool id (a dock slot for a missing one drops out).
+    var toolTitles: [String: String] = [:]
+    /// The global search shortcut's display ("⌥⌘K"); nil: off ("Search").
+    var searchKey: String? = CommandHotKey.presets.first?.display
+    /// Minimal: the dock folded into one Search slot.
+    var foldedDock = false
 
     /// The cards Home draws, in order (tests).
     static func ids(_ data: HomeData) -> [String] {
-        data.drop == nil ? ["nowPlaying", "today"] : ["drop"]
+        data.drop == nil ? ["nowPlaying", "today", "dock"] : ["drop"]
     }
 
     /// The weather widget while it is on (the Today card's sky), else nil.
@@ -85,25 +96,23 @@ struct HomeView: View {
     @MainActor
     static func texts(_ data: HomeData, nowPlaying: NowPlaying, weather: WeatherWidget? = nil,
                       now: Date = Date()) -> [String] {
-        var out: [String] = []
-        if let drop = data.drop {
-            out += data.chips.map(\.text)
-            if data.overflow > 0 { out.append("+\(data.overflow)") }
-            return out + DropTargetsView.titles(shelfOn: drop.shelfOn, airDrop: drop.airDrop)
-        }
+        if let drop = data.drop { return DropTargetsView.titles(shelfOn: drop.shelfOn, airDrop: drop.airDrop) }
         let hour: Int = Calendar.current.component(.hour, from: now)
         let empty = MusicEmptyState.make(last: nowPlaying.lastPlayed, recents: nowPlaying.recents, hour: hour)
-        out += NowPlayingCard.texts(nowPlaying, empty: empty)
+        var out: [String] = NowPlayingCard.texts(nowPlaying, empty: empty)
         out += TodayCard.texts(sky: SkyContent.of(weather, now: now)?.texts, next: data.next)
-        out += data.chips.map(\.text)
-        if data.overflow > 0 { out.append("+\(data.overflow)") }
+        for item in data.dock {
+            out.append(item.label)
+            if let badge = item.badge { out.append(badge) }
+        }
         return out
     }
 
     var body: some View {
         TickingNow(fixed: fixedNow) { now in
             let data = HomeData.make(today: today, widgets: widgets, settings: settings, tourSample: tourSample,
-                                     now: now, dropping: dropping)
+                                     now: now, dropping: dropping, dock: dockLayout, toolTitles: toolTitles,
+                                     searchKey: searchKey)
             content(data, now: now)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -112,22 +121,14 @@ struct HomeView: View {
     @ViewBuilder private func content(_ data: HomeData, now: Date) -> some View {
         VStack(alignment: .leading, spacing: HomeMetrics.dockTop) {
             if let drop = data.drop {
-                if !data.chips.isEmpty {
-                    ChipsRow(chips: data.chips, overflow: data.overflow, onOpen: onOpenTool)
-                }
                 DropTargetsView(shelfOn: drop.shelfOn, airDrop: drop.airDrop, hovered: dropHover)
-            } else if commandFocused {
-                commandLine
             } else {
                 TwoColumns(ratio: HomeMetrics.nowPlayingRatio, gap: HomeMetrics.cardGap) {
                     NowPlayingCard(nowPlaying: today.nowPlaying, recents: today.nowPlaying.recents, fixedNow: fixedNow)
                     TodayCard(weather: Self.weather(widgets), next: data.next, fixedNow: now,
                               onConnectCalendar: { today.calendar.openSettings() })
                 }
-                if !data.chips.isEmpty {
-                    ChipsRow(chips: data.chips, overflow: data.overflow, onOpen: onOpenTool)
-                }
-                commandLine
+                DockView(items: data.dock, folded: foldedDock, onOpen: onOpen)
             }
         }
         .fixedSize(horizontal: false, vertical: true)

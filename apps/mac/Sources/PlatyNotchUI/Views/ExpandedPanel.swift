@@ -35,10 +35,16 @@ struct ExpandedPanel: View {
     var header: HeaderServices?
     /// Settings › Home (Quiet Notch's column choice; Island's Home ignores it).
     var homeSettings = HomeSettings()
-    /// The command line under Home's hairline.
+    /// The full-panel search (`SearchView`), shown for `PanelTools.search`.
     var commandLine: AnyView = AnyView(EmptyView())
-    /// The command line has focus: Home's columns step aside for its rows.
+    /// Unused since the search took the panel (kept for callers).
     var commandFocused = false
+    /// The dock's slots in the user's order.
+    var dockLayout: DockLayout = .standard
+    /// The global search shortcut's display; nil while it is off.
+    var searchKey: String? = CommandHotKey.presets.first?.display
+    /// The dock's Search slot (the controller focuses the field and takes the keyboard).
+    var onSearch: () -> Void = {}
     /// A file drag is near: Home becomes drop targets.
     var dropping = false
     var dropHover: DropTargetsView.Zone?
@@ -74,6 +80,17 @@ struct ExpandedPanel: View {
         PanelRoute(destination: .home, tool: id)
     }
 
+    /// Where a dock slot opens its tool: inside Home, in place.
+    static func route(for slot: DockSlot) -> PanelRoute {
+        PanelRoute(destination: .home, tool: slot.toolID)
+    }
+
+    /// The search shows (the panel's whole body, no header).
+    private var searching: Bool {
+        let normal = route.normalized(agentsVisible: agentsVisible)
+        return normal.destination == .home && normal.tool == PanelTools.search
+    }
+
     var body: some View {
         // An open tool is resolved alone (it redraws often).
         let normal: PanelRoute = route.normalized(agentsVisible: agentsVisible)
@@ -81,9 +98,11 @@ struct ExpandedPanel: View {
         // A tool that is not available now (its widget turned off) shows Home.
         let shown: PanelRoute = open == nil ? PanelRoute(destination: normal.destination) : normal
         VStack(alignment: .leading, spacing: 0) {
-            header(tool: open)
-                .frame(height: HomeMetrics.nav)
-                .panelChrome()
+            if !searching {
+                header(tool: open)
+                    .frame(height: HomeMetrics.nav)
+                    .panelChrome()
+            }
             if !store.approvals.isEmpty {
                 approvals
                     .frame(maxHeight: 240, alignment: .top)
@@ -101,7 +120,7 @@ struct ExpandedPanel: View {
                 // inside, and must not clip Platy or
                 // the live glyph while they morph in from the pill. Other destinations stay clipped.
                 .clipped(unless: shown.destination == .home && open == nil)
-                .padding(.top, open == nil ? HomeMetrics.gap : ToolHost.gap)
+                .padding(.top, searching ? 0 : (open == nil ? HomeMetrics.gap : ToolHost.gap))
                 .environment(\.openPanelRoute, { route = $0 })   // the games tile opens its tool
                 .environment(\.openMemorySettings, { [memory] in memory.onOpenSettings() })   // empty states' one button
         }
@@ -124,7 +143,9 @@ struct ExpandedPanel: View {
     @ViewBuilder private func destination(_ shown: PanelRoute, tool: PanelTool?) -> some View {
         switch shown.destination {
         case .home:
-            if let tool {
+            if searching {
+                commandLine
+            } else if let tool {
                 ToolBody(content: tool.view())
                     .id(tool.id)
             } else {
@@ -148,16 +169,33 @@ struct ExpandedPanel: View {
 
     /// Home: Now Playing beside Today, the chips and the command line.
     var homeView: HomeView {
-        HomeView(today: today, widgets: widgets, settings: homeSettings, tourSample: store.approvals.isEmpty ? tourSample : nil, fixedNow: fixedNow,
-                 dropping: dropping, dropHover: dropHover, onOpenTool: { openTool($0) }, commandLine: commandLine,
-                 commandFocused: commandFocused)
+        HomeView(today: today, widgets: widgets, settings: homeSettings,
+                 tourSample: store.approvals.isEmpty ? tourSample : nil, fixedNow: fixedNow,
+                 dropping: dropping, dropHover: dropHover, onOpen: { openDock($0) }, dockLayout: dockLayout,
+                 toolTitles: dockToolTitles, searchKey: searchKey)
+    }
+
+    /// A dock slot: its tool in place; Search also focuses its field.
+    func openDock(_ slot: DockSlot) {
+        if slot == .core(.search) { onSearch() }
+        route = Self.route(for: slot)
+    }
+
+    /// Titles of the non-core tools the dock holds and that are available now.
+    private var dockToolTitles: [String: String] {
+        var out: [String: String] = [:]
+        for case .tool(let id) in dockLayout.slots {
+            if let t = panelTool(id) { out[id] = t.title }
+        }
+        return out
     }
 
     /// What to tell the controller about the body's height (spec 2: the panel follows its
     /// content, 160–380 pt; the controller clamps): the header, the approvals region when
     /// approvals show, and Home's or Agents' natural height. An open tool takes the full height.
     var reportedBody: CGFloat? {
-        Self.bodyHeight(toolOpen: open != nil, approvals: !store.approvals.isEmpty, approvalsHeight: approvalsHeight,
+        // The search, like a tool, takes the panel's full height (its list scrolls inside).
+        Self.bodyHeight(toolOpen: open != nil || searching, approvals: !store.approvals.isEmpty, approvalsHeight: approvalsHeight,
                         content: homeBody)
     }
 

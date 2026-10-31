@@ -203,6 +203,13 @@ struct PanelRootView: View {
                           header: model.header,
                           homeSettings: model.homeSettings, commandLine: commandLineView,
                           commandFocused: model.commandActive,
+                          dockLayout: DockLayout.load(from: .standard),
+                          searchKey: model.commandHint == "\u{2318}K" ? nil : model.commandHint,   // ⌘K: the global shortcut is off
+                          onSearch: { [model] in
+                              model.requestKey()
+                              model.commandFocused = true
+                              model.commandActive = true
+                          },
                           dropping: dropping, dropHover: dropHover,
                           agentsVisible: today.agentActivity.agentsVisibility.isVisible,
                           onConnectAgent: model.onConnectAgent,
@@ -264,12 +271,12 @@ struct PanelRootView: View {
 }
 
 extension PanelRootView {
-    /// The command line under Home's hairline, wired to the app's models.
+    /// The full-panel search, wired to the app's models.
     var commandLineView: AnyView {
         let logic = CommandLineLogic(model: model, runner: CommandRunner(actions: commandActions),
                                      tools: { commandTools }, catalog: { commandCatalog },
                                      approvalsPending: { !store.approvals.isEmpty })
-        return AnyView(CommandLineView(model: model, logic: logic, memory: memory))
+        return AnyView(SearchView(model: model, logic: logic, memory: memory))
     }
 
     /// The features `open …` can offer: every tool the panel opens, by its title.

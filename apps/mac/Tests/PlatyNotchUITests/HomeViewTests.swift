@@ -43,28 +43,23 @@ final class HomeViewTests: DefaultsTestCase {
         let r = HomeRenders.homeLive()
         for _ in 0..<3 { _ = (r.registry.widget(TimeWidget.widgetID) as? TimeWidget)?.addTimer("9m") }
         let d = data(r)
-        XCTAssertEqual(d.chips.count, LiveChips.maxShown)
-        XCTAssertGreaterThan(d.overflow, 0)
+        XCTAssertTrue(d.dock.first?.live ?? false, "the timer slot is live")
         XCTAssertLessThanOrEqual(size(view(r)).height, room)
         r.registry.stopAll()
     }
 
-    /// I3: command results never push Home past the 380 pt cap; they scroll inside. Typing
-    /// makes the line active (`commandActive`, which `PanelRootView` passes as
-    /// `commandFocused`), so the cards step aside for the results.
-    func testHomeFitsWithCommandResults() {
-        let r = HomeRenders.homeLive()
-        for _ in 0..<3 { _ = (r.registry.widget(TimeWidget.widgetID) as? TimeWidget)?.addTimer("9m") }
-        let model = PanelViewModel()
-        model.commandText = "s"
-        model.commandActive = true
-        let tools = ["Sites", "Shelf", "Snap", "Sound"].map { CommandTool(id: $0, title: $0) }
-        let logic = CommandLineLogic(model: model, runner: CommandRunner(actions: CommandActions()), tools: { tools })
-        XCTAssertGreaterThanOrEqual(logic.suggestions.count, 4)
-        let v = HomeView(today: r.today, widgets: r.registry, settings: HomeSettings(), fixedNow: Date(),
-                         commandLine: AnyView(CommandLineView(model: model, logic: logic, memory: nil)),
-                         commandFocused: model.commandActive)
-        XCTAssertLessThanOrEqual(size(v).height, room)
+    /// I3: the search takes the panel's full height (380 pt at most, never Home's measured
+    /// height), and its results scroll inside it.
+    func testSearchFitsThePanel() {
+        let r = rig()
+        var route = PanelRoute(destination: .home, tool: PanelTools.search)
+        let p = ExpandedPanel(store: r.store, responder: ApprovalResponder(client: r.client), arming: ApprovalArming(),
+                              today: r.today, widgets: r.registry, memory: MemoryServices(client: r.client),
+                              extraTabs: [], route: Binding(get: { route }, set: { route = $0 }),
+                              onCollapse: {}, onDecide: { _, _ in }, onOpenTerminal: { _ in })
+        XCTAssertNil(p.reportedBody, "full height while searching")
+        route = PanelRoute(destination: .home)
+        XCTAssertNil(ExpandedPanel.bodyHeight(toolOpen: true, approvals: false, approvalsHeight: nil, content: 200))
         r.registry.stopAll()
     }
 
@@ -75,18 +70,19 @@ final class HomeViewTests: DefaultsTestCase {
         r.registry.stopAll()
     }
 
-    func testChipTapsRouteToTheirTool() {
-        let chips: [LiveChip] = [LiveChip(kind: .focus, text: "Focus 1:00", tone: .needsYou),
-                                 LiveChip(kind: .timer(UUID()), text: "Timer 1:00", tone: nil),
-                                 LiveChip(kind: .shelf, text: "Shelf · 1", tone: nil)]
-        XCTAssertEqual(chips.map(ChipsRow.tool(for:)), [FocusWidget.widgetID, TimeWidget.widgetID, ShelfWidget.widgetID])
+    /// Island: the chips are gone; what they said is in the dock.
+    func testNoChips() {
+        let r = HomeRenders.homeLive()
+        let texts = HomeView.texts(data(r), nowPlaying: r.today.nowPlaying)
+        XCTAssertFalse(texts.contains("Shelf · 2"))
+        XCTAssertFalse(texts.contains { $0.hasPrefix("Focus ") })
+        XCTAssertTrue(texts.contains("2"), "the Shelf badge")
+        r.registry.stopAll()
     }
-
-    // MARK: - Island Home (spec 3)
 
     func testHomeShowsTwoCards() {
         let r = rig()
-        XCTAssertEqual(HomeView.ids(data(r)), ["nowPlaying", "today"])
+        XCTAssertEqual(HomeView.ids(data(r)), ["nowPlaying", "today", "dock"])
         XCTAssertEqual(HomeView.ids(data(r, dropping: true)), ["drop"])
         r.registry.stopAll()
     }
@@ -199,13 +195,13 @@ final class HomeViewTests: DefaultsTestCase {
         XCTAssertEqual(ExpandedPanel.headerStatus(for: .home, usage: Usage()), [])
     }
 
-    /// The first run's "Try it" shows in the Today card, not as a chip.
-    func testTourSampleIsTheTodayCard() {
+    /// The first run's "Try it" shows in the Today card (it was a chip).
+    func testTourSampleInTodayCard() {
         let r = rig()
         let d = HomeData.make(today: r.today, widgets: r.registry, settings: HomeSettings(), tourSample: TryItSession.sample,
                               now: Date(), dropping: false)
+        XCTAssertEqual(d.next, .sample(title: "This is Home", subtitle: "Every tool is one click away in the dock"))
         XCTAssertEqual(d.next, HomeData.sample)
-        XCTAssertFalse(d.chips.contains { $0.kind == .sample })
         r.registry.stopAll()
     }
 
@@ -217,12 +213,11 @@ final class HomeViewTests: DefaultsTestCase {
     }
 
     /// I4: the chips stay above the box (wireframe B).
-    func testDropKeepsTheChips() {
+    /// The drop box takes the cards' place; the dock steps aside too.
+    func testDropReplacesTheCards() {
         let r = HomeRenders.homeLive()
         let texts = HomeView.texts(data(r, dropping: true), nowPlaying: r.today.nowPlaying)
-        XCTAssertTrue(texts.contains { $0.hasPrefix("Focus") })
-        XCTAssertEqual(texts.suffix(2), ["Drop to keep on Shelf", "AirDrop"])
-        XCTAssertFalse(texts.contains("Nothing playing"), "the body is the box")
+        XCTAssertEqual(texts, ["Drop to keep on Shelf", "AirDrop"])
         r.registry.stopAll()
     }
 

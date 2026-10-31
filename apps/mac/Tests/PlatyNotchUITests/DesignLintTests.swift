@@ -151,7 +151,10 @@ final class DesignLintTests: DefaultsTestCase {
                                              + #"|\.background\("# + tint + #"[^\n]*in:\s*"# + shape)
         let lines = try Self.sourceLines()
         var found: [String] = []
-        for (i, line) in lines.enumerated() where Self.isPanel(line.path) {
+        for (path, reason) in Self.tintedWellAllowlist {
+            XCTAssertFalse(reason.trimmingCharacters(in: .whitespaces).isEmpty, "\(path) needs a reason")
+        }
+        for (i, line) in lines.enumerated() where Self.isPanel(line.path) && Self.tintedWellAllowlist[line.path] == nil {
             let ns = line.text as NSString
             guard tinted.firstMatch(in: line.text, range: NSRange(location: 0, length: ns.length)) != nil else { continue }
             let window = lines[max(0, i - 6)...min(lines.count - 1, i + 6)].filter { $0.path == line.path }
@@ -161,6 +164,11 @@ final class DesignLintTests: DefaultsTestCase {
         }
         XCTAssertTrue(found.isEmpty, "a symbol on a tinted well:\n" + found.joined(separator: "\n"))
     }
+
+    /// Files whose symbols may sit on a tinted circle, each with its reason.
+    static let tintedWellAllowlist: [String: String] = [
+        "Dock/DockButton.swift": "the dock's live circle, amber at 0.18 (Island spec 3.4)",
+    ]
 
     /// Files in panel directories that may use colours other than the state palette, each
     /// with its reason.

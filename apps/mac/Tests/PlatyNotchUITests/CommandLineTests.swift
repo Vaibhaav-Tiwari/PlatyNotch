@@ -122,7 +122,7 @@ final class CommandLineTests: DefaultsTestCase {
         c.expand(tab: "memory")
         XCTAssertNotNil(c.panelModel.route.tool)
         XCTAssertTrue(c.commandK())
-        XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .home))
+        XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .home, tool: PanelTools.search))
         rig.registry.stopAll()
     }
 
@@ -311,12 +311,14 @@ final class CommandLineTests: DefaultsTestCase {
         let (c, _, rig) = controller()
         c.expand()
         XCTAssertTrue(c.typed("t"))
+        XCTAssertEqual(c.panelModel.route.tool, PanelTools.search, "typing opens the search")
         c.escapePressed()
         XCTAssertEqual(c.panelModel.commandText, "")
         XCTAssertTrue(c.panelModel.commandFocused)
         XCTAssertEqual(c.mode, .expanded)
         c.escapePressed()
         XCTAssertFalse(c.panelModel.commandFocused)
+        XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .home), "back to Home")
         XCTAssertEqual(c.mode, .expanded, "the panel stays open")
         c.escapePressed()
         XCTAssertNotEqual(c.mode, .expanded, "then Esc closes it")

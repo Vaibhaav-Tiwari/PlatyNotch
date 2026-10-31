@@ -220,6 +220,8 @@ struct Tag: View {
 struct Keycap: View {
     let text: String
     var color: Color = DS.tertiary
+    /// The 1 px outline (Island: `stroke`).
+    var border: Color = DS.hairline
 
     var body: some View {
         Text(verbatim: text)
@@ -229,7 +231,7 @@ struct Keycap: View {
             .fixedSize()
             .padding(.horizontal, 4)
             .overlay(RoundedRectangle(cornerRadius: Radius.keycap, style: .continuous)
-                .stroke(DS.hairline, lineWidth: 1))
+                .stroke(border, lineWidth: 1))
             .accessibilityHidden(true)
     }
 }

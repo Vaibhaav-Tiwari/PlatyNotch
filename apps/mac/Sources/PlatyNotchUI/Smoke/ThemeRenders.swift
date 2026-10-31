@@ -227,16 +227,18 @@ enum HomeRenders {
         out.append(("home-header-keep-awake", panel(homeRest(), header: headerServices(keepAwake: true)), true))
         out.append(("home-header-charging", panel(homeRest(), header: headerServices(
             battery: BatteryState(percent: 64, charging: true, pluggedIn: true, minutesRemaining: nil))), true))
-        out.append(("home-live", panel(homeLive()), true))
+        out.append(("home-dock-live", panel(homeLive()), true))   // live times read the real clock
+        out.append(("home-dock-badges", panel(homeRest(), now: day), true))
+        out.append(("home-dock-off-slot", panel(offSlots(), now: day), true))
         out.append(("home-nothing-playing", panel(builtIns(meeting: false)), true))
         out.append(("home-resume", panel(resume(), now: night), true))
         out.append(("home-never-played", panel(builtIns(meeting: false)), true))
         out.append(("home-drop", panel(builtIns(meeting: false), dropping: true), true))
         out += skies(day: day, night: night)
-        out.append(("home-command", panel(homeRest(), command: "timer 10m tea"), true))
-        out.append(("home-command-list", panel(homeRest(), command: "", commandFocused: true), true))
-        out.append(("home-command-hint", panel(homeRest(), commandHint: true), true))
-        out.append(("home-command-list-approval", panel(approvalPending(), command: "", commandFocused: true), true))
+        out.append(("search-empty", panel(homeRest(), command: "", full: true), true))
+        out.append(("search-typed", panel(homeRest(), command: "games", full: true), true))
+        out.append(("search-hint", panel(homeRest(), command: "notes", full: true), true))
+        out.append(("search-approval", panel(approvalPending(), command: "timer 10m", full: true), true))
         out.append(("peek-hover", hoverPeek(agentsHero()), true))
         out += AgentsRenders.views()
         out += ToolRenders.views()
@@ -357,6 +359,14 @@ enum HomeRenders {
         rig.today.nowPlaying.debugSetLastPlayed(
             LastPlayed(title: "Green Light", artist: "Lorde", bundleID: AppleScriptPlayer.music.rawValue, at: Date()),
             icon: music, recents: ["Lo-fi beats", "Liked songs"])
+    }
+
+    /// Remind and Note turned off: their dock slots dim and open "Turn on".
+    static func offSlots() -> Rig {
+        let rig = homeRest()
+        rig.registry.setEnabled(RemindersWidget.widgetID, false)
+        rig.registry.setEnabled(NotesWidget.widgetID, false)
+        return rig
     }
 
     /// Nothing playing after Apple Music played "Green Light": Resume and two playlists.
@@ -489,21 +499,23 @@ enum HomeRenders {
                       full: Bool = false, commandFocused: Bool = false, commandHint: Bool = false) -> AnyView {
         let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelSide
         rig.store.apply(.connected)   // a quiet header, as in the running app
-        var current = route
+        // A command (even empty) opens the full-panel search with it typed.
+        var current = command == nil ? route : PanelRoute(destination: .home, tool: PanelTools.search)
         let commandModel = PanelViewModel()
         commandModel.commandText = command ?? ""
-        commandModel.commandFocused = commandFocused
-        commandModel.commandActive = commandFocused
+        commandModel.commandFocused = commandFocused || command != nil
+        commandModel.commandActive = commandFocused || command != nil
         commandModel.showCommandHint = commandHint
         commandModel.commandHint = CommandHotKey.presets[0].display
-        let catalog = CommandCatalog.entries(tools: ["clipboard", "shelf", "baskets", "mirror", "memory", "launch", "games"],
+        let catalog = CommandCatalog.entries(tools: ["clipboard", "shelf", "baskets", "mirror", "memory", "launch", "games",
+                                                     "notes", "time"],
                                              shortcuts: ["clipboard": "\u{2325}\u{21E7}V", "baskets": "\u{2303}\u{2325}B"])
         let store = rig.store
         let logic = CommandLineLogic(model: commandModel, runner: CommandRunner(actions: CommandActions()),
                                      tools: { [] }, catalog: { catalog },
                                      approvalsPending: { !store.approvals.isEmpty }, clock: { fixedNow },
                                      calendar: .current)
-        let commandLine = AnyView(CommandLineView(model: commandModel, logic: logic, memory: nil))
+        let commandLine = AnyView(SearchView(model: commandModel, logic: logic, memory: nil))
         let services: HeaderServices = header ?? headerServices()
         let at: Date = now ?? fixedNow
         func make(height: CGFloat, onBody: @escaping (CGFloat?) -> Void) -> some View {

@@ -134,8 +134,8 @@ final class PanelRoutingTests: DefaultsTestCase {
         XCTAssertTrue(ids.contains(PanelTools.memory))
     }
 
-    /// Chips open their tool directly (through Home's `onOpenTool`).
-    func testChipLinksOpenTheirTool() {
+    /// Dock slots open their tool directly (through Home's `onOpen`).
+    func testDockSlotsOpenTheirTool() {
         XCTAssertEqual(ExpandedPanel.route(forTool: "loops"), PanelRoute(destination: .home, tool: "loops"))
         let r = rig()
         var route = PanelRoute(destination: .home)
@@ -143,10 +143,10 @@ final class PanelRoutingTests: DefaultsTestCase {
                               today: r.today, widgets: r.registry, memory: MemoryServices(client: r.client),
                               extraTabs: [], route: Binding(get: { route }, set: { route = $0 }),
                               onCollapse: {}, onDecide: { _, _ in }, onOpenTerminal: { _ in })
-        p.homeView.onOpenTool(LoopsWidget.widgetID)
+        p.homeView.onOpen(.tool(LoopsWidget.widgetID))
         XCTAssertEqual(route, PanelRoute(destination: .home, tool: LoopsWidget.widgetID))
-        p.homeView.onOpenTool(FocusWidget.widgetID)
-        XCTAssertEqual(route, PanelRoute(destination: .home, tool: FocusWidget.widgetID))
+        p.homeView.onOpen(.core(.timer))
+        XCTAssertEqual(route, PanelRoute(destination: .home, tool: PanelTools.timer))
     }
 
     /// The tool header: back chevron with its VoiceOver name, and the tool's title.
