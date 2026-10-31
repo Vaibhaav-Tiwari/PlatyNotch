@@ -64,10 +64,10 @@ Session states: `active`, `idle`, `waiting_input`, `blocked`, `exited`.
 
 - `Hello`: `role`, `client?`, `version`
 - `ErrorMsg`: `message`
-- `HookEvent`: `agent` (adapter id), `event` (kebab-case, e.g. `permission-request`), `payload?` (raw agent JSON), `pid?`, `ppid?`, `tty?`, `cwd?`, `term_program?`, `want_decision?`, `at`
+- `HookEvent`: `agent` (adapter id), `event` (kebab-case, e.g. `permission-request`), `payload?` (raw agent JSON), `pid?`, `ppid?`, `tty?`, `cwd?`, `term_program?`, `host_bundle_id?`, `want_decision?`, `at`
 - `HookAck`: `wait`, `approval_id?`, `timeout_ms?`
 - `HookDecision`: `behavior`, `message?`, `source?` (`notch`, `phone`, `policy`, `slack`, ...)
-- `Session`: `key` (agent:session id), `agent`, `agent_name`, `session_id`, `cwd?`, `project?`, `state`, `title?`, `tool?`, `message?`, `pid?`, `tty?`, `term_program?`, `subagents?`, `started_at`, `updated_at`
+- `Session`: `key` (agent:session id), `agent`, `agent_name`, `session_id`, `cwd?`, `project?`, `state`, `title?`, `tool?`, `message?`, `pid?`, `tty?`, `term_program?`, `host_bundle_id?`, `subagents?`, `started_at`, `updated_at`
 - `SessionRemoved`: `key`
 - `Approval`: `id`, `session_key`, `agent`, `agent_name`, `project?`, `cwd?`, `tool`, `summary` (exact command or path, never paraphrased), `input?`, `created_at`, `expires_at`
 - `ApprovalDecide`: `id`, `behavior`, `message?`, `source?`

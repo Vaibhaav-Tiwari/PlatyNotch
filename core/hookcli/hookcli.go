@@ -66,6 +66,7 @@ func Run(agent, event string, stdin io.Reader, stdout io.Writer, env func(string
 		Event:        event,
 		PPID:         os.Getppid(),
 		TermProgram:  env("TERM_PROGRAM"),
+		HostBundleID: env("__CFBundleIdentifier"),
 		WantDecision: want,
 		At:           time.Now().UTC(),
 	}

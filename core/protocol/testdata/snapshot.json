@@ -14,6 +14,7 @@
       "pid": 4242,
       "tty": "ttys004",
       "term_program": "Apple_Terminal",
+      "host_bundle_id": "com.apple.Terminal",
       "subagents": 1,
       "started_at": "2026-10-23T10:00:00Z",
       "updated_at": "2026-10-23T10:05:00Z"

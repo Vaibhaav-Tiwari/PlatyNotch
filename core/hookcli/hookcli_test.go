@@ -2,6 +2,7 @@ package hookcli
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net"
 	"os"
@@ -260,5 +261,51 @@ func TestWrongIDIgnored(t *testing.T) {
 		if code != 0 || out != "" {
 			t.Fatalf("ack=%q dec=%q: code=%d out=%q", tc.ackID, tc.decID, code, out)
 		}
+	}
+}
+
+func hostEnv(sock, bundle string) func(string) string {
+	return func(k string) string {
+		switch k {
+		case "PLATYNOTCH_SOCKET":
+			return sock
+		case "__CFBundleIdentifier":
+			return bundle
+		}
+		return ""
+	}
+}
+
+func captureEvent(t *testing.T, bundle string) protocol.Envelope {
+	t.Helper()
+	sock := sockPath(t)
+	got := make(chan protocol.Envelope, 1)
+	fakeServer(t, sock, func(w *wire.Writer, ev protocol.Envelope, c net.Conn) { got <- ev })
+	var out bytes.Buffer
+	Run("claude-code", "session-start", strings.NewReader(`{}`), &out, hostEnv(sock, bundle))
+	select {
+	case ev := <-got:
+		return ev
+	case <-time.After(2 * time.Second):
+		t.Fatal("no hook.event")
+	}
+	return protocol.Envelope{}
+}
+
+func TestHostBundleIDRecorded(t *testing.T) {
+	env := captureEvent(t, "com.anthropic.claudefordesktop")
+	var ev protocol.HookEvent
+	if err := json.Unmarshal(env.Data, &ev); err != nil {
+		t.Fatal(err)
+	}
+	if ev.HostBundleID != "com.anthropic.claudefordesktop" {
+		t.Fatalf("HostBundleID=%q", ev.HostBundleID)
+	}
+}
+
+func TestHostBundleIDOmittedWhenUnset(t *testing.T) {
+	env := captureEvent(t, "")
+	if strings.Contains(string(env.Data), "host_bundle_id") {
+		t.Fatalf("key present: %s", env.Data)
 	}
 }

@@ -267,3 +267,23 @@ func TestGet(t *testing.T) {
 		t.Fatalf("Get = %+v, %v", got, ok)
 	}
 }
+
+func TestHostBundleIDKeptAcrossEvents(t *testing.T) {
+	s, _ := newTestStore(func(int) bool { return true })
+	e := ev("user-prompt-submit", 100, `{"sid":"s1"}`)
+	e.HostBundleID = "com.anthropic.claudefordesktop"
+	sess, _ := s.Apply(e, fakeAdapter{})
+	if sess.HostBundleID != "com.anthropic.claudefordesktop" {
+		t.Fatalf("%+v", sess)
+	}
+	sess, _ = s.Apply(ev("pre-tool-use", 100, `{"sid":"s1"}`), fakeAdapter{})
+	if sess.HostBundleID != "com.anthropic.claudefordesktop" {
+		t.Fatalf("empty replaced: %+v", sess)
+	}
+	e = ev("pre-tool-use", 100, `{"sid":"s1"}`)
+	e.HostBundleID = "com.mitchellh.ghostty"
+	sess, _ = s.Apply(e, fakeAdapter{})
+	if sess.HostBundleID != "com.mitchellh.ghostty" {
+		t.Fatalf("not replaced: %+v", sess)
+	}
+}

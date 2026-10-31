@@ -104,7 +104,8 @@ type HookEvent struct {
 	PPID         int             `json:"ppid,omitempty"` // hook's parent
 	TTY          string          `json:"tty,omitempty"`  // e.g. "ttys004"
 	CWD          string          `json:"cwd,omitempty"`
-	TermProgram  string          `json:"term_program,omitempty"` // $TERM_PROGRAM
+	TermProgram  string          `json:"term_program,omitempty"`   // $TERM_PROGRAM
+	HostBundleID string          `json:"host_bundle_id,omitempty"` // $__CFBundleIdentifier: the app that launched the agent
 	WantDecision bool            `json:"want_decision,omitempty"`
 	At           time.Time       `json:"at"`
 }
@@ -123,22 +124,23 @@ type HookDecision struct {
 
 // Session is one running agent conversation.
 type Session struct {
-	Key         string    `json:"key"` // agent + ":" + session id
-	Agent       string    `json:"agent"`
-	AgentName   string    `json:"agent_name"`
-	SessionID   string    `json:"session_id"`
-	CWD         string    `json:"cwd,omitempty"`
-	Project     string    `json:"project,omitempty"` // basename of cwd
-	State       State     `json:"state"`
-	Title       string    `json:"title,omitempty"` // last user prompt, truncated
-	Tool        string    `json:"tool,omitempty"`  // tool currently running or blocking
-	Message     string    `json:"message,omitempty"`
-	PID         int       `json:"pid,omitempty"`
-	TTY         string    `json:"tty,omitempty"`
-	TermProgram string    `json:"term_program,omitempty"`
-	Subagents   int       `json:"subagents,omitempty"`
-	StartedAt   time.Time `json:"started_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	Key          string    `json:"key"` // agent + ":" + session id
+	Agent        string    `json:"agent"`
+	AgentName    string    `json:"agent_name"`
+	SessionID    string    `json:"session_id"`
+	CWD          string    `json:"cwd,omitempty"`
+	Project      string    `json:"project,omitempty"` // basename of cwd
+	State        State     `json:"state"`
+	Title        string    `json:"title,omitempty"` // last user prompt, truncated
+	Tool         string    `json:"tool,omitempty"`  // tool currently running or blocking
+	Message      string    `json:"message,omitempty"`
+	PID          int       `json:"pid,omitempty"`
+	TTY          string    `json:"tty,omitempty"`
+	TermProgram  string    `json:"term_program,omitempty"`
+	HostBundleID string    `json:"host_bundle_id,omitempty"`
+	Subagents    int       `json:"subagents,omitempty"`
+	StartedAt    time.Time `json:"started_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // SessionRemoved is the payload of session.removed.

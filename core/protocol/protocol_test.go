@@ -53,7 +53,7 @@ func TestGoldenFixtures(t *testing.T) {
 		SessionID: "abc123", CWD: "/Users/dev/platynotch", Project: "platynotch",
 		State: StateWaitingInput, Title: "Fix the failing test", Tool: "Bash",
 		Message: "Waiting for approval", PID: 4242, TTY: "ttys004",
-		TermProgram: "Apple_Terminal", Subagents: 1, StartedAt: ts(t0), UpdatedAt: ts(t1),
+		TermProgram: "Apple_Terminal", HostBundleID: "com.apple.Terminal", Subagents: 1, StartedAt: ts(t0), UpdatedAt: ts(t1),
 	}
 	approval := Approval{
 		ID: "apr_1", SessionKey: "claude-code:abc123", Agent: "claude-code",
@@ -91,7 +91,7 @@ func TestGoldenFixtures(t *testing.T) {
 		Agent: "claude-code", Event: "permission-request",
 		Payload: json.RawMessage(`{"tool_name":"Bash","tool_input":{"command":"npm test"}}`),
 		PID:     4242, PPID: 4200, TTY: "ttys004", CWD: "/Users/dev/platynotch",
-		TermProgram: "Apple_Terminal", WantDecision: true, At: ts(t1),
+		TermProgram: "Apple_Terminal", HostBundleID: "com.apple.Terminal", WantDecision: true, At: ts(t1),
 	}
 	decision := HookDecision{Behavior: BehaviorDeny, Message: "Blocked by policy", Source: "policy"}
 	graphQuery := MemoryGraphQuery{Since: tsp("2026-10-16T10:00:00Z"), Hours: 168, App: "Slack", MaxNodes: 100}
