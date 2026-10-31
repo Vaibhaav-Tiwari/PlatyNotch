@@ -5,6 +5,8 @@ import SwiftUI
 @MainActor @Observable
 final class HomeSettingsModel {
     private(set) var rightColumn: HomeSettings.RightColumn
+    /// The global command shortcut (nil: off).
+    private(set) var commandCombo: KeyCombo?
     @ObservationIgnored private let widgets: WidgetRegistry
     @ObservationIgnored private let defaults: UserDefaults
 
@@ -12,6 +14,13 @@ final class HomeSettingsModel {
         self.widgets = widgets
         self.defaults = defaults
         rightColumn = HomeSettings.load(from: defaults).rightColumn
+        commandCombo = CommandHotKey.combo(defaults)
+    }
+
+    /// Saves the command shortcut; the app re-registers it from defaults.
+    func setCommandCombo(_ combo: KeyCombo?) {
+        CommandHotKey.setCombo(combo, defaults)
+        commandCombo = CommandHotKey.combo(defaults)
     }
 
     var notesOn: Bool { widgets.isEnabled(NotesWidget.widgetID) }
@@ -33,9 +42,11 @@ final class HomeSettingsModel {
 /// Settings › Home: what fills the right column beside the music.
 struct HomeSection: View {
     @State private var model: HomeSettingsModel
+    let hotKey: CommandHotKeyController?
 
-    init(widgets: WidgetRegistry, defaults: UserDefaults = .standard) {
+    init(widgets: WidgetRegistry, hotKey: CommandHotKeyController? = nil, defaults: UserDefaults = .standard) {
         _model = State(initialValue: HomeSettingsModel(widgets: widgets, defaults: defaults))
+        self.hotKey = hotKey
     }
 
     /// Each column and whether it can be picked: Up next always; Notes and Mail while their
@@ -70,6 +81,23 @@ struct HomeSection: View {
                     }
                 } header: {
                     SettingLabel("Right column", info: "Beside the music: calendar events and reminders (Up next), or your notes, or unread mail. Notes and Mail are offered while their widget is on; turn it off and Home goes back to Up next.")
+                }
+                Section {
+                    Picker(selection: Binding(get: { model.commandCombo }, set: { model.setCommandCombo($0) })) {
+                        ForEach(CommandHotKey.presets, id: \.self) { c in
+                            Text(verbatim: c.display).tag(KeyCombo?.some(c))
+                        }
+                        Text("Off").tag(KeyCombo?.none)
+                    } label: {
+                        SettingLabel("Command line", info: "Opens Home with the command line ready, from any app. Type a command, or pick from the list of everything Platy can do. Inside the open panel ⌘K does the same.")
+                    }
+                    if let note = hotKey?.takenNote {
+                        Label { Text(verbatim: note) } icon: { Image(systemName: "exclamationmark.triangle") }
+                            .font(DS.font(TypeScale.caption))
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    SettingLabel("Shortcut", info: "None of these is the clipboard's, window snapping's or the basket switcher's.")
                 }
             }
             .settingsForm()

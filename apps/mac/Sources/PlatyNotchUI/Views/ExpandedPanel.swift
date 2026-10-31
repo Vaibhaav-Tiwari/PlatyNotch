@@ -37,6 +37,8 @@ struct ExpandedPanel: View {
     var homeSettings = HomeSettings()
     /// The command line under Home's hairline.
     var commandLine: AnyView = AnyView(EmptyView())
+    /// The command line has focus: Home's columns step aside for its rows.
+    var commandFocused = false
     /// A file drag is near: Home becomes drop targets.
     var dropping = false
     var dropHover: DropTargetsView.Zone?
@@ -147,7 +149,8 @@ struct ExpandedPanel: View {
     /// Home: chips, the media block beside Up next, the command line.
     var homeView: HomeView {
         HomeView(today: today, widgets: widgets, settings: homeSettings, tourSample: store.approvals.isEmpty ? tourSample : nil, fixedNow: fixedNow,
-                 dropping: dropping, dropHover: dropHover, onOpenTool: { openTool($0) }, commandLine: commandLine)
+                 dropping: dropping, dropHover: dropHover, onOpenTool: { openTool($0) }, commandLine: commandLine,
+                 commandFocused: commandFocused)
     }
 
     /// What to tell the controller about the body's height (spec 2: the panel follows its

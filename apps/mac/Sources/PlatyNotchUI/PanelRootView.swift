@@ -45,10 +45,19 @@ final class PanelViewModel {
     /// The command line's text, focus, chosen row and last message (spec 3).
     var commandText = ""
     var commandFocused = false
+    /// The user asked for the command line (the shortcut, ⌘K, a click in it, typing): Home's
+    /// columns step aside for its rows. A field that merely took focus does not count.
+    var commandActive = false
     var commandSelection = 0
     var commandMessage: String?
     /// The header toggles' services (the app's one; nil in renders and tests).
     var header: HeaderServices?
+    /// Gives the open panel the keyboard (a click in the command line); set by the controller.
+    var requestKey: () -> Void = {}
+    /// The command line's keycap: the global shortcut ("⌥⌘K"), or ⌘K without one.
+    var commandHint: String = CommandHotKey.hint(.standard)
+    /// The one-line upgrade hint under the command line (first three opens).
+    var showCommandHint = false
 }
 
 /// Places the mode's content inside the fixed-size panel window.
@@ -193,6 +202,7 @@ struct PanelRootView: View {
                           onCollapse: model.onClick, onOpenSettings: model.onOpenSettings,
                           header: model.header,
                           homeSettings: model.homeSettings, commandLine: commandLineView,
+                          commandFocused: model.commandActive,
                           dropping: dropping, dropHover: dropHover,
                           agentsVisible: today.agentActivity.agentsVisibility.isVisible,
                           onConnectAgent: model.onConnectAgent,
@@ -257,7 +267,8 @@ extension PanelRootView {
     /// The command line under Home's hairline, wired to the app's models.
     var commandLineView: AnyView {
         let logic = CommandLineLogic(model: model, runner: CommandRunner(actions: commandActions),
-                                     tools: { commandTools }, approvalsPending: { !store.approvals.isEmpty })
+                                     tools: { commandTools }, catalog: { commandCatalog },
+                                     approvalsPending: { !store.approvals.isEmpty })
         return AnyView(CommandLineView(model: model, logic: logic, memory: memory))
     }
 
@@ -268,6 +279,20 @@ extension PanelRootView {
         let tools: [PanelTool] = ToolCatalog.tools(widgets: widgets, extraTabs: extraTabs,
                                                    memory: { AnyView(MemoryTab(store: store, memory: memory)) })
         return tools.map { CommandTool(id: $0.id, title: $0.title) }
+    }
+
+    /// Everything the command line can do (its list while focused and empty), with the tools
+    /// available now and their global shortcuts.
+    var commandCatalog: [CommandCatalog.Entry] {
+        var shortcuts: [String: String] = [:]
+        if widgets.isEnabled(ClipboardWidget.widgetID), let clip = widgets.widget(ClipboardWidget.widgetID) as? ClipboardWidget {
+            shortcuts[ClipboardWidget.widgetID] = clip.hotKeyChoice.display
+        }
+        if widgets.isEnabled(BasketsWidget.widgetID), let baskets = widgets.widget(BasketsWidget.widgetID) as? BasketsWidget,
+           let combo = baskets.switcherCombo {
+            shortcuts[BasketsWidget.widgetID] = combo.display
+        }
+        return CommandCatalog.entries(tools: Set(commandTools.map(\.id)), shortcuts: shortcuts)
     }
 
     /// What each command does, on the real models. A widget that is off says so (never a
@@ -309,6 +334,12 @@ extension PanelRootView {
         a.open = { route in model.route = route }
         a.selectGame = { kind in (widgets.widget(GamesWidget.widgetID) as? GamesWidget)?.host.select(kind) }
         a.gamesOn = { widgets.isEnabled(GamesWidget.widgetID) }
+        a.openTool = { tool in
+            var route = PanelRoute(destination: .home, tool: tool)
+            if tool == MirrorWidget.widgetID { HeaderToggles.openMirror(registry: widgets, route: &route) }
+            model.route = route
+        }
+        a.toggleKeepAwake = { model.header?.toggleKeepAwake() }
         return a
     }
 

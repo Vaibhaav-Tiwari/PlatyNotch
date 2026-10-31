@@ -231,6 +231,8 @@ enum HomeRenders {
         out.append(("home-drop", panel(builtIns(meeting: false), dropping: true), true))
         out.append(("home-notes-column", panel(builtIns(meeting: false), homeSettings: HomeSettings(rightColumn: .notes)), true))
         out.append(("home-command", panel(homeRest(), command: "timer 10m tea"), true))
+        out.append(("home-command-list", panel(homeRest(), command: "", commandFocused: true), true))
+        out.append(("home-command-hint", panel(homeRest(), commandHint: true), true))
         out.append(("peek-hover", hoverPeek(agentsHero()), true))
         out += AgentsRenders.views()
         out += ToolRenders.views()
@@ -374,14 +376,20 @@ enum HomeRenders {
                       memory: MemoryServices? = nil, memoryMode: MemoryTab.Mode = .search,
                       homeSettings: HomeSettings = HomeSettings(), dropping: Bool = false, command: String? = nil,
                       tourSample: LiveActivity? = nil, now: Date? = nil, header: HeaderServices? = nil,
-                      full: Bool = false) -> AnyView {
+                      full: Bool = false, commandFocused: Bool = false, commandHint: Bool = false) -> AnyView {
         let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelSide
         rig.store.apply(.connected)   // a quiet header, as in the running app
         var current = route
         let commandModel = PanelViewModel()
         commandModel.commandText = command ?? ""
+        commandModel.commandFocused = commandFocused
+        commandModel.commandActive = commandFocused
+        commandModel.showCommandHint = commandHint
+        commandModel.commandHint = CommandHotKey.presets[0].display
+        let catalog = CommandCatalog.entries(tools: ["clipboard", "shelf", "baskets", "mirror", "memory", "launch", "games"],
+                                             shortcuts: ["clipboard": "\u{2325}\u{21E7}V", "baskets": "\u{2303}\u{2325}B"])
         let logic = CommandLineLogic(model: commandModel, runner: CommandRunner(actions: CommandActions()),
-                                     tools: { [] }, clock: { fixedNow }, calendar: .current)
+                                     tools: { [] }, catalog: { catalog }, clock: { fixedNow }, calendar: .current)
         let commandLine = AnyView(CommandLineView(model: commandModel, logic: logic, memory: nil))
         let services: HeaderServices = header ?? headerServices()
         let at: Date = now ?? fixedNow
@@ -390,6 +398,7 @@ enum HomeRenders {
                           today: rig.today, widgets: rig.registry, memory: memory ?? MemoryServices(client: rig.client),
                           extraTabs: extraTabs, route: Binding(get: { current }, set: { current = $0 }),
                           onCollapse: {}, header: services, homeSettings: homeSettings, commandLine: commandLine,
+                          commandFocused: commandFocused,
                           dropping: dropping, fixedNow: at, memoryMode: memoryMode, tourSample: tourSample,
                           onBodyHeight: onBody, onDecide: { _, _ in }, onOpenTerminal: { _ in })
                 .frame(width: width, height: height, alignment: .top)

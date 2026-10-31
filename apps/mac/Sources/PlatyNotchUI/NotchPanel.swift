@@ -76,6 +76,12 @@ final class NotchPanel: NSPanel {
         if allowsKey { clickedIn = true }
     }
 
+    /// An explicit request for the keyboard (the global command shortcut, a click in the
+    /// command line): as a click would. Only while the mode may take the keyboard.
+    func grantKey() {
+        if allowsKey { clickedIn = true }
+    }
+
     override func resignKey() {
         super.resignKey()
         clickedIn = false

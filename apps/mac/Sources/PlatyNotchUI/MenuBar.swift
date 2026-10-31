@@ -12,6 +12,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private let item: NSStatusItem
     private let capture: CaptureService?
     private let onOpen: () -> Void
+    /// "What Platy can do…": the panel with the command line's list showing.
+    private let onShowCommands: () -> Void
+    static let showCommandsTitle = "What Platy can do\u{2026}"
     private let onSettings: () -> Void
     private let updater: AppUpdater?
     private let updatesItem = NSMenuItem(title: "Check for Updates…", action: nil, keyEquivalent: "")
@@ -34,7 +37,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
          clipboard: ClipboardMenuControl? = nil, games: GamesWidget? = nil, gamesOn: @escaping () -> Bool = { true },
          onOpenGame: @escaping (GameKind) -> Void = { _ in },
          openTools: @escaping () -> [CommandTool] = { [] }, onOpenTool: @escaping (String) -> Void = { _ in },
-         onOpen: @escaping () -> Void, onSettings: @escaping () -> Void) {
+         onOpen: @escaping () -> Void, onShowCommands: @escaping () -> Void = {}, onSettings: @escaping () -> Void) {
+        self.onShowCommands = onShowCommands
         self.games = games
         self.gamesOn = gamesOn
         self.onOpenGame = onOpenGame
@@ -150,6 +154,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let menu = Self.newMenu()
         menu.delegate = self
         menu.addItem(withTitle: "Open PlatyNotch", action: #selector(open), keyEquivalent: "").target = self
+        menu.addItem(withTitle: Self.showCommandsTitle, action: #selector(showCommands), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Settings…", action: #selector(settings), keyEquivalent: ",").target = self
         let gamesMenu = Self.newMenu()
         for title in Self.gameTitles {
@@ -219,6 +224,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     @objc private func open() { onOpen() }
+    @objc private func showCommands() { onShowCommands() }
     @objc private func settings() { onSettings() }
     @objc private func checkForUpdates() { updater?.checkForUpdates() }
     @objc private func quit() { NSApp.terminate(nil) }

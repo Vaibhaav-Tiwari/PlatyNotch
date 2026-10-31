@@ -13,6 +13,9 @@ struct CommandActions {
     var selectGame: (GameKind) -> Void = { _ in }
     /// Whether the Games widget is on (`play` explains when it is not).
     var gamesOn: () -> Bool = { true }
+    /// Opens a tool from the list (Mirror turns its widget on first).
+    var openTool: (String) -> Void = { _ in }
+    var toggleKeepAwake: () -> Void = {}
 }
 
 /// Runs the suggestion the user chose with Return or a click. Nothing runs from typing.
@@ -22,6 +25,15 @@ final class CommandRunner {
 
     init(actions: CommandActions) {
         self.actions = actions
+    }
+
+    /// Runs a list entry that is not a fill (an open or a toggle).
+    func perform(_ action: CommandCatalog.Action) {
+        switch action {
+        case .fill: break
+        case .open(let tool): actions.openTool(tool)
+        case .toggleKeepAwake: actions.toggleKeepAwake()
+        }
     }
 
     /// Runs `s`; the message to show in its row, or nil when it ran. An explanation row
