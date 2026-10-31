@@ -158,19 +158,19 @@ public enum CommandParser {
 
     private static func freeText(_ text: String, tools: [CommandTool], now: Date,
                                  calendar: Calendar) -> [CommandSuggestion] {
-        var out: [CommandSuggestion] = [
-            CommandSuggestion(command: .search(text), title: "Search memory for \"\(text)\"", detail: nil),
-        ]
-        // A text that is only a date ("tomorrow") has nothing to remind of: no row.
-        let quick: QuickAdd = QuickAddParser.parse(text, now: now, calendar: calendar)
-        if !quick.title.isEmpty {
-            out.append(CommandSuggestion(command: .remind(quick), title: "Remind me: \(text)", detail: nil))
-        }
+        var out: [CommandSuggestion] = []
         let lower: String = text.lowercased()
         let matches: [CommandTool] = tools.filter { $0.title.lowercased().hasPrefix(lower) }.prefix(maxOpenMatches).map { $0 }
         for tool in matches {
             out.append(CommandSuggestion(command: .open(tool: tool.id), title: "Open \(tool.title)", detail: nil))
         }
+        // A reminder needs a date or time that QuickAddParser understood: a bare word (or a
+        // date alone, which leaves no title) is not one. "remind …" is its own keyword.
+        let quick: QuickAdd = QuickAddParser.parse(text, now: now, calendar: calendar)
+        if !quick.title.isEmpty, quick.due != nil {
+            out.append(CommandSuggestion(command: .remind(quick), title: "Remind me: \(text)", detail: nil))
+        }
+        out.append(CommandSuggestion(command: .search(text), title: "Search memory for \"\(text)\"", detail: nil))
         return out
     }
 

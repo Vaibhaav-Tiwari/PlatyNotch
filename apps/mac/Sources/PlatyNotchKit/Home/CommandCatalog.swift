@@ -34,6 +34,8 @@ public enum CommandCatalog {
         public let hint: String
         public let shortcut: String?
         public let action: Action
+        /// Other names the command line finds this by ("play" for Games).
+        public let aliases: [String]
     }
 
     /// Mirror turns its own widget on when opened; the other tools need theirs on.
@@ -44,41 +46,73 @@ public enum CommandCatalog {
     public static func entries(tools: Set<String>, shortcuts: [String: String]) -> [Entry] {
         var out: [Entry] = [
             Entry(id: "do.timer", group: .do, title: "Timer", symbol: "timer", hint: "timer 10m", shortcut: nil,
-                  action: .fill("timer ")),
+                  action: .fill("timer "), aliases: ["countdown", "alarm"]),
             Entry(id: "do.focus", group: .do, title: "Focus", symbol: "scope", hint: "focus 25", shortcut: nil,
-                  action: .fill("focus ")),
+                  action: .fill("focus "), aliases: ["pomodoro", "concentrate"]),
             Entry(id: "do.remind", group: .do, title: "Remind", symbol: "checklist", hint: "remind call Priya at 5pm",
-                  shortcut: nil, action: .fill("remind ")),
+                  shortcut: nil, action: .fill("remind "), aliases: ["reminder", "reminders", "todo"]),
             Entry(id: "do.note", group: .do, title: "Note", symbol: "note.text", hint: "note buy milk", shortcut: nil,
-                  action: .fill("note ")),
+                  action: .fill("note "), aliases: ["notes", "jot", "write"]),
         ]
-        let opens: [(String, String, String, String)] = [
-            ("clipboard", "Clipboard", "doc.on.clipboard", "what you copied"),
-            ("shelf", "Shelf", "tray", "files you kept"),
-            ("baskets", "Baskets", "basket", "floating file baskets"),
-            ("mirror", "Mirror", "video", "a quick look at yourself"),
-            ("memory", "Memory", "brain", "search what you saw"),
-            ("launch", "Sites & Shortcuts", "safari", "pinned sites and Shortcuts"),
-            ("games", "Games", "gamecontroller", "Snake, Tetris, 2048, Flappy, Chase"),
+        let opens: [(String, String, String, String, [String])] = [
+            ("clipboard", "Clipboard", "doc.on.clipboard", "what you copied", ["paste", "copied", "history"]),
+            ("shelf", "Shelf", "tray", "files you kept", ["files", "drop", "tray"]),
+            ("baskets", "Baskets", "basket", "floating file baskets", ["basket", "files"]),
+            ("mirror", "Mirror", "video", "a quick look at yourself", ["camera", "webcam", "selfie"]),
+            ("memory", "Memory", "brain", "search what you saw", ["recall", "history", "screen"]),
+            ("launch", "Sites & Shortcuts", "safari", "pinned sites and Shortcuts",
+             ["sites", "shortcuts", "launch", "links", "bookmarks"]),
+            ("games", "Games", "gamecontroller", "Snake, Tetris, 2048, Flappy, Chase",
+             ["game", "play", "snake", "tetris", "chase", "flappy"]),
+            ("notes", "Notes", "note.text", "your notes", ["note", "notepad", "scratchpad"]),
+            ("time", "Time", "clock", "clocks, timers and stopwatch", ["clock", "stopwatch", "world clock"]),
         ]
-        for (tool, title, symbol, hint) in opens where tools.contains(tool) || alwaysAvailable.contains(tool) {
+        for (tool, title, symbol, hint, aliases) in opens where tools.contains(tool) || alwaysAvailable.contains(tool) {
             out.append(Entry(id: "open." + tool, group: .open, title: title, symbol: symbol, hint: hint,
-                             shortcut: shortcuts[tool], action: .open(tool: tool)))
+                             shortcut: shortcuts[tool], action: .open(tool: tool), aliases: aliases))
         }
         out.append(Entry(id: "toggle.keepAwake", group: .toggle, title: "Keep awake", symbol: "cup.and.saucer",
-                         hint: "stop the Mac from sleeping", shortcut: nil, action: .toggleKeepAwake))
+                         hint: "stop the Mac from sleeping", shortcut: nil, action: .toggleKeepAwake,
+                         aliases: ["awake", "sleep", "caffeinate", "coffee"]))
         return out
     }
 
-    /// The rows whose title (any word) starts with `query`, or whose hint does; all rows for
-    /// an empty query. Case-insensitive.
+    /// The rows `query` finds, best first (then in list order): a title word, alias or hint
+    /// that starts with it, then (three letters or more) one that has its letters in order
+    /// ("gms" finds Games). All rows for an empty query. Case-insensitive.
     public static func filter(_ entries: [Entry], query: String) -> [Entry] {
         let q: String = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !q.isEmpty else { return entries }
-        return entries.filter { e in
-            let words: [Substring] = e.title.lowercased().split(whereSeparator: { $0 == " " })
-            return words.contains { $0.hasPrefix(q) } || e.hint.lowercased().hasPrefix(q)
+        let scored: [(Int, Int, Entry)] = entries.enumerated().compactMap { index, e in
+            guard let score = score(e, q) else { return nil }
+            return (score, index, e)
         }
+        return scored.sorted { ($0.0, $0.1) < ($1.0, $1.1) }.map(\.2)
+    }
+
+    /// 0 for a prefix match, 1 for a fuzzy one, nil for none.
+    private static func score(_ e: Entry, _ q: String) -> Int? {
+        let names: [String] = [e.title] + e.aliases
+        let words: [String] = names.flatMap { name in
+            [name.lowercased()] + name.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        }
+        if words.contains(where: { $0.hasPrefix(q) }) || e.hint.lowercased().hasPrefix(q) { return 0 }
+        if q.count >= fuzzyMinLength, words.contains(where: { isSubsequence(q, of: $0) }) { return 1 }
+        return nil
+    }
+
+    /// Shortest query matched by letters in order.
+    static let fuzzyMinLength = 3
+
+    /// `q`'s letters appear in `word` in order, starting with its first letter.
+    private static func isSubsequence(_ q: String, of word: String) -> Bool {
+        guard q.first == word.first else { return false }
+        var rest = q[...]
+        for c in word where c == rest.first {
+            rest = rest.dropFirst()
+            if rest.isEmpty { return true }
+        }
+        return rest.isEmpty
     }
 
     // MARK: - The upgrade hint
