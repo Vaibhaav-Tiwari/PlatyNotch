@@ -1,8 +1,8 @@
 # PlatyNotch
 
 <p align="center">
-  <img src="docs/assets/showcase/agents-dark.png" width="720"
-       alt="PlatyNotch open from a MacBook notch, below the menu bar: the black Agents view lists three sessions, one per line, each with its project, status, age, a state dot and a button naming the app it opens (Open Ghostty, Open Claude, Open Terminal), with Claude and Codex usage as small numbers in the header and a line about two open loops.">
+  <img src="docs/assets/showcase/home-sunny-dark.png" width="720"
+       alt="PlatyNotch open from a MacBook notch, below the menu bar: the black panel's Home shows a Now Playing card with album art and a warm glow beside a Today card painted as a sunny sky with 22 degrees in Bengaluru and a design review in 45 minutes, and below them a dock of eight round tools: Timer, Note, Remind with a badge of 3, Clipboard, Shelf, Memory, Games and Search.">
 </p>
 
 PlatyNotch is an open-source MacBook notch app. It combines an agent hub

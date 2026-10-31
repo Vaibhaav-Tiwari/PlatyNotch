@@ -966,7 +966,7 @@ enum ToolRenders {
     }
 
     /// Two timers running (wireframe C: "Tea · 3:10 left", "Laundry · 22:05 left").
-    private static func runningTimers() -> HomeRenders.Rig {
+    static func runningTimers() -> HomeRenders.Rig {
         let rig = HomeRenders.builtIns(meeting: false)
         let time = rig.registry.widget(TimeWidget.widgetID) as? TimeWidget
         _ = time?.startTimer(duration: 190, label: "Tea")

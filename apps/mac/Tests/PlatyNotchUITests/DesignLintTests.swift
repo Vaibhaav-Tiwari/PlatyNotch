@@ -154,6 +154,14 @@ final class DesignLintTests: DefaultsTestCase {
         for (path, reason) in Self.tintedWellAllowlist {
             XCTAssertFalse(reason.trimmingCharacters(in: .whitespaces).isEmpty, "\(path) needs a reason")
         }
+        // Island: the dock's live circle is the one tinted well, and only at `HomeMetrics.liveFill`.
+        XCTAssertEqual(Array(Self.tintedWellAllowlist.keys), ["Dock/DockButton.swift"])
+        let dockFills = lines.filter { $0.path == "Dock/DockButton.swift" && tinted.firstMatch(
+            in: $0.text, range: NSRange(location: 0, length: ($0.text as NSString).length)) != nil }
+        XCTAssertFalse(dockFills.isEmpty, "the lint must see the dock's live fill")
+        for line in dockFills {
+            XCTAssertTrue(line.text.contains("HomeMetrics.liveFill"), "\(line.path):\(line.number): \(line.text)")
+        }
         for (i, line) in lines.enumerated() where Self.isPanel(line.path) && Self.tintedWellAllowlist[line.path] == nil {
             let ns = line.text as NSString
             guard tinted.firstMatch(in: line.text, range: NSRange(location: 0, length: ns.length)) != nil else { continue }
@@ -190,9 +198,17 @@ final class DesignLintTests: DefaultsTestCase {
         "Views/PillLeadView.swift": "the music lead's bars in the album's colour (Island spec 7)",
     ]
 
-    /// Colour only for state (spec 5.3): in panel views, no named system colours, no
-    /// `Color(red:)` or `Color(hue:)`, and `.tint` only white or a `DS`/`Theme` colour.
-    func testColourOnlyForState() throws {
+    /// Island (spec 10): the files whose colour comes from content (the album art, the sky).
+    static let contentColourFiles = ["Home/NowPlayingCard.swift", "Home/WeatherSkyView.swift", "Views/PillLeadView.swift"]
+
+    /// Colour only for state or content (spec 5.3, Island spec 10): in panel views, no named
+    /// system colours, no `Color(red:)` or `Color(hue:)`, and `.tint` only white or a
+    /// `DS`/`Theme` colour; the content files and the old exceptions, each with a reason.
+    func testColourOnlyForStateOrContent() throws {
+        for path in Self.contentColourFiles {
+            XCTAssertFalse((Self.colourAllowlist[path] ?? "").trimmingCharacters(in: .whitespaces).isEmpty,
+                           "\(path): a content colour file needs its allowlist reason")
+        }
         let named = #"(blue|indigo|purple|pink|mint|cyan|teal|yellow|orange|red|green|brown)"#
         let regex = try NSRegularExpression(pattern:
             #"Color\."# + named + #"\b|[\s(:?,]\."# + named + #"\b(?!\s*[:(=])|(?<![A-Za-z])Color\((red|hue):"#
@@ -209,6 +225,69 @@ final class DesignLintTests: DefaultsTestCase {
         }
         XCTAssertTrue(found.isEmpty, "colour that is not a state (use white ink or DS.color(tone)):\n"
                       + found.joined(separator: "\n"))
+    }
+
+    /// Content colour stays content: the art and sky files never use a state colour.
+    func testContentFilesUseNoStateColour() throws {
+        var found: [String] = []
+        for line in try Self.sourceLines() where Self.contentColourFiles.contains(line.path) {
+            if ["DS.color(", "DS.dynamicColor(", "StateTone"].contains(where: { line.text.contains($0) }) {
+                found.append("\(line.path):\(line.number): \(line.text.trimmingCharacters(in: .whitespaces))")
+            }
+        }
+        XCTAssertGreaterThan(try Self.sourceLines().filter { Self.contentColourFiles.contains($0.path) }.count, 50)
+        XCTAssertTrue(found.isEmpty, "a state colour in a content colour file:\n" + found.joined(separator: "\n"))
+    }
+
+    /// Lines (outside comments) that mention `needle`, in files `allowed` does not accept.
+    static func uses(_ needle: String, allowed: (String) -> Bool) throws -> [String] {
+        try sourceLines().filter { $0.text.contains(needle) && !allowed($0.path) }
+            .map { "\($0.path):\($0.number): \($0.text.trimmingCharacters(in: .whitespaces))" }
+    }
+
+    /// The sky's colours belong to the Today card's sky (and the renders).
+    func testSkyColoursOnlyInTheSky() throws {
+        let found = try Self.uses("WeatherSky") { path in
+            path == "Home/WeatherSkyView.swift" || path == "Home/TodayCard.swift" || path.hasPrefix("Smoke/")
+        }
+        XCTAssertTrue(found.isEmpty, "WeatherSky outside the sky:\n" + found.joined(separator: "\n"))
+    }
+
+    /// The two big numbers (Island spec 9): the temperature on Today, the Timer's time.
+    func testBigNumbersOnlyWhereAllowed() throws {
+        var found = try Self.uses("TypeScale.temperature") { $0 == "Home/TodayCard.swift" }
+        found += try Self.uses("TypeScale.timer") { $0 == "Tools/TimerTool.swift" }
+        XCTAssertTrue(found.isEmpty, "a big number outside Today's temperature and the Timer:\n"
+                      + found.joined(separator: "\n"))
+    }
+
+    /// Tile grids that may stay in the panel, each with its reason.
+    static let tileGridAllowlist: [String: String] = [
+        "Launch/Views/LaunchTile.swift": "the user's pinned sites as their own favicons",
+        "Files/FileActionsWidget.swift": "two columns of labelled action buttons",
+    ]
+
+    /// No tile grids in the panel (Island spec 1: the dock and rows replace them); the game
+    /// boards draw their own.
+    func testNoTileGrids() throws {
+        for (path, reason) in Self.tileGridAllowlist {
+            XCTAssertFalse(reason.trimmingCharacters(in: .whitespaces).isEmpty, "\(path) needs a reason")
+        }
+        var found: [String] = []
+        for needle in ["LazyVGrid", "LazyHGrid"] {
+            found += try Self.uses(needle) { path in
+                !Self.isPanel(path) || path.hasPrefix("Games/Views/") || Self.tileGridAllowlist[path] != nil
+            }
+        }
+        XCTAssertTrue(found.isEmpty, "a tile grid in the panel:\n" + found.joined(separator: "\n"))
+    }
+
+    /// The count blue is for counts: the dock's badges, the week strip's today, the search's
+    /// hits (Island spec 9).
+    func testCountBlueOnlyForCounts() throws {
+        let allowed: Set<String> = ["Dock/DockButton.swift", "Home/WeekStrip.swift", "Home/SearchView.swift"]
+        let found = try Self.uses("DS.countBlue") { allowed.contains($0) }
+        XCTAssertTrue(found.isEmpty, "DS.countBlue outside counts:\n" + found.joined(separator: "\n"))
     }
 
     /// Text styles and font sizes above 15 pt that a literal `.system(size:)` scan misses.
