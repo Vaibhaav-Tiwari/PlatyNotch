@@ -1540,3 +1540,47 @@ working directory where a step says so.
   100 %: `NN% charging` in green with a bolt. Unplugged below 20 %: `NN%` in red. Plugged
   in and full: hidden. The icons are all 16 pt, and VoiceOver reads "Keep awake", "Mirror"
   and "Settings".
+
+## Quiet Notch phase 2
+
+- [ ] **302. Two views.** Open the panel: it is 600 pt wide with a header row (Platy, "Home" and
+  "Agents", the date, the icon toggles). ⌘1 is Home and ⌘2 is Agents (once agent hooks are set
+  up); ⌘3 does nothing. Home at rest is about 220 pt tall and the panel grows only for the
+  Agents list, an open tool or an approval.
+- [ ] **303. Home.** Music playing: art, title, artist, progress with elapsed and remaining,
+  previous / play-pause / next. Nothing playing: Platy and "Nothing playing". The right column
+  lists up to three of today's events and reminders ("Overdue" in red first, `in 45 m` for an
+  event within the hour, `reminder`); with nothing, "Nothing up next". No permission prompt
+  appears from opening Home.
+- [ ] **304. Command line.** Press ⌘K (or just start typing with no field focused): the line
+  focuses. `timer 10m tea` then Return starts a timer and a chip `Tea timer 10:00` appears;
+  `focus` starts 25 minutes; `remind call Priya at 5pm` adds a reminder; `note buy milk` adds to
+  today's note, or says "Turn on Notes in Settings"; `search budget` opens Memory with the
+  query; `play chase` opens Platy Chase; `cli` offers Search, Remind and `Open Clipboard`.
+  `timer 0`, `timer 25h`, `remind` alone and `play pong` run nothing and explain. Nothing runs
+  without Return or a click. Esc clears the text, then leaves the line, then closes the panel.
+- [ ] **305. Approvals and the command line.** With text in the command line, let an approval
+  arrive: ⌘↩ and ⌘⌫ answer it as before, Return never answers it, and the typed command does
+  not run.
+- [ ] **306. Chips appear and go.** Start a focus session, two timers and put a file on the
+  shelf: chips `Focus 24:59`, the timers (soonest first) and `Shelf · 1` show, at most four,
+  then `+n`. Clicking a chip opens that feature inside the panel with a back chevron; Esc
+  returns to Home. Stop everything: the chip row disappears.
+- [ ] **307. Drag a file.** Drag a file toward the notch: Home becomes one dashed box,
+  "Drop to keep on Shelf" and "AirDrop". Drop on the left half: it lands on the Shelf. Drop on
+  the right half: the AirDrop window opens with the file. With the Shelf widget off the box is
+  AirDrop only.
+- [ ] **308. Games menu.** The menu bar menu has "Games" with Snake, Tetris, 2048, Flappy and
+  Platy Chase; choosing one opens the panel on that game. Turn the Games widget off: the item
+  hides. There is no Games tile in the panel and no pond or celebration anywhere.
+- [ ] **309. Every old tool still opens.** From the menu bar's "Open" submenu (or
+  `open clipboard`, `open baskets`, `open sites`, `open time` in the command line) reach
+  Clipboard, Sites & Shortcuts, Baskets, Time, Notes, Mail, Mirror and any plug-in tab.
+- [ ] **310. Old links.** `platynotch://settings/now` opens Settings › Home. An old
+  `library` tab link opens Home.
+- [ ] **311. Upgrade keeps everything.** Upgrade a profile that used v0.2: every widget that was on
+  is still on and in the same order, notification rows, sounds and presets are unchanged, and
+  Wellbeing's water interval is still 60 minutes. A fresh install has water off ("Off" in
+  Settings › Widgets › Wellbeing).
+- [ ] **312. Settings › Home.** The right column can be Up next, Notes (while Notes is on) or
+  Mail (while Mail is on); turning that widget off puts Up next back.
