@@ -72,7 +72,18 @@ final class NotesWidget: NotchWidget {
     /// Fewer notes were read than were edited in the window.
     private(set) var capped = false
     private(set) var noteCount = 0
-    var draft = ""
+    /// The Note pad's text. Saved (debounced) on every change, and at once when the tool or
+    /// the panel closes and when the app quits, so a half-typed note is never lost; it
+    /// clears only after its line is written.
+    var draft = "" {
+        didSet { if draft != oldValue { scheduleDraftSave() } }
+    }
+    /// The last write of the pad's line failed (the line stays in `draft`; Retry writes it).
+    private(set) var writeFailed = false
+    static let draftKey = "notes.draft"
+    static let draftSaveDelay: Duration = .milliseconds(400)
+    @ObservationIgnored private var draftSave: Task<Void, Never>?
+    @ObservationIgnored private var quitObserver: NSObjectProtocol?
     /// The Note tool's list: today's newest quick notes (`QuickNote.recentEntries`).
     private(set) var recentEntries: [String] = []
     /// One line under the field (where the note went, or why a tick was not written).
@@ -126,6 +137,31 @@ final class NotesWidget: NotchWidget {
         self.persist = persist
         options = Options.load(defaults)
         stamp = GrantStamp(key: "notes.vault.grant", defaults: defaults, identity: services.identity)
+        if persist {
+            draft = defaults.string(forKey: Self.draftKey) ?? ""
+            quitObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification,
+                                                                  object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.flushDraft() }
+            }
+        }
+    }
+
+    /// Saves the pad's text now (the tool or panel closing, the app quitting).
+    func flushDraft() {
+        draftSave?.cancel()
+        draftSave = nil
+        guard persist else { return }
+        if draft.isEmpty { defaults.removeObject(forKey: Self.draftKey) } else { defaults.set(draft, forKey: Self.draftKey) }
+    }
+
+    private func scheduleDraftSave() {
+        guard persist else { return }
+        draftSave?.cancel()
+        draftSave = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.draftSaveDelay)
+            guard !Task.isCancelled else { return }
+            self?.flushDraft()
+        }
     }
 
     /// No grant, no watch, no files and nothing saved (smoke runs).
@@ -155,6 +191,7 @@ final class NotesWidget: NotchWidget {
     }
 
     func stop() {
+        flushDraft()
         guard context != nil else { return }
         stopVault()
         accessTask?.cancel()
@@ -519,12 +556,17 @@ final class NotesWidget: NotchWidget {
         switch result {
         case .appended:
             if draft == sent { draft = "" }
+            flushDraft()
+            writeFailed = false
             status = "Added to \(label)"
             loadRecent()
             if let refresh { rescan(VaultRescan(paths: [refresh])) }
         case .noNote:
+            // The line stays in the pad (and saved); Retry writes it again.
+            writeFailed = true
             status = QuickNote.noDailyNote
         case .failed(let why):
+            writeFailed = true
             status = why
         }
     }

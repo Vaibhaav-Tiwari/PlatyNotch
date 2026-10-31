@@ -18,6 +18,8 @@ struct PanelTool {
     var hidesPanelControls = false
     /// Draws its own surface (a game board): the whole room, no card around it.
     var bare = false
+    /// An off dock tool's "Turn on <title>" (the same closure its button runs).
+    var turnOn: (@MainActor () -> Void)?
 }
 
 /// The features that open inside the panel, found by id: tool widgets in the user's order
@@ -27,7 +29,15 @@ struct PanelTool {
 enum ToolCatalog {
     static func tools(widgets: WidgetRegistry, extraTabs: [PanelTab], memory: @escaping () -> AnyView) -> [PanelTool] {
         var out: [PanelTool] = []
+        var timerAdded = false
         for w in widgets.toolWidgets {
+            // Timer, Focus and Stopwatch are one tool (Island spec 1); the old Focus view is gone.
+            if w.id == TimeWidget.widgetID || w.id == FocusWidget.widgetID, !timerAdded,
+               let timer = timerTool(PanelTools.timer, widgets: widgets) {
+                out.append(timer)
+                timerAdded = true
+            }
+            if w.id == FocusWidget.widgetID { continue }
             out.append(widgetTool(w))
             if w.id == GamesWidget.widgetID, let games = w as? GamesWidget {
                 out.append(chase(games))
@@ -44,6 +54,8 @@ enum ToolCatalog {
                      memory: @escaping () -> AnyView, fixedNow: Date? = nil) -> PanelTool? {
         if id == PanelTools.memory { return memoryTool(memory) }
         if id == PanelTools.timer || id == PanelTools.timerFocus { return timerTool(id, widgets: widgets, fixedNow: fixedNow) }
+        // An old Focus link or row: the Timer tool on its Focus tab.
+        if id == FocusWidget.widgetID { return timerTool(PanelTools.timerFocus, widgets: widgets, fixedNow: fixedNow) }
         if let off = offDockTool(id, widgets: widgets) { return off }
         if let tab = extraTabs.first(where: { PanelTools.plugin($0.id) == id }) { return pluginTool(tab) }
         let gamesID: String = id == PanelTools.chase || id == PanelTools.gamesPlay ? GamesWidget.widgetID : id
@@ -75,10 +87,10 @@ enum ToolCatalog {
             w?.toolView() ?? AnyView(EmptyView())
         })
         if let shelf = w as? ShelfWidget {
-            tool.accessory = { AnyView(ShelfAirDropButton(shelf: shelf)) }
+            tool.accessory = { AnyView(ShelfHeaderButtons(shelf: shelf)) }
         }
-        // Short lists: the panel hugs them (Note's five entries, the five games).
-        tool.fitsContent = w is NotesWidget || w is GamesWidget
+        // A short list: the panel hugs it (the five games).
+        tool.fitsContent = w is GamesWidget
         return tool
     }
 
@@ -92,15 +104,10 @@ enum ToolCatalog {
         guard let t = DockTool.allCases.first(where: { $0.toolID == id }), !t.widgetIDs.isEmpty,
               !t.widgetIDs.contains(where: { widgets.isEnabled($0) }),
               let widgetID = t.widgetIDs.first(where: { widgets.widget($0) != nil }) else { return nil }
-        return PanelTool(id: id, title: t.title, systemImage: t.symbol, view: { [weak widgets] in
-            AnyView(ToolOffView(title: t.title, onTurnOn: { widgets?.setEnabled(widgetID, true) }))
-        }, offWidgetID: widgetID, fitsContent: true)
-    }
-
-    /// "Turn on" for an off dock tool.
-    static func turnOn(_ tool: PanelTool, widgets: WidgetRegistry) {
-        guard let id = tool.offWidgetID else { return }
-        widgets.setEnabled(id, true)
+        let turnOn: @MainActor () -> Void = { [weak widgets] in widgets?.setEnabled(widgetID, true) }
+        return PanelTool(id: id, title: t.title, systemImage: t.symbol, view: {
+            AnyView(ToolOffView(title: t.title, onTurnOn: turnOn))
+        }, offWidgetID: widgetID, fitsContent: true, turnOn: turnOn)
     }
 
     /// The Timer tool (Timer, Focus, Stopwatch) while Time or Focus is on; `timer.focus`
