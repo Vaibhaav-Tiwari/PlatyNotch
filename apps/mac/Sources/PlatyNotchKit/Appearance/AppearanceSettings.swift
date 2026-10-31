@@ -20,11 +20,6 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         /// Displays with a camera notch (the menu-bar display when none has one).
         case withNotch
     }
-    /// The panel's color scheme.
-    public enum Theme: String, Codable, CaseIterable, Sendable { case system, dark, light }
-    /// The open panel's material (spec 7.1): opaque near-black, or the system glass on
-    /// macOS 26 (opaque elsewhere). The pill and the notch band are black either way.
-    public enum SurfaceStyle: String, Codable, CaseIterable, Sendable { case opaque, glass }
 
     public var mode: Mode = .alwaysOn
     public var openOn: OpenTrigger = .hover
@@ -34,15 +29,12 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     public var pillWidth: PillWidth = .standard
     public var liveSide: Side = .right
     public var displays: DisplayChoice = .main
-    /// Dark by default (Task 12 ruling, not the plan's `.system`): on a notched display the
-    /// panel joins the black camera housing, which a light panel would show as a hole.
-    public var theme: Theme = .dark
     /// The old spring sliders' value. Kept (and saved) so older versions read it, but no
     /// view reads it any more: `motion` replaced it (spec 9).
     public var spring: SpringParams = .standard
-    /// Calm, Lively or Reduced (spec 9). Settings without it migrate from `spring`.
+    /// Calm or Reduced. The panel is always black: saved `theme` and `surface` keys (the
+    /// old light panel and glass) are read and ignored (Quiet Notch spec 7).
     public var motion: MotionPreset = .calm
-    public var surface: SurfaceStyle = .opaque
     /// Hide the pill over full-screen apps (top edge reveals it). Never hides a pending
     /// approval, a ringing alarm or timer, the open panel or the drop zone.
     public var hideInFullScreen = true
@@ -54,25 +46,23 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
 
     public init(mode: Mode = .alwaysOn, openOn: OpenTrigger = .hover,
                 hoverDelay: Double = HoverDebouncer.defaultEnterDelay, pillWidth: PillWidth = .standard,
-                liveSide: Side = .right, displays: DisplayChoice = .main, theme: Theme = .dark,
+                liveSide: Side = .right, displays: DisplayChoice = .main,
                 spring: SpringParams = .standard, hideInFullScreen: Bool = true, showPlaty: Bool = true,
-                motion: MotionPreset = .calm, surface: SurfaceStyle = .opaque) {
+                motion: MotionPreset = .calm) {
         self.mode = mode
         self.openOn = openOn
         self.hoverDelay = hoverDelay
         self.pillWidth = pillWidth
         self.liveSide = liveSide
         self.displays = displays
-        self.theme = theme
         self.spring = spring
         self.hideInFullScreen = hideInFullScreen
         self.showPlaty = showPlaty
         self.motion = motion
-        self.surface = surface
     }
 
     private enum CodingKeys: String, CodingKey {
-        case mode, openOn, hoverDelay, pillWidth, liveSide, displays, theme, spring, hideInFullScreen, showPlaty, motion, surface
+        case mode, openOn, hoverDelay, pillWidth, liveSide, displays, spring, hideInFullScreen, showPlaty, motion
     }
 
     /// Missing keys and unknown cases keep the defaults, so `{}` (or a value from an older
@@ -86,13 +76,10 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
         pillWidth = (try? c.decodeIfPresent(PillWidth.self, forKey: .pillWidth)) ?? d.pillWidth
         liveSide = (try? c.decodeIfPresent(Side.self, forKey: .liveSide)) ?? d.liveSide
         displays = (try? c.decodeIfPresent(DisplayChoice.self, forKey: .displays)) ?? d.displays
-        theme = (try? c.decodeIfPresent(Theme.self, forKey: .theme)) ?? d.theme
         spring = (try? c.decodeIfPresent(SpringParams.self, forKey: .spring)) ?? d.spring
         hideInFullScreen = (try? c.decodeIfPresent(Bool.self, forKey: .hideInFullScreen)) ?? d.hideInFullScreen
         showPlaty = (try? c.decodeIfPresent(Bool.self, forKey: .showPlaty)) ?? d.showPlaty
-        motion = (try? c.decodeIfPresent(MotionPreset.self, forKey: .motion))
-            ?? Self.migratedMotion(from: spring)
-        surface = (try? c.decodeIfPresent(SurfaceStyle.self, forKey: .surface)) ?? d.surface
+        motion = (try? c.decodeIfPresent(MotionPreset.self, forKey: .motion)) ?? d.motion
     }
 
     /// The spring and hover delay inside their ranges.
@@ -107,31 +94,6 @@ public struct AppearanceSettings: Codable, Equatable, Sendable {
     /// the window geometry). Everything else is applied to the existing panels live.
     public func needsRebuild(from old: AppearanceSettings) -> Bool {
         displays != old.displays || pillWidth != old.pillWidth
-    }
-}
-
-extension AppearanceSettings {
-    /// The surface in effect: glass only where the system has it.
-    public func effectiveSurface(glassAvailable: Bool) -> SurfaceStyle {
-        surface == .glass && glassAvailable ? .glass : .opaque
-    }
-
-    /// The surface for `mode`: glass only for the open panel (spec 7.1) and never while it
-    /// shows approvals; the approval peek and every other surface stay opaque, so an
-    /// approval is always read on a solid background.
-    public func effectiveSurface(glassAvailable: Bool, mode: PanelMode, approvalsShowing: Bool) -> SurfaceStyle {
-        guard mode == .expanded, !approvalsShowing else { return .opaque }
-        return effectiveSurface(glassAvailable: glassAvailable)
-    }
-
-    /// Settings saved before Motion: Lively only when the old sliders were set springier
-    /// or slower than the new Calm open (damping under 0.86 or response over 0.42).
-    /// An untouched spring, or one with only the blur changed, is Calm.
-    static func migratedMotion(from spring: SpringParams) -> MotionPreset {
-        let d = SpringParams.standard
-        if spring.response == d.response, spring.dampingFraction == d.dampingFraction { return .calm }
-        guard let calm = MotionPreset.calm.spring(.open) else { return .calm }
-        return spring.dampingFraction < calm.damping || spring.response > d.response ? .lively : .calm
     }
 }
 

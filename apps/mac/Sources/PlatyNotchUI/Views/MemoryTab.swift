@@ -232,7 +232,7 @@ private struct MemorySearchField: View {
             }
         }
         .padding(6)
-        .dsCard(radius: Radius.chip)
+        .panelFill(radius: Radius.small)
     }
 }
 

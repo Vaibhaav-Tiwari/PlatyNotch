@@ -297,7 +297,7 @@ struct MirrorTileView: View {
             }
         }
         .padding(6)
-        .dsCard()
+        .panelFill()
     }
 
     @ViewBuilder

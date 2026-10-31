@@ -42,7 +42,7 @@ public struct AgentBrand: Hashable, Sendable {
     }
 
     /// The monogram tile's colour.
-    public func background(dark: Bool) -> RGB { identity.rgb(dark: dark) }
+    public func background(dark: Bool) -> RGB { identity.rgb }
 
     /// White or black, whichever contrasts more with the tile (both checked to 4.5:1).
     public func ink(dark: Bool) -> MonogramInk { MonogramInk.on(background(dark: dark)) }

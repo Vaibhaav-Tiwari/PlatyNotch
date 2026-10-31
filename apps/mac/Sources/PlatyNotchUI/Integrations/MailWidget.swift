@@ -226,7 +226,7 @@ struct MailTileView: View {
                 }
                 .padding(6)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .dsCard()
+                .panelFill()
             }
         }
         .onAppear { widget.tileAppeared() }

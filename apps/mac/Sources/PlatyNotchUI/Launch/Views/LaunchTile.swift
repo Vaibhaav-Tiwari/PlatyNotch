@@ -31,7 +31,7 @@ struct LaunchTile: View {
         } else {
             content
                 .padding(10)
-                .dsCard()
+                .panelFill()
         }
     }
 
@@ -215,7 +215,7 @@ private struct ShortcutPicker: View {
         }
         .padding(6)
         // A darker well in both schemes; its text is semantic, so it stays legible in light.
-        .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
+        .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
     }
 }
 

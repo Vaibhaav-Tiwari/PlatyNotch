@@ -7,7 +7,7 @@ import XCTest
 
 @MainActor
 final class HomeViewTests: DefaultsTestCase {
-    private let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelMargin
+    private let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelSide
     private let day = Date(timeIntervalSince1970: 1_793_448_000)
 
     /// Every built-in on (inert), a calendar and reminders, nothing live.

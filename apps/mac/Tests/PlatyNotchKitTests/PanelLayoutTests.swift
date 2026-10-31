@@ -86,11 +86,11 @@ final class PanelLayoutTests: XCTestCase {
     }
 
     func testBodyHeightMapsToPanelHeight() {
-        // Inset above, 10 below; a no-notch screen adds its strip inside contentRect.
-        XCTAssertEqual(mbp.expandedHeight(forBody: 150), mbp.contentInset(for: .expanded) + 150 + 10)
+        // Inset above, the bottom padding below; a no-notch screen adds its strip inside contentRect.
+        XCTAssertEqual(mbp.expandedHeight(forBody: 150), mbp.contentInset(for: .expanded) + 150 + Space.panelBottom)
         var e = ext
         e.expandedContentHeight = e.expandedHeight(forBody: 150)
-        XCTAssertEqual(e.contentRect(for: .expanded).height, e.contentInset(for: .expanded) + 150 + 10)
+        XCTAssertEqual(e.contentRect(for: .expanded).height, e.contentInset(for: .expanded) + 150 + Space.panelBottom)
     }
 
     func testNoticePeekIsShortAndClearsTheNotch() {

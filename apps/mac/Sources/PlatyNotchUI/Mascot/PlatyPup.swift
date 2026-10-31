@@ -77,7 +77,7 @@ private struct PupCanvas: View {
     let badge: Bool
 
     var body: some View {
-        let bandana = Color(agent.rgb(dark: true))
+        let bandana = Color(agent.rgb)
         PlatyCanvas(pose: .rest(.idle), size: size, bandana: bandana)
             .overlay(alignment: .bottomTrailing) {
                 if badge { StateBadge(tone: tone) }

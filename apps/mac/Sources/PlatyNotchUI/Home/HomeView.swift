@@ -202,7 +202,7 @@ struct TwoColumns: Layout {
     }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let total: CGFloat = proposal.width ?? (PanelLayout.expandedWidth - 2 * Space.panelMargin)
+        let total: CGFloat = proposal.width ?? (PanelLayout.expandedWidth - 2 * Space.panelSide)
         let (l, r) = widths(total)
         var h: CGFloat = 0
         if subviews.count == 2 {

@@ -9,7 +9,6 @@ import SwiftUI
 /// Fixed sample content (music and two agents); nothing is read.
 struct NotchPreview: View {
     let appearance: AppearanceSettings
-    @Environment(\.colorScheme) private var systemScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var open: Bool
 
@@ -104,7 +103,6 @@ struct NotchPreview: View {
     /// The open panel at the preview's scale: the notch band, the destinations, a hero
     /// and four glances.
     private var openPanel: some View {
-        let scheme: ColorScheme = Theme.scheme(appearance.theme, system: systemScheme, mode: .expanded, hasNotch: true)
         let design: CGFloat = MiniPanel.designScale
         let width: CGFloat = PanelLayout.expandedSize.width * design
         let height: CGFloat = PanelLayout.expandedSize.height * design
@@ -113,12 +111,12 @@ struct NotchPreview: View {
             .frame(width: width, height: height)
             .background {
                 ZStack(alignment: .top) {
-                    Theme.surface(scheme, mode: .expanded, hasNotch: true, style: appearance.surface)
+                    Theme.surface
                     Color(PanelPalette.darkSurface).frame(height: MiniPanel.bandHeight)
                 }
             }
-            .clipShape(Theme.panelShape(hasNotch: true))
-            .environment(\.colorScheme, scheme)
+            .clipShape(Theme.panelShape(hasNotch: true, open: true))
+            .environment(\.colorScheme, .dark)
             .scaleEffect(zoom, anchor: .top)
             .frame(width: width * zoom, height: height * zoom, alignment: .top)
             .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
@@ -166,7 +164,7 @@ private struct MiniPanel: View {
             .padding(.top, MiniPanel.bandHeight + 4)
             // The hero: artwork, a title and a scrubber.
             HStack(spacing: 7) {
-                RoundedRectangle(cornerRadius: Radius.chip, style: .continuous)
+                RoundedRectangle(cornerRadius: Radius.small, style: .continuous)
                     .fill(LinearGradient(colors: [DS.dynamicColor(.working), Color(red: 0.11, green: 0.23, blue: 0.29)],
                                          startPoint: .topLeading, endPoint: .bottomTrailing))
                     .frame(width: 34, height: 34)
@@ -181,10 +179,10 @@ private struct MiniPanel: View {
                 }
             }
             .padding(7)
-            .background(ink.opacity(0.06), in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
+            .background(ink.opacity(0.06), in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
             HStack(spacing: 4) {
                 ForEach(0..<4, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: Radius.chip, style: .continuous)
+                    RoundedRectangle(cornerRadius: Radius.small, style: .continuous)
                         .fill(ink.opacity(0.06))
                         .frame(height: 22)
                 }

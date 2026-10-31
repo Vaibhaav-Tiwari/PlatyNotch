@@ -382,7 +382,7 @@ private struct PondBanner<Content: View>: View {
         }
         .frame(height: height)
         .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: Radius.hero, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
         .environment(\.colorScheme, .dark)
     }
 }
@@ -535,7 +535,7 @@ private struct PresetSketch: View {
             pill
         }
         .frame(height: height)
-        .clipShape(RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
         .environment(\.colorScheme, .dark)
         .accessibilityHidden(true)
     }
@@ -547,18 +547,18 @@ private struct PresetSketch: View {
             HStack(spacing: 0) {
                 Image(systemName: "calendar").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.8))
                 Spacer()
-                Image(systemName: "waveform").font(.system(size: 11, weight: .semibold)).foregroundStyle(DS.teal)
+                Image(systemName: "waveform").font(.system(size: 11, weight: .semibold)).foregroundStyle(DS.color(.working))
             }
             .padding(.horizontal, 8)
             .frame(width: 128, height: 20)
             .background(Color.black, in: shape)
         case .developer:
             HStack(spacing: 3) {
-                ForEach([Color(red: 0.85, green: 0.47, blue: 0.34), DS.teal, Color(red: 0.55, green: 0.6, blue: 0.95)],
+                ForEach([Color(red: 0.85, green: 0.47, blue: 0.34), DS.color(.working), Color(red: 0.55, green: 0.6, blue: 0.95)],
                         id: \.self) { c in Circle().fill(c).frame(width: 5, height: 5) }
                 Spacer()
                 Circle().trim(from: 0, to: 0.7)
-                    .stroke(DS.teal, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .stroke(DS.color(.working), style: StrokeStyle(lineWidth: 2, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .frame(width: 9, height: 9)
             }
@@ -659,7 +659,7 @@ private struct TryItPage: View {
                     VStack(spacing: 4) {
                         Image(systemName: "arrow.up")
                             .font(.system(size: 22, weight: .semibold))
-                            .foregroundStyle(DS.teal)
+                            .foregroundStyle(DS.color(.working))
                         Image(systemName: openOn == .hover ? "cursorarrow" : "cursorarrow.click")
                             .font(.system(size: 34, weight: .regular))
                             .foregroundStyle(.white)

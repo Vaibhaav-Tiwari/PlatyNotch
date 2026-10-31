@@ -30,7 +30,7 @@ struct TimeTile: View {
             content
                 .font(.system(size: 11))
                 .padding(6)
-                .dsCard()
+                .panelFill()
         }
     }
 }

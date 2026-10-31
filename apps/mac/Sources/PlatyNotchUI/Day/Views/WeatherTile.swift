@@ -42,7 +42,7 @@ struct WeatherTile: View {
                 Spacer(minLength: 0)
             }
             .padding(6)
-            .dsCard()
+            .panelFill()
             .accessibilityElement(children: .combine)
         } else if let error = widget.lastError {
             Label("\(error). Trying again soon.", systemImage: "exclamationmark.triangle")

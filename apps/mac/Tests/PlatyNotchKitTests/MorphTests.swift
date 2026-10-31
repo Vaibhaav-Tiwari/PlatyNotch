@@ -5,7 +5,7 @@ import XCTest
 final class MorphTests: DefaultsTestCase {
     func testMatchesSameItem() {
         XCTAssertTrue(Morph.matches(pillTrailingID: "music:playing", heroTopID: "music:playing", motion: .calm))
-        XCTAssertTrue(Morph.matches(pillTrailingID: "time:timer:1", heroTopID: "time:timer:1", motion: .lively))
+        XCTAssertTrue(Morph.matches(pillTrailingID: "time:timer:1", heroTopID: "time:timer:1", motion: .calm))
         XCTAssertEqual(MorphID.live("music:playing"), MorphID.live("music:playing"))
         XCTAssertNotEqual(MorphID.live("a"), MorphID.platy)
     }
@@ -23,6 +23,6 @@ final class MorphTests: DefaultsTestCase {
         XCTAssertFalse(Morph.matches(pillTrailingID: "music:playing", heroTopID: "music:playing", motion: .reduced))
         XCTAssertFalse(Morph.morphsPlaty(motion: .reduced))
         XCTAssertTrue(Morph.morphsPlaty(motion: .calm))
-        XCTAssertTrue(Morph.morphsPlaty(motion: .lively))
+        XCTAssertTrue(Morph.morphsPlaty(motion: .calm))
     }
 }

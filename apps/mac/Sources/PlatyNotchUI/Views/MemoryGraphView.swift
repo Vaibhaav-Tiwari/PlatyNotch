@@ -175,7 +175,7 @@ private struct MemoryGraphBody: View {
             GeometryReader { geo in
                 canvas(size: geo.size)
             }
-            .dsCard()
+            .panelFill()
             .opacity(shown ? 1 : 0)
             .onAppear {
                 // One short fade when the graph arrives; nothing moves after that.
@@ -215,7 +215,7 @@ private struct MemoryGraphBody: View {
         let layout = model.layout(graph, aspect: width / height)
         let order = graph.nodes.map(\.id)
         let scene = GraphScene(graph: graph, layout: layout, width: width, height: height, focus: focus,
-                               labelBackground: Theme.surface(scheme).opacity(0.85))
+                               labelBackground: Theme.surface.opacity(0.85))
         return Canvas { ctx, _ in scene.draw(in: &ctx) }
             .contentShape(Rectangle())
             .onContinuousHover { phase in

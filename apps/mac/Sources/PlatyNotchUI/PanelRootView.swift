@@ -29,7 +29,7 @@ final class PanelViewModel {
     var onOpenSettings: () -> Void = {}
     /// The Agents empty state's "Connect an agent" (Settings › Agents).
     var onConnectAgent: () -> Void = {}
-    /// Settings › Appearance, clamped (live side, theme, motion).
+    /// Settings › Appearance, clamped (live side, motion).
     var appearance: AppearanceSettings = AppearanceSettings()
     /// Settings › Notifications: kinds the pill leaves out (never approvals).
     var hiddenKinds: Set<NotificationKind> = []
@@ -61,8 +61,6 @@ struct PanelRootView: View {
     let memory: MemoryServices
     let extraTabs: [PanelTab]
     let onOpenTerminal: (Session) -> Void
-    /// The system's scheme (Appearance › Theme: System follows it).
-    @Environment(\.colorScheme) private var systemScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The mode before the current one: picks the open or the close spring. Updated after
     /// each change, so the body that animates a change still sees the old mode here.
@@ -71,8 +69,6 @@ struct PanelRootView: View {
     @Namespace private var morphSpace
 
     var body: some View {
-        let scheme = Theme.scheme(model.appearance.theme, system: systemScheme, mode: model.mode,
-                                  hasNotch: model.layout?.hasNotch ?? false)
         ZStack(alignment: .topLeading) {
             if let layout = model.layout {
                 let r = PanelLayout.localRect(layout.contentRect(for: model.mode), in: layout.windowFrame)
@@ -82,8 +78,10 @@ struct PanelRootView: View {
                 ZStack(alignment: .topLeading) { content(layout) }
                     .frame(width: r.width, height: r.height)
                     .overlay(alignment: .topLeading) { chip(layout) }
-                    .background(alignment: .topLeading) { surface(layout, scheme: scheme, content: r) }
-                    .clipShape(Theme.panelShape(hasNotch: layout.hasNotch))
+                    // One black shape whose size changes, so opening and closing resize the
+                    // same surface instead of cross-fading two.
+                    .background(Theme.surface)
+                    .clipShape(Theme.panelShape(hasNotch: layout.hasNotch, open: Self.isOpen(model.mode)))
                     .offset(x: r.minX, y: r.minY)
                     // Reduced motion (and Reduce Motion): each mode is its own panel, so a
                     // change cross-fades the two instead of resizing one (spec 9).
@@ -92,7 +90,8 @@ struct PanelRootView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .environment(\.colorScheme, scheme)
+        // The panel is always black (Quiet Notch spec 1), whatever the system appearance.
+        .environment(\.colorScheme, .dark)
         // Pill timelines (countdown, music bars) tick only while the panel is really shown,
         // not while hidden or suppressed over full screen.
         .environment(\.panelTicking, model.visible)
@@ -109,21 +108,11 @@ struct PanelRootView: View {
         }
     }
 
-    /// The mode's surface, with the pure-black band level with the camera housing on a
-    /// notch (`PanelLayout.notchBand`) so the open panel meets the notch seamlessly.
-    @ViewBuilder private func surface(_ layout: PanelLayout, scheme: ColorScheme, content r: CGRect) -> some View {
-        let approvals: Bool = !store.approvals.isEmpty
-        let style: AppearanceSettings.SurfaceStyle = model.appearance.effectiveSurface(
-            glassAvailable: Theme.glassAvailable, mode: model.mode, approvalsShowing: approvals)
-        ZStack(alignment: .topLeading) {
-            Theme.surface(scheme, mode: model.mode, hasNotch: layout.hasNotch, style: style)
-            if let band = layout.notchBand(for: model.mode) {
-                Color(PanelPalette.darkSurface)
-                    .frame(width: band.width, height: band.height)
-                    .offset(x: band.minX - r.minX, y: band.minY - r.minY)
-            }
-        }
+    /// The open panel and the drop view: 22 pt bottom corners (the pill and peeks keep 14).
+    static func isOpen(_ mode: PanelMode) -> Bool {
+        mode == .expanded || mode == .peek(.drop)
     }
+
 
     /// Platy's mood from the store, music, focus and the timed inputs.
     private var platyMood: PlatyMood {
@@ -212,7 +201,8 @@ struct PanelRootView: View {
                           onDecide: decide, onOpenTerminal: onOpenTerminal)
             }
             .transition(ChromeSettle<EmptyView>.transition)
-                .padding(EdgeInsets(top: top, leading: Space.panelMargin, bottom: 10, trailing: Space.panelMargin))
+                .padding(EdgeInsets(top: top, leading: Space.panelSide, bottom: Space.panelBottom,
+                                    trailing: Space.panelSide))
                 .overlay(alignment: .bottom) { hudIndicator }
         case .peek(.widget(let id)):
             // A widget's peek (nudge, plug-in, AirPods). Never takes keyboard focus.

@@ -23,7 +23,7 @@ struct AgentRow: View {
                     .help(session.agentName)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(verbatim: project)
-                        .font(DS.font(TypeScale.headline))
+                        .font(DS.font(TypeScale.title))
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Text(verbatim: status)
@@ -115,7 +115,7 @@ struct RowButtonStyle: ButtonStyle {
         var body: some View {
             configuration.label
                 .background(
-                    RoundedRectangle(cornerRadius: Radius.chip, style: .continuous)
+                    RoundedRectangle(cornerRadius: Radius.small, style: .continuous)
                         .fill(Theme.card.opacity(configuration.isPressed ? 1 : hovering ? 0.7 : 0))
                 )
                 .onHover { hovering = $0 }

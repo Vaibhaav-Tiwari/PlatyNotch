@@ -44,7 +44,7 @@ struct ApprovalCard: View {
                 if hasHidden {
                     Label("Contains hidden characters", systemImage: "exclamationmark.triangle.fill")
                         .font(DS.font(TypeScale.caption).weight(.medium))
-                        .foregroundStyle(Theme.warning(scheme))
+                        .foregroundStyle(Theme.warning)
                 }
                 SummaryView(summary: summaryText, maxLines: maxLines)
                 if let preview, preview.path != nil || !preview.diff.isEmpty {
@@ -54,7 +54,7 @@ struct ApprovalCard: View {
             }
         }
         .padding(8)
-        .dsCard()
+        .panelFill()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(visible.agentName) asks to run \(visible.tool)")
     }
@@ -168,7 +168,7 @@ struct ApprovalCard: View {
                 Label { Text("Allow") } icon: { Text("⌘↩").foregroundStyle(.secondary) }
                     .labelStyle(TrailingIconLabelStyle())
             }
-            .tint(Theme.allow(scheme))
+            .tint(Theme.allow)
             .focusable(false)
             .keyboardShortcut(shortcuts ? KeyboardShortcut(.return, modifiers: .command) : nil)
             .accessibilityLabel("Allow")
@@ -257,7 +257,7 @@ struct ApprovalRow: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .dsCard()
+        .panelFill()
         .accessibilityElement(children: .contain)
     }
 }

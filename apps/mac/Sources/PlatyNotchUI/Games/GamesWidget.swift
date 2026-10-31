@@ -123,7 +123,7 @@ struct GamesTile: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .dsCard()
+        .panelFill()
     }
 
     private func label(_ kind: GameKind) -> some View {
@@ -136,7 +136,7 @@ struct GamesTile: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 5)
-        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
         .contentShape(Rectangle())
     }
 

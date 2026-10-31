@@ -120,7 +120,7 @@ private struct MeetingCard: View {
             }
         }
         .padding(6)
-        .dsCard()
+        .panelFill()
         .accessibilityElement(children: .contain)
     }
 
@@ -249,7 +249,7 @@ struct MeetingTool: View {
             VStack(spacing: Space.l) {
                 VStack(spacing: Space.xs) {
                     Text(verbatim: current != nil ? "Now" : MeetingWidget.time(lead.start))
-                        .font(DS.font(TypeScale.display))
+                        .font(DS.font(TypeScale.glyph))
                         .monospacedDigit()
                     Text(verbatim: lead.title)
                         .font(DS.font(TypeScale.title))

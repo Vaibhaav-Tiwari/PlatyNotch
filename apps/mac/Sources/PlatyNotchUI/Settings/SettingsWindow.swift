@@ -357,7 +357,7 @@ private struct SettingsSidebar: View {
             HStack(spacing: 9) {
                 ZStack {
                     if selected {
-                        RoundedRectangle(cornerRadius: Radius.chip, style: .continuous).fill(SettingsTint.accent)
+                        RoundedRectangle(cornerRadius: Radius.small, style: .continuous).fill(SettingsTint.accent)
                     }
                     Image(systemName: image)
                         .font(.system(size: 12, weight: .semibold))
@@ -374,11 +374,11 @@ private struct SettingsSidebar: View {
             .padding(.horizontal, 6)
             .frame(height: 28)
             .background(selected ? SettingsTint.well : .clear,
-                        in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
+                        in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
             // The keyboard's place while the sidebar has focus (↑ ↓ move it).
             .overlay {
                 if selected, focused {
-                    RoundedRectangle(cornerRadius: Radius.chip, style: .continuous)
+                    RoundedRectangle(cornerRadius: Radius.small, style: .continuous)
                         .strokeBorder(SettingsTint.accent, lineWidth: 2)
                 }
             }
@@ -489,7 +489,7 @@ struct CommandOutputView: View {
             .frame(maxHeight: 140)
         }
         .padding(10)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
+        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
     }
 }
 

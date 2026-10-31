@@ -104,8 +104,8 @@ struct ExpandedPanel: View {
         .coordinateSpace(name: Self.space)
         .onPreferenceChange(HomeHeightKey.self) { homeBody = $0 }
         .onChange(of: reportedBody, initial: true) { _, new in onBodyHeight(new) }
-        // One accent: prominent buttons and controls in brand teal, never system blue.
-        .tint(DS.dynamicColor(.working))
+        // No accent colour (Quiet Notch spec 5.3): controls tint white, never system blue.
+        .tint(.white)
     }
 
     @ViewBuilder private func header(tool: PanelTool?) -> some View {
@@ -229,7 +229,7 @@ struct ExpandedPanel: View {
                 let selected: Bool = d == current
                 Button { route = PanelRoute(destination: d) } label: {
                     Text(verbatim: Self.title(d))
-                        .font(DS.font(TypeScale.headline).weight(selected ? .semibold : .regular))
+                        .font(DS.font(TypeScale.title).weight(selected ? .semibold : .regular))
                         .foregroundStyle(selected ? .primary : .secondary)
                         .lineLimit(1)
                         .padding(.horizontal, 10)

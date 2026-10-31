@@ -159,10 +159,10 @@ public struct PanelLayout: Equatable, Sendable {
     }
 
     /// The `expandedContentHeight` for a body (header, approvals and Home's content) that is
-    /// `body` tall: the inset above it and the 10 pt below, less the no-notch header strip
-    /// that `contentRect` adds itself. Not clamped; the setter clamps.
+    /// `body` tall: the inset above it and the panel's bottom padding below, less the no-notch
+    /// header strip that `contentRect` adds itself. Not clamped; the setter clamps.
     public func expandedHeight(forBody body: CGFloat) -> CGFloat {
-        contentInset(for: .expanded) - stripExtra + body + 10
+        contentInset(for: .expanded) - stripExtra + body + Space.panelBottom
     }
 
     /// Inset from the content rect's top to where a mode's content starts: below the
@@ -189,7 +189,7 @@ public struct PanelLayout: Equatable, Sendable {
         }
     }
 
-    /// The approval peek's side margin; the open panel uses `Space.panelMargin` (Ruling 10).
+    /// The approval peek's side margin; the open panel uses `Space.panelSide` (Ruling 10).
     public static let peekMargin: CGFloat = 12
 
     /// Where the approval cards sit (the approval peek, the open panel's column).
@@ -197,7 +197,7 @@ public struct PanelLayout: Equatable, Sendable {
         switch mode {
         case .peek(.approval), .expanded:
             let c = contentRect(for: mode)
-            let side: CGFloat = mode == .expanded ? Space.panelMargin : Self.peekMargin
+            let side: CGFloat = mode == .expanded ? Space.panelSide : Self.peekMargin
             return CGRect(x: c.minX + side, y: c.minY + 10, width: c.width - 2 * side,
                           height: c.height - 10 - contentInset(for: mode))
         default: return nil

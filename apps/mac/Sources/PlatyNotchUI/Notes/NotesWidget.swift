@@ -596,7 +596,7 @@ struct NotesTile: View {
                 }
             }
             .padding(6)
-            .dsCard(radius: Radius.chip)
+            .panelFill(radius: Radius.small)
             if let status = widget.status {
                 Text(verbatim: status).font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

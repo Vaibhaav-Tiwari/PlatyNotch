@@ -61,7 +61,7 @@ struct ToolHeader: View {
             .help(ToolHost.backLabel + " (Esc)")
             .accessibilityLabel(ToolHost.backLabel)
             Text(verbatim: title)
-                .font(DS.font(TypeScale.headline))
+                .font(DS.font(TypeScale.title))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -188,11 +188,11 @@ struct ToolEmptyState: View {
 
     var body: some View {
         VStack(spacing: Space.s) {
-            DS.icon(systemImage, size: IconSize.hero)
+            DS.icon(systemImage, size: IconSize.header)
                 .foregroundStyle(.secondary)
                 .padding(.bottom, Space.xs)
             Text(verbatim: title)
-                .font(DS.font(TypeScale.headline))
+                .font(DS.font(TypeScale.title))
                 .multilineTextAlignment(.center)
             Text(verbatim: detail)
                 .font(DS.font(TypeScale.body))
@@ -224,7 +224,7 @@ struct ToolPage<Content: View>: View {
             if let value {
                 VStack(spacing: 2) {
                     Text(verbatim: value)
-                        .font(DS.font(TypeScale.display))
+                        .font(DS.font(TypeScale.glyph))
                         .monospacedDigit()
                         .lineLimit(1)
                     if let label {
@@ -265,7 +265,7 @@ struct ToolPrimaryButtonStyle: ButtonStyle {
                 .foregroundStyle(scheme == .light ? Color.white : Color.black.opacity(0.85))
                 .padding(.horizontal, Space.l)
                 .frame(height: 30)
-                .background(DS.color(.working, scheme).opacity(pressed ? 0.75 : 1), in: Capsule())
+                .background(DS.color(.working).opacity(pressed ? 0.75 : 1), in: Capsule())
                 .contentShape(Capsule())
         }
     }
@@ -294,7 +294,7 @@ struct ToolIconPage<Content: View>: View {
                 .accessibilityHidden(true)
             VStack(spacing: Space.xs) {
                 Text(verbatim: title)
-                    .font(DS.font(TypeScale.headline))
+                    .font(DS.font(TypeScale.title))
                     .accessibilityAddTraits(.isHeader)
                 Text(verbatim: detail)
                     .font(DS.font(TypeScale.body))

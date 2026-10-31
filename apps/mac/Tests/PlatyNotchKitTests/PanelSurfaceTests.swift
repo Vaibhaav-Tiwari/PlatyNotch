@@ -649,14 +649,14 @@ final class PanelSurfaceLayoutTests: XCTestCase {
         XCTAssertFalse(PanelLayout.ignoresMouse(mode: .compact, visible: true, layout: l, cursor: CGPoint(x: 756, y: 960)))
     }
 
-    /// Ruling 10: the open panel's side margin is 16 (`Space.panelMargin`), so its
-    /// approval column sits 16 in; the approval peek keeps 12.
+    /// The open panel's side margin is 18 (`Space.panelSide`), so its
+    /// approval column sits 18 in; the approval peek keeps 12.
     func testApprovalSlotMatchesPanelMargin() {
         for l in [mbp, ext] {
             let content = l.contentRect(for: .expanded)
             let slot = try! XCTUnwrap(l.approvalSlot(for: .expanded))
-            XCTAssertEqual(slot.minX, content.minX + Space.panelMargin)
-            XCTAssertEqual(slot.width, content.width - 2 * Space.panelMargin)
+            XCTAssertEqual(slot.minX, content.minX + Space.panelSide)
+            XCTAssertEqual(slot.width, content.width - 2 * Space.panelSide)
             let peek = l.contentRect(for: .peek(.approval))
             let peekSlot = try! XCTUnwrap(l.approvalSlot(for: .peek(.approval)))
             XCTAssertEqual(peekSlot.minX, peek.minX + 12)

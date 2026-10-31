@@ -18,7 +18,6 @@ final class AppearanceTests: DefaultsTestCase {
         XCTAssertEqual(s.pillWidth, .standard)
         XCTAssertEqual(s.liveSide, .right)
         XCTAssertEqual(s.displays, .main)
-        XCTAssertEqual(s.theme, .dark, "Task 12 ruling: dark, the panel joins the black camera housing")
         XCTAssertEqual(s.spring, SpringParams(response: 0.42, dampingFraction: 0.78, blur: 8))
         XCTAssertTrue(s.hideInFullScreen)
     }
@@ -53,14 +52,13 @@ final class AppearanceTests: DefaultsTestCase {
         let partial = Data(#"{"mode":"minimal","theme":"sepia","spring":{"response":0.3},"future":1}"#.utf8)
         let p = try JSONDecoder().decode(AppearanceSettings.self, from: partial)
         XCTAssertEqual(p.mode, .minimal)
-        XCTAssertEqual(p.theme, .dark, "an unknown theme keeps the default")
         XCTAssertEqual(p.spring, SpringParams(response: 0.3, dampingFraction: 0.78, blur: 8))
         XCTAssertEqual(p.openOn, .hover)
     }
 
     func testCodableRoundTrip() throws {
         let s = AppearanceSettings(mode: .minimal, openOn: .click, hoverDelay: 0.3, pillWidth: .wide,
-                                   liveSide: .left, displays: .withNotch, theme: .light,
+                                   liveSide: .left, displays: .withNotch,
                                    spring: SpringParams(response: 0.6, dampingFraction: 0.9, blur: 0),
                                    hideInFullScreen: false)
         let back = try JSONDecoder().decode(AppearanceSettings.self, from: JSONEncoder().encode(s))
@@ -95,7 +93,7 @@ final class AppearanceTests: DefaultsTestCase {
         let d = defaults()
         d.set(true, forKey: "appearance.minimal")
         var s = AppearanceSettings()
-        s.theme = .dark
+        s.pillWidth = .wide
         AppearanceStore.save(s, to: d)
         XCTAssertEqual(AppearanceStore.load(from: d), s, "the saved settings are the one source of truth")
     }
@@ -121,7 +119,6 @@ final class AppearanceTests: DefaultsTestCase {
     func testRebuildOnlyForLayoutChanges() {
         let a = AppearanceSettings()
         var b = a
-        b.theme = .light
         b.mode = .minimal
         b.liveSide = .left
         b.spring.response = 0.7
@@ -261,38 +258,17 @@ final class AppearanceTests: DefaultsTestCase {
         XCTAssertTrue(LiveEarFit(earWidth: ear(.standard), hasTrailing: false, hasBubble: true).showsBubble)
     }
 
-    // MARK: - Palette
+    // MARK: - Always black (Quiet Notch spec 7)
 
-    func testWarningTextContrast() {
-        let light = PanelPalette.lightSurface
-        let lightCard = light.under(RGB(hex: 0x000000), alpha: PanelPalette.cardOverlay)
-        XCTAssertGreaterThanOrEqual(RGB.contrast(PanelPalette.warningLight, light), 4.5)
-        XCTAssertGreaterThanOrEqual(RGB.contrast(PanelPalette.warningLight, lightCard), 4.5)
-        let dark = PanelPalette.darkSurface
-        let darkCard = dark.under(RGB(hex: 0xFFFFFF), alpha: PanelPalette.cardOverlay)
-        XCTAssertGreaterThanOrEqual(RGB.contrast(PanelPalette.warningDark, dark), 4.5)
-        XCTAssertGreaterThanOrEqual(RGB.contrast(PanelPalette.warningDark, darkCard), 4.5)
-        XCTAssertLessThan(RGB.contrast(PanelPalette.warningDark, light), 4.5, "why light needs its own orange")
+    /// Saved Theme and Glass values are read and ignored; Lively reads as Calm.
+    func testOldThemeAndGlassStillDecode() throws {
+        let old = Data(#"{"theme":"light","surface":"glass","motion":"lively","pillWidth":"wide"}"#.utf8)
+        let s = try JSONDecoder().decode(AppearanceSettings.self, from: old)
+        XCTAssertEqual(s.pillWidth, .wide)
+        XCTAssertEqual(s.motion, .calm)
+        let encoded = try XCTUnwrap(String(data: JSONEncoder().encode(s), encoding: .utf8))
+        XCTAssertFalse(encoded.contains("theme"), encoded)
+        XCTAssertFalse(encoded.contains("surface"), encoded)
         XCTAssertEqual(RGB.contrast(RGB(hex: 0), RGB(hex: 0xFFFFFF)), 21, accuracy: 0.01)
-        // Allow: its text on its own tinted fill over a light card.
-        let allowFill = lightCard.under(PanelPalette.allowLight, alpha: PanelPalette.tintedFill)
-        XCTAssertGreaterThanOrEqual(RGB.contrast(PanelPalette.allowLight, allowFill), 4.5)
-        let greenFill = lightCard.under(PanelPalette.systemGreenLight, alpha: PanelPalette.tintedFill)
-        XCTAssertLessThan(RGB.contrast(PanelPalette.systemGreenLight, greenFill), 4.5, "why light needs its own green")
-    }
-
-    /// The open panel is #0B0D0D (spec 7.1): the dark warning text and the Allow button's
-    /// systemGreen tint stay at 4.5:1 on it and on a card over it.
-    func testPaletteOnPanelDark() {
-        let panel = PanelPalette.panelDark
-        let card = panel.under(RGB(hex: 0xFFFFFF), alpha: PanelPalette.cardOverlay)
-        let systemGreenDark = RGB(hex: 0x30D158)
-        for (name, fg) in [("warningDark", PanelPalette.warningDark), ("systemGreen", systemGreenDark)] {
-            XCTAssertGreaterThanOrEqual(RGB.contrast(fg, panel), 4.5, "\(name) on panelDark")
-            XCTAssertGreaterThanOrEqual(RGB.contrast(fg, card), 4.5, "\(name) on a card over panelDark")
-        }
-        // Allow: systemGreen text on its own tinted fill over a dark card.
-        let allowFill = card.under(systemGreenDark, alpha: PanelPalette.tintedFill)
-        XCTAssertGreaterThanOrEqual(RGB.contrast(systemGreenDark, allowFill), 4.5)
     }
 }

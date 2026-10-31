@@ -75,7 +75,7 @@ struct BasketSwitcherView: View {
         }
         .padding(8)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(RoundedRectangle(cornerRadius: Radius.hero, style: .continuous).fill(.regularMaterial))
+        .background(RoundedRectangle(cornerRadius: Radius.card, style: .continuous).fill(.regularMaterial))
     }
 
     private func chip(_ e: BasketSwitcherModel.Entry) -> some View {

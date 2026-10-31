@@ -2,10 +2,10 @@ import AppKit
 import PlatyNotchKit
 import SwiftUI
 
-/// `--smoke` with `PLATYNOTCH_RENDER_DIR`: renders views that sit on the themed panel
-/// surface in both color schemes, the way `PanelRootView` draws them (the scheme in the
-/// environment, `Theme.surface(scheme)` behind), and writes `<name>-<scheme>.png`.
-/// Inert models only: nothing is read, played or saved.
+/// `--smoke` with `PLATYNOTCH_RENDER_DIR`: renders the panel's views the way `PanelRootView`
+/// draws them (always black, the dark scheme) as `<name>-dark.png`, and the Settings windows
+/// (which follow the system) in both schemes as `<name>-<scheme>.png`. Inert models only:
+/// nothing is read, played or saved.
 @MainActor
 enum ThemeRenders {
     /// Writes every render (or, with `only`, those whose name starts with one of its
@@ -17,18 +17,19 @@ enum ThemeRenders {
             return .failure(RenderError(message: "cannot create \(dir.path): \(error.localizedDescription)"))
         }
         var count = 0
-        for scheme in [ColorScheme.dark, .light] {
-            for (name, view, hosted) in views() where only.map({ p in p.contains { name.hasPrefix($0) } }) ?? true {
-                let url = dir.appendingPathComponent("\(name)-\(scheme == .dark ? "dark" : "light").png")
-                let data = hosted ? renderHosted(view, scheme: scheme) : render(view, scheme: scheme)
-                guard let png = data else {
-                    return .failure(RenderError(message: "\(name) did not render"))
-                }
-                do { try png.write(to: url) } catch {
-                    return .failure(RenderError(message: "cannot write \(url.path)"))
-                }
-                count += 1
+        // The panel is always black: its views render once, dark.
+        for (name, view, hosted) in views() where only.map({ p in p.contains { name.hasPrefix($0) } }) ?? true {
+            let url = dir.appendingPathComponent("\(name)-dark.png")
+            let data = hosted ? renderHosted(view, scheme: .dark) : render(view, scheme: .dark)
+            guard let png = data else {
+                return .failure(RenderError(message: "\(name) did not render"))
             }
+            do { try png.write(to: url) } catch {
+                return .failure(RenderError(message: "cannot write \(url.path)"))
+            }
+            count += 1
+        }
+        for scheme in [ColorScheme.dark, .light] {
             for (name, view, size) in SettingsRenders.windows() where only.map({ p in p.contains { name.hasPrefix($0) } }) ?? true {
                 let url = dir.appendingPathComponent("\(name)-\(scheme == .dark ? "dark" : "light").png")
                 guard let png = SettingsRenders.render(view, size: size, scheme: scheme) else {
@@ -50,7 +51,7 @@ enum ThemeRenders {
     static func framed(_ view: AnyView, scheme: ColorScheme) -> some View {
         view
             .padding(12)
-            .background(Theme.surface(scheme))
+            .background(Theme.surface)
             .environment(\.colorScheme, scheme)
             // Monograms, so renders look the same on every Mac (one render passes a fake app icon).
             .environment(\.agentIcons, .monogramsOnly)
@@ -370,7 +371,7 @@ enum HomeRenders {
                       homeSettings: HomeSettings = HomeSettings(), dropping: Bool = false, command: String? = nil,
                       tourSample: LiveActivity? = nil, now: Date? = nil, header: HeaderServices? = nil,
                       full: Bool = false) -> AnyView {
-        let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelMargin
+        let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelSide
         rig.store.apply(.connected)   // a quiet header, as in the running app
         var current = route
         let commandModel = PanelViewModel()
@@ -392,7 +393,7 @@ enum HomeRenders {
             host.layoutSubtreeIfNeeded()
             var l = layout
             l.expandedContentHeight = l.expandedHeight(forBody: HomeMetrics.nav + HomeMetrics.gap + host.fittingSize.height)
-            height = l.contentRect(for: .expanded).height - l.contentInset(for: .expanded) - 10
+            height = l.contentRect(for: .expanded).height - l.contentInset(for: .expanded) - Space.panelBottom
         }
         let view = ExpandedPanel(store: rig.store, responder: ApprovalResponder(client: rig.client), arming: ApprovalArming(),
                                  today: rig.today, widgets: rig.registry, memory: memory ?? MemoryServices(client: rig.client),
@@ -419,7 +420,7 @@ enum HomeRenders {
 
     /// The room below the camera housing in the open panel at full height.
     static var available: CGFloat {
-        layout.contentRect(for: .expanded).height - layout.contentInset(for: .expanded) - 10
+        layout.contentRect(for: .expanded).height - layout.contentInset(for: .expanded) - Space.panelBottom
     }
 
     /// The hover peek (Peek on hover, open on click) as `PanelRootView` lays it out beside
@@ -665,7 +666,7 @@ enum AgentsRenders {
         let r = rig(one() + [session("b", "codex", "Codex", project: "api", .idle, updated: 400)])
         let view = AgentsView(sessions: r.store.sessions, usage: r.store.usage, log: AgentFinishLog(),
                               onOpenTerminal: { _ in }, onConnect: {})
-            .frame(width: PanelLayout.expandedSize.width - 2 * Space.panelMargin, height: 170, alignment: .top)
+            .frame(width: PanelLayout.expandedSize.width - 2 * Space.panelSide, height: 170, alignment: .top)
             .environment(\.agentIcons, source)
             .environment(\.panelTicking, false)
         return AnyView(view)
@@ -767,7 +768,7 @@ enum ToolRenders {
         }
         .padding(Space.m)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .dsCard()
+        .panelFill()
     }
 }
 

@@ -128,10 +128,10 @@ enum ShowcaseRenders {
         let top: CGFloat = layout.contentInset(for: .expanded)
         let band: CGFloat = layout.anchor.height
         return ZStack(alignment: .top) {
-            Theme.surface(scheme, mode: .expanded, hasNotch: true, style: .opaque)
+            Theme.surface
             Color(PanelPalette.darkSurface).frame(height: band)
             content
-                .padding(EdgeInsets(top: top, leading: Space.panelMargin, bottom: 10, trailing: Space.panelMargin))
+                .padding(EdgeInsets(top: top, leading: Space.panelSide, bottom: Space.panelBottom, trailing: Space.panelSide))
         }
         .frame(width: width, height: height, alignment: .top)
         .clipShape(Theme.panelShape(hasNotch: true))

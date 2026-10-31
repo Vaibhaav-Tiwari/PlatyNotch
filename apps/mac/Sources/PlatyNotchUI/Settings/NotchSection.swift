@@ -78,30 +78,11 @@ struct NotchSection: View {
     }
 
     @ViewBuilder private var lookRows: some View {
-        Picker(selection: $settings.theme) {
-            Text("System").tag(AppearanceSettings.Theme.system)
-            Text("Dark").tag(AppearanceSettings.Theme.dark)
-            Text("Light").tag(AppearanceSettings.Theme.light)
-        } label: {
-            SettingLabel("Theme", info: "Dark by default: on a notch the open panel joins the black camera housing. The resting pill there stays black in every theme.")
-        }
-        .pickerStyle(.segmented)
-        Picker(selection: Theme.glassAvailable ? $settings.surface : .constant(.opaque)) {
-            Text("Opaque").tag(AppearanceSettings.SurfaceStyle.opaque)
-            Text("Glass").tag(AppearanceSettings.SurfaceStyle.glass)
-        } label: {
-            SettingLabel("Surface", info: Theme.glassAvailable
-                         ? "Glass uses the system's glass material for the open panel. The pill and the band beside the camera stay black."
-                         : "Glass needs macOS 26. Until then the open panel stays opaque.")
-        }
-        .pickerStyle(.segmented)
-        .disabled(!Theme.glassAvailable)
         Picker(selection: $settings.motion) {
             Text("Calm").tag(MotionPreset.calm)
-            Text("Lively").tag(MotionPreset.lively)
             Text("Reduced").tag(MotionPreset.reduced)
         } label: {
-            SettingLabel("Motion", info: "Calm opens smoothly and closes without bounce. Lively springs a little more. Reduced only fades, as does the system's Reduce Motion.")
+            SettingLabel("Motion", info: "Calm opens and closes with one smooth spring, without bounce. Reduced only fades, as does the system's Reduce Motion. The panel is always black, so it reads as part of the notch.")
         }
         .pickerStyle(.segmented)
     }

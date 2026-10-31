@@ -93,7 +93,7 @@ struct ShelfCard: View {
     static let size = CGSize(width: 72, height: 78)
     /// The Library tool's cards: five to a row of the panel's width.
     static let toolSize = CGSize(width: 96, height: 100)
-    static let toolSpacing: CGFloat = (PanelLayout.expandedSize.width - 2 * Space.panelMargin - 5 * 96) / 4
+    static let toolSpacing: CGFloat = (PanelLayout.expandedSize.width - 2 * Space.panelSide - 5 * 96) / 4
     let host: any ItemListHost
     let item: ShelfItem
     let missing: Bool

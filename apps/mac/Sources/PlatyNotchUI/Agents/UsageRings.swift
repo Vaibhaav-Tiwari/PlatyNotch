@@ -48,7 +48,7 @@ struct UsageChip: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(verbatim: PanelFormat.usagePercent(reading.usedPercent))
-                        .font(.system(size: TypeScale.headline.size, weight: .bold, design: .rounded))
+                        .font(.system(size: TypeScale.title.size, weight: .bold, design: .rounded))
                         .monospacedDigit()
                         .lineLimit(1)
                     Text(verbatim: reading.window)
@@ -68,7 +68,7 @@ struct UsageChip: View {
         .padding(.horizontal, Space.s)
         .padding(.vertical, 5)
         .frame(width: Self.width, alignment: .leading)
-        .dsCard()
+        .panelFill()
         .help("\(reading.provider) usage: \(reading.detail)")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(reading.provider) usage, \(PanelFormat.usagePercent(reading.usedPercent)) of the \(reading.window) limit")
@@ -90,7 +90,7 @@ struct UsageChip: View {
         .padding(.horizontal, Space.s)
         .padding(.vertical, 5)
         .frame(width: width, alignment: .leading)
-        .dsCard()
+        .panelFill()
         .help(hint)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Claude limits not available yet")

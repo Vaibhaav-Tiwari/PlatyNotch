@@ -140,7 +140,7 @@ struct StateBadge: View {
 
     var body: some View {
         let dark: Bool = scheme != .light
-        let surface: RGB = dark ? PanelPalette.panelDark : PanelPalette.lightSurface
+        let surface: RGB = PanelPalette.panel
         let keyline: Color = dark ? Color.white.opacity(0.18) : Color.black.opacity(0.18)
         Circle()
             .fill(Color(surface))
@@ -149,7 +149,7 @@ struct StateBadge: View {
                 Image(systemName: tone.symbol)
                     .symbolRenderingMode(.monochrome)
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(DS.color(tone, scheme))
+                    .foregroundStyle(DS.color(tone))
             }
             .frame(width: Self.size, height: Self.size)
             .accessibilityHidden(true)

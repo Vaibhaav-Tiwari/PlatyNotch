@@ -15,38 +15,6 @@ final class PanelSurfaceStyleTests: DefaultsTestCase {
                     visibleFrame: CGRect(x: 0, y: 0, width: 1920, height: 1055), auxLeft: nil, auxRight: nil)
     }
 
-    func testGlassFallsBackWhenUnavailable() {
-        var s = AppearanceSettings()
-        XCTAssertEqual(s.effectiveSurface(glassAvailable: true), .opaque, "opaque by default")
-        s.surface = .glass
-        XCTAssertEqual(s.effectiveSurface(glassAvailable: true), .glass)
-        XCTAssertEqual(s.effectiveSurface(glassAvailable: false), .opaque)
-    }
-
-    /// Glass is for the open panel only (spec 7.1), and never while approvals show there:
-    /// an approval is always read on an opaque surface.
-    func testApprovalsStayOpaqueInGlassMode() {
-        let s = AppearanceSettings(surface: .glass)
-        XCTAssertEqual(s.effectiveSurface(glassAvailable: true, mode: .expanded, approvalsShowing: false), .glass)
-        XCTAssertEqual(s.effectiveSurface(glassAvailable: true, mode: .expanded, approvalsShowing: true), .opaque)
-        XCTAssertEqual(s.effectiveSurface(glassAvailable: false, mode: .expanded, approvalsShowing: false), .opaque)
-        let others: [PanelMode] = [.peek(.approval), .peek(.notice), .peek(.widget(id: "w")), .peek(.ringing(id: "r")),
-                                   .peek(.hud(.volume)), .peek(.drop), .compact, .hidden]
-        for mode in others {
-            XCTAssertEqual(s.effectiveSurface(glassAvailable: true, mode: mode, approvalsShowing: false), .opaque, "\(mode)")
-        }
-    }
-
-    func testMissingSurfaceKeyDecodesOpaque() throws {
-        let old = try JSONDecoder().decode(AppearanceSettings.self, from: Data(#"{"theme":"light"}"#.utf8))
-        XCTAssertEqual(old.surface, .opaque)
-        let unknown = try JSONDecoder().decode(AppearanceSettings.self, from: Data(#"{"surface":"frosted"}"#.utf8))
-        XCTAssertEqual(unknown.surface, .opaque)
-        let d = defaults()
-        AppearanceStore.save(AppearanceSettings(surface: .glass), to: d)
-        XCTAssertEqual(AppearanceStore.load(from: d).surface, .glass)
-    }
-
     func testNotchBandOnNotch() throws {
         let l = notched
         for mode: PanelMode in [.expanded, .peek(.approval), .peek(.notice), .peek(.widget(id: "w")), .peek(.drop)] {

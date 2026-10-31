@@ -142,10 +142,10 @@ struct AgentsEmptyState: View {
                     pups([.cursor, .gemini])
                 }
             } else {
-                DS.icon("terminal", size: IconSize.hero).foregroundStyle(.secondary)
+                DS.icon("terminal", size: IconSize.header).foregroundStyle(.secondary)
             }
             Text(verbatim: Self.texts[0])
-                .font(DS.font(TypeScale.headline))
+                .font(DS.font(TypeScale.title))
             Button(action: connect) {
                 Label(Self.texts[1], systemImage: "link")
                     .font(DS.font(TypeScale.body).weight(.semibold))
