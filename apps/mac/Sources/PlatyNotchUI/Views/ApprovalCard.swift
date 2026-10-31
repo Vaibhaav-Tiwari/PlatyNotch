@@ -194,25 +194,26 @@ struct ApprovalCard: View {
     }
 }
 
-/// The command: SF Mono 12 on the fill (radius 6, padding 6 × 9), selectable. One line for
-/// a one-line command; a longer one wraps and grows to `maxLines`, then scrolls (never
-/// truncated: every character asked about stays readable).
+/// The command: SF Mono 12 on the fill (radius 6, padding 6 × 9), selectable. As tall as
+/// its text, wrapped lines included, up to `maxLines`; then it scrolls (never truncated:
+/// every character asked about stays readable).
 struct SummaryView: View {
     let summary: String
     let maxLines: Int
     static let insets = EdgeInsets(top: 6, leading: 9, bottom: 6, trailing: 9)
 
     var body: some View {
-        let lines: CGFloat = CGFloat(min(ApprovalFormat.visibleLines(for: summary), maxLines))
         let line: CGFloat = ApprovalCard.commandLineHeight
         let vertical: CGFloat = Self.insets.top + Self.insets.bottom
-        ViewThatFits(in: .vertical) {
-            text
-            ScrollView(.vertical) { text }
-                .scrollIndicators(.automatic)
+        let cap: CGFloat = CGFloat(max(maxLines, 1)) * line + vertical
+        CappedHeight(cap: cap) {
+            ViewThatFits(in: .vertical) {
+                text
+                ScrollView(.vertical) { text }
+                    .scrollIndicators(.automatic)
+            }
         }
-        .frame(maxWidth: .infinity, minHeight: line + vertical, maxHeight: max(lines, 1) * line + vertical,
-               alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: line + vertical, alignment: .topLeading)
         .background(DS.fill, in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
     }
 
@@ -226,6 +227,24 @@ struct SummaryView: View {
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(Self.insets)
+    }
+}
+
+/// Its content's natural height at the offered width, at most `cap`; the content is then
+/// offered exactly that, so a `ViewThatFits` inside shows the text when it fits and scrolls
+/// when it does not. Never grows into room it does not need.
+struct CappedHeight: Layout {
+    let cap: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        guard let child = subviews.first else { return .zero }
+        let natural: CGSize = child.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil))
+        return CGSize(width: proposal.width ?? natural.width, height: min(natural.height, cap))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        subviews.first?.place(at: bounds.origin, anchor: .topLeading,
+                              proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
     }
 }
 
