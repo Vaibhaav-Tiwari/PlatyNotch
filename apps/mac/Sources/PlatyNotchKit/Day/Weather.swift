@@ -28,9 +28,12 @@ public struct WeatherNow: Equatable, Sendable {
     public let hourly: [HourlyPrecip]
     /// The place's offset from UTC (the forecast asks for `timezone=auto`).
     public let utcOffsetSeconds: Int
+    /// Today's high and low (Celsius), when the forecast had them.
+    public let high: Double?
+    public let low: Double?
 
     public init(temperatureC: Double, code: Int, isDay: Bool, time: Date, hourly: [HourlyPrecip],
-                utcOffsetSeconds: Int = 0, nextRain: Date? = nil) {
+                utcOffsetSeconds: Int = 0, nextRain: Date? = nil, high: Double? = nil, low: Double? = nil) {
         self.temperatureC = temperatureC
         self.code = code
         self.isDay = isDay
@@ -38,6 +41,8 @@ public struct WeatherNow: Equatable, Sendable {
         self.hourly = hourly
         self.utcOffsetSeconds = utcOffsetSeconds
         self.nextRain = nextRain ?? Self.nextRain(in: hourly, after: time)
+        self.high = high
+        self.low = low
     }
 
     /// The first hour that has not ended by `after` with `rainThreshold` or more.
@@ -99,9 +104,14 @@ public enum WeatherDecoder {
             let time: [String]
             let precipitation_probability: [Double?]?
         }
+        struct Daily: Decodable {
+            let temperature_2m_max: [Double?]?
+            let temperature_2m_min: [Double?]?
+        }
         let utc_offset_seconds: Int?
         let current: Current
         let hourly: Hourly?
+        let daily: Daily?
     }
 
     private struct Places: Decodable {
@@ -135,8 +145,10 @@ public enum WeatherDecoder {
                 hourly.append(HourlyPrecip(time: date, probability: probs[i]))
             }
         }
+        let high = f.daily?.temperature_2m_max?.first ?? nil
+        let low = f.daily?.temperature_2m_min?.first ?? nil
         return WeatherNow(temperatureC: f.current.temperature_2m, code: f.current.weather_code, isDay: f.current.is_day != 0,
-                          time: now, hourly: hourly, utcOffsetSeconds: offset)
+                          time: now, hourly: hourly, utcOffsetSeconds: offset, high: high, low: low)
     }
 
     /// The geocoding response of `OpenMeteo.geocodingURL`: no `results` means nothing found.
@@ -182,6 +194,8 @@ public enum OpenMeteo {
             URLQueryItem(name: "current", value: "temperature_2m,weather_code,is_day"),
             URLQueryItem(name: "hourly", value: "precipitation_probability"),
             URLQueryItem(name: "forecast_hours", value: "12"),
+            URLQueryItem(name: "daily", value: "temperature_2m_max,temperature_2m_min"),
+            URLQueryItem(name: "forecast_days", value: "1"),
             URLQueryItem(name: "timezone", value: "auto"),
         ]
         return c.url!
@@ -266,6 +280,65 @@ public enum WeatherFormat {
         if s < 86_400 { return "\(Int(s / 3600)) h ago" }
         let d = Int(s / 86_400)
         return d == 1 ? "1 day ago" : "\(d) days ago"
+    }
+}
+
+/// The sky's words (Island spec 3.2): "Sunny · Bengaluru", then one useful line.
+public enum WeatherLine {
+    /// The condition (clear by day reads "Sunny") and the place, when there is one.
+    public static func condition(_ w: WeatherNow, place: String?) -> String {
+        let text: String = switch (w.code, w.isDay) {
+        case (0, true): "Sunny"
+        case (1, true): "Mostly sunny"
+        case (1, false): "Mostly clear"
+        default: WeatherCode.describe(w.code, isDay: w.isDay).text
+        }
+        guard let place = place?.trimmingCharacters(in: .whitespacesAndNewlines), !place.isEmpty else { return text }
+        return "\(text) · \(place)"
+    }
+
+    /// Raining now: "Umbrella till 11 PM" (the end of the current run of rainy hours);
+    /// rain later in the forecast: "Rain from 5 PM"; else "H 27° · L 18°". Data older than
+    /// `WeatherRefresh.staleAfter` appends its age. Nil when there is nothing to say.
+    public static func detail(_ w: WeatherNow, unit: TemperatureUnit, fetchedAt: Date?, now: Date,
+                              calendar: Calendar, locale: Locale) -> String? {
+        var line: String?
+        let condition = WeatherCondition.of(code: w.code)
+        let hours = w.hourly.sorted { $0.time < $1.time }.filter { $0.time.addingTimeInterval(3600) > now }
+        func rainy(_ h: HourlyPrecip) -> Bool { (h.probability ?? 0) >= WeatherNow.rainThreshold }
+        if condition == .rain || condition == .thunder, let first = hours.first, rainy(first) {
+            var last = first
+            for h in hours.dropFirst() {
+                guard rainy(h), h.time.timeIntervalSince(last.time) <= 3600 else { break }
+                last = h
+            }
+            line = "Umbrella till " + hour(last.time.addingTimeInterval(3600), calendar: calendar, locale: locale)
+        } else if let next = hours.first(where: rainy) {
+            line = "Rain from " + hour(max(next.time, now), calendar: calendar, locale: locale)
+        } else if let high = w.high, let low = w.low {
+            line = "H \(WeatherFormat.temperature(high, unit: unit)) · L \(WeatherFormat.temperature(low, unit: unit))"
+        }
+        if let fetchedAt, WeatherRefresh.isStale(fetchedAt: fetchedAt, now: now) {
+            let age = WeatherFormat.age(since: fetchedAt, now: now)
+            return line.map { "\($0) · \(age)" } ?? age
+        }
+        return line
+    }
+
+    /// "11 PM" on the hour, else "2:30 PM" (the locale's clock, plain spaces).
+    public static func hour(_ d: Date, calendar: Calendar, locale: Locale) -> String {
+        let text: String
+        if calendar.component(.minute, from: d) == 0 {
+            let f = DateFormatter()
+            f.calendar = calendar
+            f.timeZone = calendar.timeZone
+            f.locale = locale
+            f.setLocalizedDateFormatFromTemplate("j")
+            text = f.string(from: d)
+        } else {
+            text = QuickAddFormat.time(d, calendar: calendar, locale: locale)
+        }
+        return text.replacingOccurrences(of: "\u{202F}", with: " ").replacingOccurrences(of: "\u{00A0}", with: " ")
     }
 }
 

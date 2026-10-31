@@ -54,4 +54,16 @@ final class MeetingLinksTests: XCTestCase {
         XCTAssertTrue(MeetingLinks.isJoinURL(URL(string: "msteams:/l/meetup-join/19%3ameeting_x")!))
         XCTAssertFalse(MeetingLinks.isJoinURL(URL(string: "javascript:alert(1)")!))
     }
+
+    func testProviderNames() {
+        func name(_ s: String) -> String? { MeetingLinks.providerName(URL(string: s)!) }
+        XCTAssertEqual(name("https://meet.google.com/abc-defg-hij"), "Google Meet")
+        XCTAssertEqual(name("https://us02web.zoom.us/j/1"), "Zoom")
+        XCTAssertEqual(name("https://teams.microsoft.com/l/meetup-join/19%3ameeting_x"), "Microsoft Teams")
+        XCTAssertEqual(name("https://teams.live.com/meet/1"), "Microsoft Teams")
+        XCTAssertEqual(name("https://acme.webex.com/meet/jane"), "Webex")
+        XCTAssertEqual(name("https://facetime.apple.com/join#v=1"), "FaceTime")
+        XCTAssertEqual(name("zoommtg://zoom.us/join?confno=1"), "Zoom")
+        XCTAssertNil(name("https://example.com/meet/abc"))
+    }
 }

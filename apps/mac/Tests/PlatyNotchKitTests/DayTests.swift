@@ -640,4 +640,82 @@ final class DayTests: XCTestCase {
         XCTAssertEqual(WeatherCode.describe(95, isDay: true).text, "Thunderstorm")
         XCTAssertEqual(WeatherCode.describe(1234, isDay: true).text, "Unknown")
     }
+
+    // MARK: - Island: high/low and the sky's useful line
+
+    private func fixture(_ name: String) throws -> Data {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("Fixtures/\(name)")
+        return try Data(contentsOf: url)
+    }
+
+    func testForecastURLAsksForDailyHighLow() {
+        let q = OpenMeteo.forecastURL(latitude: 12.97, longitude: 77.59).query ?? ""
+        XCTAssertTrue(q.contains("daily=temperature_2m_max,temperature_2m_min"), q)
+        XCTAssertTrue(q.contains("forecast_days=1"), q)
+        XCTAssertTrue(q.contains("current=temperature_2m,weather_code,is_day"), q)
+    }
+
+    func testDecodeHighLow() throws {
+        let w = try WeatherDecoder.decode(try fixture("forecast-daily.json"))
+        XCTAssertEqual(try XCTUnwrap(w.high), 27.4, accuracy: 1e-9)
+        XCTAssertEqual(try XCTUnwrap(w.low), 18.1, accuracy: 1e-9)
+        XCTAssertEqual(w.code, 0)
+    }
+
+    func testDecodeWithoutDailyStillWorks() throws {
+        let w = try WeatherDecoder.decode(try fixture("open-meteo.json"))
+        XCTAssertNil(w.high)
+        XCTAssertNil(w.low)
+    }
+
+    /// Bengaluru-free: a fixed zone and en_US, so "11 PM" reads the same everywhere.
+    private var lineCal: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "Asia/Kolkata")!
+        return c
+    }
+    private let enUS = Locale(identifier: "en_US")
+
+    private func reading(code: Int, isDay: Bool = true, at h: Int, _ mi: Int = 0, hourly: [(Int, Double)] = [],
+                         high: Double? = nil, low: Double? = nil) -> WeatherNow {
+        let now = date(2026, 10, 31, h, mi, in: lineCal)
+        let hours = hourly.map { HourlyPrecip(time: date(2026, 10, 31, $0.0, 0, in: lineCal), probability: $0.1) }
+        return WeatherNow(temperatureC: 22, code: code, isDay: isDay, time: now, hourly: hours, high: high, low: low)
+    }
+
+    private func detail(_ w: WeatherNow, fetchedAt: Date? = nil) -> String? {
+        WeatherLine.detail(w, unit: .celsius, fetchedAt: fetchedAt ?? w.time, now: w.time, calendar: lineCal, locale: enUS)
+    }
+
+    func testConditionSaysSunnyByDay() {
+        XCTAssertEqual(WeatherLine.condition(reading(code: 0, at: 14), place: "Bengaluru"), "Sunny · Bengaluru")
+        XCTAssertEqual(WeatherLine.condition(reading(code: 0, isDay: false, at: 21), place: "Bengaluru"), "Clear · Bengaluru")
+        XCTAssertEqual(WeatherLine.condition(reading(code: 61, at: 14), place: nil), "Rain")
+        XCTAssertEqual(WeatherLine.condition(reading(code: 61, at: 14), place: "  "), "Rain", "a blank place is no place")
+    }
+
+    func testUmbrellaWhileRaining() {
+        let w = reading(code: 61, isDay: false, at: 21, 10, hourly: [(21, 80), (22, 60), (23, 20)], high: 27, low: 18)
+        XCTAssertEqual(detail(w), "Umbrella till 11 PM")
+    }
+
+    func testRainLater() {
+        let w = reading(code: 1, at: 14, hourly: [(14, 10), (15, 20), (16, 30), (17, 70)], high: 27, low: 18)
+        XCTAssertEqual(detail(w), "Rain from 5 PM")
+    }
+
+    func testHighLowOtherwise() {
+        let w = reading(code: 0, at: 14, hourly: [(14, 0), (15, 10)], high: 27, low: 18)
+        XCTAssertEqual(detail(w), "H 27° · L 18°")
+    }
+
+    func testNoHighLowNoRainIsNil() {
+        XCTAssertNil(detail(reading(code: 0, at: 14, hourly: [(14, 0)])))
+    }
+
+    func testStaleAppendsAge() {
+        let w = reading(code: 0, at: 14, high: 27, low: 18)
+        XCTAssertEqual(detail(w, fetchedAt: w.time.addingTimeInterval(-50 * 60)), "H 27° · L 18° · 50 min ago")
+        XCTAssertEqual(detail(w, fetchedAt: w.time.addingTimeInterval(-20 * 60)), "H 27° · L 18°", "fresh data shows no age")
+    }
 }

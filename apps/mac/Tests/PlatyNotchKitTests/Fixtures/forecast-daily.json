@@ -1,0 +1,13 @@
+{
+  "latitude": 12.97,
+  "longitude": 77.59,
+  "utc_offset_seconds": 19800,
+  "timezone": "Asia/Kolkata",
+  "current": { "time": "2026-10-31T14:45", "interval": 900, "temperature_2m": 22.2, "weather_code": 0, "is_day": 1 },
+  "hourly": {
+    "time": ["2026-10-31T14:00", "2026-10-31T15:00", "2026-10-31T16:00"],
+    "precipitation_probability": [0, 5, 10]
+  },
+  "daily_units": { "time": "iso8601", "temperature_2m_max": "°C", "temperature_2m_min": "°C" },
+  "daily": { "time": ["2026-10-31"], "temperature_2m_max": [27.4], "temperature_2m_min": [18.1] }
+}
