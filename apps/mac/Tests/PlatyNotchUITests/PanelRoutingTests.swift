@@ -81,11 +81,12 @@ final class PanelRoutingTests: DefaultsTestCase {
         XCTAssertEqual(p.destinations, [.home, .agents], "plugin tabs never add a destination")
     }
 
-    /// Focus, Memory and Games (with Platy Chase beside it) and plugin tabs all open inside
-    /// Home, in catalog order.
+    /// Timer (Focus is its tab), Memory and Games (with Platy Chase beside it) and plugin tabs
+    /// all open inside Home, in catalog order.
     func testEveryOldTabHasAHome() {
         let ids = panel(rig(), tabs: [pluginTab]).panelTools.map(\.id)
-        for id in [FocusWidget.widgetID, PanelTools.memory, GamesWidget.widgetID, PanelTools.chase,
+        XCTAssertFalse(ids.contains(FocusWidget.widgetID), "no second Focus view")
+        for id in [PanelTools.timer, PanelTools.memory, GamesWidget.widgetID, PanelTools.chase,
                    PanelTools.plugin("fake.tab")] {
             XCTAssertTrue(ids.contains(id), id)
         }

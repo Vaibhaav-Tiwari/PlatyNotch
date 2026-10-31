@@ -46,13 +46,20 @@ final class DockViewTests: DefaultsTestCase {
     }
 
     func testSearchSlotOpensSearch() {
-        XCTAssertEqual(ExpandedPanel.route(for: .core(.search)).tool, PanelTools.search)
+        // The real path: the dock's Search slot through `ExpandedPanel.openDock`.
         let r = HomeRenders.builtIns(meeting: false)
-        let c = NotchController(store: r.store, client: r.client, plugins: [], today: r.today, widgets: r.registry)
-        c.debugHandle(.layout(HomeRenders.layout))
-        c.openSearch()
-        XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .home, tool: PanelTools.search))
-        XCTAssertTrue(c.panelModel.commandFocused, "the field takes focus")
+        var route = PanelRoute(destination: .home)
+        var focused = 0
+        let p = ExpandedPanel(store: r.store, responder: ApprovalResponder(client: r.client), arming: ApprovalArming(),
+                              today: r.today, widgets: r.registry, memory: MemoryServices(client: r.client),
+                              extraTabs: [], route: Binding(get: { route }, set: { route = $0 }),
+                              onCollapse: {}, onSearch: { focused += 1 }, onDecide: { _, _ in }, onOpenTerminal: { _ in })
+        p.homeView.onOpen(.core(.search))
+        XCTAssertEqual(route, PanelRoute(destination: .home, tool: PanelTools.search))
+        XCTAssertEqual(focused, 1, "the field takes focus and the keyboard")
+        p.homeView.onOpen(.core(.remind))
+        XCTAssertEqual(route.tool, RemindersWidget.widgetID)
+        XCTAssertEqual(focused, 1)
         r.registry.stopAll()
     }
 
@@ -67,7 +74,7 @@ final class DockViewTests: DefaultsTestCase {
         XCTAssertEqual(tool?.title, "Remind")
         XCTAssertEqual(tool?.offWidgetID, RemindersWidget.widgetID)
         XCTAssertEqual(ToolOffView.title(for: "Remind"), "Turn on Remind")
-        ToolCatalog.turnOn(tool!, widgets: r.registry)
+        tool?.turnOn?()   // what the "Turn on Remind" button runs
         XCTAssertTrue(r.registry.isEnabled(RemindersWidget.widgetID))
         r.registry.stopAll()
     }

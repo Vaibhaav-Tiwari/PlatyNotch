@@ -279,7 +279,7 @@ final class CommandLineTests: DefaultsTestCase {
         XCTAssertEqual(spy.routes, [PanelRoute(destination: .home, tool: PanelTools.chase)])
         model.commandText = "play snake"
         l.submit()
-        XCTAssertEqual(spy.routes.last, PanelRoute(destination: .home, tool: GamesWidget.widgetID))
+        XCTAssertEqual(spy.routes.last, PanelRoute(destination: .home, tool: PanelTools.gamesPlay), "the board, not the list")
         XCTAssertEqual(spy.games, [.chase, .snake])
         model.commandText = "play"
         l.submit()

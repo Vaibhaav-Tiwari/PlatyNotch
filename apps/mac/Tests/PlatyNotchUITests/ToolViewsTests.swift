@@ -12,40 +12,10 @@ final class ToolViewsTests: DefaultsTestCase {
 
     // MARK: - Note
 
-    func testNoteReturnAppendsAndClears() async {
-        let notes = NotesWidget.inert()
-        var appended: [String] = []
-        let pad = NotePad(notes: notes, append: { appended.append($0); return nil })
-        pad.text = "buy milk"
-        XCTAssertTrue(pad.submit())
-        XCTAssertEqual(appended, ["buy milk"])
-        XCTAssertEqual(pad.text, "", "cleared")
-        XCTAssertTrue(pad.keepsFocus, "the pad stays focused for the next note")
-        pad.text = "   "
-        XCTAssertFalse(pad.submit(), "nothing to add")
-        XCTAssertEqual(appended.count, 1)
-    }
-
-    /// An approval arrives while the pad has "abc": Return appends (never answers it), and
-    /// ⌘↩ / ⌘⌫ belong to the focused field, not to the approval's buttons.
-    func testNotePadNeverAnswersApprovals() throws {
-        var appended: [String] = []
-        let pad = NotePad(notes: NotesWidget.inert(), append: { appended.append($0); return nil })
-        pad.text = "abc"
-        XCTAssertTrue(pad.submit())
-        XCTAssertEqual(appended, ["abc"])
-        func key(_ code: UInt16, _ c: String) throws -> NSEvent {
-            try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0,
-                                           windowNumber: 0, context: nil, characters: c, charactersIgnoringModifiers: c,
-                                           isARepeat: false, keyCode: code))
-        }
-        XCTAssertTrue(NotchPanel.keyBelongsToText(try key(36, "\r"), textFocused: true))
-        XCTAssertTrue(NotchPanel.keyBelongsToText(try key(51, "\u{8}"), textFocused: true))
-    }
-
     func testNoteEmptyState() {
         XCTAssertTrue(NoteTool.texts(entries: []).contains("Nothing noted today. Type above and press Return."))
         XCTAssertEqual(NoteTool.texts(entries: ["c", "b"]), ["c", "b"])
+        XCTAssertTrue(NoteTool.texts(entries: [], writeFailed: true).contains("Retry"), "a failed write offers Retry")
     }
 
     // MARK: - Remind
@@ -108,11 +78,9 @@ final class ToolViewsTests: DefaultsTestCase {
 
     func testShelfEmptyIsADropBox() {
         XCTAssertEqual(ShelfTool.texts([]), ["Drop files here to keep them"])
-        XCTAssertTrue(ShelfTool.showsPlatyWhenEmpty)
     }
 
     func testShelfToolHasNoGrid() throws {
-        XCTAssertFalse(ShelfTool.usesGrid)
         let source = try String(contentsOf: DesignLintTests.uiSources.appendingPathComponent("Tools/ShelfTool.swift"),
                                 encoding: .utf8)
         XCTAssertFalse(source.contains("LazyVGrid"))
@@ -143,12 +111,14 @@ final class ToolViewsTests: DefaultsTestCase {
         XCTAssertFalse(rows.first?.detail.contains("best") ?? true, "no best at 0")
     }
 
+    /// A row picks the game and opens its board full-panel.
     func testGameRowOpensGame() {
-        let model = GamesToolModel()
-        XCTAssertNil(model.picked)
-        model.open(.snake)
-        XCTAssertEqual(model.picked, .snake)
-        model.back()
-        XCTAssertNil(model.picked)
+        let games = GamesWidget(defaults: nil)
+        var routes: [PanelRoute] = []
+        GamesTool.play(.snake, host: games.host, openRoute: { routes.append($0) })
+        XCTAssertEqual(games.host.session.kind, .snake)
+        XCTAssertEqual(routes, [PanelRoute(destination: .home, tool: PanelTools.gamesPlay)])
+        GamesTool.play(.chase, host: games.host, openRoute: { routes.append($0) })
+        XCTAssertEqual(routes.last, PanelRoute(destination: .home, tool: PanelTools.chase))
     }
 }

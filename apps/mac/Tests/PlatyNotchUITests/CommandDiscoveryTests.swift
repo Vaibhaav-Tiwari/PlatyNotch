@@ -227,13 +227,17 @@ final class CommandDiscoveryTests: DefaultsTestCase {
         XCTAssertFalse(model.commandActive, "done: Home comes back")
         model.commandActive = true
         model.commandSelection = 0
-        l.submit()   // Timer fills the field, ready for its argument
-        XCTAssertEqual(model.commandText, "timer ")
+        l.submit()   // Island: Timer opens the Timer tool
+        XCTAssertEqual(opened, ["timer"])
+        model.commandActive = true
+        model.commandSelection = 2   // Remind fills the field, ready for its argument
+        l.submit()
+        XCTAssertEqual(model.commandText, "remind ")
         XCTAssertTrue(model.commandActive, "still typing")
         model.commandText = ""
         model.commandSelection = 4   // Clipboard
         l.submit()
-        XCTAssertEqual(opened, ["clipboard"])
+        XCTAssertEqual(opened, ["timer", "clipboard"])
     }
 
     /// Review I1: no Do row under a parsed command, so nothing can replace typed arguments.
@@ -334,7 +338,7 @@ final class CommandHotKeyControllerTests: XCTestCase {
     }
 }
 
-private final class ActionProbe: NSObject {
+final class ActionProbe: NSObject {
     let action: () -> Void
     init(_ action: @escaping () -> Void) { self.action = action }
     @objc func fire() { action() }
