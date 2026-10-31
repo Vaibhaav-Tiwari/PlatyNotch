@@ -46,6 +46,7 @@ final class ModelsTests: XCTestCase {
         let s = try JSONCoding.decoder.decode(Session.self, from: fixture("session"))
         XCTAssertEqual(s.state, .waitingInput)
         XCTAssertEqual(s.subagents, 1)
+        XCTAssertEqual(s.hostBundleID, "com.apple.Terminal")
         XCTAssertEqual(s.startedAt, Date(timeIntervalSince1970: 1_792_749_600))
         let snap = try JSONCoding.decoder.decode(Snapshot.self, from: fixture("snapshot"))
         XCTAssertEqual(snap.usage.claude?.extra?["seven_day_opus"]?.usedPercent, 3.5)

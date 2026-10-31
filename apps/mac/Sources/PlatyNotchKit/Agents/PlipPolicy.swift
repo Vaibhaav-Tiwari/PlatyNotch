@@ -25,6 +25,7 @@ public enum PlipPolicy {
     public static func shouldPlay(session: Session?, frontmostBundleID: String?,
                                   isRunning: (String) -> Bool) -> Bool {
         guard let front = frontmostBundleID else { return true }
+        if let host = session?.hostBundleID, !host.isEmpty { return front != host }
         let target = TerminalApps.target(termProgram: session?.termProgram, isRunning: isRunning)
         switch target {
         case .appleTerminal: return front != TerminalApps.appleTerminalID

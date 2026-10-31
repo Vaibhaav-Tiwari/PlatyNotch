@@ -2,10 +2,17 @@ import PlatyNotchKit
 import XCTest
 
 final class PlipPolicyTests: DefaultsTestCase {
-    private func session(term: String?) -> Session {
+    private func session(term: String?, host: String? = nil) -> Session {
         let t = Date(timeIntervalSince1970: 0)
         return Session(key: "s", agent: "claude-code", agentName: "Claude Code", sessionID: "s",
-                       state: .waitingInput, termProgram: term, startedAt: t, updatedAt: t)
+                       state: .waitingInput, termProgram: term, hostBundleID: host, startedAt: t, updatedAt: t)
+    }
+
+    func testHostAppFrontmostMutes() {
+        let claude = "com.anthropic.claudefordesktop"
+        let s = session(term: nil, host: claude)
+        XCTAssertFalse(PlipPolicy.shouldPlay(session: s, frontmostBundleID: claude, isRunning: none))
+        XCTAssertTrue(PlipPolicy.shouldPlay(session: s, frontmostBundleID: "com.apple.finder", isRunning: none))
     }
 
     private let none: (String) -> Bool = { _ in false }

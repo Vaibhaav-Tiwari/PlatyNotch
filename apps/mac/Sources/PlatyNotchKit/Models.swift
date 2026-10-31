@@ -88,12 +88,14 @@ public struct HookEvent: Codable, Sendable, Equatable {
     public var tty: String?
     public var cwd: String?
     public var termProgram: String?
+    public var hostBundleID: String?
     public var wantDecision: Bool?
     public var at: Date
 
     enum CodingKeys: String, CodingKey {
         case agent, event, payload, pid, ppid, tty, cwd
         case termProgram = "term_program"
+        case hostBundleID = "host_bundle_id"
         case wantDecision = "want_decision"
         case at
     }
@@ -134,6 +136,7 @@ public struct Session: Codable, Sendable, Equatable, Identifiable {
     public var pid: Int?
     public var tty: String?
     public var termProgram: String?
+    public var hostBundleID: String?
     public var subagents: Int?
     public var startedAt: Date
     public var updatedAt: Date
@@ -143,11 +146,11 @@ public struct Session: Codable, Sendable, Equatable, Identifiable {
     public init(key: String, agent: String, agentName: String, sessionID: String, cwd: String? = nil,
                 project: String? = nil, state: SessionState, title: String? = nil, tool: String? = nil,
                 message: String? = nil, pid: Int? = nil, tty: String? = nil, termProgram: String? = nil,
-                subagents: Int? = nil, startedAt: Date, updatedAt: Date) {
+                hostBundleID: String? = nil, subagents: Int? = nil, startedAt: Date, updatedAt: Date) {
         self.key = key; self.agent = agent; self.agentName = agentName; self.sessionID = sessionID
         self.cwd = cwd; self.project = project; self.state = state; self.title = title; self.tool = tool
         self.message = message; self.pid = pid; self.tty = tty; self.termProgram = termProgram
-        self.subagents = subagents; self.startedAt = startedAt; self.updatedAt = updatedAt
+        self.hostBundleID = hostBundleID; self.subagents = subagents; self.startedAt = startedAt; self.updatedAt = updatedAt
     }
 
     enum CodingKeys: String, CodingKey {
@@ -156,6 +159,7 @@ public struct Session: Codable, Sendable, Equatable, Identifiable {
         case sessionID = "session_id"
         case cwd, project, state, title, tool, message, pid, tty
         case termProgram = "term_program"
+        case hostBundleID = "host_bundle_id"
         case subagents
         case startedAt = "started_at"
         case updatedAt = "updated_at"
