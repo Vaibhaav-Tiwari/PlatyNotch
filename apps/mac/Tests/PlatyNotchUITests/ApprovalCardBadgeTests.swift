@@ -16,11 +16,11 @@ final class ApprovalCardBadgeTests: XCTestCase {
                         createdAt: now, expiresAt: now.addingTimeInterval(300))
     }
 
-    /// The badge never sets the height: the row is as tall as its small "Open" button plus
-    /// 4 pt above and below, and the card's height doesn't depend on which icon is shown.
-    /// The button is measured on this macOS (it is 4 pt shorter on macOS 15 than on 26).
+    /// The badge never sets the height: the row is as tall as its "Open" button plus 4 pt
+    /// above and below, and the card's height doesn't depend on which icon is shown. The
+    /// button is measured on this macOS.
     func testBadgeKeepsTheCardAndRowHeights() {
-        let button = Button("Open", action: {}).controlSize(.small).buttonStyle(.bordered)
+        let button = PanelButtonLabel(title: "Open")
         let buttonHeight = NSHostingView(rootView: button).fittingSize.height
         XCTAssertGreaterThanOrEqual(buttonHeight, 16, "the 16 pt badge fits inside the button's height")
         let row = ApprovalRow(approval: approval(), more: 2, onOpen: {})

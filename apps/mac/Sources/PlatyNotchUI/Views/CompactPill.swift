@@ -118,7 +118,6 @@ struct LiveEarView: View {
     let content: PillContent
     let connection: ConnectionState
     let earWidth: CGFloat
-    @Environment(\.colorScheme) private var scheme
     @Environment(\.morph) private var morph
 
     var body: some View {
@@ -146,7 +145,7 @@ struct LiveEarView: View {
                 }
                 ForEach(content.indicators.prefix(fit.indicatorsShown), id: \.id) { item in
                     Circle()
-                        .fill(Theme.tint(item.tint, scheme: scheme))
+                        .fill(Theme.tint(item.tint))
                         .frame(width: LiveEarFit.indicator, height: LiveEarFit.indicator)
                 }
             }
@@ -188,7 +187,6 @@ private struct OverflowLabel: View {
 struct LiveGlyphView: View {
     let glyph: LiveGlyph
     let tint: LiveTint
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         Group {
@@ -196,7 +194,7 @@ struct LiveGlyphView: View {
             case .symbol(let name):
                 Image(systemName: name).font(DS.font(TypeScale.caption).weight(.semibold))
             case .musicBars:
-                MusicBars(color: Theme.tint(tint, scheme: scheme))
+                MusicBars(color: Theme.tint(tint))
             case .agentDots(let states):
                 HStack(spacing: 2) {
                     ForEach(Array(states.prefix(3).enumerated()), id: \.offset) { _, s in
@@ -215,7 +213,7 @@ struct LiveGlyphView: View {
                 Text(verbatim: s).font(DS.font(TypeScale.caption, design: .rounded).weight(.semibold))
             }
         }
-        .foregroundStyle(Theme.tint(tint, scheme: scheme))
+        .foregroundStyle(Theme.tint(tint))
         .accessibilityHidden(true)
     }
 }

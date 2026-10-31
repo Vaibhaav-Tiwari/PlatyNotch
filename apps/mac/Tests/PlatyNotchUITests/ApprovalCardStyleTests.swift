@@ -37,9 +37,12 @@ final class ApprovalCardStyleTests: XCTestCase {
         XCTAssertGreaterThan(height("git status &&\nmake test"), height("npm test"), "two lines are both shown")
     }
 
-    /// The card has no border: #111 behind it, radius 12, 12 pt padding.
+    /// The card has no border: #111 behind it, radius 12, 12 pt at the sides and 10 above and
+    /// below; the command 6 × 9 (so one card with a full diff fits the 240 pt region).
     func testCardTokens() {
         XCTAssertEqual(ApprovalCard.padding, 12)
+        XCTAssertEqual(ApprovalCard.verticalPadding, 10)
+        XCTAssertEqual(SummaryView.insets, EdgeInsets(top: 6, leading: 9, bottom: 6, trailing: 9))
         XCTAssertEqual(PanelPalette.approvalCard, RGB(hex: 0x111111))
         XCTAssertEqual(Radius.card, 12)
     }

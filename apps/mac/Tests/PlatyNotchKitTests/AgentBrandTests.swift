@@ -27,6 +27,7 @@ final class AgentBrandTests: DefaultsTestCase {
     /// Never initials: an agent without an installed app shows its name as text.
     func testNoMonogram() {
         XCTAssertEqual(AgentBrand(agent: "aider", agentName: "Aider").displayName, "Aider")
+        XCTAssertEqual(AgentBrand(agent: "", agentName: "").displayName, "Agent", "never blank")
         XCTAssertEqual(AgentBrand(agent: "claude-code", agentName: "Claude Code").displayName, "Claude")
     }
 

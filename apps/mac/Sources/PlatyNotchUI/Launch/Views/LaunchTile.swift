@@ -120,7 +120,7 @@ private struct SiteButton: View {
     }
 }
 
-/// A favicon, or the site's first letter on a tinted square.
+/// A favicon, or a plain globe symbol (never a letter tile). `letter` is kept for callers.
 struct SiteIcon: View {
     let image: NSImage?
     let letter: String
@@ -136,11 +136,10 @@ struct SiteIcon: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .accessibilityHidden(true)
         } else {
-            Text(verbatim: letter)
-                .font(.system(size: max(size * 0.5, TypeScale.minimum), weight: .bold, design: .rounded))
-                .foregroundStyle(DS.secondary)   // on the plain fill: no tinted square
+            Image(systemName: "globe")
+                .font(.system(size: IconSize.symbol))
+                .foregroundStyle(DS.secondary)
                 .frame(width: size, height: size)
-                .background(DS.fill, in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
                 .accessibilityHidden(true)
         }
     }

@@ -44,7 +44,6 @@ struct ToolHeader: View {
     let onBack: () -> Void
     var trailing: AnyView?
     @State private var hovering = false
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         HStack(spacing: Space.xs) {
@@ -72,7 +71,7 @@ struct ToolHeader: View {
         }
     }
 
-    private var wash: Color { (scheme == .light ? Color.black : Color.white).opacity(0.08) }
+    private var wash: Color { DS.ink(0.08) }
 }
 
 /// A tool's content in one scroll view that never swaps it out (a swap would reset its
@@ -257,7 +256,6 @@ struct ToolPrimaryButtonStyle: ButtonStyle {
     private struct PrimaryCapsule<Label: View>: View {
         let label: Label
         let pressed: Bool
-        @Environment(\.colorScheme) private var scheme
 
         var body: some View {
             label
@@ -328,21 +326,13 @@ struct ScrollEdges: Equatable {
     var known = false
 }
 
-/// A control card's one edge treatment: a subtle fill with no keyline on the dark surface; a
-/// near-white card with a very soft shadow on the light one. A little brighter under the
-/// pointer.
+/// A control card's one edge treatment: a subtle fill with no keyline on the black panel,
+/// a little brighter under the pointer.
 struct ToolCardFill: View {
     let hovering: Bool
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-        if scheme == .light {
-            shape
-                .fill(Color.white.opacity(hovering ? 1 : 0.86))
-                .shadow(color: .black.opacity(0.07), radius: 3, x: 0, y: 1)
-        } else {
-            shape.fill(Color.white.opacity(hovering ? 0.085 : 0.055))
-        }
+        RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+            .fill(DS.ink(hovering ? 0.085 : 0.055))
     }
 }

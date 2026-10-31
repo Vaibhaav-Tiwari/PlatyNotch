@@ -31,7 +31,8 @@ public struct AgentBrand: Hashable, Sendable {
         default:
             key = id
             let name: String = agentName.trimmingCharacters(in: .whitespacesAndNewlines)
-            displayName = name.isEmpty ? agent : name
+            let id: String = agent.trimmingCharacters(in: .whitespacesAndNewlines)
+            displayName = !name.isEmpty ? name : id.isEmpty ? "Agent" : id
             appBundleIDs = []
         }
     }

@@ -34,8 +34,8 @@ enum Theme {
     /// Line height of `mono`, used to size the diff box.
     static let monoLineHeight: CGFloat = 14
 
-    /// `color(_:)` as an NSColor (layer-backed dots): the state palette (`StateTone`),
-    /// resolved against the view's appearance. Exited sessions are a faint idle.
+    /// `color(_:)` as an NSColor (layer-backed dots): the state palette (`StateTone`); exited
+    /// sessions draw as idle.
     static func nsColor(_ tone: AgentTone) -> NSColor {
         DS.dynamicNSColor(StateTone(tone))
     }
@@ -53,11 +53,6 @@ enum Theme {
         case .warning: DS.color(.needsYou)
         case .critical: DS.color(.error)
         }
-    }
-
-    /// `tint(_:)` (the scheme is always dark; kept for the pill's call sites).
-    static func tint(_ tint: LiveTint, scheme: ColorScheme) -> Color {
-        Self.tint(tint)
     }
 
     /// Usage in the state palette: working green, needs-you amber, error red.

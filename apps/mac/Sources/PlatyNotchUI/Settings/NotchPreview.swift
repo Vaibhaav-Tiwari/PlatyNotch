@@ -133,7 +133,7 @@ struct NotchPreview: View {
     }
 }
 
-/// A calm desktop behind the preview: pond blues with a soft light at the top.
+/// A calm desktop behind the preview: deep blues with a soft light at the top.
 private struct Wallpaper: View {
     var body: some View {
         ZStack(alignment: .top) {

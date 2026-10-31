@@ -145,7 +145,7 @@ struct ApprovalCard: View {
                 if let session, let openTitle = TerminalFocus.title(for: session) {
                     Button(openTitle) { onOpenTerminal(session) }
                         .buttonStyle(.panelLink)
-                        .font(.system(size: 11))
+                        .font(DS.font(TypeScale.caption))
                         .accessibilityHint("Shows the app running this session")
                 }
                 // "Show changes" takes "More"'s place (both open the panel), so the
@@ -153,13 +153,13 @@ struct ApprovalCard: View {
                 if showChanges, let onExpand {
                     Button("Show changes", action: onExpand)
                         .buttonStyle(.panelLink)
-                        .font(.system(size: 11))
+                        .font(DS.font(TypeScale.caption))
                         .accessibilityLabel("Show changes")
                         .accessibilityHint("Opens the panel with this request's changes")
                 } else if let onExpand {
                     Button("More", action: onExpand)
                         .buttonStyle(.panelLink)
-                        .font(.system(size: 11))
+                        .font(DS.font(TypeScale.caption))
                         .accessibilityLabel("Show all approvals")
                 }
                 Spacer(minLength: 0)
@@ -277,7 +277,7 @@ struct ApprovalRow: View {
                     .accessibilityLabel("Contains hidden characters")
             }
             Text(verbatim: "\(visible.agentName) · \(visible.tool)")
-                .font(.system(size: 11, weight: .semibold))
+                .font(DS.font(TypeScale.caption).weight(.semibold))
                 .lineLimit(1)
                 .layoutPriority(1)
             Text(verbatim: ApprovalFormat.firstLine(approval.summary, lineCountSuffix: true))
@@ -287,11 +287,10 @@ struct ApprovalRow: View {
                 .truncationMode(.tail)
             Spacer(minLength: 4)
             if more > 0 {
-                Text("+\(more) more").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("+\(more) more").font(DS.font(TypeScale.caption)).foregroundStyle(DS.secondary)
             }
-            Button("Open", action: onOpen)
-                .controlSize(.small)
-                .buttonStyle(.bordered)
+            Button(action: onOpen) { PanelButtonLabel(title: "Open") }
+                .buttonStyle(PressableButtonStyle())
                 .accessibilityLabel("Open the panel to answer \(visible.agentName)'s \(visible.tool) request")
         }
         .padding(.horizontal, 8)
