@@ -247,32 +247,15 @@ final class PlipPlayerTests: DefaultsTestCase {
         XCTAssertEqual(PlipPlayer.url(for: PlipSettings.load(from: defaults())), CueSound.plip.url)
     }
 
-    /// A new best while an approval waits: no celebration.
-    func testNewBestDuringApprovalDoesNotCelebrate() throws {
-        let registry = WidgetRegistry(defaults: defaults())
-        let today = TodayServices(client: CoreClient(socketPath: "/nonexistent"))
-        let store = AppStore()
-        store.apply(.connected)
-        store.apply(try Envelope.make(.approvalAdded, approval("a", session: "s")))
-        BuiltInWidgets.register(in: registry, store: store, today: today, persist: false)
-        let games = try XCTUnwrap(registry.widget(GamesWidget.widgetID) as? GamesWidget)
-        games.onNewBest?(GameResult(kind: .snake, score: 77))
-        XCTAssertFalse(today.platy.celebrating)
-        today.platy.stop()
-    }
-
-    /// A focus session that ends while an approval waits: its sound, but no celebration.
-    func testFocusFinishedDuringApprovalDoesNotCelebrate() {
-        let platy = PlatyMoodModel()
+    /// A focus session's end plays its sound, and Platy stays as she is: no moment.
+    func testFocusFinishedPlaysItsSoundOnly() {
         var sounds = 0
-        let focus = FocusModel(defaults: defaults(), onFinish: Moments.focusFinished(platy: platy, approvals: { 1 },
-                                                                                      playSound: { sounds += 1 }))
+        let focus = FocusModel(defaults: defaults(), onFinish: { sounds += 1 })
         let start = Date()
         focus.start(minutes: 1, now: start)
+        XCTAssertEqual(sounds, 0)
         focus.reconcile(now: start.addingTimeInterval(61), announce: true)
         XCTAssertEqual(sounds, 1)
-        XCTAssertFalse(platy.celebrating)
-        platy.stop()
     }
 
     /// A chosen file that stopped working: Settings says why and the choice goes back to

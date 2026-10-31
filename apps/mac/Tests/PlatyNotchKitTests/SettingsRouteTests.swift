@@ -14,6 +14,14 @@ final class SettingsRouteTests: XCTestCase {
         XCTAssertEqual(SettingsTarget.resolve(""), SettingsTarget(section: "general"))
     }
 
+    func testNowSectionLandsOnHome() {
+        XCTAssertEqual(SettingsTarget.resolve("now"), SettingsTarget(section: "home"))
+        XCTAssertEqual(SettingsTarget.resolve("Now"), SettingsTarget(section: "home"))
+        XCTAssertEqual(SettingsTarget.resolve("now/x").detail, "x")
+        XCTAssertEqual(SettingsTarget.resolve("now/x").section, "home")
+        XCTAssertEqual(SettingsTarget.resolve("home"), SettingsTarget(section: "home"))
+    }
+
     func testWidgetDetail() {
         XCTAssertEqual(SettingsTarget.resolve("widgets/music"), SettingsTarget(section: "widgets", detail: "music"))
         XCTAssertEqual(SettingsTarget.resolve("widgets/fileActions"), SettingsTarget(section: "widgets", detail: "fileActions"),
@@ -34,12 +42,14 @@ final class SettingsRouteTests: XCTestCase {
 
     func testPagesInOrder() {
         XCTAssertEqual(SettingsPage.allCases.map(\.rawValue),
-                       ["general", "notch", "now", "notifications", "widgets", "agents", "memory", "privacy", "about"])
+                       ["general", "notch", "home", "notifications", "widgets", "agents", "memory", "privacy", "about"])
         XCTAssertEqual(SettingsPage.privacy.title, "Privacy & Permissions")
         for page in SettingsPage.allCases {
             XCTAssertFalse(page.title.isEmpty)
             XCTAssertFalse(page.systemImage.isEmpty)
             XCTAssertEqual(SettingsTarget.resolve(page.rawValue), SettingsTarget(section: page.rawValue))
         }
+        XCTAssertEqual(SettingsPage.home.title, "Home")
+        XCTAssertEqual(SettingsPage.home.systemImage, "house")
     }
 }

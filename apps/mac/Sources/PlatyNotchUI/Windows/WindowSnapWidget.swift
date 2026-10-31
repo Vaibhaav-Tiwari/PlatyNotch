@@ -192,7 +192,7 @@ final class WindowSnapWidget: NotchWidget {
 struct WindowSnapSettingsView: View {
     let widget: WindowSnapWidget
     @State private var probe = WindowProbe()
-    @Environment(\.inLibraryTool) private var inTool
+    @Environment(\.inPanelTool) private var inTool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {

@@ -8,7 +8,7 @@ import SwiftUI
 /// file shows a badge with Locate… and Remove. Works on any `ItemListHost` (the shelf).
 struct ShelfTile: View {
     let host: any ItemListHost
-    @Environment(\.inLibraryTool) private var inTool
+    @Environment(\.inPanelTool) private var inTool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -100,7 +100,7 @@ struct ShelfCard: View {
     let selected: Bool
     /// A file action working on this item (progress and Cancel on the card).
     var run: FileActionCenter.Run?
-    @Environment(\.inLibraryTool) private var inTool
+    @Environment(\.inPanelTool) private var inTool
 
     private var cardSize: CGSize { inTool ? Self.toolSize : Self.size }
     private var thumbnail: CGFloat { inTool ? 56 : 40 }
@@ -131,7 +131,7 @@ struct ShelfCard: View {
     @ViewBuilder private var cardBackground: some View {
         let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
         if inTool {
-            LibraryTileCard(hovering: selected)
+            ToolCardFill(hovering: selected)
                 .overlay { if selected { shape.strokeBorder(DS.dynamicColor(.working), lineWidth: 1.5) } }
         } else {
             shape.fill(.primary.opacity(selected ? 0.18 : 0.06))

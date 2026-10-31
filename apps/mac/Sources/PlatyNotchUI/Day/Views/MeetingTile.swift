@@ -7,7 +7,7 @@ import SwiftUI
 struct MeetingTile: View {
     let widget: MeetingWidget
     static let laterCount = 2
-    @Environment(\.inLibraryTool) private var inTool
+    @Environment(\.inPanelTool) private var inTool
 
     var body: some View {
         if inTool { MeetingTool(widget: widget) } else { tile }

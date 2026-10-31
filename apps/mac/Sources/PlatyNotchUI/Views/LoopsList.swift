@@ -70,7 +70,7 @@ struct LoopsList: View {
     let memoryEnabled: Bool
     let actions: LoopActions
     /// The Library tool shows the count large above the list.
-    @Environment(\.inLibraryTool) private var inTool
+    @Environment(\.inPanelTool) private var inTool
     /// Settings › Memory (the empty state's one button); nil where Settings cannot open.
     @Environment(\.openMemorySettings) private var openMemorySettings
 

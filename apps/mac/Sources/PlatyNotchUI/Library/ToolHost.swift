@@ -1,14 +1,14 @@
 import PlatyNotchKit
 import SwiftUI
 
-/// A Library tool opened full-panel: its header (a back chevron to the Library and the
+/// A feature opened full-panel inside Home: its header (a back chevron to Home and the
 /// tool's name) takes the nav row's place, and the tool has the rest of the panel. Content
 /// taller than the room scrolls inside, fading at the edge that has more.
 struct ToolHost: View {
-    static let backLabel = "Back to Library"
+    static let backLabel = "Back to Home"
     /// Between the header and the tool: the nav's gap, so content starts where it does
     /// under the nav.
-    static let gap: CGFloat = NowMetrics.gap
+    static let gap: CGFloat = HomeMetrics.gap
 
     let title: String
     let onBack: () -> Void
@@ -26,13 +26,13 @@ struct ToolHost: View {
     /// The room a tool has below its header in `available` (the open panel's content
     /// height less the top inset and bottom padding).
     static func contentHeight(available: CGFloat) -> CGFloat {
-        available - NowMetrics.nav - gap
+        available - HomeMetrics.nav - gap
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Self.gap) {
             ToolHeader(title: title, onBack: onBack, trailing: trailing)
-                .frame(height: NowMetrics.nav)
+                .frame(height: HomeMetrics.nav)
             ToolBody(content: content)
         }
     }
@@ -85,7 +85,7 @@ struct ToolBody: View {
     var body: some View {
         FadingScroll(fillsRoom: true) { content }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .environment(\.inLibraryTool, true)
+            .environment(\.inPanelTool, true)
     }
 }
 
@@ -125,19 +125,22 @@ struct FadingScroll<Content: View>: View {
     }
 }
 
-/// The fade mask: solid, with `LibraryView.fade` of gradient at an edge that has more. Not
-/// animated: it follows the scroll, and an opened grid shows its fade at once.
+/// The fade mask: solid, with `reach` of gradient at an edge that has more. Not animated:
+/// it follows the scroll.
 struct ScrollFade: View {
+    /// How far the edge fade reaches.
+    static let reach: CGFloat = 24
+
     let top: Bool
     let bottom: Bool
 
     var body: some View {
         VStack(spacing: 0) {
             LinearGradient(colors: [.black.opacity(top ? 0 : 1), .black], startPoint: .top, endPoint: .bottom)
-                .frame(height: LibraryView.fade)
+                .frame(height: ScrollFade.reach)
             Color.black
             LinearGradient(colors: [.black, .black.opacity(bottom ? 0 : 1)], startPoint: .top, endPoint: .bottom)
-                .frame(height: LibraryView.fade)
+                .frame(height: ScrollFade.reach)
         }
     }
 }
@@ -162,16 +165,16 @@ struct FillHeight: Layout {
 
 // MARK: - Tool presentation
 
-private struct InLibraryToolKey: EnvironmentKey {
+private struct InPanelToolKey: EnvironmentKey {
     static let defaultValue = false
 }
 
 extension EnvironmentValues {
-    /// True inside a Library tool (`ToolBody`): a widget's view drops its own card and title
+    /// True inside a tool open in the panel (`ToolBody`): a widget's view drops its own card and title
     /// (the tool header names it), and shows its empty state centred in the room.
-    var inLibraryTool: Bool {
-        get { self[InLibraryToolKey.self] }
-        set { self[InLibraryToolKey.self] = newValue }
+    var inPanelTool: Bool {
+        get { self[InPanelToolKey.self] }
+        set { self[InPanelToolKey.self] = newValue }
     }
 }
 
@@ -307,7 +310,7 @@ struct ToolIconPage<Content: View>: View {
     }
 }
 
-/// Settings-style rows on one soft card (the Library tile's fill), for a tool page's
+/// Settings-style rows on one soft card (the tool card fill), for a tool page's
 /// few controls.
 struct ToolControlCard<Content: View>: View {
     @ViewBuilder let content: Content
@@ -316,6 +319,33 @@ struct ToolControlCard<Content: View>: View {
         VStack(alignment: .leading, spacing: Space.s) { content }
             .padding(EdgeInsets(top: Space.s, leading: Space.m, bottom: Space.s, trailing: Space.m))
             .frame(width: 360)
-            .background { LibraryTileCard(hovering: false) }
+            .background { ToolCardFill(hovering: false) }
+    }
+}
+
+/// Whether a scroll view has content above and below what shows.
+struct ScrollEdges: Equatable {
+    var top = false
+    var bottom = false
+    /// A scroll report has arrived (before it, the content's height decides the fade).
+    var known = false
+}
+
+/// A control card's one edge treatment: a subtle fill with no keyline on the dark surface; a
+/// near-white card with a very soft shadow on the light one. A little brighter under the
+/// pointer.
+struct ToolCardFill: View {
+    let hovering: Bool
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+        if scheme == .light {
+            shape
+                .fill(Color.white.opacity(hovering ? 1 : 0.86))
+                .shadow(color: .black.opacity(0.07), radius: 3, x: 0, y: 1)
+        } else {
+            shape.fill(Color.white.opacity(hovering ? 0.085 : 0.055))
+        }
     }
 }

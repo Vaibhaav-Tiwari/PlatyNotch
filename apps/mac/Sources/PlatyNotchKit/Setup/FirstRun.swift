@@ -47,20 +47,35 @@ public struct OnboardingFlow: Equatable, Sendable {
 
 /// The one-time step for someone updating to the redesign (spec 14): which widgets are on,
 /// the appearance and the layout are kept exactly; Agents stays shown (they had it as a
-/// tab); the four glances are saved from the first four enabled glance-capable widgets
-/// when none are chosen. Runs once; writes nothing for a new install.
+/// tab). Runs once; writes nothing for a new install. The glance slots it once chose are left
+/// in defaults, unread.
 public enum UpgradeMigration {
     public static let key = "ui.redesign.migrated"
 
-    public static func run(defaults: UserDefaults, existingUser: Bool, glanceCapable: [String]) {
+    public static func run(defaults: UserDefaults, existingUser: Bool) {
         guard existingUser, !defaults.bool(forKey: key) else { return }
         var visibility = AgentsVisibility.load(from: defaults)
         if !visibility.everConnected {
             visibility.everConnected = true
             visibility.save(to: defaults)
         }
-        if defaults.object(forKey: GlanceSlots.key) == nil {
-            GlanceSlots.defaults(glanceCapable: glanceCapable).save(to: defaults)
+        defaults.set(true, forKey: key)
+    }
+}
+
+/// The one-time step for someone updating to Quiet Notch (spec 7). Water nudges are off for
+/// new installs (`NudgeSettings.water` defaults to 0); an existing user who never saved
+/// wellbeing settings keeps today's 60-minute water nudge. A saved value is never changed.
+/// Runs once; writes nothing for a new install (`FirstRunState.prepare` marks a new install
+/// done, so a later launch never mistakes it for an existing user).
+public enum QuietNotchMigration {
+    public static let key = "ui.quietNotch.migrated"
+
+    public static func run(defaults: UserDefaults, existingUser: Bool) {
+        guard existingUser, !defaults.bool(forKey: key) else { return }
+        if defaults.object(forKey: NudgeSettings.key) == nil,
+           let data = try? JSONEncoder().encode(NudgeSettings(water: NudgeSettings.legacyWaterMinutes)) {
+            defaults.set(data, forKey: NudgeSettings.key)
         }
         defaults.set(true, forKey: key)
     }

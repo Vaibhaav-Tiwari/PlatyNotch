@@ -174,7 +174,7 @@ public struct GameSession: Equatable, Sendable {
     /// Collapsed until a panel reports otherwise.
     public private(set) var blockers = GameBlockers(collapsed: true)
     public var scores: HighScores
-    /// The last game over was a new best (Platy celebrates, Task 13); cleared by the next game.
+    /// The last game over was a new best (the game-over line says so); cleared by the next game.
     public private(set) var newBest: GameResult?
     /// Snake deaths and 2048 moves so far, across games: they only go up (a new game
     /// keeps them), so the views' one-shot animations, which play when these change,

@@ -63,10 +63,10 @@ final class HeaderTogglesTests: DefaultsTestCase {
     func testMirrorClickTurnsMirrorOn() {
         let registry = WidgetRegistry(defaults: defaults(), persist: false)
         XCTAssertFalse(registry.isEnabled(MirrorWidget.widgetID))
-        var route = PanelRoute(destination: .now)
+        var route = PanelRoute(destination: .home)
         HeaderToggles.openMirror(registry: registry, route: &route)
         XCTAssertTrue(registry.isEnabled(MirrorWidget.widgetID))
-        XCTAssertEqual(route.destination, .library)
+        XCTAssertEqual(route.destination, .home)
         XCTAssertEqual(route.tool, MirrorWidget.widgetID)
     }
 
@@ -106,14 +106,14 @@ final class HeaderTogglesTests: DefaultsTestCase {
         power.state = BatteryState(percent: 64, charging: true, pluggedIn: true, minutesRemaining: nil)
         let s = HeaderServices(keepAwake: KeepAwake(asserter: FakeAsserter()), power: power, defaults: defaults())
         s.toggleKeepAwake()
-        var route = PanelRoute(destination: .now)
+        var route = PanelRoute(destination: .home)
         let view = HeaderToggles(services: s, widgets: WidgetRegistry(defaults: defaults(), persist: false),
                                  route: Binding(get: { route }, set: { route = $0 }), onOpenSettings: {},
                                  fixedNow: Date())
             .environment(\.panelTicking, false)
         let host = NSHostingView(rootView: view)
         let size = host.fittingSize
-        XCTAssertLessThanOrEqual(size.height, NowMetrics.nav)
+        XCTAssertLessThanOrEqual(size.height, HomeMetrics.nav)
         XCTAssertLessThan(size.width, 260)
         s.stop()
     }

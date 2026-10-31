@@ -6,7 +6,7 @@ import SwiftUI
 /// runs), "Add current tab" and the Shortcuts picker, and the last notice.
 struct LaunchTile: View {
     let widget: LaunchWidget
-    @Environment(\.inLibraryTool) private var inTool
+    @Environment(\.inPanelTool) private var inTool
 
     var body: some View {
         let empty: Bool = widget.pins.sites.isEmpty && widget.pins.shortcuts.isEmpty

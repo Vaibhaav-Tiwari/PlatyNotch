@@ -68,8 +68,6 @@ final class WidgetKindAPITests: DefaultsTestCase {
         XCTAssertNil(w.glanceView())
         XCTAssertNil(w.libraryTile())
         XCTAssertEqual(registry.toolWidgets.map(\.id), ["fake"])
-        XCTAssertTrue(registry.glanceWidgets.isEmpty)
-        XCTAssertTrue(registry.glanceCapableIDs.isEmpty)
     }
 
     func testToolViewDefaultsToTile() {
@@ -80,24 +78,6 @@ final class WidgetKindAPITests: DefaultsTestCase {
     func testHeadlessToolViewIsSettings() {
         let w = GlanceWidget("weather")
         XCTAssertEqual(width(w.toolView()), 200)
-    }
-
-    func testGlanceWidgetsNeedContentAndRunning() {
-        let registry = WidgetRegistry(defaults: defaults(), persist: false)
-        let a = GlanceWidget("a")
-        let b = GlanceWidget("b")
-        registry.register(a)
-        registry.register(b)
-        XCTAssertEqual(registry.glanceCapableIDs, ["a", "b"])
-        XCTAssertTrue(registry.glanceWidgets.isEmpty, "nothing runs yet")
-        registry.start(context: context())
-        XCTAssertEqual(registry.glanceWidgets.map(\.id), ["a", "b"])
-        b.content = false
-        XCTAssertEqual(registry.glanceWidgets.map(\.id), ["a"])
-        registry.setEnabled("a", false)
-        XCTAssertTrue(registry.glanceWidgets.isEmpty)
-        XCTAssertEqual(registry.glanceCapableIDs, ["b"], "enabled only")
-        XCTAssertEqual(registry.toolWidgets.map(\.id), ["b"])
     }
 
     func testRunSetupDefaultOpensSettings() {

@@ -73,6 +73,10 @@ final class WellbeingWidgetTests: DefaultsTestCase {
                      defaults givenDefaults: UserDefaults? = nil, clock givenClock: Clock? = nil) -> Rig {
         let d = givenDefaults ?? defaults()
         let clock = givenClock ?? Clock(afternoon)
+        // Water is off for new users now; these tests are about a user who kept the old 60 minutes.
+        if d.object(forKey: NudgeSettings.key) == nil {
+            d.set(try! JSONEncoder().encode(NudgeSettings(water: NudgeSettings.legacyWaterMinutes)), forKey: NudgeSettings.key)
+        }
         if overdue {
             let past = clock.now.addingTimeInterval(-90 * 60)
             let p = NudgeProgress(lastDone: [.water: past, .stand: past, .eyes: past])
@@ -220,7 +224,7 @@ final class WellbeingWidgetTests: DefaultsTestCase {
 
     func testWaterCardPlusOneGlass() {
         let r = rig()
-        var s = NudgeSettings()
+        var s = NudgeSettings(water: 60)
         s.eyes = 0
         s.stand = 0
         r.widget.update(s)
@@ -573,5 +577,36 @@ final class WellbeingWidgetTests: DefaultsTestCase {
         let card = NSHostingView(rootView: NudgeCard(widget: r.widget, nudge: r.widget.nudge!)
             .frame(width: PanelLayout.surfaceWidth - 24))
         XCTAssertLessThanOrEqual(card.fittingSize.height, PanelLayout.widgetPeekHeight, "fits the peek")
+    }
+
+    /// C1: an existing user with water on keeps it on the upgrade launch. The upgrade step
+    /// runs before the widget is built, as in `NotchApp`; and a widget built too early still
+    /// picks the migrated settings up when it starts.
+    func testUpgradeLaunchKeepsWaterOn() {
+        let d = defaults()
+        d.set(WidgetLayout(order: ["wellbeing"], enabled: ["wellbeing"]).encoded(), forKey: WidgetLayout.key)
+        XCTAssertNil(d.data(forKey: NudgeSettings.key), "an existing user who never saved wellbeing settings")
+        _ = FirstRunState.prepare(defaults: d, onboardingDone: true, layoutSaved: true)
+        let w = WellbeingWidget(defaults: d, persist: true, idle: ZeroIdleClock(), watchSystem: false)
+        XCTAssertEqual(w.settings.water, NudgeSettings.legacyWaterMinutes)
+        XCTAssertTrue(w.settings.anyOn)
+    }
+
+    func testWidgetBuiltBeforeTheUpgradeStillStartsWithWater() {
+        let d = defaults()
+        let early = WellbeingWidget(defaults: d, persist: true, idle: ZeroIdleClock(), watchSystem: false)
+        XCTAssertEqual(early.settings.water, 0, "nothing saved yet: a new user's default")
+        _ = FirstRunState.prepare(defaults: d, onboardingDone: true, layoutSaved: true)
+        let registry = WidgetRegistry(defaults: defaults(), persist: false)
+        registry.register(early)
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("pnwb\(UUID().uuidString)")
+        let store = AppStore()
+        let client = CoreClient(socketPath: "/nonexistent")
+        early.start(context: WidgetContext(store: store, client: client,
+                                           config: ConfigFileStore(url: dir.appendingPathComponent("config.json")),
+                                           events: CoreEventHub(), defaults: d, notify: NoopNotifier(),
+                                           surfaces: PanelSurfaces(registry: registry), openPanel: { _ in }))
+        XCTAssertEqual(early.settings.water, 60)
+        early.stop()
     }
 }

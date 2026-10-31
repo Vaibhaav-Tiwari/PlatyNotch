@@ -131,28 +131,4 @@ final class BuiltInKindsTests: DefaultsTestCase {
         XCTAssertEqual(live?.startedAt, start)
     }
 
-    func testMeetingGlanceSaysNowDuringAMeeting() {
-        let now = Date(timeIntervalSince1970: 7_000_000)
-        let current = CalendarMeeting(id: "c", title: "Design", start: now.addingTimeInterval(-60),
-                                      end: now.addingTimeInterval(1800))
-        XCTAssertEqual(MeetingGlance.value(current, now: now), "Now")
-        let next = CalendarMeeting(id: "n", title: "Sync", start: now.addingTimeInterval(600), end: now.addingTimeInterval(900))
-        XCTAssertEqual(MeetingGlance.value(next, now: now), MeetingWidget.time(next.start))
-    }
-
-    func testGlanceViewsExistForGlanceKinds() {
-        for w in builtIns() {
-            let glance = w.glanceView()
-            if w.kind.contains(.glance) {
-                XCTAssertNotNil(glance, w.id)
-                if let glance {
-                    let host = NSHostingView(rootView: glance.frame(width: 122, height: 64))
-                    host.layoutSubtreeIfNeeded()
-                    XCTAssertGreaterThan(host.fittingSize.width, 0, w.id)
-                }
-            } else {
-                XCTAssertNil(glance, w.id)
-            }
-        }
-    }
 }

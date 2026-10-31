@@ -3,14 +3,10 @@ import Observation
 import PlatyNotchKit
 import SwiftUI
 
-/// Who sees what at launch (spec 10, 14): a new install gets the first run; someone who
-/// used PlatyNotch before gets the tour card on Now, never a forced first run.
+/// Who sees what at launch (spec 10): a new install gets the first run; someone who used
+/// PlatyNotch before never gets a forced one (the tour stays in Settings › General).
 enum OnboardingLaunch {
     static func showsFirstRun(_ state: FirstRunState) -> Bool { state == .firstRun }
-
-    static func offersTourCard(_ state: FirstRunState, tourOffered: Bool) -> Bool {
-        state == .offerTour && !tourOffered
-    }
 }
 
 /// The first run's "Try it" (spec 10, step 4): armed with a sample in Now; showing once
@@ -71,16 +67,12 @@ final class TourCoordinator {
     /// How long the sample stays after Now first shows it, if Now stays open.
     var showingLimit: Duration = .seconds(8)
     var approvals: () -> Int = { 0 }
-    /// Platy celebrates when "Try it" is done.
-    var onCelebrate: () -> Void = {}
     var controllers: [NotchController] = [] { didSet { apply() } }
-    var tourOffer: TourOffer? { didSet { apply() } }
     private var limitTask: Task<Void, Never>?
 
     func arm(onDone: @escaping () -> Void) {
         session.arm { [weak self] in
             guard let self else { return }
-            self.onCelebrate()
             onDone()
             self.limitTask?.cancel()
             let limit = self.showingLimit
@@ -103,7 +95,6 @@ final class TourCoordinator {
     func apply() {
         let sample: LiveActivity? = session.showsSample ? TryItSession.sample : nil
         for c in controllers {
-            c.panelModel.tourOffer = tourOffer
             c.panelModel.tourSample = sample
             c.onExpanded = { [weak self] in
                 guard let self else { return }
@@ -404,7 +395,7 @@ private struct MeetPlatyPage: View {
     var body: some View {
         VStack(spacing: 22) {
             PondBanner(height: 230) {
-                PlatyView(mood: .celebrating, size: 120)
+                PlatyView(mood: .done, size: 120)
                     .padding(.top, 62)
                     .accessibilityLabel("Platy waves hello")
             }
@@ -661,7 +652,7 @@ private struct TryItPage: View {
         VStack(spacing: 22) {
             PondBanner(height: 230) {
                 if model.tryItDone {
-                    PlatyView(mood: .celebrating, size: 104)
+                    PlatyView(mood: .done, size: 104)
                         .padding(.top, 70)
                         .transition(.scale.combined(with: .opacity))
                 } else {

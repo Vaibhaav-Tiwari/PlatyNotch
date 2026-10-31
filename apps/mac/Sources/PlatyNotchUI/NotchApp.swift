@@ -99,11 +99,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Now playing, calendar, focus and loop actions, shared by every display.
     /// Smoke runs never create a real audio tap (the visualiser gets one that does nothing).
     private lazy var today: TodayServices = {
-        // A focus session's end plays its sound and is a moment (never during an approval).
+        // A focus session's end plays its sound.
         let platy = PlatyMoodModel()
-        let store = self.store
-        let focus = FocusModel(defaults: .standard,
-                               onFinish: Moments.focusFinished(platy: platy, approvals: { store.approvals.count }))
+        let focus = FocusModel(defaults: .standard, onFinish: { NSSound(named: "Glass")?.play() })
         return TodayServices(client: client, visualiser: MusicVisualiser(makeTap: { [options] in
             options.smoke || options.smokeSettings ? NoAudioTap() as AudioTapping : SystemAudioTap()
         }), focus: focus, platy: platy)
@@ -152,9 +150,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The tour card and the first run's "Try it" on every display's panel.
     private lazy var tour: TourCoordinator = {
         let t = TourCoordinator()
-        let store = self.store, today = self.today
+        let store = self.store
         t.approvals = { store.approvals.count }
-        t.onCelebrate = { today.platy.celebrate() }
         return t
     }()
     /// Settings › Notifications › Sound: Platy chatter or the user's file.
@@ -236,9 +233,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             plip.follow(today.agentActivity, store: store)
         }
-        // Every agent finished: a 2-second moment (once, never during an approval).
-        let approvalsStore = store
-        today.agentActivity.celebrateAllFinished(on: today.platy, approvals: { approvalsStore.approvals.count })
         // Settings › Notifications (kept current in `appearanceMayHaveChanged`); "quiet
         // during Focus" follows the focus session, as the notice hold always has.
         surfaces.notificationPolicy = NotificationPolicy.load(from: .standard)
@@ -255,6 +249,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Smoke runs never script Music or Spotify (an unbundled run's Apple Events would
         // be the terminal's, and could prompt for it).
         if options.smoke || options.smokeSettings { today.nowPlaying.sendsAppleEvents = false }
+        // The upgrade steps run before any widget reads its saved settings (Wellbeing reads
+        // them in `init`): an existing user's water nudge must be saved before it is read.
+        if !options.smoke, !options.smokeSettings, !options.perfRun { prepareFirstRun(layoutSaved: layoutSaved) }
         BuiltInWidgets.register(in: widgets, store: store, today: today,
                                 persist: !options.smoke && !options.smokeSettings, clipboard: clipboard,
                                 keepAwake: headerServices.keepAwake)
@@ -264,7 +261,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The Finder service is inert until picked; smoke runs never offer it.
         if !options.smoke, !options.smokeSettings { NSApp.servicesProvider = finderService }
         startPlugins()
-        if !options.smoke, !options.smokeSettings, !options.perfRun { prepareFirstRun(layoutSaved: layoutSaved) }
         startWidgets()
 
         rebuildControllers()
@@ -279,7 +275,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { self?.appearanceMayHaveChanged() }
         }
 
+        let gamesWidget = widgets.widget(GamesWidget.widgetID) as? GamesWidget
         menuBar = MenuBarController(capture: capture, updater: updater, surfaces: surfaces, clipboard: clipboard,
+                                    games: gamesWidget, gamesOn: { [weak self] in self?.widgets.isEnabled(GamesWidget.widgetID) ?? false },
+                                    onOpenGame: { [weak self] kind in
+                                        self?.openPanel(tab: kind == .chase ? PanelTools.chase : GamesWidget.tabID)
+                                    },
+                                    openTools: { [weak self] in self?.menuTools() ?? [] },
+                                    onOpenTool: { [weak self] id in self?.openPanel(tab: id) },
                                     onOpen: { [weak self] in self?.openPanel(tab: nil) },
                                     onSettings: { [weak self] in self?.openSettings(section: nil) })
 
@@ -302,9 +305,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// are kept exactly. A new install is marked so a layout saved during its first launch
     /// never makes it an "existing user" later, and needs no upgrade.
     private func prepareFirstRun(layoutSaved: Bool) {
-        firstRun = FirstRunState.prepare(defaults: .standard, onboardingDone: onboarding.isDone, layoutSaved: layoutSaved,
-                                         glanceCapable: widgets.glanceCapableIDs)
+        firstRun = FirstRunState.prepare(defaults: .standard, onboardingDone: onboarding.isDone, layoutSaved: layoutSaved)
         today.agentActivity.reloadVisibility()   // the upgrade keeps Agents shown
+    }
+
+    /// The features the menu bar's Open submenu lists: every tool the panel opens.
+    private func menuTools() -> [CommandTool] {
+        let tools = ToolCatalog.tools(widgets: widgets, extraTabs: pluginTabs, memory: { AnyView(EmptyView()) })
+        return tools.map { CommandTool(id: $0.id, title: $0.title) }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -467,8 +475,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// pill width rebuild the panels; everything else is applied to them live.
     private func appearanceMayHaveChanged() {
         today.agentActivity.reloadVisibility()   // Settings › Agents: "Show Agents before an agent connects"
-        let nowSettings = NowSettings.load(from: .standard)
-        for c in controllers { c.nowSettingsChanged(nowSettings) }
+        let home = HomeSettings.load(from: .standard)
+        for c in controllers { c.homeSettingsChanged(home) }
         let policy = NotificationPolicy.load(from: .standard)
         if policy != surfaces.notificationPolicy { surfaces.notificationPolicy = policy }
         let now = AppearanceStore.load(from: .standard)
@@ -527,7 +535,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             c.header = headerServices
             c.onOpenSettings = { [weak self] in self?.openSettings(section: nil) }
             c.onOpenAgentSettings = { [weak self] in self?.openSettings(section: "agents") }
-            c.nowSettingsChanged(NowSettings.load(from: .standard))
+            c.homeSettingsChanged(HomeSettings.load(from: .standard))
             c.attach(to: screen)
             return c
         }
@@ -536,26 +544,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - First run, the tour card and "Try it"
 
-    /// Each panel's tour card (existing users, until taken or dismissed); the "Try it"
-    /// sample and its hooks live in `tour`.
+    /// The "Try it" sample and its hooks live in `tour`; the tour itself is offered in
+    /// Settings › General (no card in the panel).
     private func applyTourState() {
-        let d = UserDefaults.standard
-        tour.tourOffer = OnboardingLaunch.offersTourCard(firstRun, tourOffered: d.bool(forKey: FirstRunState.tourOfferedKey))
-            ? TourOffer(onTake: { [weak self] in self?.takeTour() }, onDismiss: { [weak self] in self?.dismissTour() })
-            : nil
         tour.controllers = controllers
-    }
-
-    private func takeTour() {
-        UserDefaults.standard.set(true, forKey: FirstRunState.tourOfferedKey)
-        applyTourState()
-        for c in controllers { c.collapse() }
-        onboarding.show(flow: .tour)
-    }
-
-    private func dismissTour() {
-        UserDefaults.standard.set(true, forKey: FirstRunState.tourOfferedKey)
-        applyTourState()
     }
 
     /// "Meet Platy": the notch on the main display opens and closes once.
@@ -569,7 +561,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// "Try it": a sample in Now until Now has shown it; then Platy celebrates.
+    /// "Try it": a sample in Now until Now has shown it; then it closes.
     private func armTryIt(onDone: @escaping () -> Void) {
         tour.controllers = controllers
         tour.arm(onDone: onDone)
@@ -611,6 +603,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if failure == nil, let menuBar,
            !menuBar.menuTitles.contains("Pause clipboard history") || menuBar.menuAutoenables {
             failure = "menu bar clipboard item missing or menu autoenables"
+        }
+        if failure == nil, let menuBar, widgets.isEnabled(GamesWidget.widgetID), !menuBar.menuTitles.contains("Games") {
+            failure = "menu bar games item missing"
         }
         let sounds = TimeSound.allCases.filter { $0.url != nil }.count + CueSound.allCases.filter { $0.url != nil }.count
         if failure == nil, sounds != TimeSound.allCases.count + CueSound.allCases.count {

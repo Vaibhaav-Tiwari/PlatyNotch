@@ -395,17 +395,16 @@ final class ShelfWidgetTests: DefaultsTestCase {
         XCTAssertEqual(r.shelf.items.count, 1, "PNG data is written before it counts")
     }
 
-    /// Fix round 1 (Important 2): with the shelf off, a drag reaching the panel starts
-    /// no session and no placeholder drop zone.
-    func testWindowFallbackNeedsADropTarget() throws {
+    /// With the shelf off, a file drag reaching the panel offers AirDrop only (the whole
+    /// box) where AirDrop exists; without it, no session and no placeholder drop zone.
+    func testShelfOffOffersAirDropOnly() throws {
         let r = rig(enabled: false)
         r.controller.mouseDown = { true }
         let pb = try filePasteboard(r, "a.txt")
         defer { pb.releaseGlobally() }
-        XCTAssertEqual(r.controller.panelDragUpdated(FakeDraggingInfo(pb)), [])
-        XCTAssertFalse(r.surfaces.dragActive)
-        r.controller.dragMoved(to: CGPoint(x: 756, y: 940))
-        XCTAssertEqual(r.controller.mode, .compact)
+        _ = r.controller.panelDragUpdated(FakeDraggingInfo(pb))
+        XCTAssertEqual(r.surfaces.dragActive, ShelfActions.canAirDrop)
+        XCTAssertNil(r.registry.dropTarget(), "the shelf itself takes nothing while off")
     }
 
     /// Fix round 1 (Important 2): a session the window started ends at the button-up even

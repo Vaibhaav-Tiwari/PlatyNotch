@@ -99,7 +99,7 @@ final class WidgetsSettingsTests: DefaultsTestCase {
     }
 
     func testCardStatusLine() {
-        XCTAssertEqual(WidgetCard.status(isOn: true, needsSetup: false, inLibrary: true), "On · in Library")
+        XCTAssertEqual(WidgetCard.status(isOn: true, needsSetup: false, inLibrary: true), "On · opens in panel")
         XCTAssertEqual(WidgetCard.status(isOn: true, needsSetup: true, inLibrary: true), "Needs setup")
         XCTAssertEqual(WidgetCard.status(isOn: false, needsSetup: true, inLibrary: true), "Off")
         XCTAssertEqual(WidgetCard.status(isOn: true, needsSetup: false, inLibrary: false), "On")

@@ -49,6 +49,7 @@ final class PanelLayoutTests: XCTestCase {
         let e = mbp.contentRect(for: .expanded)
         XCTAssertEqual(e.maxY, 982)
         XCTAssertEqual(e.size, PanelLayout.expandedSize)
+        XCTAssertEqual(e.width, 600)
         XCTAssertEqual(e.midX, 756)
         let p = ext.contentRect(for: .peek(.approval))
         XCTAssertEqual(p.maxY, 1055)
@@ -57,6 +58,39 @@ final class PanelLayoutTests: XCTestCase {
                                       height: PanelLayout.peekSize.height + PanelLayout.headerStripExtra))
         XCTAssertEqual(ext.contentRect(for: .expanded).height, PanelLayout.expandedSize.height + PanelLayout.headerStripExtra)
         XCTAssertEqual(ext.hitRect(for: .expanded), ext.contentRect(for: .expanded))
+    }
+
+    func testExpandedIsSixHundredWide() {
+        XCTAssertEqual(mbp.contentRect(for: .expanded).width, 600)
+        XCTAssertEqual(ext.contentRect(for: .expanded).width, 600)
+        XCTAssertEqual(mbp.windowFrame.width, 600)
+    }
+
+    func testExpandedHeightIsClamped() {
+        var l = mbp
+        l.expandedContentHeight = 90
+        XCTAssertEqual(l.expandedContentHeight, 160)
+        XCTAssertEqual(l.contentRect(for: .expanded).height, 160)
+        XCTAssertEqual(l.hitRect(for: .expanded).height, 160)
+        l.expandedContentHeight = 500
+        XCTAssertEqual(l.contentRect(for: .expanded).height, 380)
+        l.expandedContentHeight = 224
+        XCTAssertEqual(l.hitRect(for: .expanded).height, 224)
+        XCTAssertEqual(l.contentRect(for: .expanded).maxY, 982, "still hangs from the top")
+        var e = ext
+        e.expandedContentHeight = 200
+        XCTAssertEqual(e.contentRect(for: .expanded).height, 200 + PanelLayout.headerStripExtra)
+        XCTAssertEqual(l.contentRect(for: .peek(.drop)).height, 224, "the drop view hugs its content like Home")
+        XCTAssertLessThan(l.contentRect(for: .peek(.drop)).height, PanelLayout.expandedHeights.upperBound)
+        XCTAssertLessThanOrEqual(l.contentRect(for: .peek(.drop)).height, l.windowFrame.height)
+    }
+
+    func testBodyHeightMapsToPanelHeight() {
+        // Inset above, 10 below; a no-notch screen adds its strip inside contentRect.
+        XCTAssertEqual(mbp.expandedHeight(forBody: 150), mbp.contentInset(for: .expanded) + 150 + 10)
+        var e = ext
+        e.expandedContentHeight = e.expandedHeight(forBody: 150)
+        XCTAssertEqual(e.contentRect(for: .expanded).height, e.contentInset(for: .expanded) + 150 + 10)
     }
 
     func testNoticePeekIsShortAndClearsTheNotch() {

@@ -86,14 +86,6 @@ final class MeetingWidget: NotchWidget {
 
     var hasContent: Bool { glanceMeeting != nil }
 
-    /// The next meeting: its title, start time, a countdown and Join when it has a link.
-    func heroView() -> AnyView? { AnyView(MeetingHero(widget: self)) }
-
-    /// "10:30 Design".
-    func glanceView() -> AnyView? {
-        AnyView(MeetingGlance(widget: self))
-    }
-
     /// "10:30" in the user's locale.
     static func time(_ date: Date) -> String {
         date.formatted(date: .omitted, time: .shortened)
@@ -228,55 +220,5 @@ final class MeetingWidget: NotchWidget {
 
     func settingsView() -> AnyView? {
         AnyView(MeetingSettings(calendar: calendar))
-    }
-}
-
-/// The meeting glance: the start time and the event's title.
-struct MeetingGlance: View {
-    let widget: MeetingWidget
-
-    var body: some View {
-        let m = widget.glanceMeeting
-        GlanceChip(systemImage: "calendar", value: m.map { Self.value($0, now: widget.now) } ?? "—",
-                   label: m.map { Self.label($0, now: widget.now) } ?? "No meetings")
-    }
-
-    /// "10:30", or "Now" for a meeting in progress (the chip reads "Now: Design" aloud).
-    static func value(_ m: CalendarMeeting, now: Date) -> String {
-        m.start <= now ? "Now" : MeetingWidget.time(m.start)
-    }
-
-    /// The title, after "Tomorrow · " for a meeting after midnight, so the chip reads
-    /// "8:30 / Tomorrow · Standup" (the time keeps the value's room; nothing truncates it).
-    static func label(_ m: CalendarMeeting, now: Date, calendar cal: Calendar = .current) -> String {
-        guard m.start > now, !cal.isDate(m.start, inSameDayAs: now) else { return m.title }
-        return "Tomorrow · \(m.title)"
-    }
-}
-
-/// The meeting hero: the next meeting within 10 minutes (its live item).
-private struct MeetingHero: View {
-    let widget: MeetingWidget
-
-    var body: some View {
-        if let next = widget.calendar.access == .granted ? MeetingTimeline.next(widget.calendar.meetings, now: widget.now)
-                                                          : nil {
-            HeroLayout(title: next.title, subtitle: "Starts at \(MeetingWidget.time(next.start))",
-                       action: join(next)) {
-                HeroGlyph(glyph: .ring(progress: MeetingReminderSchedule.progress(start: next.start, now: widget.now)),
-                          tint: .warning)
-            } value: {
-                HeroClock(countdownTo: next.start, countUpFrom: nil, style: .minutesUntil)
-            }
-        }
-    }
-
-    private func join(_ m: CalendarMeeting) -> HeroAction? {
-        let hasLink: Bool = m.joinURL != nil
-        let rank: LiveRank = m.start.timeIntervalSince(widget.now) <= LiveRank.imminentWindow ? .meetingImminent : .meetingSoon
-        guard let title = HeroPrimary.title(rank: rank, playing: false, hasLink: hasLink), let url = m.joinURL else {
-            return nil
-        }
-        return HeroAction(title: title, systemImage: "video.fill", run: { NSWorkspace.shared.open(url) })
     }
 }

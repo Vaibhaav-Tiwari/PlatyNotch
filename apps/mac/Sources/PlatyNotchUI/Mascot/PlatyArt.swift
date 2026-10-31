@@ -196,9 +196,8 @@ enum PlatyShapes {
         return p
     }
 
-    /// Paw centers: paddling moves them up and down in turn; cheering raises both.
-    static func pawCenters(paddle: Double, cheer: Bool) -> (CGPoint, CGPoint) {
-        if cheer { return (CGPoint(x: 15, y: 46), CGPoint(x: 85, y: 46)) }
+    /// Paw centers: paddling moves them up and down in turn.
+    static func pawCenters(paddle: Double) -> (CGPoint, CGPoint) {
         let d: CGFloat = 4 * CGFloat(paddle)
         return (CGPoint(x: 27, y: 71 - d), CGPoint(x: 73, y: 71 + d))
     }
@@ -424,7 +423,7 @@ enum PlatyArt {
     }
 
     private static func drawPaws(_ g: GraphicsContext, pose: PlatyPose, detail: PlatyDetail) {
-        let centers = PlatyShapes.pawCenters(paddle: pose.paddle, cheer: pose.cheer)
+        let centers = PlatyShapes.pawCenters(paddle: pose.paddle)
         for c in [centers.0, centers.1] {
             let paw = PlatyShapes.paw(at: c)
             g.fill(paw, with: .color(PlatyPalette.paw))

@@ -27,8 +27,6 @@ public struct PlatyPoseValues: Equatable, Sendable {
     public var check = false
     /// The little "z"s (sleepy).
     public var zzz = false
-    /// Both paws up (celebrating).
-    public var cheer = false
     /// A water line at Platy's feet (working: paddling along). Drawn at every size, so
     /// working reads at 22 pt and in still frames.
     public var water = false
@@ -81,7 +79,6 @@ public struct PlatyPoseValues: Equatable, Sendable {
         case .dancing: p.headphones = true; p.lean = 6; p.eyesOpen = 0
         case .focused: p.eyesOpen = 0.45
         case .sleepy: p.eyesOpen = 0; p.zzz = true
-        case .celebrating: p.sparkle = 1; p.cheer = true; p.bounce = 0.06
         }
         return p
     }
@@ -122,11 +119,6 @@ public struct PlatyPoseValues: Equatable, Sendable {
             p.paddle = 0.5 * wave(phase, 2)
         case .sleepy:
             p.breath = 0.03 * (0.5 + 0.5 * wave(phase))
-        case .celebrating:
-            // One jump per loop.
-            p.bounce = 0.14 * max(0, wave(phase / 2))
-            p.sparkle = 0.85 + 0.15 * wave(phase, 2)
-            p.lean = 4 * wave(phase)
         case .idle, .focused:
             break
         }

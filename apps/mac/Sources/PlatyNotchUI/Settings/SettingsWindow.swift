@@ -46,16 +46,15 @@ final class SettingsServices {
 
     func cancelTryIt() { cancelTryItHandler() }
 
-    /// Everything `p` would change now: widgets, glances and mode (Settings asks with it).
+    /// Everything `p` would change now: widgets and mode (Settings asks with it).
     func presetPlan(_ p: SetupPreset, defaults: UserDefaults = .standard) -> PresetPlan {
         let on: Set<String> = Set(widgets.orderedWidgets.map(\.id).filter { widgets.isEnabled($0) })
-        let glances: [String] = GlanceSlots.load(from: defaults, glanceCapable: widgets.defaultGlanceOrder).ids
-        return PresetPlan.plan(p, enabled: on, glances: glances, mode: AppearanceStore.load(from: defaults).mode)
+        return PresetPlan.plan(p, enabled: on, mode: AppearanceStore.load(from: defaults).mode)
     }
 
-    /// A widget's or glance's name for a preset summary.
+    /// A widget's name for a preset summary.
     func presetTitle(_ id: String) -> String {
-        id == GlanceSlots.usageID ? "Claude/Codex usage" : (widgets.widget(id)?.title ?? id)
+        widgets.widget(id)?.title ?? id
     }
 
     /// The confirmation's message: one line per change.
@@ -69,14 +68,13 @@ final class SettingsServices {
         return PresetChange.plan(p, enabled: on)
     }
 
-    /// Applies a setup (spec 10): its widgets on and off, its four glances, Minimal or
+    /// Applies a setup (spec 10): its widgets on and off, Minimal or
     /// Always on, and Agents shown when it says so. Callers ask first when
     /// `presetChange(p).needsConfirmation` (Settings; the first run applies directly).
     func applyPreset(_ p: SetupPreset, defaults: UserDefaults = .standard) {
         let change = presetChange(p)
         for id in change.turnOn where widgets.widget(id) != nil { widgets.setEnabled(id, true) }
         for id in change.turnOff where widgets.widget(id) != nil { widgets.setEnabled(id, false) }
-        GlanceSlots(ids: p.glances).save(to: defaults)
         var appearance = AppearanceStore.load(from: defaults)
         if appearance.mode != p.mode {
             appearance.mode = p.mode
@@ -150,7 +148,7 @@ typealias SettingsPageID = PlatyNotchKit.SettingsPage
 final class SettingsModel {
     /// The sidebar, top to bottom (an explicit list: plug-in sections follow under
     /// "Extensions").
-    static let pages: [SettingsPageID] = [.general, .notch, .now, .notifications, .widgets, .agents, .memory, .privacy,
+    static let pages: [SettingsPageID] = [.general, .notch, .home, .notifications, .widgets, .agents, .memory, .privacy,
                                           .about]
 
     /// The built-in pages as (id, title, image).
@@ -286,7 +284,7 @@ struct SettingsRootView: View {
         switch model.selection {
         case SettingsPageID.general.rawValue: GeneralSection(services: services)
         case SettingsPageID.notch.rawValue: NotchSection()
-        case SettingsPageID.now.rawValue: NowSection(widgets: services.widgets)
+        case SettingsPageID.home.rawValue: HomeSection(widgets: services.widgets)
         case SettingsPageID.notifications.rawValue: NotificationsSection(sound: AnyView(PlipSoundSettings()))
         case SettingsPageID.widgets.rawValue: WidgetsSection(widgets: services.widgets, detail: $model.detail)
         case SettingsPageID.agents.rawValue: AgentsSection(services: services, detail: $model.detail)
@@ -311,8 +309,8 @@ private struct SettingsSidebar: View {
     let pluginSections: [SettingsSection]
     @FocusState private var focused: Bool
 
-    /// General, Notch, Now, Notifications · Widgets, Agents, Memory · Privacy, About.
-    static let groups: [[SettingsPageID]] = [[.general, .notch, .now, .notifications], [.widgets, .agents, .memory],
+    /// General, Notch, Home, Notifications · Widgets, Agents, Memory · Privacy, About.
+    static let groups: [[SettingsPageID]] = [[.general, .notch, .home, .notifications], [.widgets, .agents, .memory],
                                               [.privacy, .about]]
 
     private var ids: [String] { SettingsModel.builtIn.map(\.id) + pluginSections.map(\.id) }

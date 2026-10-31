@@ -41,7 +41,12 @@ public struct PanelLayout: Equatable, Sendable {
     public static let peekSize = CGSize(width: 420, height: 236)
     /// Height of a notice peek below the notch (or the menu bar).
     public static let noticeHeight: CGFloat = 64
-    public static let expandedSize = CGSize(width: 560, height: 380)
+    /// The open panel is 600 pt wide (spec 2); its height follows its content between
+    /// `expandedHeights` (`expandedContentHeight`).
+    public static let expandedWidth: CGFloat = 600
+    public static let expandedHeights: ClosedRange<CGFloat> = 160...380
+    /// The largest the open panel gets, and the window's size.
+    public static let expandedSize = CGSize(width: expandedWidth, height: expandedHeights.upperBound)
     /// Width of widget peeks and the ringing card.
     public static let surfaceWidth: CGFloat = 380
     /// A widget peek below the notch: icon, a line or two and one or two buttons (nudge, plug-in, AirPods).
@@ -76,6 +81,16 @@ public struct PanelLayout: Equatable, Sendable {
     public let hasNotch: Bool
     /// Extra width on each side of the notch in compact mode (`ear(_:)`).
     public let ear: CGFloat
+    /// How tall the open panel is now, clamped to `expandedHeights` (Home at rest is about
+    /// 220 pt; the Agents list, tools and command results use up to 380). Set from the
+    /// content's reported height; the window itself keeps the largest size.
+    public var expandedContentHeight: CGFloat = PanelLayout.expandedHeights.upperBound {
+        didSet {
+            let clamped: CGFloat = min(max(expandedContentHeight, Self.expandedHeights.lowerBound),
+                                       Self.expandedHeights.upperBound)
+            if clamped != expandedContentHeight { expandedContentHeight = clamped }
+        }
+    }
 
     public init(screenFrame: CGRect, visibleFrame: CGRect, auxLeft: CGRect?, auxRight: CGRect?,
                 pillWidth: AppearanceSettings.PillWidth = .standard) {
@@ -128,7 +143,10 @@ public struct PanelLayout: Equatable, Sendable {
                                                                   height: (hasNotch ? anchor.height : 0) + Self.hoverPeekHeight),
                                      screenFrame: usable)
         case .expanded, .peek(.drop):
-            NotchGeometry.panelFrame(anchor: anchor, size: expandedSize, screenFrame: usable)
+            // The drop view is Home with its body swapped for the drop box: the same height.
+            NotchGeometry.panelFrame(anchor: anchor, size: CGSize(width: Self.expandedWidth,
+                                                                  height: expandedContentHeight + stripExtra),
+                                     screenFrame: usable)
         case .peek(.widget): below(width: Self.surfaceWidth, height: Self.widgetPeekHeight)
         case .peek(.ringing): below(width: Self.surfaceWidth, height: Self.ringingHeight)
         case .peek(.hud): below(width: max(Self.hudMinWidth, compactRect.width), height: Self.hudHeight)
@@ -138,6 +156,13 @@ public struct PanelLayout: Equatable, Sendable {
     private var stripExtra: CGFloat { hasNotch ? 0 : Self.headerStripExtra }
     private var expandedSize: CGSize {
         CGSize(width: Self.expandedSize.width, height: Self.expandedSize.height + stripExtra)
+    }
+
+    /// The `expandedContentHeight` for a body (header, approvals and Home's content) that is
+    /// `body` tall: the inset above it and the 10 pt below, less the no-notch header strip
+    /// that `contentRect` adds itself. Not clamped; the setter clamps.
+    public func expandedHeight(forBody body: CGFloat) -> CGFloat {
+        contentInset(for: .expanded) - stripExtra + body + 10
     }
 
     /// Inset from the content rect's top to where a mode's content starts: below the

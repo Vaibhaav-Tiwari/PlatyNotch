@@ -124,20 +124,39 @@ final class RemindersWidget: NotchWidget {
         guard running, reminders.access == .granted else { return }
         let q = parsed()
         guard !q.title.isEmpty else { return }
-        // A grant or revoke made in System Settings since the last read counts (never prompts).
-        calendar.refreshAccess()
         do {
-            if q.isEvent, calendar.access == .granted, let start = q.due, let end = q.eventEnd {
-                try calendar.addEvent(title: q.title, start: start, end: end)
-                show("Added to Calendar")
-            } else {
-                try reminders.add(title: q.title, due: q.due, hasTime: q.hasTime)
-                show(q.isEvent ? "Added to Reminders (Calendar access is off)" : "Added to Reminders")
-            }
+            show(try performAdd(q))
             draft = ""
         } catch {
             show(error.localizedDescription)
         }
+    }
+
+    /// The command line's `remind <text>`: the same add as the quick-add field. Nil when it
+    /// was added; otherwise the reason, never a permission prompt.
+    @discardableResult
+    func add(_ q: QuickAdd) -> String? {
+        guard running else { return "Turn on Reminders in Settings" }
+        guard reminders.access == .granted else { return "Allow Reminders in Settings" }
+        guard !q.title.isEmpty else { return "Add a few words about what to remember" }
+        do {
+            show(try performAdd(q))
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    /// Writes `q` (an event when Calendar allows it, else a reminder); the confirmation text.
+    private func performAdd(_ q: QuickAdd) throws -> String {
+        // A grant or revoke made in System Settings since the last read counts (never prompts).
+        calendar.refreshAccess()
+        if q.isEvent, calendar.access == .granted, let start = q.due, let end = q.eventEnd {
+            try calendar.addEvent(title: q.title, start: start, end: end)
+            return "Added to Calendar"
+        }
+        try reminders.add(title: q.title, due: q.due, hasTime: q.hasTime)
+        return q.isEvent ? "Added to Reminders (Calendar access is off)" : "Added to Reminders"
     }
 
     func complete(_ item: ReminderItem) {
@@ -177,23 +196,11 @@ final class RemindersWidget: NotchWidget {
 
     var hasContent: Bool { dueCount > 0 }
 
-    /// "Tasks 3".
-    func glanceView() -> AnyView? { AnyView(RemindersGlance(widget: self)) }
-
     func tileView() -> AnyView {
         AnyView(RemindersTile(widget: self))
     }
 
     func settingsView() -> AnyView? {
         AnyView(RemindersSettings(widget: self))
-    }
-}
-
-/// The reminders glance: how many are due today.
-private struct RemindersGlance: View {
-    let widget: RemindersWidget
-
-    var body: some View {
-        GlanceChip(systemImage: widget.systemImage, value: "\(widget.dueCount)", label: "Tasks")
     }
 }

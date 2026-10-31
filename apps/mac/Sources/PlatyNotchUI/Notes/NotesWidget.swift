@@ -468,14 +468,33 @@ final class NotesWidget: NotchWidget {
 
     /// Return in the field / "Add". One write at a time (`NoteWriter`).
     func addDraft() {
-        guard isRunning, let entry = QuickNote.entry(draft, at: services.clock(), calendar: services.calendar) else { return }
-        let sent = draft
+        guard isRunning else { return }
+        _ = write(draft)
+    }
+
+    /// The command line's `note <text>`: appends to today's note. The result lands in
+    /// `status` when the write finishes; a string comes back now only when nothing was started
+    /// (the widget is off, nothing to add, or the daily folder is wrong).
+    @discardableResult
+    func appendNote(_ text: String) -> String? {
+        guard isRunning else { return "Turn on Notes in Settings" }
+        guard QuickNote.entry(text, at: services.clock(), calendar: services.calendar) != nil else {
+            return "Nothing to add"
+        }
+        return write(text)
+    }
+
+    /// Appends `text` to today's note (or the fallback file); nil when the write started.
+    private func write(_ text: String) -> String? {
+        guard let entry = QuickNote.entry(text, at: services.clock(), calendar: services.calendar) else { return nil }
+        let sent = text
         let writer = services.writer
         if let vault {
             guard let rel = QuickNote.dailyNotePath(folder: options.dailyFolder, date: services.clock(),
                                                     calendar: services.calendar) else {
-                status = "The daily notes folder must be a folder inside the vault (Settings)."
-                return
+                let why = "The daily notes folder must be a folder inside the vault (Settings)."
+                status = why
+                return why
             }
             let append = services.append
             let mode: mode_t? = options.createDailyNote ? 0o644 : nil
@@ -491,6 +510,7 @@ final class NotesWidget: NotchWidget {
                 self?.appended(result, sent: sent, label: "PlatyNotch notes", refresh: nil)
             })
         }
+        return nil
     }
 
     private func appended(_ result: QuickNote.AppendResult, sent: String, label: String, refresh: String?) {
@@ -555,7 +575,7 @@ struct NotesTile: View {
     @Bindable var widget: NotesWidget
     @State private var token = NotesTileToken()
     @Environment(\.panelTicking) private var shown
-    @Environment(\.inLibraryTool) private var inTool
+    @Environment(\.inPanelTool) private var inTool
 
     /// Open tasks the tile lists; the Library tool lists more (it scrolls).
     private var limit: Int { inTool ? 40 : NotesWidget.shownLimit }

@@ -112,16 +112,6 @@ final class AgentActivityModel {
         handlers.append(handler)
     }
 
-    /// Every agent finished: Platy's 2-second moment, once per finish and never while an
-    /// approval waits (`MomentGate`).
-    func celebrateAllFinished(on platy: PlatyMoodModel, approvals: @escaping @MainActor () -> Int,
-                              now: @escaping () -> Date = Date.init) {
-        observe { [weak platy] changes in
-            guard changes.allFinished, let platy else { return }
-            platy.celebrate(.allAgentsFinished(at: now()), approvalsPending: approvals())
-        }
-    }
-
     /// The sessions of the last change (what `observe` handlers' keys refer to).
     @ObservationIgnored private(set) var lastSessions: [Session] = []
 

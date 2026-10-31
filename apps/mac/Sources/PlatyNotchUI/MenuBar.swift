@@ -4,8 +4,9 @@ import PlatyNotchKit
 
 /// The menu bar item: Platy's silhouette as a template icon (`PlatyMenuIcon`) with a dot
 /// while capture is running. Menu: Open PlatyNotch, Settings…, Check for Updates… (or the
-/// GitHub Releases page when updates are off), Pause/Resume capture, Pause/Resume
-/// clipboard history (only while that widget is on, C23), Quit.
+/// GitHub Releases page when updates are off), Games (a submenu per game, only while Games
+/// is on), Open (the features that open inside the panel), Pause/Resume capture,
+/// Pause/Resume clipboard history (only while that widget is on, C23), Quit.
 @MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
     private let item: NSStatusItem
@@ -19,12 +20,26 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private let clipboard: ClipboardMenuControl?
     private var observing = false
     private let surfaces: PanelSurfaces?
+    private let games: GamesWidget?
+    private let gamesOn: () -> Bool
+    private let onOpenGame: (GameKind) -> Void
+    private let openTools: () -> [CommandTool]
+    private let onOpenTool: (String) -> Void
+    private let gamesItem = NSMenuItem(title: "Games", action: nil, keyEquivalent: "")
+    private let openItem = NSMenuItem(title: "Open", action: nil, keyEquivalent: "")
     /// "Stop <title>" items at the top while anything rings, then a separator.
     private var stopMenuItems: [NSMenuItem] = []
 
     init(capture: CaptureService?, updater: AppUpdater? = nil, surfaces: PanelSurfaces? = nil,
-         clipboard: ClipboardMenuControl? = nil,
+         clipboard: ClipboardMenuControl? = nil, games: GamesWidget? = nil, gamesOn: @escaping () -> Bool = { true },
+         onOpenGame: @escaping (GameKind) -> Void = { _ in },
+         openTools: @escaping () -> [CommandTool] = { [] }, onOpenTool: @escaping (String) -> Void = { _ in },
          onOpen: @escaping () -> Void, onSettings: @escaping () -> Void) {
+        self.games = games
+        self.gamesOn = gamesOn
+        self.onOpenGame = onOpenGame
+        self.openTools = openTools
+        self.onOpenTool = onOpenTool
         self.capture = capture
         self.clipboard = clipboard
         self.updater = updater
@@ -109,11 +124,44 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         isEnabled ? ("Check for Updates…", canCheck) : ("Download Updates from GitHub Releases…", true)
     }
 
+    /// The Games item is hidden while Games is off.
+    static func gamesItemHidden(gamesOn: Bool) -> Bool { !gamesOn }
+
+    /// The Games submenu: every game, Platy Chase included.
+    static var gameTitles: [String] { GameKind.allCases.map(\.title) }
+
+    /// Choosing a game by its menu title: it is picked in the games tool, then the panel
+    /// opens on it. False for a title that is no game.
+    @discardableResult
+    static func chooseGame(titled title: String, games: GamesWidget?, open: (GameKind) -> Void) -> Bool {
+        guard let kind = GameKind.allCases.first(where: { $0.title == title }) else { return false }
+        games?.host.select(kind)
+        open(kind)
+        return true
+    }
+
+    /// The Open submenu: each feature that opens inside the panel except the games (which
+    /// have their own item), in the panel's order.
+    static func openItems(_ tools: [CommandTool]) -> [CommandTool] {
+        tools.filter { $0.id != GamesWidget.widgetID && $0.id != PanelTools.chase }
+    }
+
     private func buildMenu() {
         let menu = Self.newMenu()
         menu.delegate = self
         menu.addItem(withTitle: "Open PlatyNotch", action: #selector(open), keyEquivalent: "").target = self
         menu.addItem(withTitle: "Settings…", action: #selector(settings), keyEquivalent: ",").target = self
+        let gamesMenu = Self.newMenu()
+        for title in Self.gameTitles {
+            let mi = NSMenuItem(title: title, action: #selector(openGame(_:)), keyEquivalent: "")
+            mi.target = self
+            gamesMenu.addItem(mi)
+        }
+        gamesItem.submenu = gamesMenu
+        gamesItem.isHidden = Self.gamesItemHidden(gamesOn: gamesOn())
+        menu.addItem(gamesItem)
+        openItem.submenu = Self.newMenu()
+        menu.addItem(openItem)
         if let updater {
             updatesItem.title = Self.updatesItemState(isEnabled: updater.isEnabled, canCheck: false).title
             updatesItem.action = #selector(checkForUpdates)
@@ -134,6 +182,18 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
+        gamesItem.isHidden = Self.gamesItemHidden(gamesOn: gamesOn())
+        let tools = Self.openItems(openTools())
+        openItem.isHidden = tools.isEmpty
+        if let sub = openItem.submenu {
+            sub.removeAllItems()
+            for tool in tools {
+                let mi = NSMenuItem(title: tool.title, action: #selector(openTool(_:)), keyEquivalent: "")
+                mi.target = self
+                mi.representedObject = tool.id
+                sub.addItem(mi)
+            }
+        }
         if let updater {
             let state = Self.updatesItemState(isEnabled: updater.isEnabled, canCheck: updater.canCheckForUpdates)
             updatesItem.title = state.title
@@ -147,6 +207,15 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let state = Self.pauseItemState(capture.status)
         pauseItem.title = state.title
         pauseItem.isEnabled = state.enabled
+    }
+
+    @objc private func openGame(_ sender: NSMenuItem) {
+        Self.chooseGame(titled: sender.title, games: games, open: onOpenGame)
+    }
+
+    @objc private func openTool(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        onOpenTool(id)
     }
 
     @objc private func open() { onOpen() }

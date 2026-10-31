@@ -57,9 +57,6 @@ final class OnboardingFlowTests: DefaultsTestCase {
         XCTAssertFalse(OnboardingLaunch.showsFirstRun(.offerTour))
         XCTAssertFalse(OnboardingLaunch.showsFirstRun(.settled))
         XCTAssertTrue(OnboardingLaunch.showsFirstRun(.firstRun))
-        XCTAssertTrue(OnboardingLaunch.offersTourCard(.offerTour, tourOffered: false))
-        XCTAssertFalse(OnboardingLaunch.offersTourCard(.offerTour, tourOffered: true), "taken or dismissed: gone")
-        XCTAssertFalse(OnboardingLaunch.offersTourCard(.firstRun, tourOffered: false))
         // A new install's own saved layout does not make it an existing user next launch.
         d.set(true, forKey: FirstRunState.pendingKey)
         XCTAssertEqual(FirstRunState.resolve(onboardingDone: false, layoutSaved: true, defaults: d), .firstRun)
@@ -72,15 +69,13 @@ final class OnboardingFlowTests: DefaultsTestCase {
         c.cursorLocation = { CGPoint(x: 100, y: 100) }
         let tour = TourCoordinator()
         tour.approvals = { store.approvals.count }
-        var celebrated = 0, done = 0
-        tour.onCelebrate = { celebrated += 1 }
+        var done = 0
         tour.controllers = [c]
         tour.arm { done += 1 }
         XCTAssertEqual(c.panelModel.tourSample?.id, TryItSession.sample.id, "armed: the sample waits in Now")
         c.expand()
         XCTAssertEqual(c.mode, .expanded)
         XCTAssertEqual(done, 1, "opening the panel finishes Try it")
-        XCTAssertEqual(celebrated, 1)
         XCTAssertEqual(tour.session.phase, .showing)
         XCTAssertNotNil(c.panelModel.tourSample, "the sample stays while Now shows it")
         c.collapse()
@@ -93,10 +88,10 @@ final class OnboardingFlowTests: DefaultsTestCase {
 
     /// The hover peek shows Now's hero: with Open on "Peek, then click" it completes Try it.
     func testTryItCompletesOnHoverPeek() {
-        XCTAssertTrue(NotchController.showsNow(.peek(.hover)))
-        XCTAssertTrue(NotchController.showsNow(.expanded))
-        XCTAssertFalse(NotchController.showsNow(.peek(.approval)))
-        XCTAssertFalse(NotchController.showsNow(.compact))
+        XCTAssertTrue(NotchController.showsHome(.peek(.hover)))
+        XCTAssertTrue(NotchController.showsHome(.expanded))
+        XCTAssertFalse(NotchController.showsHome(.peek(.approval)))
+        XCTAssertFalse(NotchController.showsHome(.compact))
     }
 
     /// The sample leaves after the time limit even if Now stays open.
@@ -124,9 +119,6 @@ final class OnboardingFlowTests: DefaultsTestCase {
     func testSampleIgnoredDuringApproval() {
         let sample = TryItSession.sample
         XCTAssertEqual(sample.title, "This is Now")
-        XCTAssertEqual(NowView.withTourSample([], sample: sample, approvals: 0).map(\.id), [sample.id])
-        XCTAssertEqual(NowView.withTourSample([], sample: sample, approvals: 1), [], "an approval holds Now")
-        XCTAssertEqual(NowView.withTourSample([], sample: nil, approvals: 0), [])
         let session = TryItSession()
         var done = false
         session.arm { done = true }
@@ -149,8 +141,6 @@ final class OnboardingFlowTests: DefaultsTestCase {
         s.applyPreset(.developer, defaults: d)
         XCTAssertTrue(s.widgets.isEnabled("snap"))
         XCTAssertTrue(s.widgets.isEnabled("fileActions"))
-        XCTAssertEqual(GlanceSlots.decode(d.data(forKey: GlanceSlots.key))?.ids,
-                       ["meeting", GlanceSlots.usageID, "weather", "system"])
         XCTAssertTrue(AgentsVisibility.load(from: d).forcedOn)
         XCTAssertEqual(AppearanceStore.load(from: d).mode, .alwaysOn)
         s.applyPreset(.minimal, defaults: d)
@@ -169,7 +159,7 @@ final class OnboardingFlowTests: DefaultsTestCase {
         XCTAssertEqual(OnboardingView.continueStep(page: .meetPlaty, confirmsPresets: true, plan: plan), .nextPage)
         let summary = s.presetSummary(plan)
         XCTAssertTrue(summary.contains("Turns off"), summary)
-        XCTAssertTrue(summary.contains("Claude/Codex usage"), "glances are named, not ids: \(summary)")
+        XCTAssertTrue(summary.contains("Meetings"), "widgets are named, not ids: \(summary)")
         XCTAssertTrue(summary.contains("The notch hides until something is live."))
     }
 
@@ -177,12 +167,11 @@ final class OnboardingFlowTests: DefaultsTestCase {
     func testSettingsAlwaysAsks() {
         for p in SetupPreset.allCases {
             for enabled in [Set<String>(), Set(["music"]), Set(SetupPreset.builtIns)] {
-                let plan = PresetPlan.plan(p, enabled: enabled, glances: [], mode: .alwaysOn)
+                let plan = PresetPlan.plan(p, enabled: enabled, mode: .alwaysOn)
                 XCTAssertEqual(GeneralSection.action(for: plan), plan.isCurrent ? .alreadyCurrent : .ask, "\(p)")
-                XCTAssertEqual(GeneralSection.action(for: plan), .ask, "\(p): glances always differ here")
             }
         }
-        let current = PresetPlan.plan(.minimal, enabled: ["music"], glances: [GlanceSlots.usageID], mode: .minimal)
+        let current = PresetPlan.plan(.minimal, enabled: ["music"], mode: .minimal)
         XCTAssertEqual(GeneralSection.action(for: current), .alreadyCurrent)
     }
 }

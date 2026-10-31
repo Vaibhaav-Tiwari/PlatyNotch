@@ -36,11 +36,11 @@ public struct AgentsVisibility: Codable, Equatable, Sendable {
     }
 }
 
-/// The open panel's destinations (spec 6.1).
+/// The open panel's destinations (spec 2): Home and, once agent hooks are set up, Agents.
 public enum PanelDestination: String, CaseIterable, Sendable {
-    case now, agents, library
+    case home, agents
 
     public static func shown(agentsVisible: Bool) -> [PanelDestination] {
-        agentsVisible ? [.now, .agents, .library] : [.now, .library]
+        agentsVisible ? [.home, .agents] : [.home]
     }
 }

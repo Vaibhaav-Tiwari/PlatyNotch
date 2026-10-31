@@ -391,7 +391,7 @@ struct ClipboardTile: View {
     /// Rows in the Library tool (it scrolls past what fits).
     static let toolShown = 30
     let widget: ClipboardWidget
-    @Environment(\.inLibraryTool) private var inTool
+    @Environment(\.inPanelTool) private var inTool
 
     var body: some View {
         VStack(alignment: .leading, spacing: inTool ? Space.s : 6) {

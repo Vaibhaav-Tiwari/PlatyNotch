@@ -9,9 +9,6 @@ import SwiftUI
 /// On by default, and does nothing until a game is opened and played: `start` only wires
 /// the pause signals (pending approvals, ringing), with no timer or observer. High scores
 /// are kept in `UserDefaults.standard` (`HighScores.key`), never sent anywhere.
-///
-/// Task 13 hook: `celebration` changes (and `onNewBest` is called) when a game ends with a
-/// new best (`HighScores.record` returned true).
 @MainActor @Observable
 public final class GamesWidget: NotchWidget {
     nonisolated public static let widgetID = "games"
@@ -36,14 +33,6 @@ public final class GamesWidget: NotchWidget {
 
     /// Nothing saved (smoke runs).
     public static func inert() -> GamesWidget { GamesWidget(defaults: nil) }
-
-    /// The latest new best (Task 13: Platy celebrates).
-    public var celebration: GameCelebration? { host.celebration }
-
-    public var onNewBest: ((GameResult) -> Void)? {
-        get { host.onNewBest }
-        set { host.onNewBest = newValue }
-    }
 
     public func start(context: WidgetContext) {
         let store = context.store
@@ -70,11 +59,6 @@ public final class GamesWidget: NotchWidget {
                              glyph: .symbol("gamecontroller.fill"), tint: .accent,
                              accessibilityLabel: "Platy Chase in play", title: "Platy Chase",
                              subtitle: "Score \(session.score)")]
-    }
-
-    /// Platy Chase in play and its score: no primary control.
-    public func heroView() -> AnyView? {
-        AnyView(TopActivityHero(activities: { [weak self] in self?.liveActivities ?? [] }, action: { _ in nil }))
     }
 
     public func tileView() -> AnyView {

@@ -112,7 +112,7 @@ enum ThemeRenders {
         out.append(("memory-graph", memoryGraph(selection: nil), true))
         out.append(("memory-graph-selected", memoryGraph(selection: "t-pr"), true))
         out.append(("memory-graph-empty", memoryGraph(MemoryGraph(nodes: [], edges: []), selection: nil), true))
-        out += NowRenders.views()
+        out += HomeRenders.views()
         for width in AppearanceSettings.PillWidth.allCases {
             for count in [4, 12] {
                 out.append(("pill-\(width.rawValue)-\(count)", compactPill(width, sessions: count), true))
@@ -210,30 +210,25 @@ enum ThemeRenders {
     }
 }
 
-/// Now at the open panel's real size beside a 38 pt camera housing (nav, approvals region
-/// and Now; 528 × the room below the housing), with inert models and fixed data.
+/// Home at the open panel's real size beside a 38 pt camera housing (header, approvals region
+/// and Home; 568 × the room below the housing), with inert models and fixed data.
 @MainActor
-enum NowRenders {
+enum HomeRenders {
     /// (file name, view, needs a hosting view): Platy is a layer-backed view.
     static func views() -> [(String, AnyView, Bool)] {
         var out: [(String, AnyView, Bool)] = []
-        out.append(("now-summary", panel(builtIns(meeting: false)), true))
-        out.append(("now-live-generic", panel(everythingOn()), true))
-        out.append(("now-approvals-line", panel(approvalPending()), true))
-        out.append(("hero-music", panel(musicHero()), true))
-        out.append(("hero-timer", panel(timerHero()), true))
-        out.append(("hero-meeting", panel(meetingHero()), true))
-        out.append(("hero-agents", panel(agentsHero()), true))
+        out.append(("home-rest", panel(homeRest()), true))
+        out.append(("home-header-keep-awake", panel(homeRest(), header: headerServices(keepAwake: true)), true))
+        out.append(("home-header-charging", panel(homeRest(), header: headerServices(
+            battery: BatteryState(percent: 64, charging: true, pluggedIn: true, minutesRemaining: nil))), true))
+        out.append(("home-live", panel(homeLive()), true))
+        out.append(("home-nothing-playing", panel(builtIns(meeting: false)), true))
+        out.append(("home-drop", panel(builtIns(meeting: false), dropping: true), true))
+        out.append(("home-notes-column", panel(builtIns(meeting: false), homeSettings: HomeSettings(rightColumn: .notes)), true))
+        out.append(("home-command", panel(homeRest(), command: "timer 10m tea"), true))
         out.append(("peek-hover", hoverPeek(agentsHero()), true))
-        // Existing users' tour card at the top of Now (spec 14), and the first run's "Try it" sample.
-        out.append(("now-tour-card", panel(everythingOn(), tourOffer: TourOffer(onTake: {}, onDismiss: {})), true))
-        out.append(("now-try-it-sample", panel(builtIns(meeting: false), tourSample: TryItSession.sample), true))
-        // Platy's pond through the day (the summary above draws today's phase).
-        for (phase, hour) in [("morning", 8), ("evening", 19), ("night", 23)] {
-            out.append(("now-pond-\(phase)", panel(pond(hour: hour), now: at(hour: hour)), true))
-        }
         out += AgentsRenders.views()
-        out += LibraryRenders.views()
+        out += ToolRenders.views()
         return out
     }
 
@@ -247,12 +242,28 @@ enum NowRenders {
         return rig
     }
 
-    /// Nothing live at `hour`:12 with the meeting glance on the same clock, and Platy in the
-    /// mood for that hour (sleepy at night).
-    static func pond(hour: Int) -> Rig {
-        var rig = builtIns(meeting: false, at: at(hour: hour))
-        rig.mood = PlatyMoodResolver.mood(sessions: [], approvalsPending: 0, musicPlaying: false, focusActive: false,
-                                          justFinished: false, hour: hour)
+    /// Home at rest: a track, a meeting later today and three tasks, nothing live.
+    static func homeRest() -> Rig {
+        let rig = musicHero()
+        rig.today.nowPlaying.debugApply(NowPlayingInfo(bundleIdentifier: "com.apple.Music", title: "Weightless",
+                                                       artist: "Marconi Union", isPlaying: true,
+                                                       elapsed: 161, duration: 473, rate: 1, timestamp: Date()))
+        return rig
+    }
+
+    /// Everything live: music, a timer, a focus session, the shelf, a meeting and tasks.
+    static func homeLive() -> Rig {
+        let rig = everythingOn()
+        rig.today.nowPlaying.debugApply(NowPlayingInfo(bundleIdentifier: "com.apple.Music", title: "Weightless",
+                                                       artist: "Marconi Union", isPlaying: true,
+                                                       elapsed: 161, duration: 473, rate: 1, timestamp: Date()))
+        _ = (rig.registry.widget(TimeWidget.widgetID) as? TimeWidget)?.addTimer("25m")
+        _ = (rig.registry.widget(TimeWidget.widgetID) as? TimeWidget)?.addTimer("5m")
+        rig.today.focus.start(minutes: 25)
+        (rig.registry.widget(ShelfWidget.widgetID) as? ShelfWidget)?.showForRendering([
+            ShelfItem(kind: .text("Release checklist"), addedAt: Date()),
+            ShelfItem(kind: .text("Meeting notes"), addedAt: Date()),
+        ])
         return rig
     }
 
@@ -260,7 +271,8 @@ enum NowRenders {
     static func musicHero(at now: Date = Date()) -> Rig {
         let rig = builtIns(meeting: false, at: now)
         rig.today.nowPlaying.debugApply(NowPlayingInfo(bundleIdentifier: "com.apple.Music", title: "Weightless",
-                                                       artist: "Marconi Union", isPlaying: true))
+                                                       artist: "Marconi Union", isPlaying: true,
+                                                       elapsed: 161, duration: 473, rate: 1, timestamp: Date()))
         return rig
     }
 
@@ -298,7 +310,7 @@ enum NowRenders {
                                     auxLeft: CGRect(x: 0, y: 944, width: 654, height: 38),
                                     auxRight: CGRect(x: 858, y: 944, width: 654, height: 38))
 
-    /// Today at `hour`:12 (the pond renders).
+    /// Today at `hour`:12 (the renders).
     static func at(hour: Int) -> Date {
         Calendar.current.date(bySettingHour: hour, minute: 12, second: 0, of: Date()) ?? Date()
     }
@@ -314,7 +326,7 @@ enum NowRenders {
         let client = CoreClient(socketPath: "/nonexistent")
         let registry: WidgetRegistry
         let today: TodayServices
-        let glances: UserDefaults
+        let glances: UserDefaults   // the render's own defaults suite
         var mood: PlatyMood = .idle
 
         init() {
@@ -353,17 +365,40 @@ enum NowRenders {
 
     /// The open panel as `PanelRootView` lays it out: 16 pt margins, content below the
     /// camera housing, 10 pt at the bottom; clipped, so anything too tall shows.
-    static func panel(_ rig: Rig, route: PanelRoute = PanelRoute(destination: .now), extraTabs: [PanelTab] = [],
+    static func panel(_ rig: Rig, route: PanelRoute = PanelRoute(destination: .home), extraTabs: [PanelTab] = [],
                       memory: MemoryServices? = nil, memoryMode: MemoryTab.Mode = .search,
-                      tourOffer: TourOffer? = nil, tourSample: LiveActivity? = nil, now: Date? = nil) -> AnyView {
+                      homeSettings: HomeSettings = HomeSettings(), dropping: Bool = false, command: String? = nil,
+                      tourSample: LiveActivity? = nil, now: Date? = nil, header: HeaderServices? = nil,
+                      full: Bool = false) -> AnyView {
         let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelMargin
-        let height: CGFloat = NowMetrics.available(in: layout)
+        rig.store.apply(.connected)   // a quiet header, as in the running app
         var current = route
+        let commandModel = PanelViewModel()
+        commandModel.commandText = command ?? ""
+        let logic = CommandLineLogic(model: commandModel, runner: CommandRunner(actions: CommandActions()),
+                                     tools: { [] }, clock: { fixedNow }, calendar: .current)
+        let commandLine = AnyView(CommandLineView(model: commandModel, logic: logic, memory: nil))
+        let services: HeaderServices = header ?? headerServices()
+        let at: Date = now ?? fixedNow
+        // Plain Home with no approval hugs its content, as the controller sizes the live
+        // panel; every other view takes the full height.
+        var height: CGFloat = available
+        if !full, route.destination == .home, route.tool == nil, rig.store.approvals.isEmpty {
+            let probe = HomeView(today: rig.today, widgets: rig.registry, settings: homeSettings, tourSample: tourSample,
+                                 fixedNow: at, dropping: dropping, commandLine: commandLine)
+            let host = NSHostingView(rootView: probe.frame(width: width).fixedSize(horizontal: false, vertical: true)
+                .environment(\.colorScheme, .dark).environment(\.panelTicking, false)
+                .environment(\.platyMood, rig.mood))
+            host.layoutSubtreeIfNeeded()
+            var l = layout
+            l.expandedContentHeight = l.expandedHeight(forBody: HomeMetrics.nav + HomeMetrics.gap + host.fittingSize.height)
+            height = l.contentRect(for: .expanded).height - l.contentInset(for: .expanded) - 10
+        }
         let view = ExpandedPanel(store: rig.store, responder: ApprovalResponder(client: rig.client), arming: ApprovalArming(),
                                  today: rig.today, widgets: rig.registry, memory: memory ?? MemoryServices(client: rig.client),
                                  extraTabs: extraTabs, route: Binding(get: { current }, set: { current = $0 }),
-                                 onCollapse: {}, fixedNow: now ?? fixedNow, glanceDefaults: rig.glances, memoryMode: memoryMode,
-                                 tourOffer: tourOffer, tourSample: tourSample,
+                                 onCollapse: {}, header: services, homeSettings: homeSettings, commandLine: commandLine,
+                                 dropping: dropping, fixedNow: at, memoryMode: memoryMode, tourSample: tourSample,
                                  onDecide: { _, _ in }, onOpenTerminal: { _ in })
             .frame(width: width, height: height, alignment: .top)
             .clipped()
@@ -372,16 +407,27 @@ enum NowRenders {
         return AnyView(view)
     }
 
+    /// Header toggles for a render: inert power (no assertion, no IOKit), optionally with
+    /// keep awake running (`1:20`-style time) and a battery reading.
+    static func headerServices(keepAwake: Bool = false, battery: BatteryState? = nil) -> HeaderServices {
+        let power = RenderPower(state: battery)
+        let services = HeaderServices(keepAwake: KeepAwake(asserter: RenderAsserter()), power: power,
+                                      defaults: UserDefaults(suiteName: "dev.platynotch.render-header") ?? .standard)
+        if keepAwake { services.startKeepAwake(.oneHour) }
+        return services
+    }
+
+    /// The room below the camera housing in the open panel at full height.
+    static var available: CGFloat {
+        layout.contentRect(for: .expanded).height - layout.contentInset(for: .expanded) - 10
+    }
+
     /// The hover peek (Peek on hover, open on click) as `PanelRootView` lays it out beside
-    /// the 38 pt camera housing: Now's hero alone in 420 × (housing + 176).
+    /// the 38 pt camera housing: the top live item alone in 420 × (housing + 176).
     static func hoverPeek(_ rig: Rig) -> AnyView {
         let rect: CGRect = layout.contentRect(for: .peek(.hover))
         let top: CGFloat = layout.contentInset(for: .peek(.hover))
-        var deck = HeroDeck()
-        let view = NowView(store: rig.store, widgets: rig.registry, today: rig.today,
-                           deck: Binding(get: { deck }, set: { deck = $0 }), glanceDefaults: rig.glances,
-                           onOpenTool: { _ in }, onOpenAgents: {}, onOpenTerminal: { _ in }, fixedNow: fixedNow,
-                           heroOnly: true)
+        let view = HoverPeekView(widgets: rig.registry)
             .padding(EdgeInsets(top: top, leading: 12, bottom: 6, trailing: 12))
             .frame(width: rect.width, height: rect.height, alignment: .top)
             .background(alignment: .top) { Color(PanelPalette.darkSurface).frame(height: layout.anchor.height) }
@@ -433,9 +479,6 @@ enum NowRenders {
         }
         (rig.registry.widget(RemindersWidget.widgetID) as? RemindersWidget)?.reminders
             .setForTesting(access: .granted, items: tasks)
-        var slots = GlanceSlots()
-        slots.set([MeetingWidget.widgetID, GlanceSlots.usageID, WellbeingWidget.widgetID, LoopsWidget.widgetID])
-        slots.save(to: rig.glances)
     }
 }
 
@@ -471,14 +514,14 @@ private final class RenderLiveWidget: NotchWidget {
 enum AgentsRenders {
     static func views() -> [(String, AnyView, Bool)] {
         [
-            ("agents-one", NowRenders.panel(rig(one()), route: PanelRoute(destination: .agents)), true),
-            ("agents-mixed", NowRenders.panel(mixed(), route: PanelRoute(destination: .agents)), true),
-            ("agents-twelve", NowRenders.panel(rig(twelve()), route: PanelRoute(destination: .agents)), true),
-            ("agents-empty", NowRenders.panel(rig([]), route: PanelRoute(destination: .agents)), true),
+            ("agents-one", HomeRenders.panel(rig(one()), route: PanelRoute(destination: .agents)), true),
+            ("agents-mixed", HomeRenders.panel(mixed(), route: PanelRoute(destination: .agents)), true),
+            ("agents-twelve", HomeRenders.panel(rig(twelve()), route: PanelRoute(destination: .agents)), true),
+            ("agents-empty", HomeRenders.panel(rig([]), route: PanelRoute(destination: .agents)), true),
             ("agents-app-icon", appIcon(), true),
-            ("approval-card-command", NowRenders.panel(approvals([bashApproval()]), route: PanelRoute(destination: .agents)), true),
-            ("approval-card-diff", NowRenders.panel(approvals([editApproval("e1")]), route: PanelRoute(destination: .agents)), true),
-            ("approval-cards-diff-3", NowRenders.panel(approvals([editApproval("e1"), writeApproval(),
+            ("approval-card-command", HomeRenders.panel(approvals([bashApproval()]), route: PanelRoute(destination: .agents)), true),
+            ("approval-card-diff", HomeRenders.panel(approvals([editApproval("e1")]), route: PanelRoute(destination: .agents)), true),
+            ("approval-cards-diff-3", HomeRenders.panel(approvals([editApproval("e1"), writeApproval(),
                                                                   editApproval("e3")]), route: PanelRoute(destination: .agents)), true),
             ("peek-show-changes", approvalPeek(approvals([editApproval("e1"), bashApproval()])), true),
         ]
@@ -486,7 +529,7 @@ enum AgentsRenders {
 
     // MARK: Approvals (Task 19)
 
-    static func approvals(_ list: [Approval]) -> NowRenders.Rig {
+    static func approvals(_ list: [Approval]) -> HomeRenders.Rig {
         let r = rig(one())
         r.store.apply(.connected)
         for a in list { try? r.store.apply(Envelope.make(.approvalAdded, a)) }
@@ -528,8 +571,8 @@ enum AgentsRenders {
     }
 
     /// The approval peek beside the 38 pt camera housing, as `PanelRootView` lays it out.
-    static func approvalPeek(_ r: NowRenders.Rig) -> AnyView {
-        let layout = NowRenders.layout
+    static func approvalPeek(_ r: HomeRenders.Rig) -> AnyView {
+        let layout = HomeRenders.layout
         let rect: CGRect = layout.contentRect(for: .peek(.approval))
         let top: CGFloat = layout.contentInset(for: .peek(.approval))
         let view = ApprovalPeek(store: r.store, responder: ApprovalResponder(client: r.client), arming: ApprovalArming(),
@@ -571,7 +614,7 @@ enum AgentsRenders {
     }
 
     /// Needs you, errored, working and just finished.
-    static func mixed() -> NowRenders.Rig {
+    static func mixed() -> HomeRenders.Rig {
         let ask = session("ask", "claude-code", "Claude Code", project: "platynotch", .waitingInput, tool: "AskUserQuestion",
                           message: "Which colour should the badge use?")
         let err = session("err", "codex", "Codex", project: "api", .idle, tool: "Bash", message: "go test ./... (exit 1)",
@@ -588,8 +631,8 @@ enum AgentsRenders {
         return r
     }
 
-    static func rig(_ sessions: [Session]) -> NowRenders.Rig {
-        var r = NowRenders.Rig()
+    static func rig(_ sessions: [Session]) -> HomeRenders.Rig {
+        var r = HomeRenders.Rig()
         r.mood = sessions.isEmpty ? .idle : .working
         let json = #"{"claude":{"five_hour":{"used_percent":62},"weekly":{"used_percent":31},"updated_at":"2026-10-25T09:00:00Z"},"codex":{"weekly":{"used_percent":91},"updated_at":"2026-10-25T09:00:00Z"}}"#
         let usage: Usage = (try? JSONCoding.decoder.decode(Usage.self, from: Data(json.utf8))) ?? Usage()
@@ -629,59 +672,54 @@ enum AgentsRenders {
     }
 }
 
-/// The Library (Task 21): the grid with the default widgets and with everything on, the
-/// dimmed "Set up" tiles, every built-in tool opened full-panel and a plugin tab as a tool.
+/// Every feature that opens inside the panel, full-panel with its back chevron: the built-in
+/// tools and a plugin tab.
 @MainActor
-enum LibraryRenders {
+enum ToolRenders {
     static func views() -> [(String, AnyView, Bool)] {
         var out: [(String, AnyView, Bool)] = []
-        out.append(("library-grid", NowRenders.panel(NowRenders.everythingOn(), route: grid, extraTabs: [pluginTab]), true))
-        out.append(("library-grid-default", NowRenders.panel(defaults(), route: grid), true))
-        out.append(("library-setup", NowRenders.panel(setUp(), route: grid), true))
-        out.append(("library-tool-focus", tool(FocusWidget.widgetID), true))
-        out.append(("library-tool-time", tool(TimeWidget.widgetID, rig: NowRenders.timerHero()), true))
-        out.append(("library-tool-time-empty", tool(TimeWidget.widgetID), true))
-        out.append(("library-tool-music", tool(MusicWidget.widgetID, rig: NowRenders.musicHero()), true))
-        out.append(("library-tool-clipboard", tool(ClipboardWidget.widgetID, rig: samples()), true))
-        out.append(("library-tool-shelf", tool(ShelfWidget.widgetID, rig: samples()), true))
-        out.append(("library-tool-memory-search", memory(.search), true))
-        out.append(("library-tool-memory-graph", memory(.graph), true))
-        out.append(("library-tool-games", tool(GamesWidget.widgetID), true))
-        out.append(("library-tool-chase", tool(LibraryTools.chase), true))
-        out.append(("library-tool-launch", tool(LaunchWidget.widgetID), true))
-        out.append(("library-tool-notes", tool(NotesWidget.widgetID), true))
-        out.append(("library-tool-mirror", tool(MirrorWidget.widgetID), true))
-        out.append(("library-tool-mail", tool(MailWidget.widgetID), true))
-        out.append(("library-tool-file-actions", tool(FileActionsWidget.widgetID), true))
-        out.append(("library-tool-snap", tool(WindowSnapWidget.widgetID), true))
+        out.append(("tool-focus", tool(FocusWidget.widgetID), true))
+        out.append(("tool-time", tool(TimeWidget.widgetID, rig: HomeRenders.timerHero()), true))
+        out.append(("tool-time-empty", tool(TimeWidget.widgetID), true))
+        out.append(("tool-music", tool(MusicWidget.widgetID, rig: HomeRenders.musicHero()), true))
+        out.append(("tool-clipboard", tool(ClipboardWidget.widgetID, rig: samples()), true))
+        out.append(("tool-shelf", tool(ShelfWidget.widgetID, rig: samples()), true))
+        out.append(("tool-memory-search", memory(.search), true))
+        out.append(("tool-memory-graph", memory(.graph), true))
+        out.append(("tool-games", tool(GamesWidget.widgetID), true))
+        out.append(("tool-chase", tool(PanelTools.chase), true))
+        out.append(("tool-launch", tool(LaunchWidget.widgetID), true))
+        out.append(("tool-notes", tool(NotesWidget.widgetID), true))
+        out.append(("tool-mirror", tool(MirrorWidget.widgetID), true))
+        out.append(("tool-mail", tool(MailWidget.widgetID), true))
+        out.append(("tool-file-actions", tool(FileActionsWidget.widgetID), true))
+        out.append(("tool-snap", tool(WindowSnapWidget.widgetID), true))
         // The other built-in tools, so every one is checked full-panel.
         for id in [MeetingWidget.widgetID, RemindersWidget.widgetID, LoopsWidget.widgetID, WeatherWidget.widgetID,
                    WellbeingWidget.widgetID, SystemWidget.widgetID, HUDWidget.widgetID, BasketsWidget.widgetID] {
-            out.append(("library-tool-\(id.lowercased())", tool(id, rig: NowRenders.meetingHero()), true))
+            out.append(("tool-\(id.lowercased())", tool(id, rig: HomeRenders.meetingHero()), true))
         }
-        out.append(("library-tool-plugin", NowRenders.panel(NowRenders.everythingOn(),
-                                                            route: route(LibraryTools.plugin(pluginTab.id)),
-                                                            extraTabs: [pluginTab]), true))
+        out.append(("tool-plugin", HomeRenders.panel(HomeRenders.everythingOn(),
+                                                    route: route(PanelTools.plugin(pluginTab.id)),
+                                                    extraTabs: [pluginTab]), true))
         return out
     }
 
-    private static let grid = PanelRoute(destination: .library)
+    private static func route(_ id: String) -> PanelRoute { PanelRoute(destination: .home, tool: id) }
 
-    private static func route(_ id: String) -> PanelRoute { PanelRoute(destination: .library, tool: id) }
-
-    private static func tool(_ id: String, rig: NowRenders.Rig? = nil) -> AnyView {
-        NowRenders.panel(rig ?? NowRenders.builtIns(meeting: false), route: route(id))
+    private static func tool(_ id: String, rig: HomeRenders.Rig? = nil) -> AnyView {
+        HomeRenders.panel(rig ?? HomeRenders.builtIns(meeting: false), route: route(id))
     }
 
     /// Every built-in on, with sample clipboard rows and shelf cards (inert: nothing written).
-    private static func samples() -> NowRenders.Rig {
-        let rig = NowRenders.builtIns(meeting: false)
+    private static func samples() -> HomeRenders.Rig {
+        let rig = HomeRenders.builtIns(meeting: false)
         let now = Date()
         let clips: [ClipItem] = [
             ClipItem(kind: .text("Ship the Library grid today, then the settings pages."), copiedAt: now.addingTimeInterval(-40)),
             ClipItem(kind: .url(URL(string: "https://example.com/design/library")!), copiedAt: now.addingTimeInterval(-300),
                      pinned: true),
-            ClipItem(kind: .text("swift test --filter LibraryViewTests"), copiedAt: now.addingTimeInterval(-900)),
+            ClipItem(kind: .text("swift test --filter PanelRoutingTests"), copiedAt: now.addingTimeInterval(-900)),
             ClipItem(kind: .text("Priya's deck: slides 4 to 9 need the new colours"), copiedAt: now.addingTimeInterval(-3_600)),
             ClipItem(kind: .files([URL(fileURLWithPath: "/Users/sample/Documents/Quarterly report.pdf")]),
                      copiedAt: now.addingTimeInterval(-7_200)),
@@ -695,28 +733,6 @@ enum LibraryRenders {
             ShelfItem(kind: .text("Colours: teal 2FB8A6, cream F2E6C9"), addedAt: now),
         ]
         (rig.registry.widget(ShelfWidget.widgetID) as? ShelfWidget)?.showForRendering(cards)
-        return rig
-    }
-
-    /// The built-ins with each one's default on/off, and nothing seeded.
-    private static func defaults() -> NowRenders.Rig {
-        let rig = NowRenders.Rig()
-        BuiltInWidgets.register(in: rig.registry, store: rig.store, today: rig.today, persist: false)
-        rig.startDefaults()
-        NowRenders.seed(rig, meeting: false)
-        return rig
-    }
-
-    /// Every built-in on and nothing seeded, with calendar and Reminders access never asked:
-    /// the widgets that need setup (meetings, reminders, weather, the HUD, snapping) are
-    /// dimmed with "Set up"; the rest show their calm lines.
-    private static func setUp() -> NowRenders.Rig {
-        let rig = NowRenders.Rig()
-        BuiltInWidgets.register(in: rig.registry, store: rig.store, today: rig.today, persist: false)
-        rig.startAll()
-        rig.today.calendar.setForTesting(access: .notAsked, meetings: [])
-        (rig.registry.widget(RemindersWidget.widgetID) as? RemindersWidget)?.reminders
-            .setForTesting(access: .notAsked, items: [])
         return rig
     }
 
@@ -735,7 +751,7 @@ enum LibraryRenders {
         ]
         let services = MemoryServices(search: MemorySearchModel(preset: hits),
                                       graph: MemoryGraphModel(preset: MemoryGraphSample.week))
-        return NowRenders.panel(NowRenders.builtIns(meeting: false), route: route(LibraryTools.memory), memory: services,
+        return HomeRenders.panel(HomeRenders.builtIns(meeting: false), route: route(PanelTools.memory), memory: services,
                                 memoryMode: mode)
     }
 
@@ -753,4 +769,22 @@ enum LibraryRenders {
         .frame(maxWidth: .infinity, alignment: .leading)
         .dsCard()
     }
+}
+
+
+/// A battery reading fixed for a render.
+@MainActor
+private final class RenderPower: PowerSourceReading {
+    let state: BatteryState?
+    init(state: BatteryState?) { self.state = state }
+    func read() -> BatteryState? { state }
+    func start(onChange: @escaping @MainActor () -> Void) {}
+    func stop() {}
+}
+
+/// Hands out an assertion id without touching IOKit.
+@MainActor
+private final class RenderAsserter: PowerAsserting {
+    func begin(reason: String) -> UInt32? { 7 }
+    func end(_ id: UInt32) {}
 }

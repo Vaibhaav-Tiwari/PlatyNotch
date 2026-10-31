@@ -20,12 +20,6 @@ public struct GameSurface: Equatable, Sendable {
     }
 }
 
-/// A new best score (Task 13: Platy celebrates). `at` tells repeats apart.
-public struct GameCelebration: Equatable, Sendable {
-    public var result: GameResult
-    public var at: Date
-}
-
 /// The games' controller, shared by every display's panel (one `GameSession`, so a game
 /// left on one display is still there on another). Feeds the session its blockers, keys
 /// and frames, saves high scores and reports new bests.
@@ -43,10 +37,6 @@ public struct GameCelebration: Equatable, Sendable {
 public final class GameHost {
     /// Set directly only by tests.
     public internal(set) var session: GameSession
-    /// The latest new best; observed by Task 13.
-    public private(set) var celebration: GameCelebration?
-    /// Told about every new best (after `celebration` is set).
-    @ObservationIgnored public var onNewBest: ((GameResult) -> Void)?
 
     /// Pending approvals (the widget reads `AppStore.approvals` through this).
     @ObservationIgnored var approvals: () -> Int = { 0 }
@@ -158,12 +148,6 @@ public final class GameHost {
         let before = session
         session = next
         if next.scores != before.scores, let defaults { next.scores.save(to: defaults) }
-        // `newBest` is set only by a game over and cleared by the next game, so nil → set
-        // is exactly one new best.
-        if let best = next.newBest, before.newBest == nil {
-            celebration = GameCelebration(result: best, at: now())
-            onNewBest?(best)
-        }
         if next.phase == .playing { track() }
     }
 
