@@ -99,11 +99,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Now playing, calendar, focus and loop actions, shared by every display.
     /// Smoke runs never create a real audio tap (the visualiser gets one that does nothing).
     private lazy var today: TodayServices = {
-        // A focus session's end plays its sound and is a moment (never during an approval).
+        // A focus session's end plays its sound.
         let platy = PlatyMoodModel()
-        let store = self.store
-        let focus = FocusModel(defaults: .standard,
-                               onFinish: Moments.focusFinished(platy: platy, approvals: { store.approvals.count }))
+        let focus = FocusModel(defaults: .standard, onFinish: { NSSound(named: "Glass")?.play() })
         return TodayServices(client: client, visualiser: MusicVisualiser(makeTap: { [options] in
             options.smoke || options.smokeSettings ? NoAudioTap() as AudioTapping : SystemAudioTap()
         }), focus: focus, platy: platy)
@@ -152,9 +150,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The tour card and the first run's "Try it" on every display's panel.
     private lazy var tour: TourCoordinator = {
         let t = TourCoordinator()
-        let store = self.store, today = self.today
+        let store = self.store
         t.approvals = { store.approvals.count }
-        t.onCelebrate = { today.platy.celebrate() }
         return t
     }()
     /// Settings › Notifications › Sound: Platy chatter or the user's file.
@@ -236,9 +233,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             plip.follow(today.agentActivity, store: store)
         }
-        // Every agent finished: a 2-second moment (once, never during an approval).
-        let approvalsStore = store
-        today.agentActivity.celebrateAllFinished(on: today.platy, approvals: { approvalsStore.approvals.count })
         // Settings › Notifications (kept current in `appearanceMayHaveChanged`); "quiet
         // during Focus" follows the focus session, as the notice hold always has.
         surfaces.notificationPolicy = NotificationPolicy.load(from: .standard)
@@ -279,7 +273,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             MainActor.assumeIsolated { self?.appearanceMayHaveChanged() }
         }
 
+        let gamesWidget = widgets.widget(GamesWidget.widgetID) as? GamesWidget
         menuBar = MenuBarController(capture: capture, updater: updater, surfaces: surfaces, clipboard: clipboard,
+                                    games: gamesWidget, gamesOn: { [weak self] in self?.widgets.isEnabled(GamesWidget.widgetID) ?? false },
+                                    onOpenGame: { [weak self] kind in
+                                        self?.openPanel(tab: kind == .chase ? PanelTools.chase : GamesWidget.tabID)
+                                    },
+                                    openTools: { [weak self] in self?.menuTools() ?? [] },
+                                    onOpenTool: { [weak self] id in self?.openPanel(tab: id) },
                                     onOpen: { [weak self] in self?.openPanel(tab: nil) },
                                     onSettings: { [weak self] in self?.openSettings(section: nil) })
 
@@ -304,6 +305,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func prepareFirstRun(layoutSaved: Bool) {
         firstRun = FirstRunState.prepare(defaults: .standard, onboardingDone: onboarding.isDone, layoutSaved: layoutSaved)
         today.agentActivity.reloadVisibility()   // the upgrade keeps Agents shown
+    }
+
+    /// The features the menu bar's Open submenu lists: every tool the panel opens.
+    private func menuTools() -> [CommandTool] {
+        let tools = ToolCatalog.tools(widgets: widgets, extraTabs: pluginTabs, memory: { AnyView(EmptyView()) })
+        return tools.map { CommandTool(id: $0.id, title: $0.title) }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -594,6 +601,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if failure == nil, let menuBar,
            !menuBar.menuTitles.contains("Pause clipboard history") || menuBar.menuAutoenables {
             failure = "menu bar clipboard item missing or menu autoenables"
+        }
+        if failure == nil, let menuBar, widgets.isEnabled(GamesWidget.widgetID), !menuBar.menuTitles.contains("Games") {
+            failure = "menu bar games item missing"
         }
         let sounds = TimeSound.allCases.filter { $0.url != nil }.count + CueSound.allCases.filter { $0.url != nil }.count
         if failure == nil, sounds != TimeSound.allCases.count + CueSound.allCases.count {

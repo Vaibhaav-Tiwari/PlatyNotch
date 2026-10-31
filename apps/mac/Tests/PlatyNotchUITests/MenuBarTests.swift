@@ -76,4 +76,36 @@ final class MenuBarTests: XCTestCase {
             XCTAssertLessThan(opaque, total * 3 / 4, "with room around it")
         }
     }
+
+    func testGamesItemListsEveryGame() {
+        XCTAssertEqual(MenuBarController.gameTitles, ["Snake", "Tetris", "2048", "Flappy", "Platy Chase"])
+    }
+
+    func testGamesItemHiddenWhileGamesOff() {
+        XCTAssertTrue(MenuBarController.gamesItemHidden(gamesOn: false))
+        XCTAssertFalse(MenuBarController.gamesItemHidden(gamesOn: true))
+    }
+
+    func testChoosingAGameOpensIt() {
+        var opened: [GameKind] = []
+        let games = GamesWidget.inert()
+        XCTAssertTrue(MenuBarController.chooseGame(titled: "Platy Chase", games: games, open: { opened.append($0) }))
+        XCTAssertEqual(opened, [.chase])
+        XCTAssertEqual(games.host.session.kind, .chase, "picked in the games tool")
+        XCTAssertTrue(MenuBarController.chooseGame(titled: "2048", games: games, open: { opened.append($0) }))
+        XCTAssertEqual(opened, [.chase, .twenty48])
+        XCTAssertFalse(MenuBarController.chooseGame(titled: "Pong", games: games, open: { opened.append($0) }))
+        XCTAssertEqual(opened.count, 2)
+    }
+
+    /// Every tool the Library held stays reachable from the menu bar, but the games, which
+    /// have their own item.
+    func testOpenSubmenuListsTheToolsButNotTheGames() {
+        let tools: [CommandTool] = [CommandTool(id: "clipboard", title: "Clipboard"),
+                                    CommandTool(id: GamesWidget.widgetID, title: "Games"),
+                                    CommandTool(id: PanelTools.chase, title: "Platy Chase"),
+                                    CommandTool(id: "baskets", title: "Baskets"),
+                                    CommandTool(id: PanelTools.memory, title: "Memory")]
+        XCTAssertEqual(MenuBarController.openItems(tools).map(\.title), ["Clipboard", "Baskets", "Memory"])
+    }
 }

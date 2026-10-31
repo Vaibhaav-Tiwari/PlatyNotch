@@ -72,15 +72,13 @@ final class OnboardingFlowTests: DefaultsTestCase {
         c.cursorLocation = { CGPoint(x: 100, y: 100) }
         let tour = TourCoordinator()
         tour.approvals = { store.approvals.count }
-        var celebrated = 0, done = 0
-        tour.onCelebrate = { celebrated += 1 }
+        var done = 0
         tour.controllers = [c]
         tour.arm { done += 1 }
         XCTAssertEqual(c.panelModel.tourSample?.id, TryItSession.sample.id, "armed: the sample waits in Now")
         c.expand()
         XCTAssertEqual(c.mode, .expanded)
         XCTAssertEqual(done, 1, "opening the panel finishes Try it")
-        XCTAssertEqual(celebrated, 1)
         XCTAssertEqual(tour.session.phase, .showing)
         XCTAssertNotNil(c.panelModel.tourSample, "the sample stays while Now shows it")
         c.collapse()

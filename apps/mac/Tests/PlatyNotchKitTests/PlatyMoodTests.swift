@@ -5,15 +5,15 @@ import XCTest
 
 final class PlatyMoodTests: XCTestCase {
     private func mood(_ sessions: [SessionState] = [], approvals: Int = 0, music: Bool = false, focus: Bool = false,
-                      finished: Bool = false, hour: Int = 12, celebrating: Bool = false) -> PlatyMood {
+                      finished: Bool = false, hour: Int = 12) -> PlatyMood {
         PlatyMoodResolver.mood(sessions: sessions, approvalsPending: approvals, musicPlaying: music,
-                               focusActive: focus, justFinished: finished, hour: hour, celebrating: celebrating)
+                               focusActive: focus, justFinished: finished, hour: hour)
     }
 
     // MARK: - Resolver (brief)
 
     func testWaitingBeatsEverything() {
-        XCTAssertEqual(mood([.active], approvals: 1, music: true, focus: true, finished: true, hour: 2, celebrating: true),
+        XCTAssertEqual(mood([.active], approvals: 1, music: true, focus: true, finished: true, hour: 2),
                        .waiting)
         XCTAssertEqual(mood([.active, .blocked], music: true, focus: true, finished: true), .waiting)
         XCTAssertEqual(mood([.waitingInput], focus: true, finished: true), .waiting)
@@ -46,26 +46,11 @@ final class PlatyMoodTests: XCTestCase {
         XCTAssertEqual(mood([.active], focus: true, finished: true), .done)
     }
 
-    // MARK: - Celebrating (Task 13 ruling: GamesWidget.onNewBest)
+    // MARK: - No celebrations (spec 1, 8)
 
-    func testCelebratingAfterNewBest() {
-        XCTAssertEqual(mood(celebrating: true), .celebrating)
-        XCTAssertEqual(mood([.active], music: true, focus: true, finished: true, hour: 2, celebrating: true),
-                       .celebrating, "a new best beats everything but a waiting agent")
-        XCTAssertEqual(mood([.blocked], celebrating: true), .waiting)
-    }
-
-    func testCelebrationLastsAFewSeconds() {
-        let start = Date(timeIntervalSince1970: 1000)
-        var flags = PlatyMoodFlags()
-        flags.celebrate(at: start)
-        XCTAssertTrue(flags.celebrating(at: start.addingTimeInterval(PlatyMoodFlags.celebrationLength - 0.1)))
-        XCTAssertFalse(flags.celebrating(at: start.addingTimeInterval(PlatyMoodFlags.celebrationLength)))
-        // Spec 8.4: a moment lasts at most 2 seconds.
-        XCTAssertGreaterThan(PlatyMoodFlags.celebrationLength, 1)
-        XCTAssertLessThanOrEqual(PlatyMoodFlags.celebrationLength, 2)
-        XCTAssertEqual(flags.nextChange(after: start), start.addingTimeInterval(PlatyMoodFlags.celebrationLength))
-        XCTAssertNil(flags.nextChange(after: start.addingTimeInterval(60)))
+    func testNoCelebratingMood() {
+        XCTAssertFalse(PlatyMood.allCases.map(\.rawValue).contains("celebrating"))
+        XCTAssertEqual(PlatyMood.allCases.count, 9)
     }
 
     // MARK: - AgentsLive decision: removed; the resolver reads session states directly
@@ -111,9 +96,8 @@ final class PlatyMoodTests: XCTestCase {
         let t0 = Date(timeIntervalSince1970: 0)
         var flags = PlatyMoodFlags()
         flags.finish(at: t0)
-        flags.celebrate(at: t0.addingTimeInterval(1))
-        let first = min(PlatyMoodFlags.doneLength, 1 + PlatyMoodFlags.celebrationLength)
-        XCTAssertEqual(flags.nextChange(after: t0), t0.addingTimeInterval(first))
+        XCTAssertEqual(flags.nextChange(after: t0), t0.addingTimeInterval(PlatyMoodFlags.doneLength))
+        XCTAssertNil(flags.nextChange(after: t0.addingTimeInterval(60)))
     }
 
     // MARK: - Poses (C34: plain Doubles in Kit)
@@ -267,7 +251,6 @@ final class PlatyMoodTests: XCTestCase {
         XCTAssertEqual(PlatyPoseValues.rest(.sleepy).eyesOpen, 0)
         XCTAssertTrue(PlatyPoseValues.rest(.sleepy).zzz)
         XCTAssertTrue(PlatyPoseValues.rest(.done).check)
-        XCTAssertGreaterThan(PlatyPoseValues.rest(.celebrating).sparkle, PlatyPoseValues.rest(.done).sparkle)
         XCTAssertLessThan(PlatyPoseValues.rest(.focused).eyesOpen, 1)
         XCTAssertEqual(PlatyPoseValues.rest(.idle).tint, .none)
         for m in PlatyMood.allCases where m != .waiting {
@@ -284,11 +267,6 @@ final class PlatyMoodTests: XCTestCase {
             XCTAssertEqual(PlatyPoseValues.at(.sleepy, time: t).eyesOpen, 0)
             XCTAssertTrue(PlatyPoseValues.at(.done, time: t).check)
         }
-        let jump = stride(from: 0.0, to: PlatyMood.celebrating.period, by: 0.05)
-            .map { PlatyPoseValues.at(.celebrating, time: $0).bounce }.max() ?? 0
-        let bob = stride(from: 0.0, to: PlatyMood.working.period, by: 0.05)
-            .map { PlatyPoseValues.at(.working, time: $0).bounce }.max() ?? 0
-        XCTAssertGreaterThan(jump, 2 * bob, "celebrating jumps, working bobs")
         let wave = stride(from: 0.0, to: PlatyMood.waiting.period, by: 0.05)
             .map { PlatyPoseValues.at(.waiting, time: $0).flagAngle }
         XCTAssertGreaterThan((wave.max() ?? 0) - (wave.min() ?? 0), 10, "the flag waves")

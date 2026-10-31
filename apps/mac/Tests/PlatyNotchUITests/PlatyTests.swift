@@ -12,32 +12,6 @@ final class PlatyTests: DefaultsTestCase {
                        startedAt: t, updatedAt: t)
     }
 
-    /// GamesWidget.onNewBest → celebrating for a few seconds, then back.
-    func testCelebrationComesAndGoes() {
-        var now = Date(timeIntervalSince1970: 1_000_000)
-        let model = PlatyMoodModel(now: { now })
-        model.celebrate()
-        XCTAssertTrue(model.celebrating)
-        XCTAssertEqual(model.mood(sessions: [], approvals: 0, musicPlaying: true, focusActive: false), .celebrating)
-        XCTAssertEqual(model.mood(sessions: [], approvals: 1, musicPlaying: false, focusActive: false), .waiting)
-        now = now.addingTimeInterval(PlatyMoodFlags.celebrationLength + 0.1)
-        model.refresh()
-        XCTAssertFalse(model.celebrating)
-        model.stop()
-    }
-
-    /// The built-in games widget is wired to the shared Platy model.
-    func testGamesNewBestCelebrates() throws {
-        let registry = WidgetRegistry(defaults: defaults())
-        let today = TodayServices(client: CoreClient(socketPath: "/nonexistent"))
-        BuiltInWidgets.register(in: registry, store: AppStore(), today: today, persist: false)
-        let games = try XCTUnwrap(registry.widget(GamesWidget.widgetID) as? GamesWidget)
-        XCTAssertFalse(today.platy.celebrating)
-        games.onNewBest?(GameResult(kind: .snake, score: 10))
-        XCTAssertTrue(today.platy.celebrating)
-        today.platy.stop()
-    }
-
     func testFinishedSessionShowsDone() {
         var now = Date(timeIntervalSince1970: 1_000_000)
         let model = PlatyMoodModel(now: { now })
@@ -229,57 +203,5 @@ final class PlatyTests: DefaultsTestCase {
         XCTAssertEqual(Set(names), Set(AgentIdentity.allCases.map { "pup-\($0.rawValue).png" }))
     }
 
-    // MARK: Moments (Task 30)
 
-    /// Every agent finishing is a 2-second moment, once, and never while an approval waits.
-    func testAllAgentsFinishedIsAMoment() {
-        var now = Date(timeIntervalSince1970: 2_000_000)
-        // A reference the approvals closure reads (a captured var mutated later warns in Swift 6).
-        final class Box { var approvals = 0 }
-        let box = Box()
-        let activity = AgentActivityModel()
-        let platy = PlatyMoodModel(now: { now })
-        activity.celebrateAllFinished(on: platy, approvals: { box.approvals }, now: { now })
-        activity.sessionsChanged([session("a", .active)], now: now)
-        XCTAssertFalse(platy.celebrating)
-        activity.sessionsChanged([session("a", .idle)], now: now)
-        XCTAssertTrue(platy.celebrating)
-        now = now.addingTimeInterval(PlatyMoodFlags.celebrationLength + 0.1)
-        platy.refresh()
-        XCTAssertFalse(platy.celebrating)
-        // With an approval waiting: no moment.
-        box.approvals = 1
-        activity.sessionsChanged([session("a", .active)], now: now)
-        now = now.addingTimeInterval(30)
-        activity.sessionsChanged([session("a", .idle)], now: now)
-        XCTAssertFalse(platy.celebrating)
-        platy.stop()
-    }
-
-    /// `celebrate()` still works as before (ungated), and the gated form drops repeats.
-    func testCelebrateWrapperAndGate() {
-        let now = Date(timeIntervalSince1970: 3_000_000)
-        let platy = PlatyMoodModel(now: { now })
-        XCTAssertTrue(platy.celebrate(.newBest(game: "snake", score: 9), approvalsPending: 0))
-        XCTAssertFalse(platy.celebrate(.newBest(game: "snake", score: 9), approvalsPending: 0))
-        XCTAssertFalse(platy.celebrate(.focusComplete(endedAt: now), approvalsPending: 1))
-        platy.celebrate()
-        XCTAssertTrue(platy.celebrating)
-        platy.stop()
-    }
-
-    /// The focus session's end plays its sound and sends the moment.
-    func testFocusCompleteIsAMoment() {
-        let platy = PlatyMoodModel()
-        var sounds = 0
-        let focus = FocusModel(defaults: defaults(), onFinish: Moments.focusFinished(platy: platy, approvals: { 0 },
-                                                                                      playSound: { sounds += 1 }))
-        let start = Date()
-        focus.start(minutes: 1, now: start)
-        XCTAssertEqual(sounds, 0)
-        focus.reconcile(now: start.addingTimeInterval(61), announce: true)
-        XCTAssertEqual(sounds, 1)
-        XCTAssertTrue(platy.celebrating)
-        platy.stop()
-    }
 }

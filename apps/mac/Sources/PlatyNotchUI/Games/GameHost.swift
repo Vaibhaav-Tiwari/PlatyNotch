@@ -20,7 +20,7 @@ public struct GameSurface: Equatable, Sendable {
     }
 }
 
-/// A new best score (Task 13: Platy celebrates). `at` tells repeats apart.
+/// A new best score. `at` tells repeats apart.
 public struct GameCelebration: Equatable, Sendable {
     public var result: GameResult
     public var at: Date
@@ -45,8 +45,6 @@ public final class GameHost {
     public internal(set) var session: GameSession
     /// The latest new best; observed by Task 13.
     public private(set) var celebration: GameCelebration?
-    /// Told about every new best (after `celebration` is set).
-    @ObservationIgnored public var onNewBest: ((GameResult) -> Void)?
 
     /// Pending approvals (the widget reads `AppStore.approvals` through this).
     @ObservationIgnored var approvals: () -> Int = { 0 }
@@ -162,7 +160,6 @@ public final class GameHost {
         // is exactly one new best.
         if let best = next.newBest, before.newBest == nil {
             celebration = GameCelebration(result: best, at: now())
-            onNewBest?(best)
         }
         if next.phase == .playing { track() }
     }

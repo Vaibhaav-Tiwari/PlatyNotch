@@ -71,15 +71,12 @@ final class TourCoordinator {
     /// How long the sample stays after Now first shows it, if Now stays open.
     var showingLimit: Duration = .seconds(8)
     var approvals: () -> Int = { 0 }
-    /// Platy celebrates when "Try it" is done.
-    var onCelebrate: () -> Void = {}
     var controllers: [NotchController] = [] { didSet { apply() } }
     private var limitTask: Task<Void, Never>?
 
     func arm(onDone: @escaping () -> Void) {
         session.arm { [weak self] in
             guard let self else { return }
-            self.onCelebrate()
             onDone()
             self.limitTask?.cancel()
             let limit = self.showingLimit
@@ -402,7 +399,7 @@ private struct MeetPlatyPage: View {
     var body: some View {
         VStack(spacing: 22) {
             PondBanner(height: 230) {
-                PlatyView(mood: .celebrating, size: 120)
+                PlatyView(mood: .done, size: 120)
                     .padding(.top, 62)
                     .accessibilityLabel("Platy waves hello")
             }
@@ -659,7 +656,7 @@ private struct TryItPage: View {
         VStack(spacing: 22) {
             PondBanner(height: 230) {
                 if model.tryItDone {
-                    PlatyView(mood: .celebrating, size: 104)
+                    PlatyView(mood: .done, size: 104)
                         .padding(.top, 70)
                         .transition(.scale.combined(with: .opacity))
                 } else {

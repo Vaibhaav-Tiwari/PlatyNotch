@@ -116,10 +116,6 @@ enum BuiltInWidgets {
         let games = persist ? GamesWidget() : GamesWidget.inert()
         // A new best: a 2-second moment, once per best and never during an approval.
         let platy = today.platy
-        games.onNewBest = { [weak platy, weak store] result in
-            platy?.celebrate(.newBest(game: result.kind.rawValue, score: result.score),
-                             approvalsPending: store?.approvals.count ?? 0)
-        }
         registry.register(games)
         // On by default; no network, process or script until something is pinned or
         // clicked. Smoke: no icons fetched, no Shortcuts, no Apple Events, nothing saved.

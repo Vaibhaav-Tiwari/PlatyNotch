@@ -179,10 +179,8 @@ final class GamesWidgetTests: DefaultsTestCase {
         XCTAssertFalse(r.host.handle(.escape, from: r.tab), "the next Escape closes the panel")
     }
 
-    func testNewBestCelebratesAndIsSaved() {
+    func testNewBestIsSaved() {
         let r = rig()
-        var told: [GameResult] = []
-        r.widget.onNewBest = { told.append($0) }
         play(r)
         var s = r.host.session
         s.snake.food = PlatyNotchKit.Point(x: s.snake.body[0].x + 1, y: s.snake.body[0].y)
@@ -200,7 +198,6 @@ final class GamesWidgetTests: DefaultsTestCase {
             r.host.frame(now: t, from: r.tab)
         }
         XCTAssertEqual(r.host.session.phase, .over)
-        XCTAssertEqual(told, [GameResult(kind: .snake, score: 1)])
         XCTAssertEqual(r.widget.celebration?.result, GameResult(kind: .snake, score: 1))
         XCTAssertEqual(HighScores.load(from: r.defaults).best("snake"), 1, "UserDefaults (the test suite here)")
         XCTAssertEqual(GamesWidget(defaults: r.defaults).host.session.best, 1, "read back on the next launch")

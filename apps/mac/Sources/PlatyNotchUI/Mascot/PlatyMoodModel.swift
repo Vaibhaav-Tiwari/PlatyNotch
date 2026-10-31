@@ -5,19 +5,15 @@ import PlatyNotchKit
 
 /// The timed inputs of Platy's mood, shared by every display: "just finished" (a session
 /// went from working to idle or exited: from the app's one `AgentActivityModel` once
-/// `follow` is called, else its own `PlatyFinishWatch`), "celebrating" (a game's new
-/// best, `GamesWidget.onNewBest`) and the hour (night is sleepy). Each wakes once when it
+/// `follow` is called, else its own `PlatyFinishWatch`) and the hour (night is sleepy). Each wakes once when it
 /// changes (a sleeping task, no timer while nothing is pending), so the pill re-reads the
 /// mood only then.
 @MainActor @Observable
 public final class PlatyMoodModel {
     public private(set) var justFinished = false
-    public private(set) var celebrating = false
     public private(set) var hour: Int
 
     @ObservationIgnored private var flags = PlatyMoodFlags()
-    /// Moments: each event once, never during an approval.
-    @ObservationIgnored private var moments = MomentGate()
     @ObservationIgnored private var watch = PlatyFinishWatch()
     @ObservationIgnored private var expiry: Task<Void, Never>?
     @ObservationIgnored private var hourTask: Task<Void, Never>?
@@ -75,21 +71,6 @@ public final class PlatyMoodModel {
         zoneObserver = nil
     }
 
-    /// A moment (spec 8.4): plays for 2 seconds when the gate admits it (each event at most
-    /// once, never while an approval waits); returns whether it played.
-    @discardableResult
-    public func celebrate(_ event: MomentEvent, approvalsPending: Int) -> Bool {
-        guard moments.admit(event, approvalsPending: approvalsPending) else { return false }
-        celebrate()
-        return true
-    }
-
-    /// Celebrates now, ungated (the first run's "Try it", which checks approvals itself).
-    public func celebrate() {
-        flags.celebrate(at: now())
-        refresh()
-    }
-
     /// Platy's mood now. Reads the store and the other inputs, so a view calling it
     /// redraws when any of them changes.
     public func mood(sessions: [Session], approvals: Int, musicPlaying: Bool, focusActive: Bool) -> PlatyMood {
@@ -100,8 +81,7 @@ public final class PlatyMoodModel {
             done = PlatyMoodResolver.showsDone(flags: PlatyMoodFlags(), log: activity.log, sessions: states, now: now())
         }
         return PlatyMoodResolver.mood(sessions: states, approvalsPending: approvals, musicPlaying: musicPlaying,
-                                      focusActive: focusActive, justFinished: done, hour: hour,
-                                      celebrating: celebrating)
+                                      focusActive: focusActive, justFinished: done, hour: hour)
     }
 
     /// Feeds session states (the store observer; tests call it directly).
@@ -118,9 +98,7 @@ public final class PlatyMoodModel {
     func refresh() {
         let t = now()
         let finished = flags.justFinished(at: t)
-        let party = flags.celebrating(at: t)
         if finished != justFinished { justFinished = finished }
-        if party != celebrating { celebrating = party }
         expiry?.cancel()
         guard let next = flags.nextChange(after: t) else { expiry = nil; return }
         let wait = next.timeIntervalSince(t)
@@ -154,19 +132,6 @@ public final class PlatyMoodModel {
             try? await Task.sleep(for: .seconds(wait))
             guard !Task.isCancelled else { return }
             self?.scheduleHour()
-        }
-    }
-}
-
-/// Moments' wiring (spec 8.4) that is not a session change.
-@MainActor
-enum Moments {
-    /// A focus session's `onFinish`: its sound as before, then the focus-complete moment.
-    static func focusFinished(platy: PlatyMoodModel, approvals: @escaping @MainActor () -> Int,
-                              playSound: @escaping () -> Void = { NSSound(named: "Glass")?.play() }) -> () -> Void {
-        { [weak platy] in
-            playSound()
-            platy?.celebrate(.focusComplete(endedAt: Date()), approvalsPending: approvals())
         }
     }
 }
