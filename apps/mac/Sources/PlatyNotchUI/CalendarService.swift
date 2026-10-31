@@ -223,11 +223,9 @@ public final class CalendarService {
         let start = calendar.startOfDay(for: now)
         guard let end = calendar.date(byAdding: .day, value: 7, to: start) else { return [] }
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
-        var days: Set<Date> = []
-        for e in store.events(matching: predicate) where !isDeclined(e) {
-            days.insert(calendar.startOfDay(for: max(e.startDate, start)))
-        }
-        return days
+        let events = store.events(matching: predicate).map { (start: $0.startDate ?? start, end: $0.endDate ?? start,
+                                                               declined: isDeclined($0)) }
+        return TodayNextModel.daysWithEvents(events, now: now, calendar: calendar)
     }
 
     private static func isDeclined(_ e: EKEvent) -> Bool {

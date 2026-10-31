@@ -81,4 +81,19 @@ final class TodayNextTests: XCTestCase {
         XCTAssertEqual(days.count, 7)
         XCTAssertEqual(days.map(\.marked), [true, false, false, false, false, false, false])
     }
+
+    /// The week strip's days: declined skipped, the 7-day window, multi-day events span.
+    func testDaysWithEvents() {
+        let day = { (d: Int, m: Int) in self.cal.startOfDay(for: self.at(d, 9, month: m)) }
+        let events: [(start: Date, end: Date, declined: Bool)] = [
+            (at(1, 10, month: 11), at(1, 11, month: 11), false),          // Sun 1
+            (at(2, 10, month: 11), at(2, 11, month: 11), true),           // declined
+            (at(3, 22, month: 11), at(5, 9, month: 11), false),           // Tue 3 … Thu 5
+            (at(4, 0, month: 11), at(5, 0, month: 11), false),            // all day Wed 4, ends at midnight
+            (at(7, 10, month: 11), at(7, 11, month: 11), false),          // Sat 7: outside the week
+            (at(30, 10), at(31, 12), false),                              // started yesterday, runs into today
+        ]
+        let days = TodayNextModel.daysWithEvents(events, now: now, calendar: cal)
+        XCTAssertEqual(days, [day(31, 10), day(1, 11), day(3, 11), day(4, 11), day(5, 11)])
+    }
 }

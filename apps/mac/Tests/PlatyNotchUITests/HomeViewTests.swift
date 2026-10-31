@@ -111,43 +111,77 @@ final class HomeViewTests: DefaultsTestCase {
         r.registry.stopAll()
     }
 
-    /// Island spec 6: every preset keeps the weather on, so the sky always shows.
+    /// Island spec 6: every preset keeps the weather on, so the Today card has a sky. Applied
+    /// through the real Settings path (`SettingsServices.applyPreset`).
     func testWeatherShowsInEveryPreset() {
         for preset in SetupPreset.allCases {
-            let r = HomeRenders.Rig()
-            BuiltInWidgets.register(in: r.registry, store: r.store, today: r.today, persist: false)
-            r.startDefaults()
-            for id in preset.turnsOff where r.registry.widget(id) != nil { r.registry.setEnabled(id, false) }
-            for id in preset.turnsOn where r.registry.widget(id) != nil { r.registry.setEnabled(id, true) }
-            XCTAssertTrue(r.registry.isEnabled(WeatherWidget.widgetID), "\(preset)")
-            let sky = SkyContent.of(HomeView.weather(r.registry), now: Date())?.texts ?? []
-            XCTAssertFalse(sky.isEmpty, "\(preset)")
-            r.registry.stopAll()
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let registry = WidgetRegistry(defaults: defaults(), persist: false)
+            let today = TodayServices(client: CoreClient(socketPath: "/nonexistent"), focus: FocusModel(defaults: defaults()))
+            BuiltInWidgets.register(in: registry, store: AppStore(), today: today, persist: false)
+            let services = SettingsServices(config: ConfigFileStore(url: dir.appendingPathComponent("config.json")),
+                                            runner: CoreRunner(binaryURL: dir.appendingPathComponent("notch")),
+                                            store: AppStore(), capture: nil, calendar: CalendarService(eventKit: false),
+                                            reminders: RemindersService(eventKit: false), widgets: registry,
+                                            updater: AppUpdater(start: false, enabled: false))
+            // Start from everything on, so a preset that turned weather off would show.
+            for w in registry.orderedWidgets { registry.setEnabled(w.id, true) }
+            services.applyPreset(preset, defaults: defaults())
+            XCTAssertTrue(registry.isEnabled(WeatherWidget.widgetID), "\(preset)")
+            XCTAssertNotNil(SkyContent.of(HomeView.weather(registry), now: Date()), "\(preset): the card has a sky")
+            try? FileManager.default.removeItem(at: dir)
         }
     }
 
+    /// Each card's own width never grows with its content (the two-column layout pins the
+    /// total), and Home fits the tallest panel.
     func testHomeFitsThePanel() {
         let r = HomeRenders.homeRest()
-        let free = NSHostingView(rootView: view(r).environment(\.colorScheme, .dark).environment(\.panelTicking, false))
-        free.layoutSubtreeIfNeeded()
-        XCTAssertLessThanOrEqual(free.fittingSize.width, 640 - 2 * Space.panelSide + 0.5)
+        let long = String(String(repeating: "Very long title ", count: 13).prefix(200))
+        r.today.nowPlaying.debugApply(NowPlayingInfo(bundleIdentifier: "com.apple.Music", title: long, artist: long,
+                                                     isPlaying: true))
+        let card = NSHostingView(rootView: NowPlayingCard(nowPlaying: r.today.nowPlaying, fixedNow: Date())
+            .environment(\.colorScheme, .dark).environment(\.panelTicking, false))
+        card.layoutSubtreeIfNeeded()
+        XCTAssertLessThanOrEqual(card.fittingSize.width, NowPlayingCard.idealWidth.rounded(.up))
         XCTAssertLessThanOrEqual(size(view(r)).height, room)
         r.registry.stopAll()
     }
 
+    /// 200-character track, artist, album and event titles stay on one line: each card is
+    /// exactly as tall as with short ones (measured alone, so the taller card cannot hide it).
     func testLongTitlesTruncate() {
         let long = String(String(repeating: "Very long title ", count: 13).prefix(200))
         let r = HomeRenders.homeRest()
-        let before = size(view(r))
-        r.today.nowPlaying.debugApply(NowPlayingInfo(bundleIdentifier: "com.apple.Music", title: long, artist: long,
-                                                     album: long, isPlaying: true))
+        let todayWidth: CGFloat = width - HomeMetrics.cardGap - NowPlayingCard.idealWidth
+        func heights() -> (CGFloat, CGFloat) {
+            let music = NowPlayingCard(nowPlaying: r.today.nowPlaying, fixedNow: Date())
+            let data = HomeData.make(today: r.today, widgets: r.registry, settings: HomeSettings(), tourSample: nil,
+                                     now: Date(), dropping: false)
+            let today = TodayCard(weather: HomeView.weather(r.registry), next: data.next, fixedNow: Date())
+            return (cardHeight(music, width: NowPlayingCard.idealWidth), cardHeight(today, width: todayWidth))
+        }
+        let before = heights()
+        var info = r.today.nowPlaying.info!   // the same track and times, long names
+        info.title = long
+        info.artist = long
+        info.album = long
+        r.today.nowPlaying.debugApply(info)
+        let soon = Date().addingTimeInterval(600)
         r.today.calendar.setForTesting(access: .granted, meetings: [
-            CalendarMeeting(id: "m", title: long, start: Date().addingTimeInterval(600), end: Date().addingTimeInterval(1800))])
-        let after = size(view(r))
-        XCTAssertEqual(after.width, before.width, accuracy: 0.5)
-        XCTAssertLessThanOrEqual(after.width, width + 0.5)
-        XCTAssertLessThanOrEqual(after.height, room)
+            CalendarMeeting(id: "m", title: long, start: soon, end: soon.addingTimeInterval(1200))])
+        let after = heights()
+        XCTAssertEqual(after.0, before.0, accuracy: 0.5, "Now Playing")
+        XCTAssertEqual(after.1, before.1, accuracy: 0.5, "Today")
+        XCTAssertLessThanOrEqual(size(view(r)).height, room)
         r.registry.stopAll()
+    }
+
+    private func cardHeight<V: View>(_ v: V, width: CGFloat) -> CGFloat {
+        let host = NSHostingView(rootView: v.frame(width: width).fixedSize(horizontal: false, vertical: true)
+            .environment(\.colorScheme, .dark).environment(\.panelTicking, false))
+        host.layoutSubtreeIfNeeded()
+        return host.fittingSize.height
     }
 
     func testHeaderHasNoDateText() {
