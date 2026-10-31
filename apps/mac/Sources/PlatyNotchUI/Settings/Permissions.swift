@@ -60,17 +60,36 @@ final class Permissions {
     let calendar: CalendarService
     let reminders: RemindersService
 
-    /// Location for the weather (Island spec 5), made on the first Allow click.
+    /// Location for the weather (Island spec 5): one manager, made on first use.
     @ObservationIgnored private var systemLocation: SystemLocation?
     private(set) var locationAsked = 0
+    /// The weather widget's "Use my location" (set by the app), so Allow here loads the sky
+    /// at once.
+    @ObservationIgnored var weatherLocation: (@MainActor () async -> Void)?
 
-    /// The Location row's Allow: the weather switches to "Use my location" and macOS asks
-    /// (this click is the only other place the prompt can come from).
-    func requestLocation(defaults: UserDefaults = .standard) async {
-        WeatherLocation.automatic.save(to: defaults)
-        let l = systemLocation ?? SystemLocation()
+    /// Location's state, read without asking.
+    var locationAuth: LocationAuth {
+        _ = locationAsked
+        return sharedLocation.auth
+    }
+
+    private var sharedLocation: SystemLocation {
+        if let systemLocation { return systemLocation }
+        let l = SystemLocation()
         systemLocation = l
-        _ = await l.requestAccess()
+        return l
+    }
+
+    /// The Location row's Allow (Settings › Privacy, onboarding): the weather switches to
+    /// "Use my location" through the widget, which asks macOS and fetches straight away.
+    /// Without a weather widget it saves the choice and asks here.
+    func requestLocation(defaults: UserDefaults = .standard) async {
+        if let weatherLocation {
+            await weatherLocation()
+        } else {
+            WeatherLocation.automatic.save(to: defaults)
+            _ = await sharedLocation.requestAccess()
+        }
         locationAsked += 1
     }
 

@@ -299,9 +299,10 @@ public enum WeatherLine {
 
     /// Raining now: "Umbrella till 11 PM" (the end of the current run of rainy hours);
     /// rain later in the forecast: "Rain from 5 PM"; else "H 27° · L 18°". Data older than
-    /// `WeatherRefresh.staleAfter` appends its age. Nil when there is nothing to say.
+    /// `WeatherRefresh.staleAfter`, or any data while the refresh is `failing`, appends
+    /// "updated 2 h ago". Nil when there is nothing to say.
     public static func detail(_ w: WeatherNow, unit: TemperatureUnit, fetchedAt: Date?, now: Date,
-                              calendar: Calendar, locale: Locale) -> String? {
+                              calendar: Calendar, locale: Locale, failing: Bool = false) -> String? {
         var line: String?
         let condition = WeatherCondition.of(code: w.code)
         let hours = w.hourly.sorted { $0.time < $1.time }.filter { $0.time.addingTimeInterval(3600) > now }
@@ -318,8 +319,8 @@ public enum WeatherLine {
         } else if let high = w.high, let low = w.low {
             line = "H \(WeatherFormat.temperature(high, unit: unit)) · L \(WeatherFormat.temperature(low, unit: unit))"
         }
-        if let fetchedAt, WeatherRefresh.isStale(fetchedAt: fetchedAt, now: now) {
-            let age = WeatherFormat.age(since: fetchedAt, now: now)
+        if let fetchedAt, failing || WeatherRefresh.isStale(fetchedAt: fetchedAt, now: now) {
+            let age = "updated " + WeatherFormat.age(since: fetchedAt, now: now)
             return line.map { "\($0) · \(age)" } ?? age
         }
         return line
@@ -329,12 +330,7 @@ public enum WeatherLine {
     public static func hour(_ d: Date, calendar: Calendar, locale: Locale) -> String {
         let text: String
         if calendar.component(.minute, from: d) == 0 {
-            let f = DateFormatter()
-            f.calendar = calendar
-            f.timeZone = calendar.timeZone
-            f.locale = locale
-            f.setLocalizedDateFormatFromTemplate("j")
-            text = f.string(from: d)
+            text = FormatterCache.formatter("j", template: true, calendar: calendar, locale: locale).string(from: d)
         } else {
             text = QuickAddFormat.time(d, calendar: calendar, locale: locale)
         }

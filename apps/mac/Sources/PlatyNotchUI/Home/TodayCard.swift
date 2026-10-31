@@ -9,11 +9,17 @@ enum SkyContent: Equatable {
     case empty(offerLocation: Bool)
     /// A place, no reading yet.
     case loading
+    /// No reading and the last try failed: "Can't get weather" / "Offline" / "Can't find your
+    /// location", with "Try again" (not while offline) and "Add a city".
+    case failed(title: String, retry: Bool)
 
     static let title = "Weather"
     static let useMyLocation = "Use my location"
     static let addCity = "Add a city"
     static let loadingText = "Loading weather…"
+    static let cantGet = "Can't get weather"
+    static let offline = "Offline"
+    static let tryAgain = "Try again"
     /// The empty and loading states' sky.
     static let placeholderSky = WeatherSky.of(.clouds, isDay: true)
 
@@ -24,15 +30,22 @@ enum SkyContent: Equatable {
         guard let weather else { return nil }
         if weather.locating { return .loading }
         switch weather.source {
-        case .needsPermission: return .empty(offerLocation: true)
+        case .needsPermission:
+            if weather.usesMyLocation, weather.fixFailed { return .failed(title: WeatherWidget.noFix, retry: true) }
+            return .empty(offerLocation: true)
         case .needsCity: return .empty(offerLocation: false)
         case .place(_, _, let name):
-            guard let w = weather.weather else { return .loading }
+            let failing: Bool = weather.offline || weather.lastError != nil
+            guard let w = weather.weather else {
+                if weather.offline { return .failed(title: offline, retry: false) }
+                if weather.lastError != nil, !weather.loading { return .failed(title: cantGet, retry: true) }
+                return .loading
+            }
             return .reading(sky: WeatherSky.of(w), symbol: WeatherCode.describe(w.code, isDay: w.isDay).symbol,
                             temperature: WeatherFormat.temperature(w.temperatureC, unit: weather.unit),
                             condition: WeatherLine.condition(w, place: name),
                             detail: WeatherLine.detail(w, unit: weather.unit, fetchedAt: weather.fetchedAt, now: now,
-                                                       calendar: calendar, locale: locale))
+                                                       calendar: calendar, locale: locale, failing: failing))
         }
     }
 
@@ -41,6 +54,7 @@ enum SkyContent: Equatable {
         case .reading(_, _, let t, let c, let d): [t, c] + (d.map { [$0] } ?? [])
         case .empty(let offer): [Self.title] + (offer ? [Self.useMyLocation] : []) + [Self.addCity]
         case .loading: [Self.title, Self.loadingText]
+        case .failed(let title, let retry): [title] + (retry ? [Self.tryAgain] : []) + [Self.addCity]
         }
     }
 
@@ -56,6 +70,7 @@ enum SkyContent: Equatable {
 struct TodayCard: View {
     let weather: WeatherWidget?
     let next: TodayNext
+    /// The ticking clock from `HomeView` (so the age and the night sky follow it).
     var fixedNow: Date?
     /// "Connect Calendar": Settings › Privacy.
     var onConnectCalendar: () -> Void = {}
@@ -151,6 +166,24 @@ struct TodayCard: View {
                         }
                     }
                     skyButton(SkyContent.addCity, symbol: nil, primary: !offerLocation) { weather?.onOpenSettings?() }
+                }
+            }
+        case .failed(let title, let retry):
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: title == SkyContent.offline ? "wifi.slash" : "exclamationmark.icloud")
+                        .font(.system(size: IconSize.header))
+                    Text(verbatim: title).font(DS.font(TypeScale.title)).lineLimit(1)
+                }
+                .foregroundStyle(Color.white)
+                Text(retry ? "Platy keeps trying every few minutes." : "Weather loads when you're back online.")
+                    .font(DS.font(TypeScale.caption))
+                    .foregroundStyle(Color.white.opacity(0.78))
+                HStack(spacing: 6) {
+                    if retry {
+                        skyButton(SkyContent.tryAgain, symbol: "arrow.clockwise", primary: true) { weather?.retryNow() }
+                    }
+                    skyButton(SkyContent.addCity, symbol: nil, primary: !retry) { weather?.onOpenSettings?() }
                 }
             }
         case .loading:

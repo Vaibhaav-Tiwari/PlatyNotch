@@ -1,5 +1,4 @@
 import CoreBluetooth
-import CoreLocation
 import PlatyNotchKit
 import SwiftUI
 
@@ -117,8 +116,7 @@ struct PermissionTableView: View {
             default: return .denied
             }
         case .location:
-            _ = permissions.locationAsked
-            switch SystemLocation.map(CLLocationManager().authorizationStatus) {
+            switch permissions.locationAuth {
             case .granted: return .granted
             case .denied: return .denied
             case .notDetermined: return .notAsked

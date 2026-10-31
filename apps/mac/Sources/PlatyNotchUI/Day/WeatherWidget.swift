@@ -59,6 +59,19 @@ final class WeatherWidget: NotchWidget {
         locationRevision += 1
     }
 
+    /// Perf runs only (`PLATYNOTCH_PERF_SKY`): a fixed place and reading, never fetched or saved.
+    func pinForPerf(place: GeoPlace, weather: WeatherNow) {
+        pinned = true
+        task?.cancel()
+        task = nil
+        self.place = place
+        self.weather = weather
+        renderLocation = .city(place)
+        locationRevision += 1
+    }
+
+    @ObservationIgnored private var pinned = false
+
     /// Renders only: the sky's empty and loading states.
     func showEmptyForRendering() {
         guard !persist else { return }
@@ -98,7 +111,12 @@ final class WeatherWidget: NotchWidget {
         self.location = location ?? (persist ? SystemLocation() : NoLocation())
         place = defaults.data(forKey: Self.placeKey).flatMap { try? JSONDecoder().decode(GeoPlace.self, from: $0) }
         unit = defaults.string(forKey: Self.unitKey).flatMap(TemperatureUnit.init(rawValue:)) ?? .forLocale(.current)
+        // Revoked or granted in System Settings: re-read the source at once.
+        self.location.onAuthChange = { [weak self] in self?.locationChanged() }
     }
+
+    /// Location's current permission (Settings › Home's note when it is off).
+    var locationAuth: LocationAuth { location.auth }
 
     /// A copy that never touches the network or Location, or saves anything (smoke runs).
     static func inert() -> WeatherWidget {
@@ -110,7 +128,7 @@ final class WeatherWidget: NotchWidget {
     /// The saved choice (nil: never chosen).
     var chosenLocation: WeatherLocation? {
         _ = locationRevision
-        return persist ? WeatherLocation.load(from: defaults) : renderLocation
+        return persist && !pinned ? WeatherLocation.load(from: defaults) : renderLocation
     }
 
     @ObservationIgnored private var renderLocation: WeatherLocation?
@@ -129,11 +147,33 @@ final class WeatherWidget: NotchWidget {
         return nil
     }
 
-    /// Location is allowed and chosen but the first fix has not come back yet.
+    /// Location is allowed and chosen but the first fix has not come back yet (false once a
+    /// fix attempt has failed: the sky then says so instead of "Loading…").
     var locating: Bool {
-        guard chosenLocation == .automatic, fix == nil else { return false }
+        guard chosenLocation == .automatic, fix == nil, !fixFailed else { return false }
         if case .place = source { return false }
         return location.auth == .granted
+    }
+
+    /// The last Location fix attempt failed and there is no fix to fall back on.
+    private(set) var fixFailed = false
+
+    /// The chosen location or Location's permission changed outside the widget (the Privacy
+    /// row, System Settings): re-read it and fetch when that is now possible.
+    func locationChanged() {
+        locationRevision += 1
+        failures = 0
+        lastAttempt = nil
+        fixFailed = false
+        schedule()
+    }
+
+    /// "Try again" on the sky: fetch now.
+    func retryNow() {
+        failures = 0
+        lastAttempt = nil
+        fixFailed = false
+        schedule()
     }
 
     /// "Add a city" on the sky: Settings › Home (set by the app).
@@ -152,6 +192,7 @@ final class WeatherWidget: NotchWidget {
         guard auth == .granted else { return }
         lastAttempt = nil
         failures = 0
+        fixFailed = false
         await refreshNow()
     }
 
@@ -232,6 +273,7 @@ final class WeatherWidget: NotchWidget {
 
     /// Turned off: forget the forecast and the search (the chosen city stays).
     func disabled() {
+        fixFailed = false
         weather = nil
         fetchedAt = nil
         failures = 0
@@ -260,14 +302,26 @@ final class WeatherWidget: NotchWidget {
 
     /// One forecast request, then the next one is scheduled (backing off after failures).
     func fetch() async {
-        guard running, !paused, canFetch, let client else { return }
+        guard running, !paused, !pinned, canFetch, let client else { return }
         lastAttempt = clock()
         loading = true
         // Automatic and allowed: one fix per refresh (a failed fix keeps the last one).
-        if chosenLocation == .automatic, location.auth == .granted, let f = try? await location.fix() {
-            fix = f
+        if chosenLocation == .automatic, location.auth == .granted {
+            do {
+                fix = try await location.fix()
+                fixFailed = false
+            } catch {
+                fixFailed = fix == nil
+            }
         }
-        guard case .place(let lat, let lon, _) = source else { loading = false; return }
+        guard case .place(let lat, let lon, _) = source else {
+            // No fix and no city: count it, say so, and try again with the usual backoff.
+            loading = false
+            failures += 1
+            lastError = Self.noFix
+            schedule()
+            return
+        }
         let key = source
         let result: Result<WeatherNow, Error>
         do { result = .success(try await client.forecast(latitude: lat, longitude: lon)) } catch { result = .failure(error) }
@@ -285,6 +339,8 @@ final class WeatherWidget: NotchWidget {
         }
         schedule()
     }
+
+    static let noFix = "Can't find your location"
 
     private static func describe(_ error: Error) -> String {
         switch error {
@@ -397,13 +453,23 @@ final class WeatherWidget: NotchWidget {
 
     func tileView() -> AnyView { AnyView(WeatherTile(widget: self)) }
 
-    /// The Library tool: the conditions centred; "Choose a city" as a calm empty state.
+    /// The Library tool: the conditions centred; a calm empty state until there is a place.
     func toolView() -> AnyView {
-        if place == nil {
-            return AnyView(ToolEmptyState(systemImage: "cloud.sun", title: "Choose a city",
-                                          detail: "Pick your city in Settings › Widgets › Weather. No location access is used."))
+        if let empty = Self.emptyText(source) {
+            return AnyView(ToolEmptyState(systemImage: "cloud.sun", title: empty.title, detail: empty.detail))
         }
         return AnyView(ToolPage { WeatherTile(widget: self) })
+    }
+
+    /// The tool's empty state for a source with no place yet (nil: there is a place).
+    static func emptyText(_ source: WeatherSource) -> (title: String, detail: String)? {
+        switch source {
+        case .place: nil
+        case .needsPermission:
+            ("Weather where you are", "Turn on Use my location, or pick a city, in Settings › Home › Weather.")
+        case .needsCity:
+            ("Pick a city", "Location is off for PlatyNotch. Pick a city in Settings › Home › Weather.")
+        }
     }
 
     func settingsView() -> AnyView? { AnyView(WeatherSettings(widget: self)) }

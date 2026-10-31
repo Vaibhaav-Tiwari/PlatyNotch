@@ -715,7 +715,13 @@ final class DayTests: XCTestCase {
 
     func testStaleAppendsAge() {
         let w = reading(code: 0, at: 14, high: 27, low: 18)
-        XCTAssertEqual(detail(w, fetchedAt: w.time.addingTimeInterval(-50 * 60)), "H 27° · L 18° · 50 min ago")
+        XCTAssertEqual(detail(w, fetchedAt: w.time.addingTimeInterval(-50 * 60)), "H 27° · L 18° · updated 50 min ago")
         XCTAssertEqual(detail(w, fetchedAt: w.time.addingTimeInterval(-20 * 60)), "H 27° · L 18°", "fresh data shows no age")
+        XCTAssertEqual(WeatherLine.detail(w, unit: .celsius, fetchedAt: w.time.addingTimeInterval(-2 * 3600 - 60),
+                                          now: w.time, calendar: lineCal, locale: enUS),
+                       "H 27° · L 18° · updated 2 h ago")
+        XCTAssertEqual(WeatherLine.detail(w, unit: .celsius, fetchedAt: w.time.addingTimeInterval(-10 * 60), now: w.time,
+                                          calendar: lineCal, locale: enUS, failing: true),
+                       "H 27° · L 18° · updated 10 min ago", "a failing refresh shows the age at once")
     }
 }

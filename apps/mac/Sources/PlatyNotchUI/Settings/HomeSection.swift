@@ -51,6 +51,14 @@ struct HomeSection: View {
                             SettingLabel("Use my location", info: "Shows the weather where your Mac is. macOS asks once, when you turn this on; the position is rounded to about 1 km before it is sent to Open-Meteo. Denied or off: the city below.")
                         }
                         .disabled(!model.weatherOn)
+                        if weather.usesMyLocation, weather.locationAuth == .denied {
+                            HStack {
+                                Text("Location is off for PlatyNotch in System Settings. The city below is used.")
+                                    .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
+                                Spacer(minLength: 8)
+                                Button("Open System Settings") { Permissions.open(.location) }
+                            }
+                        }
                         WeatherSettings(widget: weather)
                             .disabled(!model.weatherOn)
                         if !model.weatherOn {

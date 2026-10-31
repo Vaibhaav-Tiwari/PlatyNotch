@@ -7,6 +7,8 @@ import PlatyNotchKit
 @MainActor
 protocol LocationProviding: AnyObject {
     var auth: LocationAuth { get }
+    /// Called when the permission changes outside a request (System Settings).
+    var onAuthChange: (() -> Void)? { get set }
     func requestAccess() async -> LocationAuth
     func fix() async throws -> LocationFix
 }
@@ -51,15 +53,29 @@ final class SystemLocation: NSObject, LocationProviding {
         }
     }
 
+    /// Asks once. Location Services off system-wide: no prompt can come, so it answers
+    /// `.denied` at once; a prompt left unanswered gives up after `requestTimeout`.
     func requestAccess() async -> LocationAuth {
         let m = ensureManager()
         let now = Self.map(m.authorizationStatus)
         guard now == .notDetermined else { return now }
+        let enabled = await Task.detached(priority: .userInitiated) { CLLocationManager.locationServicesEnabled() }.value
+        guard enabled else { return .denied }
+        let first = authWaiters.isEmpty
+        let timeout = Self.requestTimeout
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(timeout))
+            self?.authChanged(m.authorizationStatus, force: true)
+        }
         return await withCheckedContinuation { (c: CheckedContinuation<LocationAuth, Never>) in
             authWaiters.append(c)
-            m.requestWhenInUseAuthorization()
+            if first { m.requestWhenInUseAuthorization() }   // repeated clicks wait on the same prompt
         }
     }
+
+    static let requestTimeout: Double = 60
+    /// Location's permission changed (granted, denied or revoked in System Settings).
+    var onAuthChange: (() -> Void)?
 
     func fix() async throws -> LocationFix {
         let m = ensureManager()
@@ -69,8 +85,17 @@ final class SystemLocation: NSObject, LocationProviding {
             fixWaiter = c
             m.requestLocation()
         }
-        let name = await Self.placeName(for: location)
-        return LocationFix(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude, name: name)
+        // Rounded (about 1 km) before anything leaves the Mac, Apple's geocoder included.
+        let rounded = Self.rounded(location.coordinate)
+        let name = await Self.placeName(for: rounded)
+        return LocationFix(latitude: rounded.coordinate.latitude, longitude: rounded.coordinate.longitude, name: name)
+    }
+
+    /// The position at 2 decimals (`LocationFix`'s rounding): all that the reverse geocoder
+    /// and Open-Meteo ever see.
+    nonisolated static func rounded(_ c: CLLocationCoordinate2D) -> CLLocation {
+        let f = LocationFix(latitude: c.latitude, longitude: c.longitude, name: nil)
+        return CLLocation(latitude: f.latitude, longitude: f.longitude)
     }
 
     /// The locality ("Bengaluru"), else the placemark's name; nil when the geocoder fails.
@@ -84,9 +109,10 @@ final class SystemLocation: NSObject, LocationProviding {
         }
     }
 
-    fileprivate func authChanged(_ status: CLAuthorizationStatus) {
+    fileprivate func authChanged(_ status: CLAuthorizationStatus, force: Bool = false) {
         let a = Self.map(status)
-        guard a != .notDetermined else { return }
+        if a != .notDetermined { onAuthChange?() }
+        guard a != .notDetermined || force else { return }
         let waiters = authWaiters
         authWaiters = []
         for w in waiters { w.resume(returning: a) }
@@ -128,6 +154,7 @@ final class SystemLocation: NSObject, LocationProviding {
 @MainActor
 final class NoLocation: LocationProviding {
     var auth: LocationAuth { .denied }
+    var onAuthChange: (() -> Void)?
     func requestAccess() async -> LocationAuth { .denied }
     func fix() async throws -> LocationFix { throw LocationError.notAllowed }
 }

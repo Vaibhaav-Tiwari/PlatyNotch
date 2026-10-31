@@ -35,6 +35,11 @@ public struct LaunchOptions: Equatable, Sendable {
     /// `--perf-run` (scripts/perf-idle.sh): the widget registry does not persist, so a
     /// measurement never writes `widgets.layout` (C4).
     public var perfRun: Bool
+    /// `PLATYNOTCH_PERF_SKY=clear|rain|snow|…` with `--perf-run` (scripts/perf-open.sh): the
+    /// weather shows that condition from a fixed reading (no network), and the panel opens on
+    /// Home so the sky's motion runs; `PLATYNOTCH_PERF_OPEN_SECONDS` later closes it.
+    public var perfSky: WeatherCondition?
+    public var perfOpenSeconds: Double?
 
     public init(arguments: [String], env: [String: String]) {
         smoke = arguments.dropFirst().contains("--smoke")
@@ -49,6 +54,8 @@ public struct LaunchOptions: Equatable, Sendable {
         renderShowcaseDir = Self.value(after: "--render-showcase", in: arguments)
         perfRun = arguments.dropFirst().contains("--perf-run")
         fakeNowPlaying = env["PLATYNOTCH_FAKE_NOWPLAYING"] == "1" && perfRun
+        perfSky = perfRun ? env["PLATYNOTCH_PERF_SKY"].flatMap(WeatherCondition.init(rawValue:)) : nil
+        perfOpenSeconds = perfSky == nil ? nil : env["PLATYNOTCH_PERF_OPEN_SECONDS"].flatMap(Double.init)
     }
 
     /// The argument after `flag`, if there is one that is not another flag.
