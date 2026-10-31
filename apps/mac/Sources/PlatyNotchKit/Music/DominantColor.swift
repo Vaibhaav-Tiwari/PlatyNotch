@@ -49,3 +49,16 @@ public enum DominantColor {
         return (min(use.r / n, 1), min(use.g / n, 1), min(use.b / n, 1))
     }
 }
+
+extension RGB {
+    /// A `DominantColor` result.
+    public init(_ c: (r: Double, g: Double, b: Double)) {
+        self.init(r: c.r, g: c.g, b: c.b)
+    }
+
+    /// No hue to glow with: near-black, near-white or grey (channels within 0.08).
+    public var isMonochrome: Bool {
+        let hi = max(r, g, b), lo = min(r, g, b)
+        return hi < DominantColor.blackCutoff || lo > DominantColor.whiteCutoff || hi - lo < 0.08
+    }
+}

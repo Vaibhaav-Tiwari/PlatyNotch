@@ -21,6 +21,9 @@ public enum HomeMetrics {
     /// The art glow behind the Now Playing card.
     public static let glowBlur: CGFloat = 34
     public static let glowOpacity: Double = 0.45
+    /// Previous / next and play-pause glyphs on the Now Playing card.
+    public static let skipGlyph: CGFloat = 16
+    public static let playGlyph: CGFloat = 22
     /// The playback progress bar.
     public static let progressHeight: CGFloat = 4
     /// The dock: a circle, its symbol, the slot; a badge's height; a live circle's amber fill.

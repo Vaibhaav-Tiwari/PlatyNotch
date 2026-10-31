@@ -228,6 +228,8 @@ enum HomeRenders {
             battery: BatteryState(percent: 64, charging: true, pluggedIn: true, minutesRemaining: nil))), true))
         out.append(("home-live", panel(homeLive()), true))
         out.append(("home-nothing-playing", panel(builtIns(meeting: false)), true))
+        out.append(("home-resume", panel(resume()), true))
+        out.append(("home-never-played", panel(builtIns(meeting: false)), true))
         out.append(("home-drop", panel(builtIns(meeting: false), dropping: true), true))
         out.append(("home-notes-column", panel(builtIns(meeting: false), homeSettings: HomeSettings(rightColumn: .notes)), true))
         out.append(("home-command", panel(homeRest(), command: "timer 10m tea"), true))
@@ -256,6 +258,17 @@ enum HomeRenders {
         rig.today.nowPlaying.debugApply(NowPlayingInfo(bundleIdentifier: "com.apple.Music", title: "Weightless",
                                                        artist: "Marconi Union", isPlaying: true,
                                                        elapsed: 161, duration: 473, rate: 1, timestamp: Date()))
+        return rig
+    }
+
+    /// Nothing playing after Apple Music played "Green Light": Resume and two playlists.
+    static func resume() -> Rig {
+        let rig = builtIns(meeting: false)
+        let music = NSWorkspace.shared.urlForApplication(withBundleIdentifier: AppleScriptPlayer.music.rawValue)
+            .map { NSWorkspace.shared.icon(forFile: $0.path) }
+        rig.today.nowPlaying.debugSetLastPlayed(
+            LastPlayed(title: "Green Light", artist: "Lorde", bundleID: AppleScriptPlayer.music.rawValue, at: Date()),
+            icon: music, recents: ["Lo-fi beats", "Liked songs"])
         return rig
     }
 
@@ -344,6 +357,8 @@ enum HomeRenders {
             // Inert: a render never reads the Mac's real player (its track is set by hand).
             let nowPlaying = NowPlaying()
             nowPlaying.inert = true
+            nowPlaying.lastPlayedStore = nil
+            nowPlaying.recentsProvider = NoRecents()
             today = TodayServices(client: client, nowPlaying: nowPlaying,
                                   visualiser: MusicVisualiser(defaults: glances),
                                   calendar: CalendarService(eventKit: false),

@@ -177,6 +177,7 @@ final class DesignLintTests: DefaultsTestCase {
         "NowPlaying.swift": "the playing track's artwork tint",
         "Music/MusicVisualiser.swift": "the artwork's own colours in the visualiser",
         "Games/GameRenders.swift": "the game boards' own colours",
+        "Home/NowPlayingCard.swift": "the art glow: the album's own colour (Island spec 3.1)",
     ]
 
     /// Colour only for state (spec 5.3): in panel views, no named system colours, no
