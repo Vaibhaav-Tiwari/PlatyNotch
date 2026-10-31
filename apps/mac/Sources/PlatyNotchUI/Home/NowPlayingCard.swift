@@ -14,7 +14,7 @@ struct NowPlayingCard: View {
 
     /// The card's width in the 640 pt panel (Now Playing : Today = 1.25 : 1, 10 apart); the
     /// fitting width never grows past it, however long the title.
-    static let idealWidth: CGFloat = {
+    nonisolated static let idealWidth: CGFloat = {
         let room: CGFloat = HomeMetrics.panelWidth - 2 * Space.panelSide - HomeMetrics.cardGap
         return room * HomeMetrics.nowPlayingRatio / (HomeMetrics.nowPlayingRatio + 1)
     }()
@@ -97,11 +97,17 @@ struct NowPlayingCard: View {
     private var background: some View {
         ZStack {
             DS.card
-            if let title = nowPlaying.title {
-                glow.id(title).transition(.opacity)
+            if nowPlaying.title != nil {
+                glow.id(glowKey).transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.6), value: nowPlaying.title)
+        // Keyed on the colour too: the album colour arrives after the title, and fades in.
+        .animation(.easeInOut(duration: 0.6), value: glowKey)
+    }
+
+    private var glowKey: String {
+        let c = Self.glowColor(tint: nowPlaying.artworkRGB)
+        return "\(nowPlaying.title ?? "")|\(c.r),\(c.g),\(c.b)"
     }
 
     /// The art's colour as a soft ellipse behind the left half (spec 3.1: an ellipse blurred

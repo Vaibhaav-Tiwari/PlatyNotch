@@ -37,8 +37,8 @@ A file drag swaps the cards for the drop box; approvals sit above the cards (bot
   "Artist · Album" 12 pt secondary; both one line, tail-truncated. A 4 pt progress bar (track
   white 0.14), elapsed and `-remaining` at 11 pt tabular tertiary; previous / play-pause /
   next at 16 / 22 / 16 pt, 22 pt apart.
-- **Glow:** `NowPlaying.artworkTint` (from `DominantColor`) as a blurred ellipse behind the
-  card's left half: blur 34, opacity 0.45, clipped to the card. Monochrome or missing art:
+- **Glow:** `NowPlaying.artworkTint` (from `DominantColor`) as a soft ellipse behind the
+  card's left half: a soft elliptical gradient equivalent to blur 34 (no blur filter; phase A ruling), opacity 0.45, clipped to the card. Monochrome or missing art:
   `DominantColor.fallback`. Static; it cross-fades 0.6 s on a track change **[call]**.
 - **Nothing playing:** §3.5.
 
@@ -48,7 +48,7 @@ Two parts, a white 0.06 hairline between. **Sky** (top): the condition's gradien
   Rounded semibold, "Condition · Place" (12 pt medium; clear by day reads "Sunny" **[call]**),
   then one 11 pt line: raining now → `Umbrella till 11 PM` (end of the current run of hours at
   ≥ 50 %); rain later in the 12 h forecast → `Rain from 5 PM`; else `H 27° · L 18°` (new
-  daily high/low from Open-Meteo). Data older than 45 min appends ` · 12 min ago`.
+  daily high/low from Open-Meteo). Data older than 45 min, or kept while a refresh fails, appends ` · updated 2 h ago`. No reading and the last try failed: "Can't get weather" (or "Offline", or "Can't find your location") with "Try again" and "Add a city" (phase A fix round 1).
 - **Next** (bottom), first that applies:
   - a timed, not-declined event in progress or later today: label `Now · ends 4:30 PM`,
     `Next · in 45 min` (within 60 min) or `Next · later today` **[call]**; title 13 pt
@@ -56,7 +56,7 @@ Two parts, a white 0.06 hairline between. **Sky** (top): the condition's gradien
   - **free:** `Free today`, or `Free tonight` from 17:00 **[call]**, over the **week strip**:
     7 days from today, weekday (11 pt tertiary) over the date (12 pt medium). The next day in
     the week with an event wears a 20 pt `count blue` circle **[call: wireframe B marks a day
-    ahead, not today]**; a click opens Calendar on that date.
+    ahead, not today]**; the whole strip is one "Open Calendar" button, which opens Calendar on today (a date would need Apple Events; phase A ruling).
   - Reminders leave Home: they are the Remind badge and tool **[call]**.
 
 ### 3.3 Dock

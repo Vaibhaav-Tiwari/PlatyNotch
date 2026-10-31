@@ -27,7 +27,7 @@ public enum SetupPreset: String, CaseIterable, Codable, Sendable {
         switch self {
         case .everyday: "Music, meetings, timers, weather, shelf and clipboard."
         case .developer: "Everyday plus agents, usage limits, file actions and snapping."
-        case .minimal: "The notch stays hidden until something is live."
+        case .minimal: "Music and weather; the notch stays hidden until something is live."
         }
     }
 

@@ -104,12 +104,12 @@ struct HomeView: View {
         TickingNow(fixed: fixedNow) { now in
             let data = HomeData.make(today: today, widgets: widgets, settings: settings, tourSample: tourSample,
                                      now: now, dropping: dropping)
-            content(data)
+            content(data, now: now)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    @ViewBuilder private func content(_ data: HomeData) -> some View {
+    @ViewBuilder private func content(_ data: HomeData, now: Date) -> some View {
         VStack(alignment: .leading, spacing: HomeMetrics.dockTop) {
             if let drop = data.drop {
                 if !data.chips.isEmpty {
@@ -121,7 +121,7 @@ struct HomeView: View {
             } else {
                 TwoColumns(ratio: HomeMetrics.nowPlayingRatio, gap: HomeMetrics.cardGap) {
                     NowPlayingCard(nowPlaying: today.nowPlaying, recents: today.nowPlaying.recents, fixedNow: fixedNow)
-                    TodayCard(weather: Self.weather(widgets), next: data.next, fixedNow: fixedNow,
+                    TodayCard(weather: Self.weather(widgets), next: data.next, fixedNow: now,
                               onConnectCalendar: { today.calendar.openSettings() })
                 }
                 if !data.chips.isEmpty {

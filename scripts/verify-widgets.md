@@ -1656,8 +1656,16 @@ the renders `home-rest`, `home-resume`, `home-never-played`, `home-sky-*`, `home
   "Play something and it shows here."
 - [ ] **324. Week strip when free.** With no more events today (Calendar allowed): the bottom
   of Today reads "Free today" ("Free tonight" from 17:00) over seven days from today, and the
-  next day with an event wears a blue circle. With Calendar off or not allowed: "This week",
+  next day with an event wears a blue circle; a click anywhere on the strip opens Calendar
+  (on today). With Calendar off or not allowed: "This week",
   today circled, and "Connect Calendar ›" opens Settings › Privacy (no prompt).
-- [ ] **325. Idle CPU.** `scripts/perf-idle.sh` and `scripts/perf-idle.sh --state music`:
-  PASS under 1 %. Open the panel on a rainy city for a minute: Activity Monitor shows
-  PlatyNotch near idle (the streaks are Core Animation, drawn by the window server).
+- [ ] **325. CPU, closed and open.** `scripts/perf-idle.sh` and `scripts/perf-idle.sh --state music`:
+  PASS under 1 %. `scripts/perf-open.sh` (music on; clear, rain and snow skies, the panel held
+  open about 40 s each): open under 5 %, and under 1 % from the second second after closing.
+  Keep the pointer and clicks away from the notch while it runs (a click elsewhere closes the
+  panel; the script reopens it and notes it).
+- [ ] **326. Weather never stuck on Loading.** Allow Location from Settings › Privacy (or the
+  first run): the sky loads at once. Turn Wi-Fi off with no city saved and click "Use my
+  location": the sky says "Can't find your location" with "Try again" and "Add a city". With a
+  city and Wi-Fi off before the first load: "Offline"; with an earlier reading: the reading
+  and "updated 12 min ago".
