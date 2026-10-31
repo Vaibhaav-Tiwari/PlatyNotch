@@ -755,7 +755,7 @@ enum ToolRenders {
         let rig = HomeRenders.builtIns(meeting: false)
         let now = Date()
         let clips: [ClipItem] = [
-            ClipItem(kind: .text("Ship the Library grid today, then the settings pages."), copiedAt: now.addingTimeInterval(-40)),
+            ClipItem(kind: .text("Ship the Home column today, then the settings pages."), copiedAt: now.addingTimeInterval(-40)),
             ClipItem(kind: .url(URL(string: "https://example.com/design/library")!), copiedAt: now.addingTimeInterval(-300),
                      pinned: true),
             ClipItem(kind: .text("swift test --filter PanelRoutingTests"), copiedAt: now.addingTimeInterval(-900)),
@@ -779,13 +779,13 @@ enum ToolRenders {
         let now = Date()
         let hits: [MemoryHit] = [
             MemoryHit(threadID: "t1", title: "Panel layout notes", sourceApp: "Notes",
-                      snippet: "The Library is a four-column grid; tools open full-panel with a back chevron.",
+                      snippet: "Tools open full-panel with a back chevron; Esc goes back to Home.",
                       score: 0.92, at: now.addingTimeInterval(-600)),
-            MemoryHit(threadID: "t2", title: "Pull request: Library routes", sourceApp: "Safari",
+            MemoryHit(threadID: "t2", title: "Pull request: legacy routes", sourceApp: "Safari",
                       snippet: "Legacy tab ids map through PanelRoute.legacy so old links keep working.",
                       score: 0.81, at: now.addingTimeInterval(-3_600)),
             MemoryHit(threadID: "t3", title: "Standup", sourceApp: "Slack",
-                      snippet: "Ship the Library grid today, then the settings pages.",
+                      snippet: "Ship the Home column today, then the settings pages.",
                       score: 0.66, at: now.addingTimeInterval(-7_200)),
         ]
         let services = MemoryServices(search: MemorySearchModel(preset: hits),
@@ -797,7 +797,7 @@ enum ToolRenders {
     /// A plugin's panel tab: a tool tile of its own and its view full-panel.
     static let pluginTab = PanelTab(id: "sample.standup", title: "Standup", systemImage: "list.bullet.rectangle") {
         VStack(alignment: .leading, spacing: Space.s) {
-            ForEach(["Ship the Library grid", "Review the settings plan", "Pair on the pond scene"], id: \.self) { line in
+            ForEach(["Ship the Home column", "Review the settings plan", "Pair on the command line"], id: \.self) { line in
                 HStack(spacing: Space.s) {
                     Image(systemName: "circle").foregroundStyle(.secondary)
                     Text(verbatim: line).font(DS.font(TypeScale.body))

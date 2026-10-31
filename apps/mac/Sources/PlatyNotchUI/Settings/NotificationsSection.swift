@@ -68,7 +68,7 @@ final class NotificationsModel {
         switch kind {
         case .approval: "An agent asks before running a tool. Approvals always show and open the notch, even during Focus; nothing here can silence them."
         case .agentNeedsYou: "An agent is waiting for your input, or stopped with an error."
-        case .agentFinished: "An agent finished its work: a short notice, then a summary in Now."
+        case .agentFinished: "An agent finished its work: a short notice, then its row in Agents."
         case .ringing: "An alarm or a timer reaching zero. With Can open off it still rings; stop it from the menu bar or the pill."
         case .meetingStarting: "A meeting in your calendar is about to start."
         case .reminder: "Water, stand and eye-rest nudges, and AirPods connecting."

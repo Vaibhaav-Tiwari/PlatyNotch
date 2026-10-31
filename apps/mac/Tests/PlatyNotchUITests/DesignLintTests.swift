@@ -228,6 +228,32 @@ final class DesignLintTests: DefaultsTestCase {
         XCTAssertTrue(root.contains(".environment(\\.colorScheme, .dark)"), "PanelRootView forces the dark scheme")
     }
 
+    /// First-run and Settings copy names what exists (final review I2): Home, Agents, chips,
+    /// the command line. No string literal in the UI, or the Kit's permission table, speaks
+    /// of Now, glances, the Library, the Today tab or the pond.
+    func testNoRemovedFeaturesInCopy() throws {
+        let regex = try NSRegularExpression(pattern:
+            #"\b(on|in|of) Now\b|\bNow's\b|This is Now|That's Now|(?i:glance)|\bLibrary\b|Today tab|(?i:\bpond\b)"#)
+        let roots: [URL] = [Self.uiSources, Self.sources.appendingPathComponent("PlatyNotchKit/Setup")]
+        var found: [String] = []
+        for root in roots {
+            let walker = try XCTUnwrap(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
+            for case let url as URL in walker where url.pathExtension == "swift" {
+                let text = try String(contentsOf: url, encoding: .utf8)
+                for literal in Self.stringLiterals(in: text) {
+                    let string = String(String.UnicodeScalarView(literal.scalars))
+                    // ~/Library paths are folders, not the removed Library view.
+                    let checked = string.replacingOccurrences(of: "/Library", with: "")
+                    let ns = checked as NSString
+                    if regex.firstMatch(in: checked, range: NSRange(location: 0, length: ns.length)) != nil {
+                        found.append("\(url.lastPathComponent):\(literal.line): \(string)")
+                    }
+                }
+            }
+        }
+        XCTAssertTrue(found.isEmpty, "copy naming removed features:\n" + found.joined(separator: "\n"))
+    }
+
     /// Never initials: no monogram anywhere in the app's sources (Kit and UI).
     func testNoMonogram() throws {
         let regex = try NSRegularExpression(pattern: #"(?i)monogram"#)

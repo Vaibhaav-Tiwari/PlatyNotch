@@ -41,7 +41,7 @@ public enum PermissionTable {
                       withoutIt: "Memory stays off and the system HUD shows", action: .request),
         PermissionRow(id: .calendars, title: "Calendar",
                       powers: "Next meeting, Join buttons and meeting reminders",
-                      withoutIt: "No meetings in Now or the pill", action: .request),
+                      withoutIt: "No meetings in Up next or the pill", action: .request),
         PermissionRow(id: .reminders, title: "Reminders",
                       powers: "Reminders due today, ticked off from the notch",
                       withoutIt: "The Reminders widget stays empty", action: .request),

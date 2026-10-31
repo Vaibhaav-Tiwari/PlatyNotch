@@ -42,7 +42,7 @@ struct GeneralSection: View {
                                      info: "Replays the first run: meet Platy, pick a setup, permissions, then try the notch. Nothing changes until you confirm.")
                     }
                 } header: {
-                    SettingLabel("Setup", info: "Everyday, Developer or Minimal choose which widgets are on, the four glances and whether the notch hides. You see every change and confirm first.")
+                    SettingLabel("Setup", info: "Everyday, Developer or Minimal choose which widgets are on and whether the notch hides. You see every change and confirm first.")
                 }
             }
             .settingsForm()
