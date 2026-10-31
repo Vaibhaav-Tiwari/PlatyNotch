@@ -1587,3 +1587,32 @@ working directory where a step says so.
   Settings › Widgets › Wellbeing).
 - [ ] **312. Settings › Home.** The right column can be Up next, Notes (while Notes is on) or
   Mail (while Mail is on); turning that widget off puts Up next back.
+
+## Quiet Notch phase 3
+
+- [ ] **313. Always black.** Set macOS to Light appearance and open the panel: it is black
+  (#000), with white text at three strengths, and meets the camera housing with no seam; its
+  bottom corners are rounder (22 pt) than the pill's. Settings still follows the system.
+  Settings › Notch has no Theme or Surface row, and Motion offers Calm and Reduced only; open
+  and close use one smooth spring with no bounce.
+- [ ] **314. Nothing above 15 pt.** No text in the panel looks larger than the play/pause
+  symbol: tab names and the header are 12 pt, rows 13 pt, captions 11 pt. Tool pages (Focus,
+  Time, Weather, Battery peek) show their numbers at 15 pt at most.
+- [ ] **315. Agents rows match wireframe C.** With three sessions in different apps: one line
+  each, the agent's app icon (or its name in grey when the app is not installed, never two
+  letters), the **project**, ` · status · age` (`· running tests · 12 m`), a 7 pt dot (green
+  running, amber waiting, red error, grey finished or idle) and a button naming the app it
+  opens; dots and buttons line up down the list, hairlines between rows. Usage is mono
+  numbers in the header (`Claude 5h 62% · 7d 31%`, `Codex 5h 18%`), and
+  `2 open loops · Search memory with ⌘K` closes the list ("open loops" opens them). The
+  "Agents" tab carries an amber dot while a session waits.
+- [ ] **316. Approval keycaps.** An approval shows on #111 with no border: the agent's icon,
+  "Claude Code" in bold, the project, a `Bash` chip and the countdown in mono; the command
+  in mono on a fill (a long command wraps, never cut off); then "Deny ⌘⌫" and a green
+  "Allow ⌘↩", each with its keycap. ⌘↩ and ⌘⌫ still answer only after the card has been
+  on screen long enough ("Look first…" before).
+- [ ] **317. No icon squares, no teal.** Open every tool from the menu bar's "Open" submenu:
+  no symbol sits on a coloured square, nothing is teal, links are grey, and controls are
+  white (never system blue).
+- [ ] **318. Idle CPU.** `scripts/perf-idle.sh` on a real notched Mac (the panel shows for a
+  minute): PASS under 1 %.
