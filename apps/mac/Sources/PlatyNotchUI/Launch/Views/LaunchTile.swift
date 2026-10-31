@@ -138,9 +138,9 @@ struct SiteIcon: View {
         } else {
             Text(verbatim: letter)
                 .font(.system(size: max(size * 0.5, TypeScale.minimum), weight: .bold, design: .rounded))
-                .foregroundStyle(.white)   // on the green letter tile, every theme
+                .foregroundStyle(DS.secondary)   // on the plain fill: no tinted square
                 .frame(width: size, height: size)
-                .background(Theme.tint(.accent).opacity(0.7), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .background(DS.fill, in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
                 .accessibilityHidden(true)
         }
     }
@@ -292,7 +292,7 @@ struct LaunchResultPeek: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: notice.isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: IconSize.header, weight: .semibold))
                 .foregroundStyle(notice.isError ? Theme.tint(.warning) : Theme.tint(.accent))
                 .accessibilityHidden(true)
             Text(verbatim: notice.text)

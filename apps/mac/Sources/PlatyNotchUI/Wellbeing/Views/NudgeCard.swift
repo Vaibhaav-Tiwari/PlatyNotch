@@ -46,7 +46,7 @@ struct NudgeCard: View {
                     }
                 } else {
                     Image(systemName: NudgeText.symbol(nudge.kind))
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.system(size: IconSize.header, weight: .semibold))
                         .foregroundStyle(Theme.tint(.accent))
                         .frame(width: 34, height: 34)
                         .accessibilityHidden(true)

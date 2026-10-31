@@ -428,11 +428,13 @@ enum HomeRenders {
 
     /// Header toggles for a render: inert power (no assertion, no IOKit), optionally with
     /// keep awake running (`1:20`-style time) and a battery reading.
-    static func headerServices(keepAwake: Bool = false, battery: BatteryState? = nil) -> HeaderServices {
+    static func headerServices(keepAwake: Bool = false, battery: BatteryState? = nil,
+                               startedAt: Date? = nil) -> HeaderServices {
         let power = RenderPower(state: battery)
-        let services = HeaderServices(keepAwake: KeepAwake(asserter: RenderAsserter()), power: power,
+        let start: Date = startedAt ?? Date()
+        let services = HeaderServices(keepAwake: KeepAwake(asserter: RenderAsserter(), clock: { start }), power: power,
                                       defaults: UserDefaults(suiteName: "dev.platynotch.render-header") ?? .standard)
-        if keepAwake { services.startKeepAwake(.oneHour) }
+        if keepAwake { services.startKeepAwake(startedAt == nil ? .oneHour : .twoHours) }
         return services
     }
 
@@ -770,7 +772,7 @@ enum ToolRenders {
             ShelfItem(kind: .url(URL(string: "https://example.com/report")!), addedAt: now, pinned: true),
             ShelfItem(kind: .text("Release checklist: notarise, tag, appcast"), addedAt: now),
             ShelfItem(kind: .url(URL(string: "https://example.com/specs/library")!), addedAt: now),
-            ShelfItem(kind: .text("Colours: teal 2FB8A6, cream F2E6C9"), addedAt: now),
+            ShelfItem(kind: .text("Colours: ink 92, 56 and 32 percent"), addedAt: now),
         ]
         (rig.registry.widget(ShelfWidget.widgetID) as? ShelfWidget)?.showForRendering(cards)
         return rig

@@ -285,7 +285,7 @@ struct MirrorTileView: View {
             }
             HStack(spacing: 8) {
                 if state != .live {
-                    Image(systemName: "person.crop.square").font(.system(size: 18)).foregroundStyle(.secondary)
+                    Image(systemName: "person.crop.square").font(.system(size: IconSize.header)).foregroundStyle(.secondary)
                         .accessibilityHidden(true)
                 }
                 Text(verbatim: state.message)

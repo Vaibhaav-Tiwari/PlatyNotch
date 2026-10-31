@@ -105,7 +105,7 @@ struct DownloadPeekView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Image(systemName: "arrow.down.circle.fill")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.system(size: IconSize.header, weight: .semibold))
                     .foregroundStyle(Theme.tint(.accent))
                     .frame(width: 34, height: 34)
                     .accessibilityHidden(true)
@@ -132,7 +132,7 @@ struct HeadphonesPeekView: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: HeadphonesText.symbol(info.name))
-                .font(.system(size: 20, weight: .semibold))
+                .font(.system(size: IconSize.header, weight: .semibold))
                 .frame(width: 34, height: 34)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
@@ -287,7 +287,7 @@ struct PowerPeekView: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: peek.change == .pluggedIn ? "bolt.fill" : peek.state.symbolName)
-                .font(.system(size: 20, weight: .semibold))
+                .font(.system(size: IconSize.header, weight: .semibold))
                 .foregroundStyle(peek.change == .pluggedIn ? Theme.tint(.accent)
                                  : peek.state.isLow ? Theme.tint(.critical) : .primary)
                 .frame(width: 34, height: 34)
@@ -299,7 +299,7 @@ struct PowerPeekView: View {
             }
             Spacer(minLength: 0)
             Text(verbatim: "\(peek.state.percent)%")
-                .font(.system(size: 18, weight: .semibold, design: .rounded)).monospacedDigit()
+                .font(.system(size: TypeScale.maximum, weight: .semibold, design: .rounded)).monospacedDigit()
         }
         .accessibilityElement(children: .combine)
     }

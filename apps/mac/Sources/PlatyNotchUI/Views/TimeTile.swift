@@ -145,7 +145,7 @@ private struct StopwatchSection: View {
             HStack {
                 TimelineView(.periodic(from: .now, by: sw.isRunning ? 0.1 : 3600)) { ctx in
                     Text(Stopwatch.format(sw.elapsed(at: ctx.date)))
-                        .font(.system(size: 22, weight: .medium, design: .rounded))
+                        .font(.system(size: TypeScale.maximum, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                 }
                 Spacer()
@@ -251,7 +251,7 @@ private struct WeekdayChips: View {
                         .font(DS.font(TypeScale.caption).weight(.semibold))
                         .frame(width: 18, height: 16)
                         .foregroundStyle(on ? DS.primary : DS.secondary)
-                        .background(on ? DS.dynamicColor(.working, alpha: 0.18) : Color.secondary.opacity(0.15),
+                        .background(on ? DS.ink(0.18) : DS.fill,
                                     in: Capsule())
                 }
                 .buttonStyle(.plain)

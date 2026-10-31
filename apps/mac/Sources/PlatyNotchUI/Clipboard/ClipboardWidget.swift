@@ -442,7 +442,7 @@ struct ClipboardTile: View {
 struct ClipCopiedPeek: View {
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "doc.on.clipboard.fill").font(.system(size: 16)).foregroundStyle(Theme.color(.active))
+            Image(systemName: "doc.on.clipboard.fill").font(.system(size: IconSize.header)).foregroundStyle(Theme.color(.active))
             Text("Copied — press ⌘V").font(.system(size: 13, weight: .semibold))
             Spacer(minLength: 0)
         }

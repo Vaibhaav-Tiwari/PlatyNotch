@@ -215,7 +215,7 @@ struct ShelfThumbnail: View {
             if let image {
                 Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
             } else {
-                Image(systemName: symbol).font(.system(size: 24)).foregroundStyle(.secondary)
+                Image(systemName: symbol).font(.system(size: IconSize.header)).foregroundStyle(.secondary)
             }
         }
         .task(id: missing ? nil : item.fileRef?.path) { await load() }
@@ -465,7 +465,7 @@ struct ShelfDropZone: View {
             .overlay {
                 VStack(spacing: 6) {
                     Image(systemName: on ? "tray.and.arrow.down.fill" : "tray.and.arrow.down")
-                        .font(.system(size: 26, weight: .medium))
+                        .font(.system(size: IconSize.header, weight: .medium))
                     Text("Drop to keep on the Shelf").font(.system(size: 13, weight: .medium))
                     if !shelf.items.isEmpty {
                         Text(shelf.items.count == 1 ? "1 item on the shelf" : "\(shelf.items.count) items on the shelf")

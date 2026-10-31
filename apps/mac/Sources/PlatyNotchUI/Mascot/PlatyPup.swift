@@ -8,7 +8,7 @@ import SwiftUI
 /// and cached; never animated.
 ///
 /// Where pups appear (user ruling: recognisable icons first): the Agents rows keep the
-/// agent's installed app icon or monogram (`AgentBadge`) as the identity; pups appear only
+/// agent's installed app icon or name (`AgentBadge`) as the identity; pups appear only
 /// where they add warmth without costing clarity: the Agents empty state (the four known
 /// agents waiting) and the gallery.
 struct PlatyPupView: View {

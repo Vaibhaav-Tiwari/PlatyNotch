@@ -81,7 +81,7 @@ struct BasketSwitcherView: View {
     private func chip(_ e: BasketSwitcherModel.Entry) -> some View {
         let on = e.id == model.selected
         return VStack(spacing: 4) {
-            Image(systemName: "basket.fill").font(.system(size: 18)).foregroundStyle(BasketPalette.color(e.color))
+            Image(systemName: "basket.fill").font(.system(size: IconSize.header)).foregroundStyle(BasketPalette.color(e.color))
             Text(verbatim: e.name).font(DS.font(TypeScale.caption).weight(on ? .semibold : .regular)).lineLimit(1)
         }
         .frame(width: 88, height: 48)

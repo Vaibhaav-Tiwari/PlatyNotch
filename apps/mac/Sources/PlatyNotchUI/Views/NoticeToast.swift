@@ -8,7 +8,7 @@ struct NoticeToast: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: Theme.noticeSymbol(notice.kind))
-                .font(.system(size: 18))
+                .font(.system(size: IconSize.header))
                 .foregroundStyle(notice.kind == "approval-timeout" ? Theme.color(.attention) : Theme.color(.active))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {

@@ -175,7 +175,7 @@ struct MemoryTab: View {
             ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
         case .memoryOff:
             VStack(spacing: 6) {
-                Image(systemName: "brain").font(.system(size: 18)).foregroundStyle(.secondary)
+                Image(systemName: "brain").font(.system(size: IconSize.header)).foregroundStyle(.secondary)
                 Text("Memory is off").font(.system(size: 12, weight: .medium))
                 Text("Turn it on to search what you read and write. Text stays on this Mac.")
                     .font(.system(size: 11)).foregroundStyle(.secondary).multilineTextAlignment(.center)
