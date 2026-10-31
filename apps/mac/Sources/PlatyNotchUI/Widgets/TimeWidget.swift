@@ -439,6 +439,11 @@ final class TimeWidget: NotchWidget, TimerStarter {
         scheduleWake()
     }
 
+    /// Renders: a stopwatch state (laps and all).
+    func showStopwatchForRendering(_ s: Stopwatch) {
+        mutate { $0.stopwatch = s }
+    }
+
     var timersFull: Bool { state.timers.count >= TimeStore.maxTimers }
     var alarmsFull: Bool { state.alarms.count >= TimeStore.maxAlarms }
     var clocksFull: Bool { state.clocks.count >= TimeStore.maxClocks }

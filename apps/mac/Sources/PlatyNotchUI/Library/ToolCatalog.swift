@@ -10,6 +10,10 @@ struct PanelTool {
     let view: () -> AnyView
     /// A dock tool whose widget is off: its view is "Turn on <title>", which enables this widget.
     var offWidgetID: String?
+    /// Controls in the header before the panel's own (the Timer tool's mode chips).
+    var accessory: (() -> AnyView)?
+    /// The panel hugs the tool's card (Timer, "Turn on") instead of taking the full height.
+    var fitsContent = false
 }
 
 /// The features that open inside the panel, found by id: tool widgets in the user's order
@@ -33,9 +37,9 @@ enum ToolCatalog {
     /// One tool by id without building the others (an open tool redraws often); nil when it
     /// is not available now (its widget was turned off).
     static func tool(_ id: String, widgets: WidgetRegistry, extraTabs: [PanelTab],
-                     memory: @escaping () -> AnyView) -> PanelTool? {
+                     memory: @escaping () -> AnyView, fixedNow: Date? = nil) -> PanelTool? {
         if id == PanelTools.memory { return memoryTool(memory) }
-        if id == PanelTools.timer || id == PanelTools.timerFocus { return timerTool(id, widgets: widgets) }
+        if id == PanelTools.timer || id == PanelTools.timerFocus { return timerTool(id, widgets: widgets, fixedNow: fixedNow) }
         if let off = offDockTool(id, widgets: widgets) { return off }
         if let tab = extraTabs.first(where: { PanelTools.plugin($0.id) == id }) { return pluginTool(tab) }
         let gamesID: String = id == PanelTools.chase ? GamesWidget.widgetID : id
@@ -75,7 +79,7 @@ enum ToolCatalog {
               let widgetID = t.widgetIDs.first(where: { widgets.widget($0) != nil }) else { return nil }
         return PanelTool(id: id, title: t.title, systemImage: t.symbol, view: { [weak widgets] in
             AnyView(ToolOffView(title: t.title, onTurnOn: { widgets?.setEnabled(widgetID, true) }))
-        }, offWidgetID: widgetID)
+        }, offWidgetID: widgetID, fitsContent: true)
     }
 
     /// "Turn on" for an off dock tool.
@@ -84,15 +88,17 @@ enum ToolCatalog {
         widgets.setEnabled(id, true)
     }
 
-    /// The Timer tool (Timer, Focus, Stopwatch) while Time or Focus is on.
-    static func timerTool(_ id: String, widgets: WidgetRegistry) -> PanelTool? {
+    /// The Timer tool (Timer, Focus, Stopwatch) while Time or Focus is on; `timer.focus`
+    /// opens it in Focus.
+    static func timerTool(_ id: String, widgets: WidgetRegistry, fixedNow: Date? = nil) -> PanelTool? {
         if let off = offDockTool(PanelTools.timer, widgets: widgets) { return off }
-        let time = widgets.isEnabled(TimeWidget.widgetID) ? widgets.widget(TimeWidget.widgetID) : nil
-        let focus = widgets.isEnabled(FocusWidget.widgetID) ? widgets.widget(FocusWidget.widgetID) : nil
-        guard let w = id == PanelTools.timerFocus ? (focus ?? time) : (time ?? focus) else { return nil }
-        return PanelTool(id: id, title: DockTool.timer.title, systemImage: DockTool.timer.symbol, view: { [weak w] in
-            w?.toolView() ?? AnyView(EmptyView())
-        })
+        let time = widgets.isEnabled(TimeWidget.widgetID) ? widgets.widget(TimeWidget.widgetID) as? TimeWidget : nil
+        let focus = widgets.isEnabled(FocusWidget.widgetID) ? (widgets.widget(FocusWidget.widgetID) as? FocusWidget)?.focus : nil
+        guard time != nil || focus != nil else { return nil }
+        let initial: TimerMode? = id == PanelTools.timerFocus ? .focus : nil
+        return PanelTool(id: id, title: DockTool.timer.title, systemImage: DockTool.timer.symbol, view: {
+            AnyView(TimerTool(time: time, focus: focus, initial: initial, fixedNow: fixedNow))
+        }, accessory: { AnyView(TimerModeChips()) }, fitsContent: true)
     }
 
     private static func memoryTool(_ memory: @escaping () -> AnyView) -> PanelTool {

@@ -16,6 +16,8 @@ final class NotchPanel: NSPanel {
     var onCommandDigit: ((Int) -> Bool)?
     /// ⌘K while the panel is key: focuses the command line (true when used).
     var onCommandK: (() -> Bool)?
+    /// ⌘[ while the panel is key: an open tool goes back to Home (true when used).
+    var onCommandBracket: (() -> Bool)?
     /// A printable key no text field took, while the panel is key: starts the command line
     /// with it (true when used).
     var onTyped: ((String) -> Bool)?
@@ -99,6 +101,14 @@ final class NotchPanel: NSPanel {
     }
 
     /// ⌘K with no other modifier.
+    /// ⌘[ with no other modifier (key code 33, any layout's "[").
+    static func isCommandBracket(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown,
+              event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.numericPad, .function]) == .command
+        else { return false }
+        return event.keyCode == 33 || event.charactersIgnoringModifiers == "["
+    }
+
     static func isCommandK(_ event: NSEvent) -> Bool {
         guard event.type == .keyDown,
               event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.numericPad, .function]) == .command,
@@ -143,6 +153,7 @@ final class NotchPanel: NSPanel {
         }
         // Only while this panel has the keyboard (never a shortcut another window was sent).
         if isKeyWindow, Self.isCommandK(event), onCommandK?() == true { return true }
+        if isKeyWindow, Self.isCommandBracket(event), onCommandBracket?() == true { return true }
         if isKeyWindow, let digit = Self.commandDigit(event), onCommandDigit?(digit) == true { return true }
         return super.performKeyEquivalent(with: event)
     }

@@ -328,6 +328,19 @@ public final class NotchController {
     /// Whether a text field has focus (a typed key then belongs to it).
     var textFieldFocused: () -> Bool = { false }
 
+    /// ⌘[: an open tool (or the search) goes back to Home, as ‹ does. False elsewhere.
+    @discardableResult
+    func commandBracket() -> Bool {
+        guard machine.mode == .expanded, model.route.destination == .home, model.route.tool != nil else { return false }
+        if model.route.tool == PanelTools.search {
+            model.commandText = ""
+            model.commandFocused = false
+            model.commandActive = false
+        }
+        model.route = model.route.back()
+        return true
+    }
+
     /// The full-panel search's route.
     static let searchRoute = PanelRoute(destination: .home, tool: PanelTools.search)
 
@@ -440,6 +453,7 @@ public final class NotchController {
         model.requestKey = { [weak self] in self?.makePanelKey() }
         p.onCommandDigit = { [weak self] in self?.commandDigit($0) ?? false }
         p.onCommandK = { [weak self] in self?.commandK() ?? false }
+        p.onCommandBracket = { [weak self] in self?.commandBracket() ?? false }
         p.onTyped = { [weak self] in self?.typed($0) ?? false }
         return p
     }

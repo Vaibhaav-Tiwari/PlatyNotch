@@ -42,6 +42,8 @@ struct ToolHost: View {
 struct ToolHeader: View {
     let title: String
     let onBack: () -> Void
+    /// The tool's own controls, before the panel's (the Timer tool's modes).
+    var accessory: AnyView?
     var trailing: AnyView?
     @State private var hovering = false
 
@@ -49,15 +51,15 @@ struct ToolHeader: View {
         HStack(spacing: Space.xs) {
             Button(action: onBack) {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(DS.primary)
                     .frame(width: 24, height: 24)
                     .background(hovering ? wash : .clear, in: Circle())
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .onHover { hovering = $0 }
-            .help(ToolHost.backLabel + " (Esc)")
+            .help(ToolHost.backLabel + " (Esc or \u{2318}[)")
             .accessibilityLabel(ToolHost.backLabel)
             Text(verbatim: title)
                 .font(DS.font(TypeScale.title))
@@ -67,6 +69,7 @@ struct ToolHeader: View {
                 .accessibilityAddTraits(.isHeader)
                 .layoutPriority(1)
             Spacer(minLength: Space.s)
+            if let accessory { accessory }
             if let trailing { trailing }
         }
     }
@@ -82,7 +85,29 @@ struct ToolBody: View {
     let content: AnyView
 
     var body: some View {
+        // Island spec 4: the body is one `card` (radius 16, padding 14).
         FadingScroll(fillsRoom: true) { content }
+            .padding(HomeMetrics.toolPadding)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .background(DS.card, in: RoundedRectangle(cornerRadius: Radius.island, style: .continuous))
+            .environment(\.inPanelTool, true)
+    }
+}
+
+/// A compact tool's body (Timer, "Turn on"): one `card` at the content's own height, which
+/// the panel hugs (reported like Home's body, `HomeHeightKey`).
+struct ToolCard: View {
+    let content: AnyView
+
+    var body: some View {
+        content
+            .padding(HomeMetrics.toolPadding)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .background(DS.card, in: RoundedRectangle(cornerRadius: Radius.island, style: .continuous))
+            .fixedSize(horizontal: false, vertical: true)
+            .background(GeometryReader { g in
+                Color.clear.preference(key: HomeHeightKey.self, value: g.size.height)
+            })
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .environment(\.inPanelTool, true)
     }

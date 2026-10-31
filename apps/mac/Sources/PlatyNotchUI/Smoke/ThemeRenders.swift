@@ -851,7 +851,11 @@ enum AgentsRenders {
 enum ToolRenders {
     static func views() -> [(String, AnyView, Bool)] {
         var out: [(String, AnyView, Bool)] = []
-        out.append(("tool-focus", tool(FocusWidget.widgetID), true))
+        out.append(("tool-focus", tool(PanelTools.timerFocus), true))
+        out.append(("tool-timer", tool(PanelTools.timer), true))
+        out.append(("tool-timer-running", tool(PanelTools.timer, rig: runningTimers()), true))
+        out.append(("tool-stopwatch", tool(PanelTools.timer, rig: stopwatch()), true))
+        out.append(("tool-turn-on", tool(PanelTools.timer, rig: timerOff()), true))
         out.append(("tool-time", tool(TimeWidget.widgetID, rig: HomeRenders.timerHero()), true))
         out.append(("tool-time-empty", tool(TimeWidget.widgetID), true))
         out.append(("tool-music", tool(MusicWidget.widgetID, rig: HomeRenders.musicHero()), true))
@@ -882,6 +886,31 @@ enum ToolRenders {
 
     private static func tool(_ id: String, rig: HomeRenders.Rig? = nil) -> AnyView {
         HomeRenders.panel(rig ?? HomeRenders.builtIns(meeting: false), route: route(id))
+    }
+
+    /// Two timers running (wireframe C: "Tea · 3:10 left", "Laundry · 22:05 left").
+    private static func runningTimers() -> HomeRenders.Rig {
+        let rig = HomeRenders.builtIns(meeting: false)
+        let time = rig.registry.widget(TimeWidget.widgetID) as? TimeWidget
+        _ = time?.startTimer(duration: 190, label: "Tea")
+        _ = time?.startTimer(duration: 1325, label: "Laundry")
+        return rig
+    }
+
+    /// The stopwatch running with three laps.
+    private static func stopwatch() -> HomeRenders.Rig {
+        let rig = HomeRenders.builtIns(meeting: false)
+        (rig.registry.widget(TimeWidget.widgetID) as? TimeWidget)?.showStopwatchForRendering(
+            Stopwatch(accumulated: 754.3, runningSince: Date(), laps: [241.2, 255.8, 238.4]))
+        return rig
+    }
+
+    /// Time and Focus off: the Timer slot opens "Turn on Timer".
+    private static func timerOff() -> HomeRenders.Rig {
+        let rig = HomeRenders.builtIns(meeting: false)
+        rig.registry.setEnabled(TimeWidget.widgetID, false)
+        rig.registry.setEnabled(FocusWidget.widgetID, false)
+        return rig
     }
 
     /// Every built-in on, with sample clipboard rows and shelf cards (inert: nothing written).

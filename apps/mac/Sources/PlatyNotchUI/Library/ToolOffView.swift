@@ -18,6 +18,7 @@ struct ToolOffView: View {
             Button(Self.title(for: title), action: onTurnOn)
                 .buttonStyle(ToolPrimaryButtonStyle())
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, Space.m)
+        .frame(maxWidth: .infinity)
     }
 }
