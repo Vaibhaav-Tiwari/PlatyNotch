@@ -22,7 +22,6 @@ struct RingingOverlay: View {
         HStack(spacing: 14) {
             ZStack {
                 RingPulse(color: NSColor(Theme.color(.attention)), pulses: ticking && !reduceMotion)
-                Circle().fill(Theme.color(.attention).opacity(0.2))
                 Image(systemName: isAlarm ? "alarm.fill" : "timer")
                     .font(.system(size: IconSize.header, weight: .semibold))
                     .foregroundStyle(Theme.color(.attention))

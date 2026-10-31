@@ -198,7 +198,7 @@ struct WindowSnapSettingsView: View {
         VStack(alignment: .leading, spacing: 6) {
             if let why = widget.explanation {
                 Label { Text(verbatim: why).fixedSize(horizontal: false, vertical: true) }
-                    icon: { Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange) }
+                    icon: { Image(systemName: "exclamationmark.triangle").foregroundStyle(Theme.warning) }
                 HStack(spacing: 8) {
                     Button("Allow Accessibility…") { widget.requestAccess(isOnScreen: { [probe] in probe.isOnScreen }) }
                     Button("Open System Settings") { Permissions.open(.accessibility) }
@@ -209,7 +209,7 @@ struct WindowSnapSettingsView: View {
             }
             if let note = widget.takenNote {
                 Label { Text(verbatim: note).fixedSize(horizontal: false, vertical: true) }
-                    icon: { Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange) }
+                    icon: { Image(systemName: "exclamationmark.triangle").foregroundStyle(Theme.warning) }
                 Button("Try Again") { widget.retryShortcuts() }.controlSize(.small)
             }
             if inTool {
@@ -262,9 +262,9 @@ struct WindowSnapSettingsView: View {
                     Text(verbatim: t.defaultCombo.display).monospaced()
                     Text(verbatim: t.title)
                     if let owner = widget.usedBy[t] {
-                        Text(verbatim: "used by \(owner)").foregroundStyle(.orange)
+                        Text(verbatim: "used by \(owner)").foregroundStyle(Theme.warning)
                     } else if widget.taken.contains(t) {
-                        Text("shortcut taken").foregroundStyle(.orange)
+                        Text("shortcut taken").foregroundStyle(Theme.warning)
                     }
                 }
             }

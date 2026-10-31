@@ -139,33 +139,93 @@ final class DesignLintTests: DefaultsTestCase {
                       + found.joined(separator: "\n"))
     }
 
-    /// SF Symbols never sit on a tinted square: no rounded rectangle filled with a state or
-    /// accent colour at an opacity on a line with, or just after, an `Image(systemName:`.
+    /// SF Symbols never sit on a tinted well (spec 5.3): no rounded rectangle, circle or
+    /// capsule filled with a colour at an opacity (`DS`/`Theme` state colours with `.opacity`
+    /// or `alpha:`, any named `Color.x.opacity`, the accent colour) within six lines, before
+    /// or after, of an `Image(systemName:` in a panel view.
     func testNoTintedIconSquares() throws {
-        let tinted = try NSRegularExpression(pattern:
-            #"RoundedRectangle[^\n]*\.fill\((DS|Theme)\.(dynamicColor|color|tint)\([^)]*\)\.opacity\("#
-            + #"|\.background\((DS|Theme)\.(dynamicColor|color|tint)\([^)]*\)(\.opacity\([^)]*\))?,\s*in:\s*RoundedRectangle"#)
+        let tint = #"((DS|Theme)\.(dynamicColor|color|tint)\([^)]*(alpha:[^)]*\)|\)\.opacity\()"#
+            + #"|Color\.(?!white\b|black\b|clear\b|primary\b|secondary\b)[a-zA-Z]+\.opacity\(|Color\.accentColor)"#
+        let shape = #"(RoundedRectangle|Circle|Capsule)"#
+        let tinted = try NSRegularExpression(pattern: shape + #"[^\n]*\.fill\("# + tint
+                                             + #"|\.background\("# + tint + #"[^\n]*in:\s*"# + shape)
         let lines = try Self.sourceLines()
         var found: [String] = []
-        for (i, line) in lines.enumerated() {
+        for (i, line) in lines.enumerated() where Self.isPanel(line.path) {
             let ns = line.text as NSString
             guard tinted.firstMatch(in: line.text, range: NSRange(location: 0, length: ns.length)) != nil else { continue }
-            let window = lines[max(0, i - 6)...i].filter { $0.path == line.path }
+            let window = lines[max(0, i - 6)...min(lines.count - 1, i + 6)].filter { $0.path == line.path }
             if window.contains(where: { $0.text.contains("Image(systemName:") }) {
                 found.append("\(line.path):\(line.number): \(line.text.trimmingCharacters(in: .whitespaces))")
             }
         }
-        XCTAssertTrue(found.isEmpty, "a symbol on a tinted square:\n" + found.joined(separator: "\n"))
+        XCTAssertTrue(found.isEmpty, "a symbol on a tinted well:\n" + found.joined(separator: "\n"))
     }
 
-    /// The panel is always black: no light scheme outside Settings, Onboarding and the
-    /// Settings renders.
+    /// Files in panel directories that may use colours other than the state palette, each
+    /// with its reason.
+    static let colourAllowlist: [String: String] = [
+        "Basket/BasketWindow.swift": "the basket colours the user picks and saves (BasketColor)",
+        "Basket/BasketSwitcher.swift": "each basket drawn in the colour the user picked for it",
+        "Mascot/PlatyArt.swift": "Platy's own colours (the mascot)",
+        "Mascot/PlatyView.swift": "Platy's own colours (the mascot)",
+        "Mascot/PlatyPup.swift": "the pups' agent bandanas (the mascot gallery)",
+        "Mascot/PlatyRenders.swift": "the mascot gallery's backdrop",
+        "Smoke/ShowcaseRenders.swift": "the drawn desktop wallpaper and album art behind the panel",
+        "Smoke/PillRenders.swift": "the render gallery's backdrop",
+        "Smoke/ThemeRenders.swift": "render-only stand-in artwork",
+        "NowPlaying.swift": "the playing track's artwork tint",
+        "Music/MusicVisualiser.swift": "the artwork's own colours in the visualiser",
+        "Games/GameRenders.swift": "the game boards' own colours",
+    ]
+
+    /// Colour only for state (spec 5.3): in panel views, no named system colours, no
+    /// `Color(red:)` or `Color(hue:)`, and `.tint` only white or a `DS`/`Theme` colour.
+    func testColourOnlyForState() throws {
+        let named = #"(blue|indigo|purple|pink|mint|cyan|teal|yellow|orange|red|green|brown)"#
+        let regex = try NSRegularExpression(pattern:
+            #"Color\."# + named + #"\b|[\s(:?,]\."# + named + #"\b(?!\s*[:(=])|(?<![A-Za-z])Color\((red|hue):"#
+            + #"|(?<![A-Za-z])\.tint\((?!\.white\)|DS\.|Theme\.|SettingsTint\.|nil\))"#)
+        var found: [String] = []
+        for line in try Self.sourceLines() where Self.isPanel(line.path) && Self.colourAllowlist[line.path] == nil {
+            let ns = line.text as NSString
+            if regex.firstMatch(in: line.text, range: NSRange(location: 0, length: ns.length)) != nil {
+                found.append("\(line.path):\(line.number): \(line.text.trimmingCharacters(in: .whitespaces))")
+            }
+        }
+        for (path, reason) in Self.colourAllowlist {
+            XCTAssertFalse(reason.trimmingCharacters(in: .whitespaces).isEmpty, "\(path) needs a reason")
+        }
+        XCTAssertTrue(found.isEmpty, "colour that is not a state (use white ink or DS.color(tone)):\n"
+                      + found.joined(separator: "\n"))
+    }
+
+    /// Text styles and font sizes above 15 pt that a literal `.system(size:)` scan misses.
+    func testNoLargeTextStyles() throws {
+        let big = #"(1[6-9]|[2-9][0-9]|[1-9][0-9]{2})(\.[0-9]+)?\b"#
+        let regex = try NSRegularExpression(pattern:
+            #"\.font\(\.(largeTitle|title|title2|title3)\b|\.system\(\.(largeTitle|title)"#
+            + #"|[sS]ystemFont\(ofSize:\s*"# + big + #"|TypeStyle\(size:\s*"# + big)
+        var found: [String] = []
+        for line in try Self.sourceLines() where Self.isPanel(line.path) {
+            let ns = line.text as NSString
+            if regex.firstMatch(in: line.text, range: NSRange(location: 0, length: ns.length)) != nil {
+                found.append("\(line.path):\(line.number): \(line.text.trimmingCharacters(in: .whitespaces))")
+            }
+        }
+        XCTAssertTrue(found.isEmpty, "type above 15 pt in the panel:\n" + found.joined(separator: "\n"))
+    }
+
+    /// The panel is always black: no light scheme or Aqua appearance outside Settings,
+    /// Onboarding and the renders, and `PanelRootView` keeps forcing the dark scheme.
     func testNoLightPanelScheme() throws {
-        var found = try Self.offenders(#"colorScheme, \.light|ColorScheme\.light"#)
+        var found = try Self.offenders(#"colorScheme, \.light|ColorScheme\.light|preferredColorScheme\(\.light\)|NSAppearance\(named: \.aqua\)"#)
         found = found.filter { entry in
-            !(entry.hasPrefix("Settings/") || entry.hasPrefix("Onboarding/") || entry.hasPrefix("Smoke/SettingsRenders.swift"))
+            !(entry.hasPrefix("Settings/") || entry.hasPrefix("Onboarding/") || entry.hasPrefix("Smoke/"))
         }
         XCTAssertTrue(found.isEmpty, "a light panel:\n" + found.joined(separator: "\n"))
+        let root = try String(contentsOf: Self.uiSources.appendingPathComponent("PanelRootView.swift"), encoding: .utf8)
+        XCTAssertTrue(root.contains(".environment(\\.colorScheme, .dark)"), "PanelRootView forces the dark scheme")
     }
 
     /// Never initials: no monogram anywhere in the app's sources (Kit and UI).
