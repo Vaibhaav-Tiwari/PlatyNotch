@@ -1516,6 +1516,9 @@ working directory where a step says so.
 - [ ] **294. Open a tmux pane.** In tmux inside Ghostty with two windows, run an agent in
   the window that is not showing. The button says "Open Ghostty". Click it: tmux switches
   to that window and pane, and Ghostty comes forward.
+  Repeat with tmux inside Terminal.app and inside iTerm2: the button says "Open Terminal" /
+  "Open iTerm", tmux switches to the pane, and the app comes forward. Start Ghostty or VS Code from a
+  Terminal shell: the button names Ghostty / Code, not Terminal.
 - [ ] **295. Never a random terminal.** With two terminals open and an agent whose host
   cannot be found, the button never brings an unrelated terminal forward.
 - [ ] **296. A host app that is gone.** Start a session from an app, then move the app to

@@ -42,6 +42,14 @@ final class ModelsTests: XCTestCase {
         try roundTrip(MemoryGraph.self, "memory_graph")
     }
 
+    /// A session from a core older than host_bundle_id still decodes.
+    func testSessionWithoutHostBundleIDDecodes() throws {
+        let json = #"{"key":"k","agent":"a","agent_name":"A","session_id":"s","state":"idle","term_program":"Apple_Terminal","started_at":"2026-10-23T10:00:00Z","updated_at":"2026-10-23T10:05:00Z"}"#
+        let s = try JSONCoding.decoder.decode(Session.self, from: Data(json.utf8))
+        XCTAssertNil(s.hostBundleID)
+        XCTAssertEqual(s.termProgram, "Apple_Terminal")
+    }
+
     func testFixtureValues() throws {
         let s = try JSONCoding.decoder.decode(Session.self, from: fixture("session"))
         XCTAssertEqual(s.state, .waitingInput)

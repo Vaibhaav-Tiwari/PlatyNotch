@@ -61,9 +61,12 @@ struct AgentRow: View {
         .buttonStyle(RowButtonStyle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
-        .accessibilityHint(action == .answer ? "Answers in the app running this session" : "Shows the app running this session")
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction(named: Text(openTitle ?? action.title)) { onOpenTerminal(session) }
+        .accessibilityHint(openTitle == nil ? "" : action == .answer
+                           ? "Answers in the app running this session" : "Shows the app running this session")
+        .accessibilityAddTraits(openTitle == nil ? [] : .isButton)
+        .accessibilityActions {
+            if let openTitle { Button(openTitle) { onOpenTerminal(session) } }
+        }
     }
 
     private var project: String { Self.project(session) }
@@ -94,7 +97,7 @@ struct AgentRow: View {
     private var accessibilityText: String {
         var parts: [String] = [session.agentName, project, status]
         if let last = Self.lastLine(session, attention: attention) { parts.append(last) }
-        parts.append(TerminalFocus.title(for: session) ?? AgentRowAction(attention).title)
+        if let title = TerminalFocus.title(for: session) { parts.append(title) }
         return parts.joined(separator: ", ")
     }
 }

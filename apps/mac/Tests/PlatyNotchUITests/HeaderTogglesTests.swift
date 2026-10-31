@@ -31,6 +31,19 @@ final class HeaderTogglesTests: DefaultsTestCase {
         s.stop()
     }
 
+    /// The Mac slept past the deadline: the icon already shows off, so the click starts a new run.
+    func testClickAfterExpiredSessionStartsNewRun() {
+        var now = Date(timeIntervalSince1970: 1_800_000_000)
+        let k = KeepAwake(asserter: FakeAsserter(), clock: { now })
+        let s = HeaderServices(keepAwake: k, power: FakePower(), defaults: defaults())
+        s.startKeepAwake(.thirtyMinutes)
+        now = now.addingTimeInterval(3 * 3600)
+        s.toggleKeepAwake()
+        XCTAssertNotNil(k.session)
+        XCTAssertEqual(k.session?.startedAt, now)
+        s.stop()
+    }
+
     func testSecondClickStops() {
         let s = services()
         s.toggleKeepAwake()

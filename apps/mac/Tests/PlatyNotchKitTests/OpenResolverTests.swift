@@ -81,4 +81,53 @@ final class OpenResolverTests: XCTestCase {
         XCTAssertEqual(TmuxPanes.target(forTTY: "/dev/ttys009", listing: listing), "main:1.2")
         XCTAssertNil(TmuxPanes.target(forTTY: "/dev/ttys010", listing: listing))
     }
+
+    func testTmuxInsideTerminalSelectsPane() {
+        let a = resolve(session(host: "com.apple.Terminal", term: "tmux", tty: "ttys009"))
+        XCTAssertEqual(a, OpenAction(target: .tmuxPane(tty: "/dev/ttys009", hostBundleID: "com.apple.Terminal"),
+                                     title: "Open Terminal"))
+        let i = resolve(session(host: "com.googlecode.iterm2", term: "tmux", tty: "ttys009"))
+        XCTAssertEqual(i?.target, .tmuxPane(tty: "/dev/ttys009", hostBundleID: "com.googlecode.iterm2"))
+    }
+
+    /// An app started from a Terminal shell inherits Terminal's bundle id; TERM_PROGRAM tells the truth.
+    func testHostTerminalButOtherTermProgram() {
+        let g = resolve(session(host: "com.apple.Terminal", term: "ghostty", tty: "ttys004"))
+        XCTAssertEqual(g, OpenAction(target: .activate(bundleID: "com.mitchellh.ghostty"), title: "Open Ghostty"))
+        let noTTY = resolve(session(host: "com.apple.Terminal", term: "ghostty"))
+        XCTAssertEqual(noTTY?.target, .activate(bundleID: "com.mitchellh.ghostty"))
+        // vscode is not installed in the stub: Terminal is the host that is left, not a tab.
+        XCTAssertEqual(resolve(session(host: "com.apple.Terminal", term: "vscode", tty: "ttys004"))?.target,
+                       .activate(bundleID: "com.apple.Terminal"))
+        // iTerm2 as an inherited host too.
+        XCTAssertEqual(resolve(session(host: "com.googlecode.iterm2", term: "ghostty", tty: "ttys004"))?.target,
+                       .activate(bundleID: "com.mitchellh.ghostty"))
+    }
+
+    func testHostTerminalWithMatchingOrNoTermStillSelectsTab() {
+        XCTAssertEqual(resolve(session(host: "com.apple.Terminal", tty: "ttys004"))?.target,
+                       .terminalTab(tty: "/dev/ttys004"))
+        XCTAssertEqual(resolve(session(host: "com.apple.Terminal", term: "Apple_Terminal", tty: "ttys004"))?.target,
+                       .terminalTab(tty: "/dev/ttys004"))
+    }
+
+    func testInvalidHostIsAbsent() {
+        for bad in ["a b", "../x", "", String(repeating: "a", count: 300) + ".com", "nodots", ".a.b", "a.b."] {
+            XCTAssertEqual(resolve(session(host: bad, cwd: "/w/p"))?.title, "Show folder", bad)
+            XCTAssertEqual(resolve(session(host: bad, term: "ghostty", cwd: "/w/p"))?.target,
+                           .activate(bundleID: "com.mitchellh.ghostty"), bad)
+        }
+        XCTAssertNil(BundleID.valid("a b"))
+        XCTAssertEqual(BundleID.valid("dev.warp.Warp-Stable"), "dev.warp.Warp-Stable")
+    }
+
+    func testTerminalNotInstalledFallsThroughToFolder() {
+        let a = OpenResolver.resolve(session(term: "iTerm.app", tty: "ttys001", cwd: "/w/p"), appName: { _ in nil })
+        XCTAssertEqual(a?.target, .showFolder(path: "/w/p"))
+    }
+
+    func testTmuxWindowTarget() {
+        XCTAssertEqual(TmuxPanes.windowTarget(forPane: "main:1.2"), "main:1")
+        XCTAssertEqual(TmuxPanes.windowTarget(forPane: "my.sess:10.0"), "my.sess:10")
+    }
 }

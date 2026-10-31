@@ -8,6 +8,11 @@ final class PlipPolicyTests: DefaultsTestCase {
                        state: .waitingInput, termProgram: term, hostBundleID: host, startedAt: t, updatedAt: t)
     }
 
+    func testInvalidHostFallsBackToTermProgram() {
+        let s = session(term: "iTerm.app", host: "../x")
+        XCTAssertFalse(PlipPolicy.shouldPlay(session: s, frontmostBundleID: "com.googlecode.iterm2", isRunning: none))
+    }
+
     func testHostAppFrontmostMutes() {
         let claude = "com.anthropic.claudefordesktop"
         let s = session(term: nil, host: claude)

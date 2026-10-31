@@ -579,6 +579,7 @@ final class SystemWidget: NotchWidget {
 
     func startKeepAwake(_ duration: KeepAwakeDuration) {
         guard isRunning else { return }
+        if persist { duration.savePreferred(to: defaults) }   // the header's next one-click duration
         keepAwake.start(duration)
     }
 

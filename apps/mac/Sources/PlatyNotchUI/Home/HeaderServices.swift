@@ -40,6 +40,7 @@ final class HeaderServices {
 
     /// One click: off → on with the last chosen duration (two hours at first); on → off.
     func toggleKeepAwake() {
+        keepAwake.checkExpiry()   // a Mac that slept past the deadline: the click starts a new run
         if keepAwake.session != nil {
             keepAwake.stop()
         } else {

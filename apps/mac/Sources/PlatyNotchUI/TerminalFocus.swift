@@ -166,9 +166,12 @@ enum TerminalFocus {
         let list = await runner.run(["list-panes", "-a", "-F", "#{pane_tty} #{session_name}:#{window_index}.#{pane_index}"],
                                     timeout: .seconds(3))
         guard list.status == 0, let pane = TmuxPanes.target(forTTY: tty, listing: list.stdout) else { return false }
-        let window = String(pane.split(separator: ".").dropLast().joined(separator: "."))
+        let window: String = TmuxPanes.windowTarget(forPane: pane)
         let w = await runner.run(["select-window", "-t", window], timeout: .seconds(3))
         let p = await runner.run(["select-pane", "-t", pane], timeout: .seconds(3))
+        // A client attached to another tmux session keeps showing that session until it switches.
+        // Harmless when it is already current; fails quietly when no client is attached.
+        _ = await runner.run(["switch-client", "-t", pane], timeout: .seconds(3))
         return w.status == 0 && p.status == 0
     }
 
