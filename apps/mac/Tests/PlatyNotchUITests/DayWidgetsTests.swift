@@ -543,3 +543,24 @@ final class WeatherRecoveryTests: DefaultsTestCase {
         XCTAssertEqual(r.coordinate.longitude, 77.59, accuracy: 1e-9)
     }
 }
+
+/// Island phase B: leftovers from the phase A review.
+@MainActor
+final class LocationTimeoutTests: XCTestCase {
+    /// The 60 s give-up is cancelled as soon as the prompt is answered.
+    func testTimeoutCancelledOnceAnswered() {
+        let l = SystemLocation()
+        l.armTimeout(seconds: 60) { .notDetermined }
+        XCTAssertTrue(l.timeoutPending)
+        l.debugAuthChanged(.authorizedAlways)
+        XCTAssertFalse(l.timeoutPending)
+        l.armTimeout(seconds: 60) { .notDetermined }
+        l.debugAuthChanged(.notDetermined)
+        XCTAssertTrue(l.timeoutPending, "an undecided status is no answer")
+    }
+
+    /// M4: a time-zone or day change re-reads the week's days at once.
+    func testWeekRefreshesOnZoneAndDayChange() {
+        XCTAssertEqual(Set(CalendarService.dayChangeNotifications), [.NSSystemTimeZoneDidChange, .NSCalendarDayChanged])
+    }
+}

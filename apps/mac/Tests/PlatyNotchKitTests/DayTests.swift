@@ -724,4 +724,25 @@ final class DayTests: XCTestCase {
                                           calendar: lineCal, locale: enUS, failing: true),
                        "H 27° · L 18° · updated 10 min ago", "a failing refresh shows the age at once")
     }
+
+    /// The Remind tool's list: overdue first (oldest first), then today, then upcoming; at most 8.
+    func testRemindersDueList() {
+        let now = date(2026, 10, 23, 12)
+        func r(_ id: String, _ due: Date?, time: Bool = true) -> ReminderItem {
+            ReminderItem(id: id, title: id, due: due, hasTime: time)
+        }
+        var items = [
+            r("tomorrow", date(2026, 10, 24, 9)),
+            r("today", date(2026, 10, 23, 17)),
+            r("old", date(2026, 10, 20), time: false),
+            r("older", date(2026, 10, 19), time: false),
+            r("undated", nil, time: false),
+            r("morning", date(2026, 10, 23, 9)),   // overdue since 9:00
+        ]
+        let list = RemindersDue.list(items, now: now, calendar: cal)
+        XCTAssertEqual(list.map(\.item.id), ["older", "old", "morning", "today", "tomorrow", "undated"])
+        XCTAssertEqual(list.map(\.overdue), [true, true, true, false, false, false])
+        items = (0..<10).map { r("n\($0)", date(2026, 10, 25, $0)) }
+        XCTAssertEqual(RemindersDue.list(items, now: now, calendar: cal).count, 8)
+    }
 }

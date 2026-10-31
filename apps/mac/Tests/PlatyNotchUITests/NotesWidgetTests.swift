@@ -322,6 +322,18 @@ final class NotesWidgetTests: DefaultsTestCase {
         w.stop()
     }
 
+    /// Island phase B review I5: the Note tool lists the vault's open tasks (ticking lives
+    /// there), so the old tile's ticking stays reachable.
+    func testNoteToolListsTheVaultsOpenTasks() async {
+        note("a.md", "- [ ] one\n- [ ] two\n")
+        let rec = Recorder()
+        let w = await started(rec)
+        let texts = NoteTool.texts(entries: w.recentEntries, tasks: w.tasks)
+        XCTAssertTrue(texts.contains(NoteTool.tasksHeader), "\(texts)")
+        XCTAssertTrue(texts.contains("one") && texts.contains("two"), "\(texts)")
+        w.stop()
+    }
+
     func testTickWritesTheLineAndAMovedLineAsksFirst() async {
         note("a.md", "- [ ] one\n- [ ] two\n")
         let rec = Recorder()

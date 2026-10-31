@@ -177,6 +177,8 @@ final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost, FileAct
     }
 
     func tileView() -> AnyView { AnyView(ShelfTile(host: self)) }
+    /// The panel tool: rows with sizes, drag out, AirDrop all (Island spec 4).
+    func toolView() -> AnyView { AnyView(ShelfTool(shelf: self)) }
     func dropZoneView() -> AnyView? { isRunning ? AnyView(ShelfDropZone(shelf: self)) : nil }
     func dropTarget() -> PanelDropTarget? { isRunning ? drop : nil }
     func settingsView() -> AnyView? { AnyView(ShelfSettings(shelf: self)) }

@@ -38,6 +38,7 @@ public final class CalendarService {
     /// Created on first use (reading the authorization status needs no store).
     @ObservationIgnored private var storage: EKEventStore?
     @ObservationIgnored private var changeObserver: NSObjectProtocol?
+    @ObservationIgnored private var dayObservers: [NSObjectProtocol] = []
     @ObservationIgnored private var requesting = false
     /// Activates PlatyNotch around the prompt (the notch panel never does; `PromptFocus`).
     @ObservationIgnored private let focus: PromptFocus
@@ -240,11 +241,23 @@ public final class CalendarService {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
         }
+        // The week strip's days are midnights in the current zone: re-read them at once when
+        // the zone or the day changes (phase A review M4), not at the next timed refresh.
+        for name in Self.dayChangeNotifications {
+            dayObservers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refresh() }
+            })
+        }
     }
+
+    /// Notifications after which the week's days are recomputed.
+    static let dayChangeNotifications: [Notification.Name] = [.NSSystemTimeZoneDidChange, .NSCalendarDayChanged]
 
     private func stopObservingChanges() {
         if let changeObserver { NotificationCenter.default.removeObserver(changeObserver) }
         changeObserver = nil
+        for o in dayObservers { NotificationCenter.default.removeObserver(o) }
+        dayObservers = []
     }
 }
 

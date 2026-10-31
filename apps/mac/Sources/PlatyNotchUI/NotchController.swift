@@ -286,14 +286,17 @@ public final class NotchController {
     /// Escape: an open feature goes back to Home first; otherwise the state
     /// machine's `.escape` (the open panel closes).
     func escapePressed() {
-        // The command line first: Esc clears its text, then leaves it; only then the panel.
-        if machine.mode == .expanded, !model.commandText.isEmpty || model.commandFocused {
+        // Search first: Esc clears its text, then goes back to Home; only then the panel.
+        let inSearch: Bool = model.route.destination == .home && model.route.tool == PanelTools.search
+        if machine.mode == .expanded, inSearch || !model.commandText.isEmpty || model.commandFocused {
             if !model.commandText.isEmpty {
                 model.commandText = ""
                 model.commandMessage = nil
             } else {
                 model.commandFocused = false
                 model.commandActive = false
+                model.commandMessage = nil
+                if inSearch { model.route = PanelRoute(destination: .home) }
             }
             return
         }
@@ -325,25 +328,41 @@ public final class NotchController {
     /// Whether a text field has focus (a typed key then belongs to it).
     var textFieldFocused: () -> Bool = { false }
 
-    /// ⌘K in the open panel: Home, with the command line focused. False elsewhere, so the
-    /// approval peek and other modes keep their keys.
+    /// ⌘[: an open tool (or the search) goes back to Home, as ‹ does. False elsewhere.
+    @discardableResult
+    func commandBracket() -> Bool {
+        guard machine.mode == .expanded, model.route.destination == .home, model.route.tool != nil else { return false }
+        if model.route.tool == PanelTools.search {
+            model.commandText = ""
+            model.commandFocused = false
+            model.commandActive = false
+        }
+        model.route = model.route.back()
+        return true
+    }
+
+    /// The full-panel search's route.
+    static let searchRoute = PanelRoute(destination: .home, tool: PanelTools.search)
+
+    /// ⌘K in the open panel: the search, its field focused. False elsewhere, so the approval
+    /// peek and other modes keep their keys.
     @discardableResult
     func commandK() -> Bool {
         guard machine.mode == .expanded, panelIsKey() else { return false }
-        if model.route != PanelRoute(destination: .home) { model.route = PanelRoute(destination: .home) }
+        if model.route != Self.searchRoute { model.route = Self.searchRoute }
         model.commandFocused = true
         model.commandActive = true
         return true
     }
 
-    /// A printable key while no text field has focus: it starts the command line (Home only:
-    /// a tool such as a game keeps its keys).
+    /// A printable key while no text field has focus: it opens the search with that key
+    /// (Home and Agents only: a tool such as a game keeps its keys).
     @discardableResult
     func typed(_ s: String) -> Bool {
         guard machine.mode == .expanded, panelIsKey(), !textFieldFocused(), !s.isEmpty,
               s.unicodeScalars.allSatisfy({ $0.value >= 0x20 && $0.value != 0x7F }) else { return false }
-        if model.route.tool != nil, model.route.destination == .home { return false }
-        if model.route.destination != .home { model.route = PanelRoute(destination: .home) }
+        if let tool = model.route.tool, model.route.destination == .home, tool != PanelTools.search { return false }
+        if model.route != Self.searchRoute { model.route = Self.searchRoute }
         model.commandText += s
         model.commandFocused = true
         model.commandActive = true
@@ -366,13 +385,13 @@ public final class NotchController {
         }
     }
 
-    /// Opens Home with the command line focused and the keyboard given: its list of
+    /// Opens the search with its field focused and the keyboard given: its list of
     /// everything it can do shows (the global shortcut, the menu's "What Platy can do…").
     @discardableResult
     func openCommandLine() -> Bool {
         if machine.mode != .expanded { handle(.click) }
         guard machine.mode == .expanded else { return false }
-        if model.route != PanelRoute(destination: .home) { model.route = PanelRoute(destination: .home) }
+        if model.route != Self.searchRoute { model.route = Self.searchRoute }
         makePanelKey()
         model.commandFocused = true
         model.commandActive = true
@@ -430,6 +449,7 @@ public final class NotchController {
         model.requestKey = { [weak self] in self?.makePanelKey() }
         p.onCommandDigit = { [weak self] in self?.commandDigit($0) ?? false }
         p.onCommandK = { [weak self] in self?.commandK() ?? false }
+        p.onCommandBracket = { [weak self] in self?.commandBracket() ?? false }
         p.onTyped = { [weak self] in self?.typed($0) ?? false }
         return p
     }

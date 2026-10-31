@@ -300,7 +300,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuBar = MenuBarController(capture: capture, updater: updater, surfaces: surfaces, clipboard: clipboard,
                                     games: gamesWidget, gamesOn: { [weak self] in self?.widgets.isEnabled(GamesWidget.widgetID) ?? false },
                                     onOpenGame: { [weak self] kind in
-                                        self?.openPanel(tab: kind == .chase ? PanelTools.chase : GamesWidget.tabID)
+                                        self?.openPanel(tab: CommandRunner.gameTool(kind))
                                     },
                                     openTools: { [weak self] in self?.menuTools() ?? [] },
                                     onOpenTool: { [weak self] id in self?.openPanel(tab: id) },
@@ -464,6 +464,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let c = self?.primaryController, c.panelModel.mode != .expanded {
                     NSLog("PERF-SKY reopened (was \(String(describing: c.panelModel.mode)))")
                     c.expand(tab: nil)
+                }
+                // Stray keys from the person at the Mac can open the search or a game: back to Home.
+                if let c = self?.primaryController, c.panelModel.route != PanelRoute(destination: .home) {
+                    NSLog("PERF-SKY route reset (was \(c.panelModel.route.tool ?? "agents"))")
+                    c.panelModel.route = PanelRoute(destination: .home)
                 }
             }
             self?.primaryController?.collapse()

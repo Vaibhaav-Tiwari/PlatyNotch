@@ -19,7 +19,7 @@ final class TryItSession {
     /// Now's hero during "Try it".
     static let sample = LiveActivity(id: "tour.sample", widgetID: "tour", priority: LivePriority.alarmRinging,
                                      glyph: .symbol("sparkles"), tint: .accent, accessibilityLabel: "This is Home",
-                                     title: "This is Home", subtitle: "What is live shows here as chips; type to run a command")
+                                     title: "This is Home", subtitle: "Every tool is one click away in the dock")
 
     private(set) var phase: Phase = .idle
     private var onDone: (() -> Void)?

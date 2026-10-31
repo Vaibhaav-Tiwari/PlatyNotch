@@ -18,12 +18,13 @@ final class CommandDiscoveryTests: DefaultsTestCase {
 
     // MARK: - ⌥⌘K
 
-    func testHotKeyOpensHomeWithTheCommandLineFocused() {
+    /// Island: ⌥⌘K opens the full-panel search with its field focused.
+    func testHotKeyOpensSearch() {
         let (c, r) = controller()
         c.panelModel.route = PanelRoute(destination: .agents)
         XCTAssertTrue(c.commandHotKey())
         XCTAssertEqual(c.panelModel.mode, .expanded)
-        XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .home))
+        XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .home, tool: PanelTools.search))
         XCTAssertTrue(c.panelModel.commandFocused)
         XCTAssertTrue(c.panelModel.commandActive, "the list shows")
         XCTAssertEqual(c.keyRequests, 1, "the panel takes the keyboard on purpose")
@@ -75,7 +76,7 @@ final class CommandDiscoveryTests: DefaultsTestCase {
         c.panelIsKey = { false }
         XCTAssertTrue(c.commandHotKey())
         XCTAssertEqual(c.panelModel.mode, .expanded, "still open")
-        XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .home))
+        XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .home, tool: PanelTools.search))
         XCTAssertTrue(c.panelModel.commandFocused)
         XCTAssertEqual(c.keyRequests, 1)
         r.registry.stopAll()
@@ -168,6 +169,27 @@ final class CommandDiscoveryTests: DefaultsTestCase {
                        "with no field focused, ⌘⌫ goes on to the approval's Deny")
     }
 
+    /// An approval arrives while the search field has "abc": Return never answers it (nor
+    /// runs anything), and ⌘↩ / ⌘⌫ belong to the focused field.
+    func testSearchNeverAnswersApprovals() throws {
+        let model = PanelViewModel()
+        var ran = 0
+        var a = CommandActions()
+        a.openTool = { _ in ran += 1 }
+        let logic = CommandLineLogic(model: model, runner: CommandRunner(actions: a),
+                                     tools: { [CommandTool(id: "clipboard", title: "Clipboard")] },
+                                     catalog: { CommandCatalog.entries(tools: ["clipboard"], shortcuts: [:]) },
+                                     approvalsPending: { true })
+        model.commandText = "abc"
+        model.commandFocused = true
+        model.commandActive = true
+        logic.submit()
+        XCTAssertEqual(ran, 0)
+        XCTAssertEqual(model.commandText, "abc")
+        XCTAssertTrue(NotchPanel.keyBelongsToText(try key(36, "\r"), textFocused: true))
+        XCTAssertTrue(NotchPanel.keyBelongsToText(try key(51, "\u{8}"), textFocused: true))
+    }
+
     // MARK: - The list
 
     private func logic(_ model: PanelViewModel, opened: @escaping (String) -> Void = { _ in },
@@ -205,13 +227,17 @@ final class CommandDiscoveryTests: DefaultsTestCase {
         XCTAssertFalse(model.commandActive, "done: Home comes back")
         model.commandActive = true
         model.commandSelection = 0
-        l.submit()   // Timer fills the field, ready for its argument
-        XCTAssertEqual(model.commandText, "timer ")
+        l.submit()   // Island: Timer opens the Timer tool
+        XCTAssertEqual(opened, ["timer"])
+        model.commandActive = true
+        model.commandSelection = 2   // Remind fills the field, ready for its argument
+        l.submit()
+        XCTAssertEqual(model.commandText, "remind ")
         XCTAssertTrue(model.commandActive, "still typing")
         model.commandText = ""
         model.commandSelection = 4   // Clipboard
         l.submit()
-        XCTAssertEqual(opened, ["clipboard"])
+        XCTAssertEqual(opened, ["timer", "clipboard"])
     }
 
     /// Review I1: no Do row under a parsed command, so nothing can replace typed arguments.
@@ -312,7 +338,7 @@ final class CommandHotKeyControllerTests: XCTestCase {
     }
 }
 
-private final class ActionProbe: NSObject {
+final class ActionProbe: NSObject {
     let action: () -> Void
     init(_ action: @escaping () -> Void) { self.action = action }
     @objc func fire() { action() }

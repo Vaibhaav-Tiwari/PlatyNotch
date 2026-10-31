@@ -45,10 +45,11 @@ public enum CommandCatalog {
     /// global shortcut ("⌥⇧V").
     public static func entries(tools: Set<String>, shortcuts: [String: String]) -> [Entry] {
         var out: [Entry] = [
+            // Island: the Timer tool (Focus is its tab); "timer 10m" / "focus 25" still parse.
             Entry(id: "do.timer", group: .do, title: "Timer", symbol: "timer", hint: "timer 10m", shortcut: nil,
-                  action: .fill("timer "), aliases: ["countdown", "alarm"]),
+                  action: .open(tool: "timer"), aliases: ["countdown", "alarm", "stopwatch"]),
             Entry(id: "do.focus", group: .do, title: "Focus", symbol: "scope", hint: "focus 25", shortcut: nil,
-                  action: .fill("focus "), aliases: ["pomodoro", "concentrate"]),
+                  action: .open(tool: "timer.focus"), aliases: ["pomodoro", "concentrate"]),
             Entry(id: "do.remind", group: .do, title: "Remind", symbol: "checklist", hint: "remind call Priya at 5pm",
                   shortcut: nil, action: .fill("remind "), aliases: ["reminder", "reminders", "todo"]),
             Entry(id: "do.note", group: .do, title: "Note", symbol: "note.text", hint: "note buy milk", shortcut: nil,

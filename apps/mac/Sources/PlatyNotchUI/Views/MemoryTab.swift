@@ -115,12 +115,15 @@ struct MemoryTab: View {
     let store: AppStore
     let memory: MemoryServices
     @State private var mode: Mode
+    /// The Search · Graph switch (the Memory tool has its own "Open graph").
+    var modePicker = true
     /// The graph fades in only while the panel is really shown (renders draw it settled).
     @Environment(\.panelTicking) private var ticking
 
-    init(store: AppStore, memory: MemoryServices, mode: Mode = .search) {
+    init(store: AppStore, memory: MemoryServices, mode: Mode = .search, modePicker: Bool = true) {
         self.store = store
         self.memory = memory
+        self.modePicker = modePicker
         _mode = State(initialValue: mode)
     }
 
@@ -132,7 +135,9 @@ struct MemoryTab: View {
         let search = memory.search
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                CapsuleSegments(selection: $mode, options: Mode.allCases.map { ($0, $0.rawValue) }, label: "View")
+                if modePicker {
+                    CapsuleSegments(selection: $mode, options: Mode.allCases.map { ($0, $0.rawValue) }, label: "View")
+                }
                 switch mode {
                 case .search:
                     MemorySearchField(search: search)

@@ -78,7 +78,8 @@ final class CommandLineLogic {
         }
         let bare: Bool = !text.contains(where: { $0.isWhitespace })
         let matches: [CommandCatalog.Entry] = CommandCatalog.filter(catalog(), query: text).filter { e in
-            if case .fill = e.action { return bare }
+            // Do rows show only for a bare word ("timer"): under "timer 10m" the parsed command is the row.
+            if e.group == .do { return bare }
             return true
         }
         let opened: Set<String> = Set(matches.compactMap { e -> String? in
@@ -178,6 +179,9 @@ struct CommandLineView: View {
     let model: PanelViewModel
     let logic: CommandLineLogic
     let memory: MemoryServices?
+    /// The full-panel search (Island, wireframe D): a larger field with an `esc` keycap, the
+    /// rows as a list with icon wells, filling the panel.
+    var fullPanel = false
     @FocusState private var focused: Bool
     @State private var windowBox = WindowBox()
     /// The scrolling list is at its end (no fade then).
@@ -195,6 +199,8 @@ struct CommandLineView: View {
     static func upgradeHint(_ hint: String) -> String {
         "Everything Platy can do is here. Press \(hint) anytime."
     }
+
+    static let searchPlaceholder = "Search tools, or type a command"
 
     /// Memory hits listed under a `search` row.
     static let hitLimit = 5
@@ -221,20 +227,24 @@ struct CommandLineView: View {
                     .foregroundStyle(DS.tertiary)
                     .accessibilityHidden(true)
                 TextField("", text: Binding(get: { model.commandText }, set: { model.commandText = $0 }),
-                          prompt: Text(verbatim: Self.placeholder(hint: model.commandHint)).foregroundStyle(DS.tertiary))
+                          prompt: Text(verbatim: fullPanel ? Self.searchPlaceholder
+                                                           : Self.placeholder(hint: model.commandHint))
+                            .foregroundStyle(DS.tertiary))
                     .textFieldStyle(.plain)
-                    .font(DS.font(TypeScale.body))
+                    .font(DS.font(fullPanel ? TypeStyle(size: TypeScale.title.size, weight: .regular) : TypeScale.body))
                     .focused($focused)
                     .onSubmit { logic.submit() }
                     .onKeyPress(.upArrow) { logic.move(by: -1); return .handled }
                     .onKeyPress(.downArrow) { logic.move(by: 1); return .handled }
                     .accessibilityLabel("Command line")
                     .background(CaretWindowReader(box: windowBox))
-                Keycap(text: model.commandText.isEmpty ? model.commandHint : "\u{21A9}")
+                Keycap(text: fullPanel ? "esc" : (model.commandText.isEmpty ? model.commandHint : "\u{21A9}"),
+                       border: fullPanel ? DS.stroke : DS.hairline)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 7)
-            .background(DS.fill, in: RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))
+            .padding(.horizontal, fullPanel ? 12 : 10)
+            .padding(.vertical, fullPanel ? 9 : 7)
+            .background(fullPanel ? DS.raised : DS.fill,
+                        in: RoundedRectangle(cornerRadius: fullPanel ? Radius.card : Radius.medium, style: .continuous))
             .contentShape(Rectangle())
             .simultaneousGesture(TapGesture().onEnded { Self.fieldClicked(model) })
             if !rows.isEmpty {
@@ -256,8 +266,9 @@ struct CommandLineView: View {
                                                  startPoint: .top, endPoint: .bottom))
                     }
                 }
-                .frame(maxHeight: model.commandActive && !logic.approvalsWaiting
-                       ? Self.focusedListMaxHeight : Self.listMaxHeight)
+                .frame(maxHeight: fullPanel ? .infinity
+                       : (model.commandActive && !logic.approvalsWaiting ? Self.focusedListMaxHeight : Self.listMaxHeight),
+                       alignment: .top)
             } else if let message = model.commandMessage {
                 Text(verbatim: message).font(DS.font(TypeScale.secondary)).foregroundStyle(DS.secondary)
             } else if model.showCommandHint, !model.commandActive {
@@ -297,8 +308,8 @@ struct CommandLineView: View {
             ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
                 if let header = groupHeader(rows, at: index) {
                     ColumnLabel(text: header)
-                        .padding(.horizontal, 10)
-                        .padding(.top, index == 0 ? 2 : 6)
+                        .padding(.horizontal, fullPanel ? 4 : 10)
+                        .padding(.top, index == 0 ? 2 : (fullPanel ? 8 : 6))
                 }
                 Button { logic.submit(index: index) } label: {
                     rowLabel(row, selected: index == selected)
@@ -323,12 +334,91 @@ struct CommandLineView: View {
 
     /// The group label before a list row that starts a group, while the whole list shows.
     private func groupHeader(_ rows: [CommandRow], at index: Int) -> String? {
+        if fullPanel, !logic.listsEverything {
+            let section = Self.section(rows[index])
+            if index > 0, Self.section(rows[index - 1]) == section { return nil }
+            return section
+        }
         guard logic.listsEverything, let entry = rows[index].entry else { return nil }
         if index > 0, rows[index - 1].entry?.group == entry.group { return nil }
         return entry.group.title
     }
 
+    /// The search's sections for typed text (wireframe D): Tools, then Commands, then Also
+    /// (memory last).
+    static func section(_ row: CommandRow) -> String {
+        switch row {
+        case .entry: "Tools"
+        case .suggestion(let s):
+            if case .search? = s.command { "Also" } else { "Commands" }
+        }
+    }
+
     @ViewBuilder private func rowLabel(_ row: CommandRow, selected: Bool) -> some View {
+        if fullPanel { panelRow(row, selected: selected) } else { inlineRow(row, selected: selected) }
+    }
+
+    /// The search's list row: a 28 pt neutral well, 13 pt name, 11 pt hint, ↩ on the chosen row.
+    private func panelRow(_ row: CommandRow, selected: Bool) -> some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: Radius.medium, style: .continuous).fill(DS.raised)
+                Image(systemName: Self.symbol(row))
+                    .symbolRenderingMode(.monochrome)
+                    .font(.system(size: IconSize.symbol))
+                    .foregroundStyle(DS.secondary)
+            }
+            .frame(width: 28, height: 28)
+            .accessibilityHidden(true)
+            Text(verbatim: row.title)
+                .font(DS.font(TypeScale.body))
+                .foregroundStyle(Self.isSearch(row) ? DS.secondary : DS.primary)
+                .lineLimit(1).truncationMode(.tail)
+            Spacer(minLength: 8)
+            if let hint = Self.hint(row) {
+                Text(verbatim: hint)
+                    .font(DS.font(TypeScale.caption))
+                    .foregroundStyle(DS.tertiary)
+                    .lineLimit(1).truncationMode(.tail)
+            }
+            if selected { Keycap(text: "\u{21A9}", border: DS.stroke) }
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 5)
+        .background(selected ? DS.raised : .clear, in: RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))
+        .contentShape(Rectangle())
+    }
+
+    static func isSearch(_ row: CommandRow) -> Bool {
+        if case .suggestion(let s) = row, case .search? = s.command { return true }
+        return false
+    }
+
+    static func symbol(_ row: CommandRow) -> String {
+        switch row {
+        case .entry(let e): return e.symbol
+        case .suggestion(let s):
+            switch s.command {
+            case .timer?: return "timer"
+            case .focus?: return "scope"
+            case .remind?: return "checklist"
+            case .note?: return "note.text"
+            case .search?: return "brain"
+            case .play?: return "gamecontroller"
+            case .open?: return "arrow.up.forward.app"
+            case nil: return "questionmark"
+            }
+        }
+    }
+
+    static func hint(_ row: CommandRow) -> String? {
+        switch row {
+        case .entry(let e): e.shortcut.map { "\(e.hint) · \($0)" } ?? e.hint
+        case .suggestion(let s): s.detail
+        }
+    }
+
+    @ViewBuilder private func inlineRow(_ row: CommandRow, selected: Bool) -> some View {
         HStack(spacing: 10) {
             switch row {
             case .suggestion(let s):

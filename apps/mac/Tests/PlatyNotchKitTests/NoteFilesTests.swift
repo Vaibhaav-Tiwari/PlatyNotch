@@ -539,4 +539,13 @@ private final class LockedCount: @unchecked Sendable {
     private var n = 0
     func bump() { lock.lock(); n += 1; lock.unlock() }
     var value: Int { lock.lock(); defer { lock.unlock() }; return n }
+
+    /// The Note tool's recent entries: `- HH:mm text` lines, newest first.
+    func testRecentEntries() {
+        let text = "# Day\n- 09:10 a\n- 11:00 b\nplain\n- [ ] a task\n- 12:30 c\n"
+        XCTAssertEqual(QuickNote.recentEntries(in: text), ["c", "b", "a"])
+        XCTAssertEqual(QuickNote.recentEntries(in: text, limit: 2), ["c", "b"])
+        XCTAssertEqual(QuickNote.recentEntries(in: "- 7:10 not a time\n-09:10 no space\n"), [])
+        XCTAssertEqual(QuickNote.recentEntries(in: "- 08:00 crlf\r\n- 08:05 next\r\n"), ["next", "crlf"])
+    }
 }

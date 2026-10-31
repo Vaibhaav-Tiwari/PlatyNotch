@@ -14,14 +14,14 @@ final class PanelRouteTests: XCTestCase {
     }
 
     func testToolTabsOpenInsideHome() {
-        for t in ["focus", "memory", "games", "clipboard"] {
+        for t in ["memory", "games", "clipboard"] {
             XCTAssertEqual(PanelRoute.legacy(tab: t, tools: tools), PanelRoute(destination: .home, tool: t), t)
         }
     }
 
     /// Every tool the Library used to hold still has a way in through an old tab id.
     func testEveryOldLibraryToolIdOpensItsTool() {
-        for t in tools where !t.hasPrefix("plugin:") {
+        for t in tools where !t.hasPrefix("plugin:") && t != "time" && t != "focus" {
             XCTAssertEqual(PanelRoute.legacy(tab: t, tools: tools).tool, t, t)
             XCTAssertEqual(PanelRoute.legacy(tab: t, tools: tools).destination, .home, t)
         }
@@ -61,5 +61,14 @@ final class PanelRouteTests: XCTestCase {
         XCTAssertEqual(PanelDestination.allCases, [.home, .agents])
         XCTAssertEqual(PanelDestination.shown(agentsVisible: true), [.home, .agents])
         XCTAssertEqual(PanelDestination.shown(agentsVisible: false), [.home])
+    }
+
+    /// Island: Focus is a mode of Timer; the old Time tool is the Timer tool.
+    func testFocusAndTimeOpenTimer() {
+        XCTAssertEqual(PanelRoute.legacy(tab: "focus", tools: []), PanelRoute(destination: .home, tool: "timer.focus"))
+        XCTAssertEqual(PanelRoute.legacy(tab: "time", tools: []), PanelRoute(destination: .home, tool: "timer"))
+        XCTAssertEqual(PanelTools.timer, "timer")
+        XCTAssertEqual(PanelTools.timerFocus, "timer.focus")
+        XCTAssertEqual(PanelTools.search, "search")
     }
 }

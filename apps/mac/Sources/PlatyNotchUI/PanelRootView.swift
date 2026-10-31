@@ -12,7 +12,18 @@ final class PanelViewModel {
     var layout: PanelLayout?
     /// Where the open panel is: Home by default, or Agents or a feature open inside Home
     /// (`NotchController.expand(tab:)` maps today's tab ids through `PanelRoute.legacy`).
-    var route = PanelRoute(destination: .home)
+    var route = PanelRoute(destination: .home) {
+        didSet {
+            // Leaving the search (a row opened a tool, ‹, a dock slot): its field lets go, so
+            // one Esc goes back from that tool and ⌥⌘K focuses the search again.
+            if oldValue.tool == PanelTools.search, route.tool != PanelTools.search {
+                commandFocused = false
+                commandActive = false
+                commandText = ""
+                commandMessage = nil
+            }
+        }
+    }
     /// Which approval cards have been on screen long enough to be answered (this window).
     var arming = ApprovalArming()
     /// Toggles expanded / collapsed (the state machine's `.click`).
@@ -202,7 +213,13 @@ struct PanelRootView: View {
                           onCollapse: model.onClick, onOpenSettings: model.onOpenSettings,
                           header: model.header,
                           homeSettings: model.homeSettings, commandLine: commandLineView,
-                          commandFocused: model.commandActive,
+                          dockLayout: DockLayout.load(from: .standard),
+                          searchKey: model.commandHint == "\u{2318}K" ? nil : model.commandHint,   // ⌘K: the global shortcut is off
+                          onSearch: { [model] in
+                              model.requestKey()
+                              model.commandFocused = true
+                              model.commandActive = true
+                          },
                           dropping: dropping, dropHover: dropHover,
                           agentsVisible: today.agentActivity.agentsVisibility.isVisible,
                           onConnectAgent: model.onConnectAgent,
@@ -264,12 +281,12 @@ struct PanelRootView: View {
 }
 
 extension PanelRootView {
-    /// The command line under Home's hairline, wired to the app's models.
+    /// The full-panel search, wired to the app's models.
     var commandLineView: AnyView {
         let logic = CommandLineLogic(model: model, runner: CommandRunner(actions: commandActions),
                                      tools: { commandTools }, catalog: { commandCatalog },
                                      approvalsPending: { !store.approvals.isEmpty })
-        return AnyView(CommandLineView(model: model, logic: logic, memory: memory))
+        return AnyView(SearchView(model: model, logic: logic, memory: memory))
     }
 
     /// The features `open …` can offer: every tool the panel opens, by its title.
@@ -335,7 +352,8 @@ extension PanelRootView {
         a.selectGame = { kind in (widgets.widget(GamesWidget.widgetID) as? GamesWidget)?.host.select(kind) }
         a.gamesOn = { widgets.isEnabled(GamesWidget.widgetID) }
         a.openTool = { tool in
-            var route = PanelRoute(destination: .home, tool: tool)
+            // Focus is a mode of the Timer tool (Island spec 1).
+            var route = PanelRoute(destination: .home, tool: tool == FocusWidget.widgetID ? PanelTools.timerFocus : tool)
             if tool == MirrorWidget.widgetID { HeaderToggles.openMirror(registry: widgets, route: &route) }
             model.route = route
         }

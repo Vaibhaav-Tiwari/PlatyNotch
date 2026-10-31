@@ -35,10 +35,14 @@ struct ExpandedPanel: View {
     var header: HeaderServices?
     /// Settings › Home (Quiet Notch's column choice; Island's Home ignores it).
     var homeSettings = HomeSettings()
-    /// The command line under Home's hairline.
+    /// The full-panel search (`SearchView`), shown for `PanelTools.search`.
     var commandLine: AnyView = AnyView(EmptyView())
-    /// The command line has focus: Home's columns step aside for its rows.
-    var commandFocused = false
+    /// The dock's slots in the user's order.
+    var dockLayout: DockLayout = .standard
+    /// The global search shortcut's display; nil while it is off.
+    var searchKey: String? = CommandHotKey.presets.first?.display
+    /// The dock's Search slot (the controller focuses the field and takes the keyboard).
+    var onSearch: () -> Void = {}
     /// A file drag is near: Home becomes drop targets.
     var dropping = false
     var dropHover: DropTargetsView.Zone?
@@ -74,6 +78,28 @@ struct ExpandedPanel: View {
         PanelRoute(destination: .home, tool: id)
     }
 
+    /// Where a dock slot opens its tool: inside Home, in place.
+    static func route(for slot: DockSlot) -> PanelRoute {
+        PanelRoute(destination: .home, tool: slot.toolID)
+    }
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Island spec 4: one spring (response 0.35, damping 1.0) for a tool opening in place and
+    /// going back; Reduce Motion keeps the short ease.
+    static func routeAnimation(reduceMotion: Bool) -> Animation {
+        reduceMotion ? .easeOut(duration: MotionPreset.reducedFade) : .spring(response: 0.35, dampingFraction: 1.0)
+    }
+
+    /// A tool grows out of Home (and Home back out of it).
+    static let morph: AnyTransition = .opacity.combined(with: .scale(scale: 0.97, anchor: .top))
+
+    /// The search shows (the panel's whole body, no header).
+    private var searching: Bool {
+        let normal = route.normalized(agentsVisible: agentsVisible)
+        return normal.destination == .home && normal.tool == PanelTools.search
+    }
+
     var body: some View {
         // An open tool is resolved alone (it redraws often).
         let normal: PanelRoute = route.normalized(agentsVisible: agentsVisible)
@@ -81,9 +107,14 @@ struct ExpandedPanel: View {
         // A tool that is not available now (its widget turned off) shows Home.
         let shown: PanelRoute = open == nil ? PanelRoute(destination: normal.destination) : normal
         VStack(alignment: .leading, spacing: 0) {
-            header(tool: open)
-                .frame(height: HomeMetrics.nav)
-                .panelChrome()
+            if !searching {
+                header(tool: open)
+                    .frame(height: HomeMetrics.nav)
+                    .panelChrome()
+                    // The tabs morph into ‹ and the tool's name (and back) in place.
+                    .id(open?.id ?? "nav")
+                    .transition(.opacity)
+            }
             if !store.approvals.isEmpty {
                 approvals
                     .frame(maxHeight: 240, alignment: .top)
@@ -101,11 +132,14 @@ struct ExpandedPanel: View {
                 // inside, and must not clip Platy or
                 // the live glyph while they morph in from the pill. Other destinations stay clipped.
                 .clipped(unless: shown.destination == .home && open == nil)
-                .padding(.top, open == nil ? HomeMetrics.gap : ToolHost.gap)
+                .padding(.top, searching ? 0 : (open == nil ? HomeMetrics.gap : ToolHost.gap))
                 .environment(\.openPanelRoute, { route = $0 })   // the games tile opens its tool
+                .environment(\.closePanel, { [onCollapse] in onCollapse() })
+                .environment(\.approvalPending, !store.approvals.isEmpty)
                 .environment(\.openMemorySettings, { [memory] in memory.onOpenSettings() })   // empty states' one button
         }
         .coordinateSpace(name: Self.space)
+        .animation(Self.routeAnimation(reduceMotion: reduceMotion), value: shown)
         .onPreferenceChange(HomeHeightKey.self) { homeBody = $0 }
         .onPreferenceChange(ApprovalsRegionFrameKey.self) { approvalsHeight = $0?.height }
         .onChange(of: reportedBody, initial: true) { _, new in onBodyHeight(new) }
@@ -115,7 +149,9 @@ struct ExpandedPanel: View {
 
     @ViewBuilder private func header(tool: PanelTool?) -> some View {
         if let tool {
-            ToolHeader(title: tool.title, onBack: goBack, trailing: AnyView(controls))
+            // A tool with its own header controls (the Timer's modes) shows those alone (wireframe C).
+            ToolHeader(title: tool.title, onBack: goBack, accessory: tool.accessory?(),
+                       trailing: tool.hidesPanelControls ? nil : AnyView(controls))
         } else {
             PanelHeader(status: headerStatus, mono: headerIsUsage, nav: { nav }, controls: { controls })
         }
@@ -124,11 +160,21 @@ struct ExpandedPanel: View {
     @ViewBuilder private func destination(_ shown: PanelRoute, tool: PanelTool?) -> some View {
         switch shown.destination {
         case .home:
-            if let tool {
-                ToolBody(content: tool.view())
-                    .id(tool.id)
+            if searching {
+                commandLine
+            } else if let tool {
+                if tool.fitsContent {
+                    ToolCard(content: tool.view())
+                        .id(tool.id)
+                        .transition(Self.morph)
+                } else {
+                    ToolBody(content: tool.view(), card: !tool.bare)
+                        .id(tool.id)
+                        .transition(Self.morph)
+                }
             } else {
                 homeView
+                    .transition(Self.morph)
             }
         case .agents:
             AgentsView(sessions: store.sessions, log: today.agentActivity.log,
@@ -148,16 +194,33 @@ struct ExpandedPanel: View {
 
     /// Home: Now Playing beside Today, the chips and the command line.
     var homeView: HomeView {
-        HomeView(today: today, widgets: widgets, settings: homeSettings, tourSample: store.approvals.isEmpty ? tourSample : nil, fixedNow: fixedNow,
-                 dropping: dropping, dropHover: dropHover, onOpenTool: { openTool($0) }, commandLine: commandLine,
-                 commandFocused: commandFocused)
+        HomeView(today: today, widgets: widgets, settings: homeSettings,
+                 tourSample: store.approvals.isEmpty ? tourSample : nil, fixedNow: fixedNow,
+                 dropping: dropping, dropHover: dropHover, onOpen: { openDock($0) }, dockLayout: dockLayout,
+                 toolTitles: dockToolTitles, searchKey: searchKey)
+    }
+
+    /// A dock slot: its tool in place; Search also focuses its field.
+    func openDock(_ slot: DockSlot) {
+        if slot == .core(.search) { onSearch() }
+        route = Self.route(for: slot)
+    }
+
+    /// Titles of the non-core tools the dock holds and that are available now.
+    private var dockToolTitles: [String: String] {
+        var out: [String: String] = [:]
+        for case .tool(let id) in dockLayout.slots {
+            if let t = panelTool(id) { out[id] = t.title }
+        }
+        return out
     }
 
     /// What to tell the controller about the body's height (spec 2: the panel follows its
     /// content, 160–380 pt; the controller clamps): the header, the approvals region when
     /// approvals show, and Home's or Agents' natural height. An open tool takes the full height.
     var reportedBody: CGFloat? {
-        Self.bodyHeight(toolOpen: open != nil, approvals: !store.approvals.isEmpty, approvalsHeight: approvalsHeight,
+        // The search, like a tool, takes the panel's full height (its list scrolls inside).
+        Self.bodyHeight(toolOpen: (open != nil && open?.fitsContent != true) || searching, approvals: !store.approvals.isEmpty, approvalsHeight: approvalsHeight,
                         content: homeBody)
     }
 
@@ -203,7 +266,9 @@ struct ExpandedPanel: View {
         let memory = self.memory
         let mode = memoryMode
         return ToolCatalog.tool(id, widgets: widgets, extraTabs: extraTabs,
-                                memory: { AnyView(MemoryTab(store: store, memory: memory, mode: mode)) })
+                                memory: { [widgets] in ToolCatalog.memoryView(store: store, memory: memory, mode: mode,
+                                                                              widgets: widgets) },
+                                fixedNow: fixedNow)
     }
 
     /// Every feature that opens inside the panel (`ToolCatalog`): widget tools, Platy Chase,
@@ -213,7 +278,8 @@ struct ExpandedPanel: View {
         let memory = self.memory
         let mode = memoryMode
         return ToolCatalog.tools(widgets: widgets, extraTabs: extraTabs,
-                                 memory: { AnyView(MemoryTab(store: store, memory: memory, mode: mode)) })
+                                 memory: { [widgets] in ToolCatalog.memoryView(store: store, memory: memory, mode: mode,
+                                                                               widgets: widgets) })
     }
 
     /// Opens a feature full-panel inside Home.

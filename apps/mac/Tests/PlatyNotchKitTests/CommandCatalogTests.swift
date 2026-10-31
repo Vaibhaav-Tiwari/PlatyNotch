@@ -15,7 +15,10 @@ final class CommandCatalogTests: DefaultsTestCase {
         XCTAssertEqual(entries.filter { $0.group == .toggle }.map(\.title), ["Keep awake"])
         XCTAssertEqual(CommandCatalog.Group.allCases.map(\.title), ["Do", "Open", "Toggle"])
         XCTAssertEqual(entries.first?.hint, "timer 10m")
-        XCTAssertEqual(entries.first?.action, .fill("timer "))
+        // Island: "Timer" and "Focus" open the Timer tool (on its Focus tab); typing "timer 10m"
+        // still parses the command.
+        XCTAssertEqual(entries.first?.action, .open(tool: "timer"))
+        XCTAssertEqual(entries.first { $0.title == "Focus" }?.action, .open(tool: "timer.focus"))
         XCTAssertEqual(entries.first { $0.title == "Shelf" }?.action, .open(tool: "shelf"))
         XCTAssertEqual(entries.last?.action, .toggleKeepAwake)
         XCTAssertTrue(entries.allSatisfy { !$0.symbol.isEmpty && !$0.hint.isEmpty })

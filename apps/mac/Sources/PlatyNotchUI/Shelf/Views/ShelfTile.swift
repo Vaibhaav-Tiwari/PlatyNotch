@@ -58,17 +58,6 @@ struct ShelfTile: View {
         if host.items.isEmpty, inTool {
             ToolEmptyState(systemImage: "tray", title: "The shelf is empty",
                            detail: "Drag files, images, links or text to the notch to keep them here.")
-        } else if inTool {
-            // The tool has the room for every card: rows that wrap, not one row that scrolls.
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(ShelfCard.toolSize.width), spacing: ShelfCard.toolSpacing),
-                                     count: 5),
-                      alignment: .leading, spacing: ShelfCard.toolSpacing) {
-                ForEach(host.items) { item in
-                    ShelfCard(host: host, item: item, missing: host.missing.contains(item.id),
-                              selected: host.selection.contains(item.id),
-                              run: host.fileActions?.running[item.id])
-                }
-            }
         } else if host.items.isEmpty {
             Text("Drag files, images, links or text to the notch to keep them here.")
                 .font(.system(size: 11))
@@ -91,9 +80,6 @@ struct ShelfTile: View {
 /// One item: thumbnail, name, pin and missing badges.
 struct ShelfCard: View {
     static let size = CGSize(width: 72, height: 78)
-    /// The Library tool's cards: five to a row of the panel's width.
-    static let toolSize = CGSize(width: 96, height: 100)
-    static let toolSpacing: CGFloat = (PanelLayout.expandedSize.width - 2 * Space.panelSide - 5 * 96) / 4
     let host: any ItemListHost
     let item: ShelfItem
     let missing: Bool
@@ -102,8 +88,8 @@ struct ShelfCard: View {
     var run: FileActionCenter.Run?
     @Environment(\.inPanelTool) private var inTool
 
-    private var cardSize: CGSize { inTool ? Self.toolSize : Self.size }
-    private var thumbnail: CGFloat { inTool ? 56 : 40 }
+    private var cardSize: CGSize { Self.size }
+    private var thumbnail: CGFloat { 40 }
 
     var body: some View {
         content

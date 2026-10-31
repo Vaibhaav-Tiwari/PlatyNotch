@@ -63,10 +63,7 @@ final class SystemLocation: NSObject, LocationProviding {
         guard enabled else { return .denied }
         let first = authWaiters.isEmpty
         let timeout = Self.requestTimeout
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(timeout))
-            self?.authChanged(m.authorizationStatus, force: true)
-        }
+        armTimeout(seconds: timeout) { m.authorizationStatus }
         return await withCheckedContinuation { (c: CheckedContinuation<LocationAuth, Never>) in
             authWaiters.append(c)
             if first { m.requestWhenInUseAuthorization() }   // repeated clicks wait on the same prompt
@@ -74,6 +71,23 @@ final class SystemLocation: NSObject, LocationProviding {
     }
 
     static let requestTimeout: Double = 60
+    /// The unanswered-prompt timeout; cancelled once the prompt resolves.
+    private var timeoutTask: Task<Void, Never>?
+    /// Tests: whether a timeout is still pending.
+    var timeoutPending: Bool { timeoutTask != nil }
+
+    /// Gives up on an unanswered prompt after `seconds` (answering the current status).
+    func armTimeout(seconds: Double, status: @escaping @MainActor () -> CLAuthorizationStatus) {
+        timeoutTask?.cancel()
+        timeoutTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled else { return }
+            self?.authChanged(status(), force: true)
+        }
+    }
+
+    /// Tests: the delegate's answer.
+    func debugAuthChanged(_ status: CLAuthorizationStatus) { authChanged(status) }
     /// Location's permission changed (granted, denied or revoked in System Settings).
     var onAuthChange: (() -> Void)?
 
@@ -115,6 +129,8 @@ final class SystemLocation: NSObject, LocationProviding {
         guard a != .notDetermined || force else { return }
         let waiters = authWaiters
         authWaiters = []
+        timeoutTask?.cancel()
+        timeoutTask = nil
         for w in waiters { w.resume(returning: a) }
     }
 

@@ -81,11 +81,12 @@ final class PanelRoutingTests: DefaultsTestCase {
         XCTAssertEqual(p.destinations, [.home, .agents], "plugin tabs never add a destination")
     }
 
-    /// Focus, Memory and Games (with Platy Chase beside it) and plugin tabs all open inside
-    /// Home, in catalog order.
+    /// Timer (Focus is its tab), Memory and Games (with Platy Chase beside it) and plugin tabs
+    /// all open inside Home, in catalog order.
     func testEveryOldTabHasAHome() {
         let ids = panel(rig(), tabs: [pluginTab]).panelTools.map(\.id)
-        for id in [FocusWidget.widgetID, PanelTools.memory, GamesWidget.widgetID, PanelTools.chase,
+        XCTAssertFalse(ids.contains(FocusWidget.widgetID), "no second Focus view")
+        for id in [PanelTools.timer, PanelTools.memory, GamesWidget.widgetID, PanelTools.chase,
                    PanelTools.plugin("fake.tab")] {
             XCTAssertTrue(ids.contains(id), id)
         }
@@ -134,8 +135,8 @@ final class PanelRoutingTests: DefaultsTestCase {
         XCTAssertTrue(ids.contains(PanelTools.memory))
     }
 
-    /// Chips open their tool directly (through Home's `onOpenTool`).
-    func testChipLinksOpenTheirTool() {
+    /// Dock slots open their tool directly (through Home's `onOpen`).
+    func testDockSlotsOpenTheirTool() {
         XCTAssertEqual(ExpandedPanel.route(forTool: "loops"), PanelRoute(destination: .home, tool: "loops"))
         let r = rig()
         var route = PanelRoute(destination: .home)
@@ -143,10 +144,10 @@ final class PanelRoutingTests: DefaultsTestCase {
                               today: r.today, widgets: r.registry, memory: MemoryServices(client: r.client),
                               extraTabs: [], route: Binding(get: { route }, set: { route = $0 }),
                               onCollapse: {}, onDecide: { _, _ in }, onOpenTerminal: { _ in })
-        p.homeView.onOpenTool(LoopsWidget.widgetID)
+        p.homeView.onOpen(.tool(LoopsWidget.widgetID))
         XCTAssertEqual(route, PanelRoute(destination: .home, tool: LoopsWidget.widgetID))
-        p.homeView.onOpenTool(FocusWidget.widgetID)
-        XCTAssertEqual(route, PanelRoute(destination: .home, tool: FocusWidget.widgetID))
+        p.homeView.onOpen(.core(.timer))
+        XCTAssertEqual(route, PanelRoute(destination: .home, tool: PanelTools.timer))
     }
 
     /// The tool header: back chevron with its VoiceOver name, and the tool's title.
@@ -421,7 +422,7 @@ final class PanelRoutingTests: DefaultsTestCase {
                                 extraTabs: [pluginTab])
         let p = panel(r, tabs: [pluginTab])
         let ids: Set<String> = ToolCatalog.ids(widgets: r.registry, extraTabs: [pluginTab])
-        for id in [ClipboardWidget.widgetID, LaunchWidget.widgetID, BasketsWidget.widgetID, TimeWidget.widgetID,
+        for id in [ClipboardWidget.widgetID, LaunchWidget.widgetID, BasketsWidget.widgetID,
                    PanelTools.memory, PanelTools.chase] {
             XCTAssertTrue(ids.contains(id), id)
             c.expand(tab: id)
@@ -430,6 +431,10 @@ final class PanelRoutingTests: DefaultsTestCase {
             c.escapePressed()
             XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .home), id)
         }
+        // Island: the old Time and Focus ids open the Timer tool.
+        c.expand(tab: TimeWidget.widgetID)
+        XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .home, tool: PanelTools.timer))
+        c.escapePressed()
         c.expand(tab: "fake.tab")
         XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .home, tool: "plugin:fake.tab"))
     }

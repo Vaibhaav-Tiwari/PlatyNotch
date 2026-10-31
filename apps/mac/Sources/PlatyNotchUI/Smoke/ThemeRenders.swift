@@ -227,16 +227,18 @@ enum HomeRenders {
         out.append(("home-header-keep-awake", panel(homeRest(), header: headerServices(keepAwake: true)), true))
         out.append(("home-header-charging", panel(homeRest(), header: headerServices(
             battery: BatteryState(percent: 64, charging: true, pluggedIn: true, minutesRemaining: nil))), true))
-        out.append(("home-live", panel(homeLive()), true))
+        out.append(("home-dock-live", panel(homeLive()), true))   // live times read the real clock
+        out.append(("home-dock-badges", panel(homeRest(), now: day), true))
+        out.append(("home-dock-off-slot", panel(offSlots(), now: day), true))
         out.append(("home-nothing-playing", panel(builtIns(meeting: false)), true))
         out.append(("home-resume", panel(resume(), now: night), true))
         out.append(("home-never-played", panel(builtIns(meeting: false)), true))
         out.append(("home-drop", panel(builtIns(meeting: false), dropping: true), true))
         out += skies(day: day, night: night)
-        out.append(("home-command", panel(homeRest(), command: "timer 10m tea"), true))
-        out.append(("home-command-list", panel(homeRest(), command: "", commandFocused: true), true))
-        out.append(("home-command-hint", panel(homeRest(), commandHint: true), true))
-        out.append(("home-command-list-approval", panel(approvalPending(), command: "", commandFocused: true), true))
+        out.append(("search-empty", panel(homeRest(), command: "", full: true), true))
+        out.append(("search-typed", panel(homeRest(), command: "games", full: true), true))
+        out.append(("search-hint", panel(homeRest(), command: "notes", full: true), true))
+        out.append(("search-approval", panel(approvalPending(), command: "timer 10m", full: true), true))
         out.append(("peek-hover", hoverPeek(agentsHero()), true))
         out += AgentsRenders.views()
         out += ToolRenders.views()
@@ -357,6 +359,14 @@ enum HomeRenders {
         rig.today.nowPlaying.debugSetLastPlayed(
             LastPlayed(title: "Green Light", artist: "Lorde", bundleID: AppleScriptPlayer.music.rawValue, at: Date()),
             icon: music, recents: ["Lo-fi beats", "Liked songs"])
+    }
+
+    /// Remind and Note turned off: their dock slots dim and open "Turn on".
+    static func offSlots() -> Rig {
+        let rig = homeRest()
+        rig.registry.setEnabled(RemindersWidget.widgetID, false)
+        rig.registry.setEnabled(NotesWidget.widgetID, false)
+        return rig
     }
 
     /// Nothing playing after Apple Music played "Green Light": Resume and two playlists.
@@ -489,21 +499,23 @@ enum HomeRenders {
                       full: Bool = false, commandFocused: Bool = false, commandHint: Bool = false) -> AnyView {
         let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelSide
         rig.store.apply(.connected)   // a quiet header, as in the running app
-        var current = route
+        // A command (even empty) opens the full-panel search with it typed.
+        var current = command == nil ? route : PanelRoute(destination: .home, tool: PanelTools.search)
         let commandModel = PanelViewModel()
         commandModel.commandText = command ?? ""
-        commandModel.commandFocused = commandFocused
-        commandModel.commandActive = commandFocused
+        commandModel.commandFocused = commandFocused || command != nil
+        commandModel.commandActive = commandFocused || command != nil
         commandModel.showCommandHint = commandHint
         commandModel.commandHint = CommandHotKey.presets[0].display
-        let catalog = CommandCatalog.entries(tools: ["clipboard", "shelf", "baskets", "mirror", "memory", "launch", "games"],
+        let catalog = CommandCatalog.entries(tools: ["clipboard", "shelf", "baskets", "mirror", "memory", "launch", "games",
+                                                     "notes", "time"],
                                              shortcuts: ["clipboard": "\u{2325}\u{21E7}V", "baskets": "\u{2303}\u{2325}B"])
         let store = rig.store
         let logic = CommandLineLogic(model: commandModel, runner: CommandRunner(actions: CommandActions()),
                                      tools: { [] }, catalog: { catalog },
                                      approvalsPending: { !store.approvals.isEmpty }, clock: { fixedNow },
                                      calendar: .current)
-        let commandLine = AnyView(CommandLineView(model: commandModel, logic: logic, memory: nil))
+        let commandLine = AnyView(SearchView(model: commandModel, logic: logic, memory: nil))
         let services: HeaderServices = header ?? headerServices()
         let at: Date = now ?? fixedNow
         func make(height: CGFloat, onBody: @escaping (CGFloat?) -> Void) -> some View {
@@ -511,7 +523,6 @@ enum HomeRenders {
                           today: rig.today, widgets: rig.registry, memory: memory ?? MemoryServices(client: rig.client),
                           extraTabs: extraTabs, route: Binding(get: { current }, set: { current = $0 }),
                           onCollapse: {}, header: services, homeSettings: homeSettings, commandLine: commandLine,
-                          commandFocused: commandFocused,
                           dropping: dropping, fixedNow: at, memoryMode: memoryMode, tourSample: tourSample,
                           onBodyHeight: onBody, onDecide: { _, _ in }, onOpenTerminal: { _ in })
                 .frame(width: width, height: height, alignment: .top)
@@ -839,18 +850,25 @@ enum AgentsRenders {
 enum ToolRenders {
     static func views() -> [(String, AnyView, Bool)] {
         var out: [(String, AnyView, Bool)] = []
-        out.append(("tool-focus", tool(FocusWidget.widgetID), true))
+        out.append(("tool-focus", tool(PanelTools.timerFocus), true))
+        out.append(("tool-timer", tool(PanelTools.timer), true))
+        out.append(("tool-timer-running", tool(PanelTools.timer, rig: runningTimers()), true))
+        out.append(("tool-stopwatch", tool(PanelTools.timer, rig: stopwatch()), true))
+        out.append(("tool-turn-on", tool(PanelTools.timer, rig: timerOff()), true))
         out.append(("tool-time", tool(TimeWidget.widgetID, rig: HomeRenders.timerHero()), true))
         out.append(("tool-time-empty", tool(TimeWidget.widgetID), true))
         out.append(("tool-music", tool(MusicWidget.widgetID, rig: HomeRenders.musicHero()), true))
         out.append(("tool-clipboard", tool(ClipboardWidget.widgetID, rig: samples()), true))
         out.append(("tool-shelf", tool(ShelfWidget.widgetID, rig: samples()), true))
+        out.append(("tool-shelf-empty", tool(ShelfWidget.widgetID), true))
         out.append(("tool-memory-search", memory(.search), true))
         out.append(("tool-memory-graph", memory(.graph), true))
         out.append(("tool-games", tool(GamesWidget.widgetID), true))
         out.append(("tool-chase", tool(PanelTools.chase), true))
         out.append(("tool-launch", tool(LaunchWidget.widgetID), true))
-        out.append(("tool-notes", tool(NotesWidget.widgetID), true))
+        out.append(("tool-notes", tool(NotesWidget.widgetID, rig: notes()), true))
+        out.append(("tool-remind", tool(RemindersWidget.widgetID, rig: remind(access: .granted)), true))
+        out.append(("tool-remind-no-access", tool(RemindersWidget.widgetID, rig: remind(access: .notAsked)), true))
         out.append(("tool-mirror", tool(MirrorWidget.widgetID), true))
         out.append(("tool-mail", tool(MailWidget.widgetID), true))
         out.append(("tool-file-actions", tool(FileActionsWidget.widgetID), true))
@@ -870,6 +888,62 @@ enum ToolRenders {
 
     private static func tool(_ id: String, rig: HomeRenders.Rig? = nil) -> AnyView {
         HomeRenders.panel(rig ?? HomeRenders.builtIns(meeting: false), route: route(id))
+    }
+
+    /// Today's quick notes in the Note tool.
+    private static func notes() -> HomeRenders.Rig {
+        let rig = HomeRenders.builtIns(meeting: false)
+        (rig.registry.widget(NotesWidget.widgetID) as? NotesWidget)?.showRecentForRendering([
+            "Priya: slides 4 to 9 need the new colours", "Book the room for Thursday's review",
+            "Idea: the dock could wiggle when a timer ends", "Pick up oat milk",
+        ])
+        return rig
+    }
+
+    /// Reminders: one overdue, three today, one tomorrow; or access not asked yet.
+    private static func remind(access: RemindersService.Access) -> HomeRenders.Rig {
+        let rig = HomeRenders.builtIns(meeting: false)
+        let now = Date()
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: now)
+        let items = [
+            ReminderItem(id: "o", title: "Renew the passport", due: cal.date(byAdding: .day, value: -2, to: today),
+                         hasTime: false),
+            ReminderItem(id: "a", title: "Book flights", due: today, hasTime: false),
+            ReminderItem(id: "b", title: "Water the plants", due: today, hasTime: false),
+            ReminderItem(id: "c", title: "Call the bank", due: cal.date(bySettingHour: 23, minute: 30, second: 0, of: now),
+                         hasTime: true),
+            ReminderItem(id: "d", title: "Send Priya the deck", due: cal.date(byAdding: .day, value: 1, to: today),
+                         hasTime: false),
+        ]
+        (rig.registry.widget(RemindersWidget.widgetID) as? RemindersWidget)?.reminders
+            .setForTesting(access: access, items: access == .granted ? items : [])
+        return rig
+    }
+
+    /// Two timers running (wireframe C: "Tea · 3:10 left", "Laundry · 22:05 left").
+    private static func runningTimers() -> HomeRenders.Rig {
+        let rig = HomeRenders.builtIns(meeting: false)
+        let time = rig.registry.widget(TimeWidget.widgetID) as? TimeWidget
+        _ = time?.startTimer(duration: 190, label: "Tea")
+        _ = time?.startTimer(duration: 1325, label: "Laundry")
+        return rig
+    }
+
+    /// The stopwatch running with three laps.
+    private static func stopwatch() -> HomeRenders.Rig {
+        let rig = HomeRenders.builtIns(meeting: false)
+        (rig.registry.widget(TimeWidget.widgetID) as? TimeWidget)?.showStopwatchForRendering(
+            Stopwatch(accumulated: 754.3, runningSince: Date(), laps: [241.2, 255.8, 238.4]))
+        return rig
+    }
+
+    /// Time and Focus off: the Timer slot opens "Turn on Timer".
+    private static func timerOff() -> HomeRenders.Rig {
+        let rig = HomeRenders.builtIns(meeting: false)
+        rig.registry.setEnabled(TimeWidget.widgetID, false)
+        rig.registry.setEnabled(FocusWidget.widgetID, false)
+        return rig
     }
 
     /// Every built-in on, with sample clipboard rows and shelf cards (inert: nothing written).
