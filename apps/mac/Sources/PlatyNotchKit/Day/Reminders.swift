@@ -105,4 +105,21 @@ public enum RemindersDue {
     public static func count(_ items: [ReminderItem], now: Date, calendar: Calendar) -> Int {
         RemindersDay.today(items, now: now, calendar: calendar).count
     }
+
+    /// The Remind tool's list: overdue (oldest first), then due today, then upcoming, then
+    /// undated; at most `limit`.
+    public static func list(_ items: [ReminderItem], now: Date, calendar: Calendar,
+                            limit: Int = 8) -> [(item: ReminderItem, overdue: Bool)] {
+        let today = RemindersDay.today(items, now: now, calendar: calendar)
+        let todayIDs = Set(today.map(\.id))
+        let later = items.filter { !todayIDs.contains($0.id) }.sorted { a, b in
+            switch (a.due, b.due) {
+            case let (x?, y?): return x != y ? x < y : a.title < b.title
+            case (_?, nil): return true
+            case (nil, _?): return false
+            case (nil, nil): return a.title < b.title
+            }
+        }
+        return (today + later).prefix(limit).map { ($0, RemindersDay.isOverdue($0, now: now, calendar: calendar)) }
+    }
 }

@@ -73,6 +73,8 @@ final class NotesWidget: NotchWidget {
     private(set) var capped = false
     private(set) var noteCount = 0
     var draft = ""
+    /// The Note tool's list: today's newest quick notes (`QuickNote.recentEntries`).
+    private(set) var recentEntries: [String] = []
     /// One line under the field (where the note went, or why a tick was not written).
     private(set) var status: String?
     /// The note changed and PlatyNotch is not sure of the line: tick this one? (nothing written yet)
@@ -518,6 +520,7 @@ final class NotesWidget: NotchWidget {
         case .appended:
             if draft == sent { draft = "" }
             status = "Added to \(label)"
+            loadRecent()
             if let refresh { rescan(VaultRescan(paths: [refresh])) }
         case .noNote:
             status = QuickNote.noDailyNote
@@ -566,6 +569,34 @@ final class NotesWidget: NotchWidget {
     // MARK: - Views
 
     func tileView() -> AnyView { AnyView(NotesTile(widget: self)) }
+
+    /// The panel tool: the Note pad and today's newest entries (Island spec 4).
+    func toolView() -> AnyView { AnyView(NoteTool(notes: self)) }
+
+    /// Reads today's note (or the fallback file) off the main thread for its newest entries.
+    func loadRecent() {
+        guard persist else { return }   // renders and smoke runs read no files
+        let path: String
+        if let vault, let rel = QuickNote.dailyNotePath(folder: options.dailyFolder, date: services.clock(),
+                                                         calendar: services.calendar) {
+            path = vault.appendingPathComponent(rel).path
+        } else {
+            path = services.fallbackFolder.appendingPathComponent(QuickNote.fallbackName).path
+        }
+        let read = services.read
+        track(Task { @MainActor [weak self] in
+            let data = await Task.detached(priority: .utility) { read(path) }.value
+            let text = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+            let entries = QuickNote.recentEntries(in: text)
+            if self?.recentEntries != entries { self?.recentEntries = entries }
+        })
+    }
+
+    /// Renders: the tool's recent entries.
+    func showRecentForRendering(_ entries: [String]) {
+        guard !persist else { return }
+        recentEntries = entries
+    }
 
     func settingsView() -> AnyView? { AnyView(NotesSettings(widget: self)) }
 }

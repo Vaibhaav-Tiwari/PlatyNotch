@@ -154,6 +154,8 @@ final class ClipboardWidget: NotchWidget, ClipboardMenuControl {
     // `disabled()`: nothing beyond `stop`. History is the user's; Clear History (unpinned) or Clear All, Including Pinned, deletes it.
 
     func tileView() -> AnyView { AnyView(ClipboardTile(widget: self)) }
+    /// The panel tool: search and history (Island spec 4).
+    func toolView() -> AnyView { AnyView(ClipboardTool(clipboard: self)) }
     func settingsView() -> AnyView? { AnyView(ClipboardSettings(widget: self)) }
 
     func peekView(id: String) -> AnyView? {

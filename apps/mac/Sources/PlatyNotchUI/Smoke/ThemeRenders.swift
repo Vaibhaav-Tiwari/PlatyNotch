@@ -866,7 +866,9 @@ enum ToolRenders {
         out.append(("tool-games", tool(GamesWidget.widgetID), true))
         out.append(("tool-chase", tool(PanelTools.chase), true))
         out.append(("tool-launch", tool(LaunchWidget.widgetID), true))
-        out.append(("tool-notes", tool(NotesWidget.widgetID), true))
+        out.append(("tool-notes", tool(NotesWidget.widgetID, rig: notes()), true))
+        out.append(("tool-remind", tool(RemindersWidget.widgetID, rig: remind(access: .granted)), true))
+        out.append(("tool-remind-no-access", tool(RemindersWidget.widgetID, rig: remind(access: .notAsked)), true))
         out.append(("tool-mirror", tool(MirrorWidget.widgetID), true))
         out.append(("tool-mail", tool(MailWidget.widgetID), true))
         out.append(("tool-file-actions", tool(FileActionsWidget.widgetID), true))
@@ -886,6 +888,37 @@ enum ToolRenders {
 
     private static func tool(_ id: String, rig: HomeRenders.Rig? = nil) -> AnyView {
         HomeRenders.panel(rig ?? HomeRenders.builtIns(meeting: false), route: route(id))
+    }
+
+    /// Today's quick notes in the Note tool.
+    private static func notes() -> HomeRenders.Rig {
+        let rig = HomeRenders.builtIns(meeting: false)
+        (rig.registry.widget(NotesWidget.widgetID) as? NotesWidget)?.showRecentForRendering([
+            "Priya: slides 4 to 9 need the new colours", "Book the room for Thursday's review",
+            "Idea: the dock could wiggle when a timer ends", "Pick up oat milk",
+        ])
+        return rig
+    }
+
+    /// Reminders: one overdue, three today, one tomorrow; or access not asked yet.
+    private static func remind(access: RemindersService.Access) -> HomeRenders.Rig {
+        let rig = HomeRenders.builtIns(meeting: false)
+        let now = Date()
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: now)
+        let items = [
+            ReminderItem(id: "o", title: "Renew the passport", due: cal.date(byAdding: .day, value: -2, to: today),
+                         hasTime: false),
+            ReminderItem(id: "a", title: "Book flights", due: today, hasTime: false),
+            ReminderItem(id: "b", title: "Water the plants", due: today, hasTime: false),
+            ReminderItem(id: "c", title: "Call the bank", due: cal.date(bySettingHour: 23, minute: 30, second: 0, of: now),
+                         hasTime: true),
+            ReminderItem(id: "d", title: "Send Priya the deck", due: cal.date(byAdding: .day, value: 1, to: today),
+                         hasTime: false),
+        ]
+        (rig.registry.widget(RemindersWidget.widgetID) as? RemindersWidget)?.reminders
+            .setForTesting(access: access, items: access == .granted ? items : [])
+        return rig
     }
 
     /// Two timers running (wireframe C: "Tea · 3:10 left", "Laundry · 22:05 left").

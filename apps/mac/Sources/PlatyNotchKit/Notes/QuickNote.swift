@@ -24,6 +24,26 @@ public enum QuickNote {
         return "- " + time + " " + String(flat.prefix(maxLength))
     }
 
+    /// The Note tool's recent entries: the text of each `- HH:mm text` line, newest (last)
+    /// first, at most `limit`.
+    public static func recentEntries(in text: String, limit: Int = 5) -> [String] {
+        var out: [String] = []
+        for raw in text.components(separatedBy: .newlines).reversed() {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            guard line.hasPrefix("- "), line.count > 8 else { continue }
+            let time = line.dropFirst(2).prefix(5)
+            let digits = time.enumerated().allSatisfy { i, c in i == 2 ? c == ":" : (c.isASCII && c.isNumber) }
+            guard time.count == 5, digits else { continue }
+            let rest = line.dropFirst(7)
+            guard rest.first == " " else { continue }
+            let entry = rest.trimmingCharacters(in: .whitespaces)
+            guard !entry.isEmpty else { continue }
+            out.append(entry)
+            if out.count == limit { break }
+        }
+        return out
+    }
+
     /// `YYYY-MM-DD.md` for `date` in `calendar`.
     public static func dailyNoteName(for date: Date, calendar: Calendar = .current) -> String {
         let c = calendar.dateComponents([.year, .month, .day], from: date)

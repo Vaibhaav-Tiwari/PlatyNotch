@@ -196,6 +196,22 @@ final class RemindersWidget: NotchWidget {
 
     var hasContent: Bool { dueCount > 0 }
 
+    /// The panel tool: add, then overdue / today / upcoming (Island spec 4).
+    func toolView() -> AnyView {
+        AnyView(RemindTool(reminders: reminders,
+                           onAdd: { [weak self] text in
+                               guard let self else { return nil }
+                               self.draft = text
+                               return self.add(self.parsed())
+                           },
+                           onAllow: { [weak self] in Task { await self?.allow() } },
+                           onComplete: { [weak self] in self?.complete($0) },
+                           fixedNow: fixedNow))
+    }
+
+    /// Renders: a pinned clock for the tool's list.
+    @ObservationIgnored var fixedNow: Date?
+
     func tileView() -> AnyView {
         AnyView(RemindersTile(widget: self))
     }
