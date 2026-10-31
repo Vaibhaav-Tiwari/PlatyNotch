@@ -1,0 +1,447 @@
+<title>PlatyNotch Island Redesign</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a reading column for the argument, full-width stages for the mockups (scroll sideways on phones). */
+:root {
+  --bg: #f4f3f0; --fg: #18181a; --muted: #6a6a70; --rule: #dcdbd6; --card: #fff; --mark: #3d6bff;
+  --sans: "Figtree", -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --mac: -apple-system, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  --round: ui-rounded, "SF Pro Rounded", -apple-system, "Helvetica Neue", Arial, sans-serif;
+  /* the notch panel: identical in both page themes */
+  --p: #000; --c1: #121214; --c2: #1c1c1f; --c3: #2a2a2e; --w1: rgba(255,255,255,.94); --w2: rgba(255,255,255,.6); --w3: rgba(255,255,255,.36);
+  --green: #32d74b; --amber: #ffb340; --red: #ff6961; --blue: #4c8dff;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#141416; --fg:#ececee; --muted:#9b9ba3; --rule:#2c2c31; --card:#1d1d21; --mark:#7d9bff; color-scheme: dark } }
+:root[data-theme="dark"] { --bg:#141416; --fg:#ececee; --muted:#9b9ba3; --rule:#2c2c31; --card:#1d1d21; --mark:#7d9bff; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font: 16px/1.6 var(--sans); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 40px 90px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.col { max-width: 700px; }
+h1 { font-size: 34px; line-height: 1.15; font-weight: 700; letter-spacing: -.01em; margin: 6px 0 10px; text-wrap: balance; }
+h2 { font-size: 21px; font-weight: 700; margin: 52px 0 10px; text-wrap: balance; }
+h3 { font-size: 16px; font-weight: 600; margin: 20px 0 6px; }
+p, li { margin: 0 0 8px; } ul { padding-left: 20px; margin: 0 0 12px; }
+.meta { font: 12px var(--mono); color: var(--muted); }
+.lede { color: var(--muted); font-size: 17px; }
+code { font: 13.5px var(--mono); }
+.tablewrap { overflow-x: auto; } table { border-collapse: collapse; width: 100%; min-width: 600px; font-size: 14.5px; }
+th, td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.call { border-left: 3px solid var(--mark); padding: 2px 0 2px 14px; margin: 10px 0; }
+.call b { color: var(--mark); font-family: var(--mono); font-weight: 500; font-size: 12px; margin-right: 6px; }
+.fixes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.fixes > div { background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px; font-size: 14.5px; min-width: 0; }
+.fixes b { display: block; margin-bottom: 2px; }
+
+/* ---------- stages ---------- */
+.figs { display: grid; gap: 34px; margin-top: 18px; }
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 24px; }
+figure { margin: 0; min-width: 0; }
+figcaption { font-size: 14px; color: var(--muted); margin-top: 10px; max-width: 720px; }
+figcaption b { color: var(--fg); }
+.stage { overflow-x: auto; }
+.desk { width: 720px; border-radius: 12px; padding-bottom: 22px; background: radial-gradient(120% 120% at 20% 0%, #5a6f9c 0%, #2b3550 55%, #1a1f2e 100%); }
+.desk.sm { width: 440px; }
+.mb { height: 24px; display: flex; justify-content: space-between; align-items: center; padding: 0 14px; font: 12.5px var(--mac); color: rgba(255,255,255,.85); }
+.panel { width: 640px; margin: -24px auto 0; background: var(--p); color: var(--w1); font: 13px/1.35 var(--mac);
+  border-radius: 0 0 26px 26px; padding: 32px 16px 14px; box-shadow: 0 18px 40px rgba(0,0,0,.35); }
+.desk.sm .panel { width: 400px; }
+
+/* header */
+.hd { display: flex; align-items: center; gap: 12px; margin: 0 4px 12px; }
+.platy { width: 22px; height: 18px; flex: none; }
+.tab { color: var(--w2); font-weight: 500; font-size: 13px; }
+.tab.on { color: var(--w1); font-weight: 600; }
+.sp { flex: 1; }
+.hic { width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: var(--w2); }
+.hic svg { width: 15px; height: 15px; }
+.hic.on { background: rgba(255,179,64,.16); color: var(--amber); }
+.back { color: var(--w2); display: inline-flex; gap: 6px; align-items: center; font-weight: 600; color: var(--w1); }
+
+/* cards */
+.row { display: flex; gap: 10px; }
+.card { background: var(--c1); border-radius: 16px; padding: 12px; min-width: 0; position: relative; overflow: hidden; }
+.music { flex: 1.25; display: flex; gap: 12px; align-items: center; }
+.art { width: 74px; height: 74px; border-radius: 12px; flex: none; position: relative; }
+.art .src { position: absolute; right: -4px; bottom: -4px; width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--c1); }
+.glow { position: absolute; inset: -40% 40% -40% -20%; filter: blur(34px); opacity: .45; pointer-events: none; }
+.mt { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ma { color: var(--w2); font-size: 12.5px; }
+.bar { height: 4px; border-radius: 3px; background: rgba(255,255,255,.14); margin: 9px 0 3px; position: relative; }
+.bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: var(--w1); }
+.tm { display: flex; justify-content: space-between; color: var(--w3); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+.ctl { display: flex; gap: 22px; align-items: center; margin-top: 4px; }
+.ctl svg { width: 16px; height: 16px; fill: var(--w1); }
+.ctl .big svg { width: 22px; height: 22px; }
+.wave { display: inline-flex; gap: 2px; align-items: end; height: 12px; }
+.wave i { width: 2px; border-radius: 1px; background: currentColor; display: block; }
+
+.today { flex: 1; padding: 0; display: flex; flex-direction: column; }
+.wx { padding: 12px 14px 10px; color: #fff; position: relative; }
+.wx .t { font: 600 34px/1 var(--round); letter-spacing: -.02em; }
+.wx .c { font-size: 12.5px; font-weight: 500; opacity: .92; }
+.wx .hl { font-size: 11.5px; opacity: .75; }
+.wx .sym { position: absolute; right: 12px; top: 10px; width: 40px; height: 40px; }
+.sun { background: linear-gradient(160deg, #3d8bf0 0%, #6fb1f7 55%, #f7c56b 140%); }
+.rain { background: linear-gradient(170deg, #3b4b63 0%, #56677f 60%, #6d7d93 100%); }
+.night { background: linear-gradient(170deg, #0d1530 0%, #1f2c58 100%); }
+.drops { position: absolute; inset: 0; background-image: linear-gradient(105deg, transparent 47%, rgba(255,255,255,.22) 48%, transparent 50%); background-size: 14px 22px; opacity: .55; }
+.ev { padding: 8px 14px 10px; border-top: 1px solid rgba(255,255,255,.06); }
+.ev .k { font-size: 10.5px; color: var(--w3); text-transform: uppercase; letter-spacing: .06em; }
+.ev .n { font-weight: 600; font-size: 13px; }
+.ev .s { color: var(--w2); font-size: 12px; }
+.week { display: flex; justify-content: space-between; margin-top: 4px; font-size: 11px; color: var(--w3); text-align: center; }
+.week span { width: 22px; } .week b { display: block; color: var(--w1); font-weight: 500; font-size: 12px; }
+.week .on b { background: var(--blue); border-radius: 50%; color: #fff; height: 20px; line-height: 20px; }
+
+/* dock */
+.dock { display: flex; justify-content: space-between; margin: 12px 2px 0; }
+.di { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 66px; font-size: 10.5px; color: var(--w2); position: relative; }
+.di .b { width: 38px; height: 38px; border-radius: 50%; background: var(--c2); display: flex; align-items: center; justify-content: center; color: var(--w1); }
+.di .b svg { width: 17px; height: 17px; }
+.di .badge { position: absolute; top: -2px; right: 12px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--blue); color: #fff; font: 600 10px/16px var(--mac); text-align: center; }
+.di.live .b { background: rgba(255,179,64,.18); color: var(--amber); }
+.di.live { color: var(--amber); }
+.di.srch .b { background: transparent; border: 1px solid var(--c3); }
+
+/* tool view */
+.tool { background: var(--c1); border-radius: 16px; padding: 14px; }
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { background: var(--c2); border-radius: 999px; padding: 5px 12px; font-size: 12.5px; color: var(--w1); }
+.chip.on { background: var(--w1); color: #000; font-weight: 600; }
+.bign { font: 600 54px/1 var(--round); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.btn { background: var(--c2); color: var(--w1); border-radius: 10px; padding: 7px 14px; font-weight: 600; font-size: 13px; display: inline-block; }
+.btn.go { background: var(--w1); color: #000; }
+.li { display: flex; align-items: center; gap: 10px; padding: 7px 4px; border-radius: 8px; }
+.li + .li { border-top: 1px solid rgba(255,255,255,.05); }
+.li .ic { width: 28px; height: 28px; border-radius: 8px; background: var(--c2); display: flex; align-items: center; justify-content: center; color: var(--w2); flex: none; }
+.li .ic svg { width: 14px; height: 14px; }
+.li .x { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.li .r { color: var(--w3); font-size: 11.5px; }
+.li.sel { background: var(--c2); }
+.kb { font: 10.5px var(--mono); color: var(--w3); border: 1px solid var(--c3); border-radius: 5px; padding: 1px 5px; }
+.field { display: flex; align-items: center; gap: 8px; background: var(--c2); border-radius: 12px; padding: 9px 12px; font-size: 14px; margin-bottom: 8px; }
+.field .cur { width: 1.5px; height: 16px; background: var(--blue); }
+.sec { font-size: 10.5px; color: var(--w3); text-transform: uppercase; letter-spacing: .06em; margin: 8px 4px 2px; }
+
+/* agents */
+.ag { display: flex; align-items: center; gap: 10px; padding: 9px 6px; }
+.ag + .ag { border-top: 1px solid rgba(255,255,255,.06); }
+.appi { width: 24px; height: 24px; border-radius: 6px; flex: none; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+.use { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--w2); }
+.ring { width: 14px; height: 14px; border-radius: 50%; }
+.ap { background: var(--c1); border-radius: 14px; padding: 12px; margin-bottom: 6px; }
+.code { background: var(--c2); border-radius: 8px; padding: 8px 10px; font: 12px var(--mono); margin: 8px 0; color: var(--w1); }
+
+/* pill */
+.pill { margin: -24px auto 0; height: 34px; background: #000; border-radius: 0 0 14px 14px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; color: var(--w1); font: 12px var(--mac); }
+.mini { width: 20px; height: 20px; border-radius: 5px; }
+.pres { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-top: 10px; }
+.pres > div { background: var(--card); border: 1px solid var(--rule); border-radius: 12px; padding: 14px; font-size: 14.5px; min-width: 0; }
+.pres h4 { margin: 0 0 4px; font-size: 15px; }
+.pres .who { color: var(--muted); font-size: 13.5px; margin-bottom: 8px; }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+ <defs>
+  <symbol id="platy" viewBox="0 0 24 19"><ellipse cx="10" cy="10" rx="8" ry="7.4" fill="#3f9180"/><ellipse cx="19" cy="12" rx="5" ry="3" fill="#e9c58f"/><circle cx="7.6" cy="8" r="1.4" fill="#0b0b0b"/><circle cx="12.2" cy="8" r="1.4" fill="#0b0b0b"/></symbol>
+  <symbol id="cup" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M3 6h8v4a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6Z M11 7h1.2a1.6 1.6 0 0 1 0 3.2H11"/></symbol>
+  <symbol id="cam" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M2 5.2h8.4v6.6H2z M10.4 7.2l3.6-2v6.6l-3.6-2"/></symbol>
+  <symbol id="gear" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.3" fill="none" stroke="currentColor" stroke-width="1.4"/><path stroke="currentColor" stroke-width="1.4" d="M8 1.6v2M8 12.4v2M1.6 8h2M12.4 8h2M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M3.5 12.5l1.4-1.4M11.1 4.9l1.4-1.4"/></symbol>
+  <symbol id="timer" viewBox="0 0 16 16"><circle cx="8" cy="9" r="5.4" fill="none" stroke="currentColor" stroke-width="1.5"/><path stroke="currentColor" stroke-width="1.5" d="M8 9V6.2M6.4 1.8h3.2"/></symbol>
+  <symbol id="note" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.5" d="M3.5 2.5h7l2 2v9h-9z M5.5 7h5M5.5 9.5h5M5.5 12h3"/></symbol>
+  <symbol id="remind" viewBox="0 0 16 16"><circle cx="4" cy="4.5" r="1.4" fill="currentColor"/><circle cx="4" cy="11.5" r="1.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path stroke="currentColor" stroke-width="1.5" d="M7.5 4.5h6M7.5 11.5h6"/></symbol>
+  <symbol id="clip" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.5" d="M5 3H3.5v11h9V3H11 M5.5 2h5v2.4h-5z"/></symbol>
+  <symbol id="shelf" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.5" d="M2 9.5 4 4h8l2 5.5V13H2z M2 9.5h3.5l1 1.5h3l1-1.5H14"/></symbol>
+  <symbol id="mem" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M6 2.5a2.5 2.5 0 0 0-2.4 3.2A2.6 2.6 0 0 0 3 10.4 2.6 2.6 0 0 0 6.4 13.4V2.6M10 2.5a2.5 2.5 0 0 1 2.4 3.2 2.6 2.6 0 0 1 .6 4.7 2.6 2.6 0 0 1-3.4 3V2.6"/></symbol>
+  <symbol id="game" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M4.5 5h7a3 3 0 0 1 2.9 3.7l-.6 2.6a1.6 1.6 0 0 1-2.7.8L9.6 10.5H6.4L4.9 12.1a1.6 1.6 0 0 1-2.7-.8l-.6-2.6A3 3 0 0 1 4.5 5Z M5 7.2v2M4 8.2h2"/><circle cx="10.8" cy="7.6" r=".8" fill="currentColor"/><circle cx="11.8" cy="9" r=".8" fill="currentColor"/></symbol>
+  <symbol id="search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.4" fill="none" stroke="currentColor" stroke-width="1.5"/><path stroke="currentColor" stroke-width="1.5" d="m10.3 10.3 3.3 3.3"/></symbol>
+  <symbol id="prev" viewBox="0 0 16 16"><path d="M8 3 2 8l6 5zM14 3 8 8l6 5z"/></symbol>
+  <symbol id="next" viewBox="0 0 16 16"><path d="M8 3l6 5-6 5zM2 3l6 5-6 5z"/></symbol>
+  <symbol id="pause" viewBox="0 0 16 16"><rect x="3.5" y="2.5" width="3" height="11" rx="1"/><rect x="9.5" y="2.5" width="3" height="11" rx="1"/></symbol>
+  <symbol id="play" viewBox="0 0 16 16"><path d="M4 2.5v11l9.5-5.5z"/></symbol>
+  <symbol id="chev" viewBox="0 0 16 16"><path fill="none" stroke="currentColor" stroke-width="1.8" d="M10 3 5 8l5 5"/></symbol>
+  <symbol id="sunsym" viewBox="0 0 40 40"><circle cx="20" cy="20" r="8" fill="#ffd34d"/><g stroke="#ffd34d" stroke-width="2.4" stroke-linecap="round"><path d="M20 4v4M20 32v4M4 20h4M32 20h4M8.7 8.7l2.8 2.8M28.5 28.5l2.8 2.8M8.7 31.3l2.8-2.8M28.5 11.5l2.8-2.8"/></g></symbol>
+  <symbol id="rainsym" viewBox="0 0 40 40"><path d="M12 24a7 7 0 0 1 1-13.9A9 9 0 0 1 30 12a6 6 0 0 1 0 12z" fill="#e8edf5"/><g stroke="#7fb6ff" stroke-width="2.4" stroke-linecap="round"><path d="M14 28l-2 5M21 28l-2 5M28 28l-2 5"/></g></symbol>
+ </defs>
+</svg>
+
+<div class="wrap">
+<div class="col">
+  <p class="meta">PlatyNotch · design review A to Z · 31 Oct 2026 · supersedes "Quiet Notch"</p>
+  <h1>Island: a notch that shows what it can do</h1>
+  <p class="lede">The last round cut so hard that the product disappeared. Features hid behind a text box, half the panel sat empty, search didn't find its own features and presets changed nothing visible. This redesign puts every core tool one click away, uses all of the space, and brings colour from the things you care about (your music, your sky), aimed at people aged 18 to 30.</p>
+
+  <h2>What's wrong with what you have now</h2>
+  <div class="fixes">
+    <div><b>Tools are invisible</b>Timer, Note, Remind, Clipboard, Shelf and Memory exist, but only if you know to type. Nobody types into a box they don't know about.</div>
+    <div><b>Search is dumb</b>"games" and "notes" offer "Search memory" and "Remind me". A feature name should find the feature first.</div>
+    <div><b>Dead space</b>"Nothing up next" takes half the panel. Every slot needs a useful fallback.</div>
+    <div><b>Grey everything</b>Colour was banned except for state. To a 22-year-old it reads as a settings page, not a product.</div>
+    <div><b>Presets do nothing visible</b>Everyday, Developer and Minimal flip widget switches that the new Home ignores. Weather showed in one and not another.</div>
+    <div><b>⌥⌘K closes the notch</b>From another app it should focus the search, not close. <i>Fix already in progress.</i></div>
+  </div>
+
+  <h2>Who this is for</h2>
+  <p>Students, developers and creators aged 18 to 30. The apps they live in are Spotify, Apple Weather, Arc, Raycast, Notion, Discord and iOS itself. Those apps share four habits we should copy:</p>
+  <ul>
+    <li><b>Content is the colour.</b> Spotify tints the screen with the album art; Apple Weather paints the sky you're under. The interface stays dark and quiet so the content can glow.</li>
+    <li><b>Everything is one tap away.</b> iOS Control Center shows a row of round buttons, not a menu. You can see what's there.</li>
+    <li><b>Big, friendly numbers.</b> Temperatures, timers and percentages in a rounded face, large enough to read at a glance.</li>
+    <li><b>Personality in small doses.</b> Platy is the mascot: present in the pill and empty states, never in the way.</li>
+  </ul>
+  <p>The keyboard stays as the fast path for people who want it (<span class="kbd" style="font:12px var(--mono)">⌥⌘K</span>), but it's never the only path.</p>
+
+  <h2>The new Home</h2>
+  <p>Three zones, always filled: a <b>Now Playing</b> card, a <b>Today</b> card (weather plus your next thing), and a <b>dock</b> of round buttons for every tool. A tool opens inside the panel and the back arrow returns to Home.</p>
+</div>
+
+<div class="figs">
+
+<figure>
+ <div class="stage"><div class="desk">
+  <div class="mb"><span>Arc&nbsp;&nbsp; File&nbsp;&nbsp; Edit</span><span>Sat 31 Oct&nbsp; 2:59 PM</span></div>
+  <div class="panel">
+   <div class="hd">
+    <svg class="platy"><use href="#platy"/></svg>
+    <span class="tab on">Home</span><span class="tab">Agents <span class="dot" style="background:var(--amber);width:6px;height:6px;vertical-align:2px"></span></span>
+    <span class="sp"></span>
+    <span class="hic" title="Keep awake"><svg><use href="#cup"/></svg></span>
+    <span class="hic" title="Mirror"><svg><use href="#cam"/></svg></span>
+    <span class="hic" title="Settings"><svg><use href="#gear"/></svg></span>
+   </div>
+   <div class="row">
+    <div class="card music">
+     <div class="glow" style="background:#ff7a59"></div>
+     <div class="art" style="background:linear-gradient(135deg,#ff7a59,#c43a78 60%,#4b2a7a)"><span class="src" style="background:#1ed760"></span></div>
+     <div style="min-width:0;flex:1;position:relative">
+      <div class="mt">Green Light</div>
+      <div class="ma">Lorde · Melodrama</div>
+      <div class="bar"><i style="width:34%"></i></div>
+      <div class="tm"><span>1:12</span><span>-2:42</span></div>
+      <div class="ctl"><svg><use href="#prev"/></svg><span class="big"><svg><use href="#pause"/></svg></span><svg><use href="#next"/></svg></div>
+     </div>
+    </div>
+    <div class="card today">
+     <div class="wx sun">
+      <svg class="sym"><use href="#sunsym"/></svg>
+      <div class="t">22°</div><div class="c">Sunny · Bengaluru</div><div class="hl">H 27° · L 18°</div>
+     </div>
+     <div class="ev"><div class="k">Next · in 45 min</div><div class="n">Design review</div><div class="s">3:44 PM · Google Meet</div></div>
+    </div>
+   </div>
+   <div class="dock">
+    <div class="di"><span class="b"><svg><use href="#timer"/></svg></span>Timer</div>
+    <div class="di"><span class="b"><svg><use href="#note"/></svg></span>Note</div>
+    <div class="di"><span class="b"><svg><use href="#remind"/></svg></span>Remind<span class="badge">3</span></div>
+    <div class="di"><span class="b"><svg><use href="#clip"/></svg></span>Clipboard</div>
+    <div class="di"><span class="b"><svg><use href="#shelf"/></svg></span>Shelf<span class="badge">2</span></div>
+    <div class="di"><span class="b"><svg><use href="#mem"/></svg></span>Memory</div>
+    <div class="di"><span class="b"><svg><use href="#game"/></svg></span>Games</div>
+    <div class="di srch"><span class="b"><svg><use href="#search"/></svg></span>⌥⌘K</div>
+   </div>
+  </div>
+ </div></div>
+ <figcaption><b>A. Home, music playing, sunny.</b> Album art is large, with the source app's badge, and its colour glows softly behind the card. The weather card's background is the sky: a blue gradient and a sun for a clear day. Under it sits your next event. The dock shows all eight tools with counts (3 reminders due, 2 files on the Shelf). Panel: 640 × 236 pt.</figcaption>
+</figure>
+
+<div class="two">
+<figure>
+ <div class="stage"><div class="desk" style="width:700px">
+  <div class="mb"><span>Code&nbsp;&nbsp; File</span><span>Sat 31 Oct&nbsp; 9:10 PM</span></div>
+  <div class="panel" style="width:640px">
+   <div class="hd"><svg class="platy"><use href="#platy"/></svg><span class="tab on">Home</span><span class="tab">Agents</span><span class="sp"></span>
+    <span class="hic on"><svg><use href="#cup"/></svg></span><span class="hic"><svg><use href="#cam"/></svg></span><span class="hic"><svg><use href="#gear"/></svg></span></div>
+   <div class="row">
+    <div class="card music" style="flex-direction:column;align-items:stretch;gap:8px">
+     <div class="ev" style="padding:0;border:0"><div class="k">Nothing playing</div></div>
+     <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <span class="chip" style="display:inline-flex;gap:6px;align-items:center"><span class="mini" style="width:14px;height:14px;background:#1ed760;border-radius:4px"></span>Resume "Green Light"</span>
+      <span class="chip">Lo-fi beats</span><span class="chip">Liked songs</span>
+     </div>
+     <div style="display:flex;gap:10px;align-items:center;margin-top:2px">
+      <svg class="platy" style="width:30px;height:24px"><use href="#platy"/></svg>
+      <span class="ma">Quiet evening. Platy's on it.</span>
+     </div>
+    </div>
+    <div class="card today">
+     <div class="wx night" style="position:relative">
+      <div class="drops"></div>
+      <svg class="sym"><use href="#rainsym"/></svg>
+      <div class="t">17°</div><div class="c">Light rain · Bengaluru</div><div class="hl">Umbrella till 11 PM</div>
+     </div>
+     <div class="ev"><div class="k">Free tonight</div>
+      <div class="week"><span>Sa<b>31</b></span><span>Su<b>1</b></span><span class="on">Mo<b>2</b></span><span>Tu<b>3</b></span><span>We<b>4</b></span><span>Th<b>5</b></span><span>Fr<b>6</b></span></div>
+     </div>
+    </div>
+   </div>
+   <div class="dock">
+    <div class="di live"><span class="b"><svg><use href="#timer"/></svg></span>18:42</div>
+    <div class="di"><span class="b"><svg><use href="#note"/></svg></span>Note</div>
+    <div class="di"><span class="b"><svg><use href="#remind"/></svg></span>Remind</div>
+    <div class="di"><span class="b"><svg><use href="#clip"/></svg></span>Clipboard</div>
+    <div class="di"><span class="b"><svg><use href="#shelf"/></svg></span>Shelf</div>
+    <div class="di"><span class="b"><svg><use href="#mem"/></svg></span>Memory</div>
+    <div class="di"><span class="b"><svg><use href="#game"/></svg></span>Games</div>
+    <div class="di srch"><span class="b"><svg><use href="#search"/></svg></span>⌥⌘K</div>
+   </div>
+  </div>
+ </div></div>
+ <figcaption><b>B. Nothing playing, rainy night, free evening.</b> No empty boxes:
+  <ul>
+   <li><b>Music card:</b> offers "Resume" and recent playlists, with Platy and a one-line greeting.</li>
+   <li><b>Weather card:</b> turns night-blue with soft rain streaks, which animate only while the panel is open, plus a useful line ("Umbrella till 11 PM").</li>
+   <li><b>Calendar:</b> with no events, it shows the week strip instead of "Nothing up next".</li>
+  </ul>
+  A running focus timer turns its dock button amber and shows the time left.</figcaption>
+</figure>
+</div>
+
+<div class="two">
+<figure>
+ <div class="stage"><div class="desk sm" style="width:700px">
+  <div class="mb"><span></span><span>2:59 PM</span></div>
+  <div class="panel" style="width:640px">
+   <div class="hd"><span class="back"><svg style="width:14px;height:14px"><use href="#chev"/></svg>Timer</span><span class="sp"></span><span class="chip on" style="padding:3px 10px">Timer</span><span class="chip" style="padding:3px 10px">Focus</span><span class="chip" style="padding:3px 10px">Stopwatch</span></div>
+   <div class="tool" style="display:flex;gap:18px;align-items:center">
+    <div style="flex:1">
+     <div class="bign">10:00</div>
+     <div class="chips" style="margin-top:12px"><span class="chip">1 min</span><span class="chip">5 min</span><span class="chip on">10 min</span><span class="chip">25 min</span><span class="chip">+ custom</span></div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;width:170px">
+     <span class="btn go" style="text-align:center">Start</span>
+     <div class="li" style="padding:4px"><span class="dot" style="background:var(--amber)"></span><span class="x">Tea · 3:10 left</span></div>
+     <div class="li" style="padding:4px"><span class="dot" style="background:var(--w3)"></span><span class="x">Laundry · 22:05</span></div>
+    </div>
+   </div>
+  </div>
+ </div></div>
+ <figcaption><b>C. A tool, opened from the dock.</b> The panel morphs in place: a back arrow and the tool's name replace the tabs. Timer, Focus and Stopwatch are one tool with three modes. Numbers are big and rounded, presets are one tap, and running timers are listed on the right. Every tool follows this pattern: Note (a quick pad plus recent notes), Remind (list plus add), Clipboard (history with search), Shelf (files with AirDrop), Memory (search plus open loops) and Games (the five games plus Platy Chase).</figcaption>
+</figure>
+
+<figure>
+ <div class="stage"><div class="desk sm" style="width:700px">
+  <div class="mb"><span></span><span>2:59 PM</span></div>
+  <div class="panel" style="width:640px">
+   <div class="field"><svg style="width:15px;height:15px;color:var(--w3)"><use href="#search"/></svg><span>games</span><span class="cur"></span><span class="sp"></span><span class="kb">esc</span></div>
+   <div class="sec">Tools</div>
+   <div class="li sel"><span class="ic"><svg><use href="#game"/></svg></span><span class="x">Games</span><span class="r">6 games · last played Snake</span><span class="kb">↩</span></div>
+   <div class="li"><span class="ic"><svg><use href="#game"/></svg></span><span class="x">Platy Chase</span><span class="r">Arcade maze · best 4,120</span></div>
+   <div class="sec">Also</div>
+   <div class="li"><span class="ic"><svg><use href="#mem"/></svg></span><span class="x" style="color:var(--w2)">Search memory for "games"</span></div>
+  </div>
+ </div></div>
+ <figcaption><b>D. Search that finds things.</b> Order: tools whose names or aliases match first ("game", "games" and "play" find Games; "note" and "notes" find Note), then a parsed command ("timer 10m", "remind mom at 5pm"), then memory search last. A plain feature name never offers "Remind me: games". <i>This fix is being built now.</i></figcaption>
+</figure>
+</div>
+
+<div class="two">
+<figure>
+ <div class="stage"><div class="desk" style="width:700px">
+  <div class="mb"><span>Code</span><span>2:59 PM</span></div>
+  <div class="panel" style="width:640px">
+   <div class="hd"><svg class="platy"><use href="#platy"/></svg><span class="tab">Home</span><span class="tab on">Agents</span><span class="sp"></span>
+    <span class="use"><span class="ring" style="background:conic-gradient(var(--green) 0 62%, rgba(255,255,255,.15) 0)"></span>Claude 62%</span>
+    <span class="use"><span class="ring" style="background:conic-gradient(var(--green) 0 18%, rgba(255,255,255,.15) 0)"></span>Codex 18%</span>
+    <span class="hic"><svg><use href="#gear"/></svg></span></div>
+   <div class="ap">
+    <div style="display:flex;gap:8px;align-items:center"><span class="appi" style="background:linear-gradient(135deg,#e2876a,#c4593c)"></span><b>Claude Code</b><span style="color:var(--w2)">platynotch</span><span class="chip" style="padding:1px 8px;font-size:11px">Bash</span><span class="sp"></span><span style="color:var(--w2);font:12px var(--mono)">4:40</span></div>
+    <div class="code">rm -rf ./build &amp;&amp; npm test -- --grep "panel"</div>
+    <div style="display:flex;justify-content:flex-end;gap:8px"><span class="btn">Deny <span class="kb">⌘⌫</span></span><span class="btn" style="background:rgba(50,215,75,.16);color:var(--green)">Allow <span class="kb" style="color:inherit">⌘↩</span></span></div>
+   </div>
+   <div class="ag"><span class="appi" style="background:linear-gradient(135deg,#e2876a,#c4593c)"></span><div style="flex:1;min-width:0"><b>agent-orchestrator</b> <span style="color:var(--w2)">· waiting for you</span></div><span class="dot" style="background:var(--amber)"></span><span class="btn" style="padding:4px 10px;font-size:12px">Open Ghostty</span></div>
+   <div class="ag"><span class="appi" style="background:linear-gradient(135deg,#e2876a,#c4593c)"></span><div style="flex:1;min-width:0"><b>platynotch</b> <span style="color:var(--w2)">· running tests · 12 m</span></div><span class="dot" style="background:var(--green)"></span><span class="btn" style="padding:4px 10px;font-size:12px">Open Claude</span></div>
+  </div>
+ </div></div>
+ <figcaption><b>E. Agents.</b> It keeps the structure that worked, with two changes:
+  <ul>
+   <li>Real app icons sit at 24 pt.</li>
+   <li>Usage shows as small rings, with numbers, instead of monospace text.</li>
+  </ul>
+  The approval card stays as you approved it.</figcaption>
+</figure>
+
+<figure>
+ <div class="stage"><div class="desk sm" style="width:700px;padding-bottom:16px">
+  <div class="mb"><span></span><span>2:59 PM</span></div>
+  <div class="pill" style="width:280px"><span class="mini" style="background:linear-gradient(135deg,#ff7a59,#c43a78)"></span><span class="wave" style="color:#ff9a7a"><i style="height:5px"></i><i style="height:11px"></i><i style="height:7px"></i><i style="height:12px"></i><i style="height:4px"></i></span></div>
+  <div style="height:14px"></div>
+  <div class="mb" style="opacity:0"><span>.</span></div>
+  <div class="pill" style="width:280px"><svg style="width:20px;height:16px"><use href="#platy"/></svg><span style="color:var(--amber);font:600 12px var(--round)">18:42</span></div>
+  <div style="height:14px"></div>
+  <div class="mb" style="opacity:0"><span>.</span></div>
+  <div class="pill" style="width:300px"><span class="appi" style="width:18px;height:18px;background:linear-gradient(135deg,#e2876a,#c4593c)"></span><span style="color:var(--amber);font-weight:600">Needs you</span></div>
+ </div></div>
+ <figcaption><b>F. Closed pill.</b> When something is going on, you see it before you open anything:
+  <ul>
+   <li><b>Music:</b> mini album art, plus a waveform in the art's colour.</li>
+   <li><b>Timer:</b> Platy, plus the time left in big rounded digits.</li>
+   <li><b>Agent:</b> its app icon, plus "Needs you".</li>
+  </ul>
+  Approvals always win.</figcaption>
+</figure>
+</div>
+
+</div>
+
+<div class="col">
+  <h2>Weather that looks like the sky</h2>
+  <p>The weather card's background follows the current condition and the time of day:</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Condition</th><th>Background</th><th>Symbol</th><th>Motion while open</th></tr></thead>
+    <tbody>
+      <tr><td>Clear, day</td><td>Sky blue to a warm horizon</td><td>Sun</td><td>None</td></tr>
+      <tr><td>Clear, night</td><td>Deep navy</td><td>Moon and stars</td><td>None</td></tr>
+      <tr><td>Clouds</td><td>Slate to soft grey</td><td>Cloud</td><td>Slow drift</td></tr>
+      <tr><td>Rain, drizzle</td><td>Blue-grey</td><td>Rain cloud</td><td>Light streaks</td></tr>
+      <tr><td>Thunder</td><td>Charcoal with a violet tint</td><td>Bolt cloud</td><td>Rare soft flash</td></tr>
+      <tr><td>Snow</td><td>Ice blue</td><td>Snowflake</td><td>Slow flakes</td></tr>
+      <tr><td>Fog, haze</td><td>Milky grey</td><td>Fog</td><td>None</td></tr>
+    </tbody>
+  </table></div>
+  <p>Weather appears on Home in every preset (the Developer/Everyday mismatch was a bug). It uses Apple's multicolour weather symbols. Motion runs on Core Animation only while the panel is open, so idle CPU stays under 1%.</p>
+
+  <h2>Presets that mean something</h2>
+  <p>A preset now changes what you <i>see</i>, and Settings shows a live preview before you apply it.</p>
+  <div class="pres">
+    <div><h4>Everyday</h4><div class="who">Music, plans, quick capture.</div>Home: music and today. Dock: Timer, Note, Remind, Clipboard, Shelf, Games. No Agents tab. The pill shows music first.</div>
+    <div><h4>Developer</h4><div class="who">Everyday plus your coding agents.</div>The Agents tab and usage rings are on. The dock swaps Games for Memory. The pill shows agents first, and file actions and window snapping are on.</div>
+    <div><h4>Minimal</h4><div class="who">Invisible until it matters.</div>The notch stays hidden until something is live. Home: music and today only, with the dock folded into the search button.</div>
+  </div>
+  <p>You can still customise: in Settings › Dock, drag to reorder and pick up to 8 tools.</p>
+
+  <h2>Visual system</h2>
+  <ul>
+    <li><b>Chrome is black, content brings colour.</b> Album art glows behind its card. The weather card is the sky. State colours (green running, amber needs you, red error) stay reserved for state. This replaces the "colour only for state" rule, which made everything grey.</li>
+    <li><b>Cards:</b> #121214 fill, 16 pt radius, 12 pt padding. Dock buttons are 38 pt circles in #1C1C1F with 17 pt icons and 10.5 pt labels.</li>
+    <li><b>Type:</b> SF Pro for text (13 pt body, 14 pt titles), and SF Pro Rounded for big numbers (34 pt temperature, 54 pt timer).</li>
+    <li><b>Icons:</b> SF Symbols. Weather uses the multicolour set; everything else is monochrome.</li>
+    <li><b>Motion:</b> one spring for open, close and tool morphs. Art glow and weather motion run only while open.</li>
+    <li><b>Platy:</b> in the header, the pill and empty states, and nowhere else.</li>
+  </ul>
+
+  <h2>Behaviour fixes already underway</h2>
+  <ul>
+    <li><b>Search ranking:</b> tools first, then commands, then memory.</li>
+    <li><b>⌥⌘K:</b> from another app it takes focus and opens search. It closes the panel only when the panel already has focus and search is open.</li>
+  </ul>
+
+  <h2>Decisions for you</h2>
+  <div class="call"><b>1</b>Dock: the 8 tools in figure A. Should Focus get its own button, or stay a mode inside Timer?</div>
+  <div class="call"><b>2</b>Colour comes from album art and weather. This deliberately relaxes the strict monochrome rule.</div>
+  <div class="call"><b>3</b>Weather location comes from macOS Location, with a city name you can set if you'd rather not share it.</div>
+  <div class="call"><b>4</b>Music empty state: suggestions come from the last-played app's recents where available, otherwise only "Resume".</div>
+
+  <h2>Build order</h2>
+  <ol>
+    <li><b>Search and ⌥⌘K</b> (in progress).</li>
+    <li><b>Home:</b> the Now Playing and Today cards, the weather backgrounds and the empty states.</li>
+    <li><b>The dock and in-panel tools:</b> Timer, Note, Remind, Clipboard, Shelf, Memory, Games.</li>
+    <li><b>Presets</b> with preview, the Dock settings, the pill states and the Agents polish.</li>
+  </ol>
+  <p>Each step merges to main on its own, after review and CI, so you can test as it lands.</p>
+</div>
+</div>
