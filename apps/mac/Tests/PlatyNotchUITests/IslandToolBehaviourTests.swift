@@ -223,6 +223,52 @@ final class IslandToolBehaviourTests: DefaultsTestCase {
         XCTAssertEqual(closed, 1, "and the panel stays")
     }
 
+    /// An approval waits: the panel stays in the approval peek with the keyboard, so a ⌘V
+    /// could land on the card. Return only copies and says so; nothing closes or pastes.
+    func testClipboardReturnOnlyCopiesWhileAnApprovalWaits() {
+        let item = ClipItem(kind: .text("hello"), copiedAt: Date())
+        let clip = FakeClipboard()
+        var closed = 0
+        let message = ClipboardTool.choose(item, copyOnly: false, clipboard: clip, target: FakeTarget(),
+                                           approvalPending: true, close: { closed += 1 })
+        XCTAssertEqual(clip.pasted.count, 0, "never a synthetic ⌘V while an approval waits")
+        XCTAssertEqual(clip.copied.count, 1)
+        XCTAssertEqual(closed, 0)
+        XCTAssertEqual(message, ClipboardTool.copiedMessage)
+        XCTAssertEqual(ClipboardTool.copiedMessage, "Copied. Press ⌘V")
+    }
+
+    /// The paste target is never "ours unaware": our panel keeping the keyboard marks it ours,
+    /// so the paster only copies (the clipboard picker's guard).
+    func testPasteTargetIsOursWhenThePanelKeepsTheKeyboard() {
+        let app = NSRunningApplication.current
+        XCTAssertTrue(ClipboardTool.target(app: app, panelKeepsKey: false)?.isOurs ?? false, "PlatyNotch itself")
+        if let other = NSWorkspace.shared.runningApplications.first(where: { $0.processIdentifier != app.processIdentifier }) {
+            XCTAssertFalse(ClipboardTool.target(app: other, panelKeepsKey: false)?.isOurs ?? true)
+            XCTAssertTrue(ClipboardTool.target(app: other, panelKeepsKey: true)?.isOurs ?? false)
+        }
+    }
+
+    /// ⌘↩ in the search field copies only; plain ↩ pastes.
+    func testCommandReturnKeyPathCopiesOnly() {
+        XCTAssertEqual(ClipboardTool.returnCopiesOnly(modifiers: .command), true)
+        XCTAssertEqual(ClipboardTool.returnCopiesOnly(modifiers: []), false)
+        XCTAssertEqual(ClipboardTool.returnCopiesOnly(modifiers: .shift), false)
+    }
+
+    /// The Shelf reads file sizes once (on appear or when the items change), not per redraw.
+    func testShelfSizesAreCachedNotReadPerRedraw() throws {
+        let root = tempDir()
+        let f = root.appendingPathComponent("a.bin")
+        try Data(count: 2_000).write(to: f)
+        let items = [ShelfItem(kind: .file(ShelfFileRef(path: f.path)), addedAt: Date())]
+        let sizes = ShelfTool.sizes(items)
+        XCTAssertEqual(sizes[f.path], "2 KB")
+        try Data(count: 9_000_000).write(to: f)
+        XCTAssertEqual(ShelfTool.rows(items, sizes: sizes).first?.detail, "2 KB", "rows use the cache")
+        XCTAssertEqual(ShelfTool.rows(items, sizes: [:]).first?.detail, "Missing")
+    }
+
     // MARK: - Timer column
 
     func testTimerColumnListsRunningTimersInEveryMode() {

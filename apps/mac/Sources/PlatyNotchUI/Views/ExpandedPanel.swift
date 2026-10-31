@@ -135,6 +135,7 @@ struct ExpandedPanel: View {
                 .padding(.top, searching ? 0 : (open == nil ? HomeMetrics.gap : ToolHost.gap))
                 .environment(\.openPanelRoute, { route = $0 })   // the games tile opens its tool
                 .environment(\.closePanel, { [onCollapse] in onCollapse() })
+                .environment(\.approvalPending, !store.approvals.isEmpty)
                 .environment(\.openMemorySettings, { [memory] in memory.onOpenSettings() })   // empty states' one button
         }
         .coordinateSpace(name: Self.space)

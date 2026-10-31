@@ -15,7 +15,17 @@ private struct ClosePanelKey: EnvironmentKey {
     static let defaultValue: @MainActor () -> Void = {}
 }
 
+private struct ApprovalPendingKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 extension EnvironmentValues {
+    /// An approval waits: the panel stays in the approval peek and keeps the keyboard.
+    var approvalPending: Bool {
+        get { self[ApprovalPendingKey.self] }
+        set { self[ApprovalPendingKey.self] = newValue }
+    }
+
     /// Closes the open panel (a tool that hands the keyboard back, like Clipboard's paste).
     var closePanel: @MainActor () -> Void {
         get { self[ClosePanelKey.self] }
@@ -35,21 +45,34 @@ struct ClipboardTool: View {
     @State private var selected = 0
     @FocusState private var focused: Bool
     @Environment(\.closePanel) private var closePanel
+    @Environment(\.approvalPending) private var approvalPending
+    @State private var message: String?
 
-    /// The app to paste into: the frontmost one (the notch panel never activates PlatyNotch).
-    static func frontmostTarget() -> PasteTarget? {
-        NSWorkspace.shared.frontmostApplication.map { RunningAppTarget(app: $0) }
+    static let copiedMessage = "Copied. Press \u{2318}V"
+
+    /// The app to paste into, with the clipboard picker's guard (`ClipPickerPanel.choose`):
+    /// when our panel keeps the keyboard, the target is ours and the paster only copies, so a
+    /// ⌘V never lands on PlatyNotch (an approval card).
+    static func target(app: NSRunningApplication?, panelKeepsKey: Bool) -> PasteTarget? {
+        app.map { RunningAppTarget(app: $0, ourWindowWasKey: panelKeepsKey) }
     }
 
-    /// ↩ / a click: close the panel and paste into `target`. ⌘↩ / Copy: copy only, the panel stays.
+    /// ⌘↩ copies only; ↩ pastes.
+    static func returnCopiesOnly(modifiers: EventModifiers) -> Bool { modifiers.contains(.command) }
+
+    /// ↩ / a click: close the panel and paste into `target`. ⌘↩ / Copy, or any approval
+    /// waiting (the panel then stays in the approval peek with the keyboard): copy only, the
+    /// panel stays, and the message says so.
+    @discardableResult
     static func choose(_ item: ClipItem, copyOnly: Bool, clipboard: ClipboardPasting, target: PasteTarget?,
-                       close: () -> Void) {
-        if copyOnly {
+                       approvalPending: Bool = false, close: () -> Void) -> String? {
+        if copyOnly || approvalPending {
             clipboard.copy(item)
-            return
+            return copiedMessage
         }
         close()
         clipboard.paste(item, to: target)
+        return nil
     }
 
     static let maskedText = "•••••••• (looks like a secret)"
@@ -96,13 +119,17 @@ struct ClipboardTool: View {
                 pick(rows[selected], copyOnly: false)
             }
             .onKeyPress(.return, phases: .down) { press in
-                guard press.modifiers.contains(.command), selected < rows.count else { return .ignored }
+                guard Self.returnCopiesOnly(modifiers: press.modifiers), selected < rows.count else { return .ignored }
                 pick(rows[selected], copyOnly: true)
                 return .handled
             }
             .onKeyPress(.upArrow) { selected = max(0, selected - 1); return .handled }
             .onKeyPress(.downArrow) { selected = min(max(0, rows.count - 1), selected + 1); return .handled }
-            .onChange(of: query) { _, _ in selected = 0 }
+            .onChange(of: query) { _, _ in selected = 0; message = nil }
+            if let message {
+                Text(verbatim: message).font(DS.font(TypeScale.caption)).foregroundStyle(DS.secondary)
+                    .padding(.horizontal, 4)
+            }
             if rows.isEmpty {
                 ToolEmptyLine(text: clipboard.items.isEmpty ? Self.empty : "Nothing matches \u{201C}\(query)\u{201D}.")
             } else {
@@ -129,6 +156,9 @@ struct ClipboardTool: View {
     }
 
     private func pick(_ item: ClipItem, copyOnly: Bool) {
-        Self.choose(item, copyOnly: copyOnly, clipboard: clipboard, target: Self.frontmostTarget(), close: closePanel)
+        // An approval keeps the panel (and the keyboard) after closing: then copy only.
+        let target = Self.target(app: NSWorkspace.shared.frontmostApplication, panelKeepsKey: approvalPending)
+        message = Self.choose(item, copyOnly: copyOnly, clipboard: clipboard, target: target,
+                              approvalPending: approvalPending, close: closePanel)
     }
 }

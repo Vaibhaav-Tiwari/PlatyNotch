@@ -11,17 +11,33 @@ import SwiftUI
 /// "Clear" and "AirDrop all" sit in the header. Empty: the dashed drop box with Platy.
 struct ShelfTool: View {
     let shelf: ShelfWidget
+    @State private var sizes: [String: String] = [:]
 
     static let empty = "Drop files here to keep them"
 
-    /// Name and detail for each item: a file's size, "Text", or a link's host. Reads only the
-    /// file's attributes (never a bookmark refresh, which would redraw the list).
+    /// Each file's size by path, read once (on appear and when the items change), never per
+    /// redraw.
+    static func sizes(_ items: [ShelfItem]) -> [String: String] {
+        var out: [String: String] = [:]
+        for case .file(let ref) in items.map(\.kind) {
+            if let size = (try? FileManager.default.attributesOfItem(atPath: ref.path)[.size] as? NSNumber)?.int64Value {
+                out[ref.path] = ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+            }
+        }
+        return out
+    }
+
+    /// Name and detail for each item: a file's size (read now), "Text", or a link's host.
     static func rows(_ items: [ShelfItem]) -> [(title: String, detail: String)] {
+        rows(items, sizes: sizes(items))
+    }
+
+    /// The same with sizes from the cache (no file reads, no bookmark refresh).
+    static func rows(_ items: [ShelfItem], sizes: [String: String]) -> [(title: String, detail: String)] {
         items.map { item in
             switch item.kind {
             case .file(let ref):
-                let size = (try? FileManager.default.attributesOfItem(atPath: ref.path)[.size] as? NSNumber)?.int64Value
-                return (ref.name, size.map { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) } ?? "Missing")
+                return (ref.name, sizes[ref.path] ?? "Missing")
             case .text(let t):
                 return (t.components(separatedBy: .newlines).first ?? t, "Text")
             case .url(let u):
@@ -45,7 +61,7 @@ struct ShelfTool: View {
             if shelf.items.isEmpty {
                 emptyBox
             } else {
-                let rows = Self.rows(shelf.items)
+                let rows = Self.rows(shelf.items, sizes: sizes)
                 ToolList(items: Array(zip(shelf.items, rows))) { pair in
                     ShelfToolRow(shelf: shelf, item: pair.0, title: pair.1.title, detail: pair.1.detail)
                 }
@@ -64,7 +80,11 @@ struct ShelfTool: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .onAppear { shelf.refreshMissing() }
+        .onAppear {
+            shelf.refreshMissing()
+            sizes = Self.sizes(shelf.items)
+        }
+        .onChange(of: shelf.items) { _, items in sizes = Self.sizes(items) }
     }
 
     private var emptyBox: some View {
