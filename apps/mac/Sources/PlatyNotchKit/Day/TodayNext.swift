@@ -78,6 +78,26 @@ public enum TodayNextModel {
         return .free(label: label, days: week(from: now, mark: next, calendar: calendar, locale: locale))
     }
 
+    /// The start of each day from today through the next six that a not-declined event
+    /// touches (a multi-day event marks every day it spans; an event ending at midnight
+    /// does not mark the next day).
+    public static func daysWithEvents(_ events: [(start: Date, end: Date, declined: Bool)], now: Date,
+                                      calendar: Calendar) -> Set<Date> {
+        let first = calendar.startOfDay(for: now)
+        guard let limit = calendar.date(byAdding: .day, value: 7, to: first) else { return [] }
+        var days: Set<Date> = []
+        for e in events where !e.declined && e.end > first && e.start < limit {
+            var day = calendar.startOfDay(for: max(e.start, first))
+            let last = max(e.start, e.end.addingTimeInterval(-1))
+            while day < limit, day <= last {
+                days.insert(day)
+                guard let next = calendar.date(byAdding: .day, value: 1, to: day) else { break }
+                day = next
+            }
+        }
+        return days
+    }
+
     /// Seven days from today; `mark` (a day's start) wears the circle.
     public static func week(from now: Date, mark: Date?, calendar: Calendar, locale: Locale) -> [WeekDay] {
         let weekday = formatter("EEEEEE", calendar: calendar, locale: locale)
@@ -97,11 +117,6 @@ public enum TodayNextModel {
     }
 
     private static func formatter(_ format: String, calendar: Calendar, locale: Locale) -> DateFormatter {
-        let f = DateFormatter()
-        f.calendar = calendar
-        f.timeZone = calendar.timeZone
-        f.locale = locale
-        f.dateFormat = format
-        return f
+        FormatterCache.formatter(format, template: false, calendar: calendar, locale: locale)
     }
 }

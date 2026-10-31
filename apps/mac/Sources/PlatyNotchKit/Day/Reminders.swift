@@ -95,11 +95,6 @@ public enum QuickAddFormat {
     }
 
     private static func format(_ d: Date, _ template: String, calendar: Calendar, locale: Locale) -> String {
-        let f = DateFormatter()
-        f.calendar = calendar
-        f.timeZone = calendar.timeZone
-        f.locale = locale
-        f.setLocalizedDateFormatFromTemplate(template)
-        return f.string(from: d)
+        FormatterCache.formatter(template, template: true, calendar: calendar, locale: locale).string(from: d)
     }
 }
