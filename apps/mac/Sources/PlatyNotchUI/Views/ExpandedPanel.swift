@@ -30,6 +30,8 @@ struct ExpandedPanel: View {
     let onCollapse: () -> Void
     /// Opens the Settings window (the gear; mouse only, no keyboard shortcut).
     var onOpenSettings: () -> Void = {}
+    /// Keep awake, Mirror and the battery badge in the header; nil leaves just the gear.
+    var header: HeaderServices?
     /// Now's hero selection (the panel model's; reset on each open).
     var deck: Binding<HeroDeck> = .constant(HeroDeck())
     /// Renders only: Now at a fixed time.
@@ -267,16 +269,21 @@ struct ExpandedPanel: View {
                 .help(text)
                 .accessibilityLabel(text)
             }
-            Button(action: onOpenSettings) {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 20, height: 20)
-                    .contentShape(Rectangle())
+            if let header {
+                HeaderToggles(services: header, widgets: widgets, route: $route, onOpenSettings: onOpenSettings,
+                              fixedNow: fixedNow)
+            } else {
+                Button(action: onOpenSettings) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 20, height: 20)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("PlatyNotch Settings")
+                .accessibilityLabel("Open PlatyNotch Settings")
             }
-            .buttonStyle(.plain)
-            .help("PlatyNotch Settings")
-            .accessibilityLabel("Open PlatyNotch Settings")
             Button(action: onCollapse) {
                 Image(systemName: "chevron.up")
                     .font(.system(size: 11, weight: .semibold))

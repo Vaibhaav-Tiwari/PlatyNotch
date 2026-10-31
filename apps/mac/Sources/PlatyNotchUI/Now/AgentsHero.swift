@@ -3,7 +3,7 @@ import SwiftUI
 
 /// Now's hero for the agents item (spec 6.4, 6.7): Platy at 96 pt showing the aggregate
 /// mood, the most urgent session ("Claude Code · platynotch"), what it is doing, the
-/// counts in words, and one action from `AgentRowAction` (Answer / Open terminal).
+/// counts in words, and one action naming the lead session's host app.
 struct AgentsHero: View {
     let agents: AgentsLive
     let action: AgentRowAction
@@ -11,14 +11,18 @@ struct AgentsHero: View {
     /// The lead session's agent: its icon with the state badge leads the counts line
     /// (user change: agent icons). nil when the core no longer lists that session.
     let lead: AgentBrand?
+    /// The button's title: the lead session's `TerminalFocus.title(for:)`; "Show agents" when it
+    /// has none (the action then opens the Agents view).
+    let openTitle: String?
     let onPrimary: () -> Void
 
     init(agents: AgentsLive, action: AgentRowAction, mood: PlatyMood?, lead: AgentBrand? = nil,
-         onPrimary: @escaping () -> Void) {
+         openTitle: String? = nil, onPrimary: @escaping () -> Void) {
         self.agents = agents
         self.action = action
         self.mood = mood
         self.lead = lead
+        self.openTitle = openTitle
         self.onPrimary = onPrimary
     }
 
@@ -35,7 +39,7 @@ struct AgentsHero: View {
 
     var body: some View {
         HeroLayout(title: agents.title, subtitle: agents.subtitle,
-                   action: HeroAction(title: action.title, systemImage: symbol, run: onPrimary)) {
+                   action: HeroAction(title: openTitle ?? "Show agents", systemImage: symbol, run: onPrimary)) {
             if let mood {
                 PlatyView(mood: mood, size: 96, morphID: MorphID.platy)
             } else {

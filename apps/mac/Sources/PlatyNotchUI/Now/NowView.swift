@@ -154,9 +154,12 @@ struct NowView: View {
     /// Platy at 96 pt beside the most urgent session; its action opens that session's
     /// terminal (the Agents tab when the core no longer lists it).
     private func agentsHero(_ agents: AgentsLive) -> some View {
-        let lead: AgentBrand? = leadSession(agents).map { AgentBrand(agent: $0.agent, agentName: $0.agentName) }
-        return AgentsHero(agents: agents, action: AgentsHero.action(for: agents), mood: platyMood, lead: lead) {
-            if let lead = leadSession(agents) { onOpenTerminal(lead) } else { onOpenAgents() }
+        let leadSession: Session? = leadSession(agents)
+        let lead: AgentBrand? = leadSession.map { AgentBrand(agent: $0.agent, agentName: $0.agentName) }
+        let title: String? = leadSession.flatMap { TerminalFocus.title(for: $0) }
+        return AgentsHero(agents: agents, action: AgentsHero.action(for: agents), mood: platyMood, lead: lead,
+                          openTitle: title) {
+            if let session = leadSession, title != nil { onOpenTerminal(session) } else { onOpenAgents() }
         }
     }
 

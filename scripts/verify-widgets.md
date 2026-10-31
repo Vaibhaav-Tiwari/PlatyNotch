@@ -1496,3 +1496,47 @@ MacBook Pro, with every widget on unless a check says otherwise.
   as a card on Now and is never forced, and old links to tabs and settings pages still
   open the right place.
 
+
+## Quiet Notch phase 1
+
+Run these with a real build on real hardware. Use a scratch folder as the session's
+working directory where a step says so.
+
+- [ ] **290. Open in the Claude app.** Start a session in the Claude desktop app. In
+  Agents the row's button says "Open Claude". Click it: the Claude app comes forward.
+  Quit the Claude app and click again: it launches.
+- [ ] **291. Open in Ghostty.** Run an agent in Ghostty. The button says "Open Ghostty".
+  Click it with another app in front: Ghostty comes forward.
+- [ ] **292. Open a Terminal tab.** Run an agent in the second tab of two Terminal tabs and
+  bring the first tab forward. Click the button ("Open Terminal"): the second tab is
+  selected and the window comes forward. Deny Automation for PlatyNotch in System Settings
+  › Privacy and try again: Terminal comes forward and nothing else happens.
+- [ ] **293. Open an iTerm2 tab.** The same with two iTerm2 tabs ("Open iTerm"): the right
+  session is selected.
+- [ ] **294. Open a tmux pane.** In tmux inside Ghostty with two windows, run an agent in
+  the window that is not showing. The button says "Open Ghostty". Click it: tmux switches
+  to that window and pane, and Ghostty comes forward.
+  Repeat with tmux inside Terminal.app and inside iTerm2: the button says "Open Terminal" /
+  "Open iTerm", tmux switches to the pane, and the app comes forward. Start Ghostty or VS Code from a
+  Terminal shell: the button names Ghostty / Code, not Terminal.
+- [ ] **295. Never a random terminal.** With two terminals open and an agent whose host
+  cannot be found, the button never brings an unrelated terminal forward.
+- [ ] **296. A host app that is gone.** Start a session from an app, then move the app to
+  the Trash. The button says "Show folder" and reveals the working directory in Finder.
+  Delete the working directory too: the button shows "Folder no longer exists" under the
+  notch and opens nothing.
+- [ ] **297. Approval card.** The approval card's secondary button carries the same title
+  as the row.
+- [ ] **298. Keep awake in one click.** Open the panel and click the cup once: it turns
+  amber and shows `2:00` (then `1:59`). Click again: it goes off at once. Right-click it
+  and choose 30 minutes: the next on/off click uses 30 minutes. "Until turned off" shows no
+  time. Turn the System widget off in Settings with keep awake running: the cup stays
+  amber. With `pmset -g assertions`, exactly one PlatyNotch assertion is held.
+- [ ] **299. Keep awake past a sleep.** Start 30 minutes, sleep the Mac for longer, wake
+  it: the cup is off, with no `0:00` or negative time.
+- [ ] **300. Mirror.** With the Mirror widget off, click the video icon: Mirror turns on
+  and opens inside the panel, and the camera starts only after that click.
+- [ ] **301. Battery badge.** Unplugged above 20 %: no battery text. Plug in while below
+  100 %: `NN% charging` in green with a bolt. Unplugged below 20 %: `NN%` in red. Plugged
+  in and full: hidden. The icons are all 16 pt, and VoiceOver reads "Keep awake", "Mirror"
+  and "Settings".

@@ -110,6 +110,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }()
     /// Built-in and plugin widgets. Smoke runs read the saved layout but never write it.
     /// Smoke and perf runs never save the layout (perf-idle forces it through the argument domain).
+    /// Keep awake and the battery for the panel header; the System tile shares its keep awake.
+    private lazy var headerServices: HeaderServices = {
+        let live: Bool = !options.smoke && !options.smokeSettings && !options.perfRun
+        return HeaderServices(keepAwake: KeepAwake(asserter: live ? SystemPowerAsserter() : NoPowerAsserter()),
+                              power: live ? SystemPowerSource() : NoPowerSource())
+    }()
     private lazy var widgets = WidgetRegistry(persist: !options.smoke && !options.smokeSettings && !options.perfRun)
     /// Clipboard history (off by default). Smoke runs get an inert one: no pasteboard, no
     /// hot key, no events, nothing on disk.
@@ -188,7 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `.noindex` names (Spotlight). Smoke runs read and write nothing.
         if !options.smoke, !options.smokeSettings { PrivateFolder.migrateToNoIndex(home: CorePaths.home()) }
         handleTerminationSignals()
-        TerminalFocus.startTracking()
+        TerminalFocus.noticeSink = { [weak self] in self?.router.showNotice($0) }
         repointHookBinary()
         if !options.externalCore {
             // Each launch gets the Keychain secrets config.json refers to, so the core
@@ -250,7 +256,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // be the terminal's, and could prompt for it).
         if options.smoke || options.smokeSettings { today.nowPlaying.sendsAppleEvents = false }
         BuiltInWidgets.register(in: widgets, store: store, today: today,
-                                persist: !options.smoke && !options.smokeSettings, clipboard: clipboard)
+                                persist: !options.smoke && !options.smokeSettings, clipboard: clipboard,
+                                keepAwake: headerServices.keepAwake)
+        headerServices.start()
         let router = self.router
         widgets.appPeeks = { [weak router] in router?.peekView(id: $0) }
         // The Finder service is inert until picked; smoke runs never offer it.
@@ -302,6 +310,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         capture.revertManualAccessibility(wait: true)
         widgets.stopAll()
+        headerServices.keepAwake.stop()
+        headerServices.stop()
         supervisor?.stop()
     }
 
@@ -511,9 +521,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let c = NotchController(store: store, client: client, plugins: plugins, responder: responder,
                                     today: today, widgets: widgets, surfaces: surfaces, memory: memory,
                                     extraTabs: pluginTabs,
-                                    onOpenTerminal: { TerminalFocus.focus(session: $0) },
+                                    onOpenTerminal: { TerminalFocus.open($0) },
                                     appearance: appearance,
                                     carryOver: state)
+            c.header = headerServices
             c.onOpenSettings = { [weak self] in self?.openSettings(section: nil) }
             c.onOpenAgentSettings = { [weak self] in self?.openSettings(section: "agents") }
             c.nowSettingsChanged(NowSettings.load(from: .standard))
@@ -606,6 +617,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             failure = "bundled sounds missing (\(UIResources.bundleName))"
         }
         widgets.stopAll()
+        headerServices.keepAwake.stop()
+        headerServices.stop()
         await client.stop()
         supervisor?.stop()
         if let failure {

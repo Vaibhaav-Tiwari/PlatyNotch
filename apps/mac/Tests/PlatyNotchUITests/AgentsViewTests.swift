@@ -10,10 +10,34 @@ import XCTest
 final class AgentsViewTests: DefaultsTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
 
+    private let claudeApp = "com.anthropic.claudefordesktop"
+    /// Names the Claude app and nothing else, for this test only.
+    private func stubHostNames() {
+        let saved = HostAppName.lookup
+        HostAppName.lookup = { $0 == "com.anthropic.claudefordesktop" ? "Claude" : nil }
+        addTeardownBlock { @MainActor in HostAppName.lookup = saved }
+    }
+
     private func session(_ key: String, _ state: SessionState, agent: String = "claude-code",
-                         updated: TimeInterval = 0) -> Session {
+                         updated: TimeInterval = 0, host: String? = "com.anthropic.claudefordesktop",
+                         cwd: String? = nil) -> Session {
         Session(key: key, agent: agent, agentName: agent == "codex" ? "Codex" : "Claude Code", sessionID: key,
-                project: key, state: state, startedAt: t0, updatedAt: t0.addingTimeInterval(updated))
+                cwd: cwd, project: key, state: state, hostBundleID: host, startedAt: t0,
+                updatedAt: t0.addingTimeInterval(updated))
+    }
+
+    func testRowButtonNamesTheHostApp() {
+        stubHostNames()
+        XCTAssertEqual(AgentRow.texts(session("p", .active), attention: .working, now: t0).last, "Open Claude")
+    }
+
+    func testUnknownHostRowSaysShowFolder() {
+        stubHostNames()
+        let s = session("p", .active, host: "com.example.gone", cwd: "/w/p")
+        XCTAssertEqual(AgentRow.texts(s, attention: .working, now: t0).last, "Show folder")
+        let none = session("p", .active, host: nil)
+        XCTAssertNil(TerminalFocus.title(for: none), "no host and no folder: no button")
+        XCTAssertEqual(AgentRow.texts(none, attention: .working, now: t0).count, 2)
     }
 
     private func usage(_ json: String) -> Usage {
@@ -137,24 +161,26 @@ final class AgentsViewTests: DefaultsTestCase {
     }
 
     func testRowSaysTheStateInWords() {
+        stubHostNames()
         let shown = AgentsView(sessions: [session("p", .waitingInput)], usage: Usage(), log: AgentFinishLog(),
                                onOpenTerminal: { _ in }, onConnect: {}).visibleTexts(now: t0)
         XCTAssertTrue(shown.contains("Needs your input"), "\(shown)")
-        XCTAssertEqual(shown.last, "Answer")
+        XCTAssertEqual(shown.last, "Open Claude")
     }
 
     /// A working session with only a tool says it once ("Edit · just now"), not again below.
     func testLastActionNotRepeated() {
+        stubHostNames()
         var s = session("p", .active)
         s.tool = "Edit"
-        XCTAssertEqual(AgentRow.texts(s, attention: .working, now: t0), ["p", "Edit · just now", "Open terminal"])
+        XCTAssertEqual(AgentRow.texts(s, attention: .working, now: t0), ["p", "Edit · just now", "Open Claude"])
         s.message = "Edit\u{200B} a.swift"
         XCTAssertEqual(AgentRow.texts(s, attention: .working, now: t0),
-                       ["p", "Edit · just now", "Edit⟨U+200B⟩ a.swift", "Open terminal"])
+                       ["p", "Edit · just now", "Edit⟨U+200B⟩ a.swift", "Open Claude"])
         var ask = session("q", .waitingInput)
         ask.tool = "AskUserQuestion"
         XCTAssertEqual(AgentRow.texts(ask, attention: .needsYou, now: t0),
-                       ["q", "Needs your input", "AskUserQuestion", "Answer"])
+                       ["q", "Needs your input", "AskUserQuestion", "Open Claude"])
     }
 
     /// Approvals above leave little room: the header steps aside so a row still shows.
@@ -166,13 +192,14 @@ final class AgentsViewTests: DefaultsTestCase {
 
     /// Needs you and errors are counted apart; an errored row offers Open terminal.
     func testCountsSeparateErrors() {
+        stubHostNames()
         var log = AgentFinishLog()
         log.noteFailure(sessionKey: "err", at: t0)
         let sessions = [session("ask", .waitingInput), session("err", .idle), session("w1", .active),
                         session("w2", .active)]
         let view = AgentsView(sessions: sessions, usage: Usage(), log: log, onOpenTerminal: { _ in }, onConnect: {})
         XCTAssertEqual(view.countsLine(now: t0.addingTimeInterval(5)), "4 sessions · 1 needs you · 1 error")
-        XCTAssertEqual(AgentRow.texts(sessions[1], attention: .errored, now: t0).last, "Open terminal")
+        XCTAssertEqual(AgentRow.texts(sessions[1], attention: .errored, now: t0).last, "Open Claude")
         let two = AgentsView(sessions: [session("a", .idle), session("b", .idle)], usage: Usage(),
                              log: { var l = AgentFinishLog(); l.noteFailure(sessionKey: "a", at: t0)
                                     l.noteFailure(sessionKey: "b", at: t0); return l }(),

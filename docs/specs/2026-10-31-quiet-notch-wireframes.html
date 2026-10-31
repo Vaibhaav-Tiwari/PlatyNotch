@@ -1,0 +1,328 @@
+<title>PlatyNotch Quiet Notch</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow reading column; wireframes break out to a wider track and scroll sideways on phones. */
+:root {
+  --bg: #f3f3f1;
+  --fg: #1d1d1b;
+  --muted: #6b6b66;
+  --rule: #d9d9d4;
+  --card: #ffffff;
+  --mark: #b4541f;          /* the one accent: used for "changes" and decision markers */
+  --ok: #2f8f4e; --warn: #b7791f; --bad: #c0392b;
+  --sans: "IBM Plex Sans", -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --mac: -apple-system, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  --macmono: ui-monospace, "SF Mono", Menlo, monospace;
+  /* the notch panel itself is always black, in both page themes */
+  --p-bg: #000; --p-fg: rgba(255,255,255,.92); --p-2: rgba(255,255,255,.56); --p-3: rgba(255,255,255,.32);
+  --p-line: rgba(255,255,255,.10); --p-fill: rgba(255,255,255,.07);
+  --p-green: #32d74b; --p-amber: #ffb340; --p-red: #ff6961; --p-claude: #d97757;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #161615; --fg: #ecece8; --muted: #9a9a94; --rule: #2e2e2b; --card: #1f1f1d; --mark: #e58a52;
+  --ok: #57c27a; --warn: #e0a64a; --bad: #ec6b5e; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #161615; --fg: #ecece8; --muted: #9a9a94; --rule: #2e2e2b; --card: #1f1f1d; --mark: #e58a52;
+  --ok: #57c27a; --warn: #e0a64a; --bad: #ec6b5e; color-scheme: dark }
+
+body { background: var(--bg); color: var(--fg); font: 15px/1.6 var(--sans); }
+.wrap { max-width: 1040px; margin: 0 auto; padding-block: 40px 80px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.col { max-width: 680px; }
+h1 { font-size: 30px; line-height: 1.2; font-weight: 600; margin: 0 0 6px; text-wrap: balance; }
+h2 { font-size: 19px; font-weight: 600; margin: 44px 0 10px; text-wrap: balance; }
+h3 { font-size: 15px; font-weight: 600; margin: 22px 0 6px; }
+p, li { margin: 0 0 8px; }
+ul { padding-left: 20px; margin: 0 0 10px; }
+.lede { color: var(--muted); margin-bottom: 18px; }
+.meta { font: 12px/1.4 var(--mono); color: var(--muted); letter-spacing: .02em; }
+code { font: 13px var(--mono); }
+.tag { font: 500 11px var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--mark); }
+.box { border: 1px solid var(--rule); background: var(--card); border-radius: 8px; padding: 14px 16px; }
+.decide { border-left: 3px solid var(--mark); padding: 4px 0 4px 14px; margin: 10px 0; }
+.tablewrap { overflow-x: auto; margin: 8px 0 12px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 560px; }
+th, td { text-align: left; padding: 7px 10px 7px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font: 500 11px var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+td.gone { color: var(--muted); text-decoration: line-through; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.grid2 > * { min-width: 0; }
+
+/* ---------- wireframes ---------- */
+.figs { display: grid; gap: 28px; margin-top: 14px; }
+figure { margin: 0; min-width: 0; }
+figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; max-width: 680px; }
+figcaption b { color: var(--fg); font-weight: 600; }
+.stage { overflow-x: auto; padding: 0 0 4px; }
+.desk { width: 640px; background: linear-gradient(180deg, #8a8f96, #b8bcc1); border-radius: 10px; padding: 0 0 18px; }
+.menubar { height: 22px; display: flex; justify-content: space-between; align-items: center; padding: 0 12px;
+  font: 12px var(--mac); color: rgba(0,0,0,.75); }
+.panel { width: 600px; margin: -22px auto 0; background: var(--p-bg); color: var(--p-fg); font: 13px/1.35 var(--mac);
+  border-radius: 0 0 22px 22px; padding: 30px 18px 16px; position: relative; }
+.panel.small { width: 360px; padding-top: 28px; }
+.pillbar { width: 230px; height: 32px; margin: -22px auto 0; background: #000; border-radius: 0 0 12px 12px;
+  display: flex; align-items: center; justify-content: space-between; padding: 0 12px; color: var(--p-fg); font: 12px var(--mac); }
+.hdr { display: flex; align-items: center; gap: 14px; color: var(--p-2); font-size: 12px; margin-bottom: 14px; }
+.hdr .tabs { display: flex; gap: 14px; }
+.hdr .tabs span.on { color: var(--p-fg); font-weight: 600; }
+.hdr .sp { flex: 1; }
+.platy { width: 20px; height: 15px; flex: none; display: inline-block; vertical-align: -3px; }
+.ic { width: 16px; height: 16px; display: inline-block; vertical-align: -3px; }
+.ic svg { width: 16px; height: 16px; }
+.icbtn { color: var(--p-2); display: inline-flex; align-items: center; gap: 4px; }
+.icbtn.on { color: var(--p-amber); }
+.row { display: flex; gap: 14px; align-items: center; }
+.sep { height: 1px; background: var(--p-line); margin: 12px 0; }
+.art { width: 54px; height: 54px; border-radius: 8px; background: linear-gradient(135deg,#3b4b63,#a3707a); flex: none; }
+.t1 { font-weight: 600; font-size: 13px; }
+.t2 { color: var(--p-2); font-size: 12px; }
+.t3 { color: var(--p-3); font-size: 11px; }
+.ctl { display: flex; gap: 16px; color: var(--p-fg); align-items: center; }
+.bar { height: 3px; border-radius: 2px; background: var(--p-line); position: relative; margin-top: 8px; }
+.bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; background: var(--p-2); }
+.cols { display: grid; grid-template-columns: 1.15fr 1fr; gap: 22px; }
+.cols > * { min-width: 0; }
+.vline { border-left: 1px solid var(--p-line); padding-left: 22px; }
+.lbl { font-size: 11px; color: var(--p-3); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; }
+.li { display: flex; gap: 10px; align-items: baseline; padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.li .tm { color: var(--p-2); width: 58px; flex: none; font-variant-numeric: tabular-nums; }
+.dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex: none; }
+.chip { display: inline-flex; align-items: center; gap: 6px; background: var(--p-fill); border-radius: 999px; padding: 3px 10px;
+  font-size: 12px; color: var(--p-fg); font-variant-numeric: tabular-nums; }
+.cmd { display: flex; align-items: center; gap: 8px; background: var(--p-fill); border-radius: 8px; padding: 7px 10px; color: var(--p-3); font-size: 13px; }
+.cmd b { color: var(--p-fg); font-weight: 400; }
+.kbd { font: 11px var(--macmono); color: var(--p-3); border: 1px solid var(--p-line); border-radius: 4px; padding: 0 4px; }
+.agent { display: grid; grid-template-columns: 18px 1fr auto auto; gap: 10px; align-items: center; padding: 7px 0; }
+.agent + .agent { border-top: 1px solid var(--p-line); }
+.logo { width: 16px; height: 16px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; }
+.btn { font-size: 12px; color: var(--p-fg); background: var(--p-fill); border-radius: 6px; padding: 3px 9px; white-space: nowrap; }
+.btn.go { color: var(--p-green); background: rgba(50,215,75,.12); }
+.mono { font: 12px var(--macmono); }
+.approval { background: #111; border-radius: 12px; padding: 12px; margin: 4px 0 10px; }
+.code { background: var(--p-fill); border-radius: 6px; padding: 7px 9px; margin: 8px 0; font: 12px var(--macmono); color: var(--p-fg);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.note { position: absolute; font: 500 11px var(--mono); color: var(--mark); background: var(--card); border: 1px solid var(--mark);
+  border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+.drop { border: 1.5px dashed var(--p-3); border-radius: 10px; height: 74px; display: flex; align-items: center; justify-content: center; gap: 22px; color: var(--p-2); font-size: 12px; }
+@media (prefers-reduced-motion: no-preference) { a { transition: color .15s } }
+a { color: var(--mark); }
+</style>
+
+<div class="wrap">
+<div class="col">
+  <p class="meta">PlatyNotch v0.3 · design proposal · 31 Oct 2026 · 4 min read</p>
+  <h1>Quiet Notch: fewer surfaces, only what's live</h1>
+  <p class="lede">The redesign put every feature on screen at once. This proposal cuts the panel to two views, moves the long tail into Settings and a command line, returns to the dense v0.2 visual style, and fixes Open terminal. Nothing gets built until you say go ahead.</p>
+
+  <h2>What's wrong today</h2>
+  <ul>
+    <li><b>Library is a drawer of everything.</b> Twelve identical tiles: Weather next to Games, Platy Chase separate from Games, Focus next to Music. No product in the survey does this.</li>
+    <li><b>It looks generated.</b> Big bordered hero cards, 28 pt titles, teal everywhere, tinted squares behind every icon, a "Cl" monogram that reads as "CI".</li>
+    <li><b>Hidden features.</b> Keep Awake lives inside the Battery tile, so nobody finds it.</li>
+    <li><b>Open terminal is wrong.</b> Your sessions run in the Claude app and agent-orchestrator, not Terminal or iTerm2, so the app guessed and opened whichever terminal was last used.</li>
+    <li><b>v0.2 looked better</b> because it was dense, black and small-typed, with real agent glyphs and keycaps.</li>
+  </ul>
+
+  <h2>What the best notch apps do</h2>
+  <p>A survey of NotchNook, Alcove, boring.notch, Atoll, DynamicNotch, DynamicLake, NotchDrop and the agent apps (Vibe Island, Notchly) found the same pattern:</p>
+  <ul>
+    <li>Three to five things in the panel at most. The rest are switches in Settings.</li>
+    <li>Things appear when they matter: the file tray on drag, battery when you plug in, a timer while it runs.</li>
+    <li>One job per surface. Nobody ships an app grid.</li>
+    <li>Agent apps use a status-first row list with one click to the exact terminal, and approvals in place with keyboard shortcuts.</li>
+  </ul>
+</div>
+
+<h2>The new structure</h2>
+<div class="col">
+  <p>Two views, <b>Home</b> and <b>Agents</b>. Agents only shows when agent hooks are set up. No Library. One header row carries the always-available toggles, and a command line (<span class="kbd">⌘K</span> or just start typing) handles everything that used to be a tile.</p>
+</div>
+
+<div class="figs">
+
+<figure>
+  <div class="stage"><div class="desk">
+    <div class="menubar"><span>Finder &nbsp;File &nbsp;Edit</span><span>Fri 31 Oct 2:59 PM</span></div>
+    <div class="panel">
+      <div class="hdr">
+        <svg class="platy" viewBox="0 0 22 16" aria-label="Platy"><ellipse cx="9" cy="8.5" rx="7" ry="6" fill="#3f8f7f"/><ellipse cx="17" cy="10" rx="4.6" ry="2.6" fill="#e7c48f"/><circle cx="7" cy="6.8" r="1.2" fill="#111"/><circle cx="11" cy="6.8" r="1.2" fill="#111"/></svg>
+        <div class="tabs"><span class="on">Home</span><span>Agents <span class="dot" style="background:var(--p-amber);vertical-align:1px"></span></span></div>
+        <span class="sp"></span>
+        <span>Fri 31 · 14° Clear</span>
+        <span class="icbtn" title="Keep awake"><span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M3 6h8v4a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6Z"/><path d="M11 7h1.2a1.6 1.6 0 0 1 0 3.2H11"/><path d="M6 2.5v2M8.5 2.5v2"/></svg></span></span>
+        <span class="icbtn" title="Mirror"><span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="4" width="9" height="8" rx="2"/><path d="m10.8 7 3.4-2v6l-3.4-2"/></svg></span></span>
+        <span class="icbtn" title="Settings"><span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.8M8 12.4v1.8M1.8 8h1.8M12.4 8h1.8M3.6 3.6l1.3 1.3M11.1 11.1l1.3 1.3M3.6 12.4l1.3-1.3M11.1 4.9l1.3-1.3"/></svg></span></span>
+      </div>
+      <div class="cols">
+        <div>
+          <div class="row">
+            <div class="art"></div>
+            <div style="min-width:0;flex:1">
+              <div class="t1">Weightless</div>
+              <div class="t2">Marconi Union</div>
+              <div class="bar"><i style="width:38%"></i></div>
+              <div class="row" style="justify-content:space-between;margin-top:3px"><span class="t3">2:41</span><span class="t3">-5:12</span></div>
+            </div>
+          </div>
+          <div class="ctl" style="justify-content:center;margin-top:8px">
+            <span>&#9198;</span><span style="font-size:17px">&#10074;&#10074;</span><span>&#9197;</span>
+          </div>
+        </div>
+        <div class="vline">
+          <div class="lbl">Up next</div>
+          <div class="li"><span class="tm">3:44 PM</span><span>Design review</span><span class="t3">in 45 m</span></div>
+          <div class="li"><span class="tm">5:00 PM</span><span>Call Priya</span><span class="t3">reminder</span></div>
+          <div class="li"><span class="tm" style="color:var(--p-red)">Overdue</span><span>Send invoice</span></div>
+        </div>
+      </div>
+      <div class="sep"></div>
+      <div class="cmd"><span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="7" cy="7" r="4.2"/><path d="m10.2 10.2 3.4 3.4"/></svg></span>Add a reminder, start a timer, search memory…<span style="flex:1"></span><span class="kbd">⌘K</span></div>
+    </div>
+  </div></div>
+  <figcaption><b>A. Home, open.</b> 600 pt wide, about a third of today's panel. One media block, one "Up next" list (calendar and reminders merged), one command line. The header holds the date and weather as plain text, plus three icon toggles: Keep awake, Mirror, Settings. No cards, no borders: grouping comes from spacing and one hairline.</figcaption>
+</figure>
+
+<figure>
+  <div class="stage"><div class="desk">
+    <div class="menubar"><span>Finder &nbsp;File &nbsp;Edit</span><span>Fri 31 Oct 2:59 PM</span></div>
+    <div class="panel">
+      <div class="hdr">
+        <svg class="platy" viewBox="0 0 22 16" aria-label="Platy"><ellipse cx="9" cy="8.5" rx="7" ry="6" fill="#3f8f7f"/><ellipse cx="17" cy="10" rx="4.6" ry="2.6" fill="#e7c48f"/><circle cx="7" cy="6.8" r="1.2" fill="#111"/><circle cx="11" cy="6.8" r="1.2" fill="#111"/></svg>
+        <div class="tabs"><span class="on">Home</span><span>Agents</span></div>
+        <span class="sp"></span>
+        <span style="color:var(--p-green)">&#9889; 64% charging</span>
+        <span class="icbtn on" title="Keep awake on"><span class="ic"><svg viewBox="0 0 16 16" fill="currentColor"><path d="M3 6h8v4a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6Z"/><path fill="none" stroke="currentColor" stroke-width="1.3" d="M11 7h1.2a1.6 1.6 0 0 1 0 3.2H11"/></svg></span> 1:20</span>
+        <span class="icbtn"><span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.8" y="4" width="9" height="8" rx="2"/><path d="m10.8 7 3.4-2v6l-3.4-2"/></svg></span></span>
+        <span class="icbtn"><span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.8v1.8M8 12.4v1.8M1.8 8h1.8M12.4 8h1.8"/></svg></span></span>
+      </div>
+      <div class="row" style="gap:8px;margin-bottom:12px">
+        <span class="chip"><span class="dot" style="background:var(--p-amber)"></span>Focus 18:42</span>
+        <span class="chip">Tea timer 3:10</span>
+        <span class="chip"><span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><path d="M2 9.5 4 4h8l2 5.5V12a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V9.5Z"/><path d="M2 9.5h3.5l1 1.5h3l1-1.5H14"/></svg></span>Shelf · 3</span>
+      </div>
+      <div class="drop"><span>Drop to keep on Shelf</span><span style="color:var(--p-3)">|</span><span>AirDrop</span><span style="color:var(--p-3)">|</span><span>Snap window</span></div>
+    </div>
+  </div></div>
+  <figcaption><b>B. Home while things are happening.</b> Running timers, a focus session and a non-empty Shelf become small chips under the header, and disappear when they end. Battery appears in the header only while charging or below 20%. Keep awake shows its remaining time once on. Dragging a file turns the body into drop targets. None of these has a tile.</figcaption>
+</figure>
+
+<figure>
+  <div class="stage"><div class="desk">
+    <div class="menubar"><span>Finder &nbsp;File &nbsp;Edit</span><span>Fri 31 Oct 2:59 PM</span></div>
+    <div class="panel">
+      <div class="hdr">
+        <svg class="platy" viewBox="0 0 22 16" aria-label="Platy"><ellipse cx="9" cy="8.5" rx="7" ry="6" fill="#3f8f7f"/><ellipse cx="17" cy="10" rx="4.6" ry="2.6" fill="#e7c48f"/><circle cx="7" cy="6.8" r="1.2" fill="#111"/><circle cx="11" cy="6.8" r="1.2" fill="#111"/></svg>
+        <div class="tabs"><span>Home</span><span class="on">Agents</span></div>
+        <span class="sp"></span>
+        <span class="mono" style="color:var(--p-2)">Claude 5h 62% · 7d 31%</span>
+        <span class="mono" style="color:var(--p-2)">Codex 5h 18%</span>
+      </div>
+      <div class="approval">
+        <div class="row" style="gap:8px">
+          <span style="color:var(--p-claude);font-size:15px">&#10033;</span><span class="t1">Claude Code</span><span class="t2">platynotch</span>
+          <span class="chip" style="padding:1px 7px;font-size:11px">Bash</span><span class="sp" style="flex:1"></span><span class="t2 mono">4:40</span>
+        </div>
+        <div class="code">rm -rf ./build &amp;&amp; npm test -- --grep "panel"</div>
+        <div class="row" style="justify-content:flex-end;gap:8px"><span class="btn">Deny <span class="kbd">⌘⌫</span></span><span class="btn go">Allow <span class="kbd" style="color:inherit">⌘↩</span></span></div>
+      </div>
+      <div class="agent"><span style="color:var(--p-claude)">&#10033;</span><span><b style="font-weight:600">platynotch</b> <span class="t2">· running tests · 12 m</span></span><span class="dot" style="background:var(--p-green)"></span><span class="btn">Open Claude</span></div>
+      <div class="agent"><span class="logo" style="background:#2a2a2a;color:#fff;font-size:10px">&#9677;</span><span><b style="font-weight:600">agent-orchestrator-207</b> <span class="t2">· waiting for you · 3 m</span></span><span class="dot" style="background:var(--p-amber)"></span><span class="btn">Open Orchestrator</span></div>
+      <div class="agent"><span style="color:var(--p-claude)">&#10033;</span><span><b style="font-weight:600">brian2</b> <span class="t2">· finished · 1 h</span></span><span class="dot" style="background:var(--p-3)"></span><span class="btn">Open Ghostty</span></div>
+      <div class="sep" style="margin:8px 0"></div>
+      <div class="t3">2 open loops · Search memory with ⌘K</div>
+    </div>
+  </div></div>
+  <figcaption><b>C. Agents.</b> Usage is a line of small numbers in the header, not tiles. An approval sits on top in the v0.2 card style: real Claude glyph, command in mono, keycap shortcuts. Each session is one row with project, status, age, a state dot and a button that <b>names the app it will open</b>. Open loops collapse to one line.</figcaption>
+</figure>
+
+<div class="grid2">
+<figure>
+  <div class="stage"><div class="desk" style="width:420px">
+    <div class="menubar"><span>Finder</span><span>2:59 PM</span></div>
+    <div class="pillbar"><svg class="platy" viewBox="0 0 22 16" aria-label="Platy"><ellipse cx="9" cy="8.5" rx="7" ry="6" fill="#3f8f7f"/><ellipse cx="17" cy="10" rx="4.6" ry="2.6" fill="#e7c48f"/><circle cx="7" cy="6.8" r="1.2" fill="#111"/><circle cx="11" cy="6.8" r="1.2" fill="#111"/></svg><span class="row" style="gap:6px"><span class="dot" style="background:var(--p-amber)"></span><span class="mono" style="font-size:11px">18:42</span></span></div>
+    <div style="height:44px"></div>
+  </div></div>
+  <figcaption><b>D. Closed.</b> Platy on the left, one live thing on the right (here a focus timer). With several agents it shows Platy, three dots and "+n", as in the pill hotfix. Approvals always win.</figcaption>
+</figure>
+<figure>
+  <div class="stage"><div class="desk" style="width:420px">
+    <div class="menubar"><span>Finder</span><span>2:59 PM</span></div>
+    <div class="panel small">
+      <div class="cmd" style="color:var(--p-fg)"><b>timer 10m tea</b><span style="flex:1"></span><span class="kbd">↩</span></div>
+      <div style="margin-top:8px">
+        <div class="li"><span class="tm">Timer</span><span>10 minutes · "tea"</span></div>
+        <div class="li" style="color:var(--p-3)"><span class="tm">Also</span><span>focus 25 · remind … · note … · play · search …</span></div>
+      </div>
+    </div>
+    <div style="height:14px"></div>
+  </div></div>
+  <figcaption><b>E. Command line.</b> Replaces the Library. It uses the plain-language parser we already have for reminders.</figcaption>
+</figure>
+</div>
+</div>
+
+<div class="col">
+  <h2>Where every feature goes</h2>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Feature</th><th>Today</th><th>Proposed</th></tr></thead>
+    <tbody>
+      <tr><td>Music</td><td>Hero / tile</td><td>Home media block</td></tr>
+      <tr><td>Calendar, Reminders</td><td>Two tiles + glance</td><td>Home "Up next", merged; add via command line</td></tr>
+      <tr><td>Weather</td><td>Tile</td><td>Plain text in the header ("14° Clear")</td></tr>
+      <tr><td>Battery</td><td>Tile (hides Keep awake)</td><td>Header text only when charging or low, plus a short alert on plug-in</td></tr>
+      <tr><td>Keep awake</td><td>Inside Battery tile</td><td><b>Header icon, one click</b>; shows remaining time</td></tr>
+      <tr><td>Timers, Focus</td><td>Two tiles</td><td>Started from the command line; live chips while running</td></tr>
+      <tr><td>Shelf, AirDrop</td><td>Tile</td><td>Appears on file drag; chip with a count while not empty</td></tr>
+      <tr><td>Mirror</td><td>Tool</td><td>Header icon</td></tr>
+      <tr><td>Agents, approvals, usage</td><td>Agents tab + tiles</td><td>Agents view (C)</td></tr>
+      <tr><td>Open loops, Memory</td><td>Two tiles</td><td>One line in Agents; search via the command line; MCP unchanged</td></tr>
+      <tr><td>Notes, Mail</td><td>Tools</td><td>Off by default; Settings can swap one into Home's right column</td></tr>
+      <tr><td>Water</td><td>Glance + tile</td><td>Off by default; a reminder notification only</td></tr>
+      <tr><td class="gone">Games, Platy Chase</td><td>Two tiles</td><td>One "Games" item in the menu bar menu, and <code>play</code> in the command line</td></tr>
+      <tr><td class="gone">Library</td><td>Tab</td><td>Removed</td></tr>
+      <tr><td>Platy</td><td>Pill, pond scene, moments</td><td>Always in the closed pill and the panel header; fills empty states ("Nothing playing"). Pond scene and celebrations removed</td></tr>
+      <tr><td>HUD, window snapping</td><td>Contextual</td><td>Unchanged</td></tr>
+    </tbody>
+  </table></div>
+
+  <h2>Visual rules</h2>
+  <ul>
+    <li><b>Panel:</b> always black, so it reads as part of the notch, like the Dynamic Island. No light-mode panel. Settings still follows the system.</li>
+    <li><b>Type:</b> SF Pro 13 body, 12 secondary, 11 captions, one 13 semibold title per block. Nothing above 15 pt. SF Mono 12 for commands and numbers.</li>
+    <li><b>Colour:</b> white at three opacities (92/56/32%). Colour only for state: green running, amber needs you, red error. Teal is gone.</li>
+    <li><b>Icons:</b> SF Symbols, monochrome, 14–16 pt, no tinted squares behind them. Agents show their real icon from the installed app; with no app installed we show the name in text, never initials.</li>
+    <li><b>Shape:</b> no bordered cards inside the panel. The only filled surfaces are the approval card, chips and the command line. Radii 6 / 8 / 12, panel bottom 22.</li>
+    <li><b>Motion:</b> one spring for open and close. No bouncing text, ripples or celebrations.</li>
+  </ul>
+
+  <h2>Open terminal, fixed</h2>
+  <div class="box">
+    <p><b>Cause:</b> the hook only records <code>TERM_PROGRAM</code> and the tty. Sessions inside the Claude app or agent-orchestrator have neither, so the app fell back to "most recent terminal".</p>
+    <p><b>Fix:</b> the hook also records <code>__CFBundleIdentifier</code>, which macOS sets for every process an app launches. I checked: your Claude sessions report <code>com.anthropic.claudefordesktop</code>.</p>
+    <ul>
+      <li>The button names that app: "Open Claude", "Open Ghostty", "Open Cursor".</li>
+      <li>It jumps to the exact tab where the app allows it (Terminal, iTerm2, tmux), otherwise brings that app forward.</li>
+      <li>It never guesses. If the app is unknown, the button becomes "Show folder".</li>
+    </ul>
+  </div>
+
+  <h2>Decisions for you</h2>
+  <p class="t-muted" style="color:var(--muted)">These are my calls. Change any of them.</p>
+  <div class="decide"><span class="tag">1</span> Panel always black, no light mode.</div>
+  <div class="decide"><span class="tag">2</span> Remove the pond scene and celebration moments. Platy stays: in the closed pill, the panel header and empty states.</div>
+  <div class="decide"><span class="tag">3</span> Games leave the panel for the menu bar menu.</div>
+  <div class="decide"><span class="tag">4</span> Home's right column is "Up next" by default; Notes or Mail can replace it in Settings.</div>
+
+  <h2>Build order</h2>
+  <ul>
+    <li><b>1. Open terminal fix and the header</b> (Keep awake, Mirror, battery). Small, ships first.</li>
+    <li><b>2. Structure:</b> remove Library, build Home and the command line, move every feature per the table.</li>
+    <li><b>3. Visual pass:</b> black panel, type scale, icons, Agents rows, v0.2 approval card.</li>
+  </ul>
+  <p>Each step merges to main separately, so you can test as it lands. Settings and data carry over; nothing you turned on is lost.</p>
+  <p class="meta" style="margin-top:24px">Sources: NotchNook (iMore, MacStories), Atoll, DynamicNotch and boring.notch GitHub READMEs, DynamicLake review (thesweetbits), Vibe Island review (vibecoding.app), Notchly (iphonesoft.fr), Apple HIG Live Activities.</p>
+</div>
+</div>
