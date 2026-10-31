@@ -222,6 +222,7 @@ enum HomeRenders {
         out.append(("home-nothing-playing", panel(builtIns(meeting: false)), true))
         out.append(("home-drop", panel(builtIns(meeting: false), dropping: true), true))
         out.append(("home-notes-column", panel(builtIns(meeting: false), homeSettings: HomeSettings(rightColumn: .notes)), true))
+        out.append(("home-command", panel(homeRest(), command: "timer 10m tea"), true))
         out.append(("peek-hover", hoverPeek(agentsHero()), true))
         out += AgentsRenders.views()
         out += ToolRenders.views()
@@ -360,15 +361,20 @@ enum HomeRenders {
     /// camera housing, 10 pt at the bottom; clipped, so anything too tall shows.
     static func panel(_ rig: Rig, route: PanelRoute = PanelRoute(destination: .home), extraTabs: [PanelTab] = [],
                       memory: MemoryServices? = nil, memoryMode: MemoryTab.Mode = .search,
-                      homeSettings: HomeSettings = HomeSettings(), dropping: Bool = false,
+                      homeSettings: HomeSettings = HomeSettings(), dropping: Bool = false, command: String? = nil,
                       tourSample: LiveActivity? = nil, now: Date? = nil) -> AnyView {
         let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelMargin
         let height: CGFloat = available
         var current = route
+        let commandModel = PanelViewModel()
+        commandModel.commandText = command ?? ""
+        let logic = CommandLineLogic(model: commandModel, runner: CommandRunner(actions: CommandActions()),
+                                     tools: { [] }, clock: { fixedNow }, calendar: .current)
+        let commandLine = AnyView(CommandLineView(model: commandModel, logic: logic, memory: nil))
         let view = ExpandedPanel(store: rig.store, responder: ApprovalResponder(client: rig.client), arming: ApprovalArming(),
                                  today: rig.today, widgets: rig.registry, memory: memory ?? MemoryServices(client: rig.client),
                                  extraTabs: extraTabs, route: Binding(get: { current }, set: { current = $0 }),
-                                 onCollapse: {}, homeSettings: homeSettings, dropping: dropping,
+                                 onCollapse: {}, homeSettings: homeSettings, commandLine: commandLine, dropping: dropping,
                                  fixedNow: now ?? fixedNow, memoryMode: memoryMode, tourSample: tourSample,
                                  onDecide: { _, _ in }, onOpenTerminal: { _ in })
             .frame(width: width, height: height, alignment: .top)

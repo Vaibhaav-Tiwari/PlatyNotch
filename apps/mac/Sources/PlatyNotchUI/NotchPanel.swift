@@ -14,6 +14,11 @@ final class NotchPanel: NSPanel {
     var onEscape: (() -> Void)?
     /// ⌘1 / ⌘2 while the panel is key: true when it was used (Home, Agents).
     var onCommandDigit: ((Int) -> Bool)?
+    /// ⌘K while the panel is key: focuses the command line (true when used).
+    var onCommandK: (() -> Bool)?
+    /// A printable key no text field took, while the panel is key: starts the command line
+    /// with it (true when used).
+    var onTyped: ((String) -> Bool)?
 
     init(frame: CGRect) {
         super.init(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel],
@@ -87,14 +92,43 @@ final class NotchPanel: NSPanel {
         return digit
     }
 
+    /// ⌘K with no other modifier.
+    static func isCommandK(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown,
+              event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.numericPad, .function]) == .command,
+              let chars = event.charactersIgnoringModifiers else { return false }
+        return chars.lowercased() == "k"
+    }
+
+    /// The text a key types into the command line: printable, with no ⌘ or ⌃ held (⌥ and
+    /// ⇧ make characters). Nil for arrows, Return, Tab, Esc and the rest.
+    static func typedText(_ event: NSEvent) -> String? {
+        guard event.type == .keyDown else { return nil }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags.isDisjoint(with: [.command, .control, .function, .numericPad]),
+              let chars = event.characters, !chars.isEmpty, chars.count == 1,
+              let scalar = chars.unicodeScalars.first else { return nil }
+        let v = scalar.value
+        // Control characters, Delete, and the private-use range arrow keys come in.
+        guard v >= 0x20, v != 0x7F, !(0xF700...0xF8FF).contains(v) else { return nil }
+        return chars
+    }
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         // Only while this panel has the keyboard (never a shortcut another window was sent).
+        if isKeyWindow, Self.isCommandK(event), onCommandK?() == true { return true }
         if isKeyWindow, let digit = Self.commandDigit(event), onCommandDigit?(digit) == true { return true }
         return super.performKeyEquivalent(with: event)
     }
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 { onEscape?() } else { super.keyDown(with: event) }
+        if event.keyCode == 53 {
+            onEscape?()
+        } else if isKeyWindow, let text = Self.typedText(event), onTyped?(text) == true {
+            return   // the command line took it (no text field had focus)
+        } else {
+            super.keyDown(with: event)
+        }
     }
 
     // Quick Look for shelf items: the open panel is the key window when the user picks

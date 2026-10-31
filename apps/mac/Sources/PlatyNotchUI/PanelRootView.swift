@@ -42,6 +42,11 @@ final class PanelViewModel {
     /// Home's natural body height while plain Home shows (the controller sizes the panel to it);
     /// nil: the panel takes its full height.
     var onBodyHeight: (CGFloat?) -> Void = { _ in }
+    /// The command line's text, focus, chosen row and last message (spec 3).
+    var commandText = ""
+    var commandFocused = false
+    var commandSelection = 0
+    var commandMessage: String?
     /// The header toggles' services (the app's one; nil in renders and tests).
     var header: HeaderServices?
 }
@@ -193,7 +198,7 @@ struct PanelRootView: View {
                           route: Binding(get: { model.route }, set: { model.route = $0 }),
                           onCollapse: model.onClick, onOpenSettings: model.onOpenSettings,
                           header: model.header,
-                          homeSettings: model.homeSettings,
+                          homeSettings: model.homeSettings, commandLine: commandLineView,
                           agentsVisible: today.agentActivity.agentsVisibility.isVisible,
                           onConnectAgent: model.onConnectAgent,
                           tourSample: model.tourSample,
@@ -259,6 +264,59 @@ struct PanelRootView: View {
 }
 
 extension PanelRootView {
+    /// The command line under Home's hairline, wired to the app's models.
+    var commandLineView: AnyView {
+        let logic = CommandLineLogic(model: model, runner: CommandRunner(actions: commandActions),
+                                     tools: { commandTools }, approvalsPending: { !store.approvals.isEmpty })
+        return AnyView(CommandLineView(model: model, logic: logic, memory: memory))
+    }
+
+    /// The features `open …` can offer: every tool the panel opens, by its title.
+    var commandTools: [CommandTool] {
+        let memory = self.memory
+        let store = self.store
+        let tools: [PanelTool] = ToolCatalog.tools(widgets: widgets, extraTabs: extraTabs,
+                                                   memory: { AnyView(MemoryTab(store: store, memory: memory)) })
+        return tools.map { CommandTool(id: $0.id, title: $0.title) }
+    }
+
+    /// What each command does, on the real models. A widget that is off says so (never a
+    /// permission prompt).
+    var commandActions: CommandActions {
+        var a = CommandActions()
+        let widgets = self.widgets
+        let today = self.today
+        let memory = self.memory
+        let model = self.model
+        a.startTimer = { duration, label in
+            guard widgets.isEnabled(TimeWidget.widgetID),
+                  let time = widgets.widget(TimeWidget.widgetID) as? TimeWidget else { return false }
+            return time.startTimer(duration: duration, label: label)
+        }
+        a.startFocus = { minutes in today.focus.start(minutes: minutes) }
+        a.remind = { q in
+            guard widgets.isEnabled(RemindersWidget.widgetID),
+                  let reminders = widgets.widget(RemindersWidget.widgetID) as? RemindersWidget else {
+                return "Turn on Reminders in Settings"
+            }
+            return reminders.add(q)
+        }
+        a.note = { text in
+            guard widgets.isEnabled(NotesWidget.widgetID),
+                  let notes = widgets.widget(NotesWidget.widgetID) as? NotesWidget else {
+                return "Turn on Notes in Settings"
+            }
+            return notes.appendNote(text)
+        }
+        a.search = { query in
+            memory.search.query = query
+            memory.search.refresh()
+        }
+        a.open = { route in model.route = route }
+        a.selectGame = { kind in (widgets.widget(GamesWidget.widgetID) as? GamesWidget)?.host.select(kind) }
+        return a
+    }
+
     /// Every Allow / Deny goes through here: auto-repeat keys and double-clicks are
     /// dropped, a card not yet armed (or no longer in the slot it was armed in) shows
     /// "Look first…", and the shared responder

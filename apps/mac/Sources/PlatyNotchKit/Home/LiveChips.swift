@@ -32,7 +32,9 @@ public enum LiveChips {
             .filter { $0.phase == .running && $0.remaining(at: now) > 0 }
             .sorted { ($0.endsAt ?? .distantFuture) < ($1.endsAt ?? .distantFuture) }
         for timer in running {
-            let name: String = timerName(timer.label)
+            // The Time widget names an unlabelled timer by its length ("5 min"): that is no label.
+            let label: String = timer.label == DurationParser.describe(timer.duration) ? "" : timer.label
+            let name: String = timerName(label)
             all.append(LiveChip(kind: .timer(timer.id), text: "\(name) " + clock(timer.remaining(at: now)), tone: nil))
         }
         if shelfCount > 0 {

@@ -58,6 +58,11 @@ final class LiveChipsTests: XCTestCase {
                        "Timer 1:00", "a part-second counts whole")
     }
 
+    func testLengthLabelIsNoLabel() {
+        let t = CountdownTimer(label: DurationParser.describe(300), duration: 300, startedAt: now)
+        XCTAssertEqual(LiveChips.chips(focus: nil, timers: [t], shelfCount: 0, now: now).shown.first?.text, "Timer 5:00")
+    }
+
     func testTimerChipCarriesItsID() {
         let t = timer("tea", left: 90)
         XCTAssertEqual(LiveChips.chips(focus: nil, timers: [t], shelfCount: 0, now: now).shown.first?.kind, .timer(t.id))

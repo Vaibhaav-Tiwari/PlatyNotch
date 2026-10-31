@@ -218,6 +218,8 @@ public final class NotchController {
         let first = panel == nil
         let panel = self.panel ?? makePanel(frame: l.windowFrame)
         self.panel = panel
+        panelIsKey = { [weak panel] in panel?.isKeyWindow ?? false }
+        textFieldFocused = { [weak panel] in panel?.firstResponder is NSText }
         panel.setFrame(l.windowFrame, display: true)
         panel.orderFrontRegardless()
 
@@ -258,6 +260,16 @@ public final class NotchController {
     /// Escape: an open feature goes back to Home first; otherwise the state
     /// machine's `.escape` (the open panel closes).
     func escapePressed() {
+        // The command line first: Esc clears its text, then leaves it; only then the panel.
+        if machine.mode == .expanded, !model.commandText.isEmpty || model.commandFocused {
+            if !model.commandText.isEmpty {
+                model.commandText = ""
+                model.commandMessage = nil
+            } else {
+                model.commandFocused = false
+            }
+            return
+        }
         if machine.mode == .expanded, model.route.destination == .home, let tool = model.route.tool {
             // Back only from a tool that shows: one whose widget was turned off already
             // shows Home, so Esc closes (and the route is written back to Home).
@@ -278,6 +290,34 @@ public final class NotchController {
         let target: PanelDestination = all[digit - 1]
         guard shown.contains(target) else { return false }
         model.route = PanelRoute(destination: target)
+        return true
+    }
+
+    /// Whether the panel has the keyboard (tests replace it; there is no window then).
+    var panelIsKey: () -> Bool = { false }
+    /// Whether a text field has focus (a typed key then belongs to it).
+    var textFieldFocused: () -> Bool = { false }
+
+    /// ⌘K in the open panel: Home, with the command line focused. False elsewhere, so the
+    /// approval peek and other modes keep their keys.
+    @discardableResult
+    func commandK() -> Bool {
+        guard machine.mode == .expanded, panelIsKey() else { return false }
+        if model.route != PanelRoute(destination: .home) { model.route = PanelRoute(destination: .home) }
+        model.commandFocused = true
+        return true
+    }
+
+    /// A printable key while no text field has focus: it starts the command line (Home only:
+    /// a tool such as a game keeps its keys).
+    @discardableResult
+    func typed(_ s: String) -> Bool {
+        guard machine.mode == .expanded, panelIsKey(), !textFieldFocused(), !s.isEmpty,
+              s.unicodeScalars.allSatisfy({ $0.value >= 0x20 && $0.value != 0x7F }) else { return false }
+        if model.route.tool != nil, model.route.destination == .home { return false }
+        if model.route.destination != .home { model.route = PanelRoute(destination: .home) }
+        model.commandText += s
+        model.commandFocused = true
         return true
     }
 
@@ -312,6 +352,8 @@ public final class NotchController {
         p.contentView = host
         p.onEscape = { [weak self] in self?.escapePressed() }
         p.onCommandDigit = { [weak self] in self?.commandDigit($0) ?? false }
+        p.onCommandK = { [weak self] in self?.commandK() ?? false }
+        p.onTyped = { [weak self] in self?.typed($0) ?? false }
         return p
     }
 
@@ -325,6 +367,11 @@ public final class NotchController {
         defer {
             surfaces.sinkStateChanged()   // the media-key tap's view of where a HUD would show
             if showsNow, !shownBefore { onExpanded() } else if !showsNow, shownBefore { onCollapsed() }
+        }
+        if machine.mode != .expanded, model.commandFocused || !model.commandText.isEmpty || model.commandMessage != nil {
+            model.commandText = ""   // a closed panel keeps no half-typed command
+            model.commandFocused = false
+            model.commandMessage = nil
         }
         guard let layout else { return }
         cursor = cursorLocation()   // never decide pass-through from a stale position
