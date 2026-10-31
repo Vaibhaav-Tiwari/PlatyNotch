@@ -33,7 +33,7 @@ final class PanelViewModel {
     var appearance: AppearanceSettings = AppearanceSettings()
     /// Settings › Notifications: kinds the pill leaves out (never approvals).
     var hiddenKinds: Set<NotificationKind> = []
-    /// The first run's "Try it" sample ("This is Now") in Now's deck.
+    /// The first run's "Try it" sample ("This is Home"), a chip on Home.
     var tourSample: LiveActivity?
     /// The notice the toast shows (the one that opened it, not merely the newest).
     var toastNotice: Notice?
@@ -308,6 +308,7 @@ extension PanelRootView {
         }
         a.open = { route in model.route = route }
         a.selectGame = { kind in (widgets.widget(GamesWidget.widgetID) as? GamesWidget)?.host.select(kind) }
+        a.gamesOn = { widgets.isEnabled(GamesWidget.widgetID) }
         return a
     }
 

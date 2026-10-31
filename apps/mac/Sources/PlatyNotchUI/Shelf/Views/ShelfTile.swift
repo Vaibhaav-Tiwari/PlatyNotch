@@ -126,8 +126,8 @@ struct ShelfCard: View {
         .accessibilityLabel("\(run.title) \(item.title)")
     }
 
-    /// In the Library tool, the Library tile's own card (a soft fill on dark, a near-white
-    /// card on light), outlined in teal while selected; on the tile, the quiet wash.
+    /// In the Shelf tool, the card's soft fill, outlined in secondary ink while selected; on
+    /// the tile, the quiet wash.
     @ViewBuilder private var cardBackground: some View {
         let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
         if inTool {

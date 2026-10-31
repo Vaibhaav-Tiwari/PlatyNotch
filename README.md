@@ -73,8 +73,9 @@ notarizes the DMG.
 
 ## Widgets
 
-The open panel's **Today** tab is a column of widget tiles. Turn each widget on or
-off, and reorder them, in **Settings › Widgets**. A widget that is off does no work:
+The open panel has two views, **Home** (music, Up next, live chips and a command line) and
+**Agents**; every other widget opens inside the panel from a chip, the command line or the
+menu bar's Open menu. Turn each widget on or off, and reorder them, in **Settings › Widgets**. A widget that is off does no work:
 no timers, no observers, no network access. The one exception: while the shelf,
 clipboard history or Baskets is off, PlatyNotch still deletes their own expired files
 once at launch, so the retention below holds.
@@ -88,7 +89,7 @@ once at launch, so the retention below holds.
 | Time | on | Timers, a pomodoro, a stopwatch with laps, alarms and world clocks; a system notification backs up each timer and alarm in case the app is quit. |
 | Shelf | on | Drag files, images, links or text to the notch to keep them; drag them back out, AirDrop, share or Quick Look them. Finder › Services › Add to PlatyNotch Shelf adds the selected files. With File actions on (a power feature), right-click › Actions converts, zips, unzips, reads text from, removes backgrounds from or renames them. |
 | System | on | Battery (plug-in and unplug peeks) and keep-awake. Headphones (AirPods battery) and Downloads (progress and a finished notice) are sub-features, off until you turn them on in its settings. |
-| Games | on | Snake, Tetris, 2048, Flappy and Platy Chase (a maze chase with classic arcade rules on our own maze and art) in a Games tab; best scores on the tile. |
+| Games | on | Snake, Tetris, 2048, Flappy and Platy Chase (a maze chase with classic arcade rules on our own maze and art) from the menu bar's Games menu or `play` in the command line; best scores are kept. |
 | Sites & Shortcuts | on | Pinned websites (http and https only) and pinned Shortcuts, run on a click. |
 | Volume & brightness HUD | off | Replaces the system volume, brightness and keyboard-backlight HUD with one under the notch. |
 | Clipboard history | off | Keeps what you copy; ⌥⇧V opens a searchable picker. |

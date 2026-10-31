@@ -129,7 +129,7 @@ struct CommandLineView: View {
                 }
                 .frame(maxHeight: Self.listMaxHeight)
             } else if let message = model.commandMessage {
-                Text(verbatim: message).font(.system(size: 12)).foregroundStyle(.secondary)
+                Text(verbatim: message).font(DS.font(TypeScale.secondary)).foregroundStyle(DS.secondary)
             }
         }
         .onChange(of: model.commandFocused) { _, new in if focused != new { focused = new } }
@@ -137,9 +137,11 @@ struct CommandLineView: View {
             if model.commandFocused != new { model.commandFocused = new }
             if new { Self.caretToEnd(in: windowBox) }
         }
-        .onChange(of: model.commandText) { _, _ in
+        .onChange(of: model.commandText) { _, new in
             model.commandSelection = 0
-            model.commandMessage = nil
+            // A command that ran empties the line: its confirmation ("Reminder added") stays
+            // until the user types again.
+            if !new.isEmpty { model.commandMessage = nil }
             searchIfNeeded()
         }
         .onAppear { if model.commandFocused { focused = true } }

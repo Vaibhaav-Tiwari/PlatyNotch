@@ -100,8 +100,7 @@ struct NotchPreview: View {
         }
     }
 
-    /// The open panel at the preview's scale: the notch band, the destinations, a hero
-    /// and four glances.
+    /// The open panel at the preview's scale: the notch band and Home in miniature.
     private var openPanel: some View {
         let design: CGFloat = MiniPanel.designScale
         let width: CGFloat = PanelLayout.expandedSize.width * design

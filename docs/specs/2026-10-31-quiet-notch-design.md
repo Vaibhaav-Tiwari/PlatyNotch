@@ -229,6 +229,8 @@ rules are unchanged.
   (always black, never glass **[call: glass is not black]**), and `motion` `lively` reads as
   `calm` **[call]**.
 - Library recents, glance slots, hero cycling and the pond keys are left in defaults, unread.
+- Existing users get no tour card (it lived in Now); Settings › General › "Take the tour
+  again" still runs the first run **[call]**.
 
 ## 8. Removed
 

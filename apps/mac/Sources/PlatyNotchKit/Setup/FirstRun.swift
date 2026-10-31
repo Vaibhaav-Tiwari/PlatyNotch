@@ -4,8 +4,8 @@ import Foundation
 public enum FirstRunState: Equatable, Sendable {
     /// A new install: the four-screen first run.
     case firstRun
-    /// Someone who used PlatyNotch before this version: no forced first run, a card at
-    /// the top of Now offers the 30-second tour until taken or dismissed.
+    /// Someone who used PlatyNotch before this version: no forced first run. Quiet Notch has
+    /// no tour card; Settings › General › "Take the tour again" still runs it.
     case offerTour
     case settled
 

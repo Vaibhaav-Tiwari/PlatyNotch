@@ -270,7 +270,7 @@ struct SettingsRootView: View {
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .ignoresSafeArea()
-        // One accent: brand teal for switches, checkboxes and prominent buttons.
+        // One accent: the system accent colour for switches, checkboxes and prominent buttons.
         .tint(SettingsTint.accent)
         // Switches everywhere (a table's checkboxes say so themselves).
         .toggleStyle(.switch)
@@ -302,8 +302,8 @@ struct SettingsRootView: View {
     }
 }
 
-/// The sidebar: plain symbols, the selected page's in a filled teal well on a soft teal
-/// wash (never the system's blue selection), in three groups; ↑ and ↓ move between pages.
+/// The sidebar: plain symbols, the selected page's in a filled accent well on a soft accent
+/// wash, in three groups; ↑ and ↓ move between pages.
 private struct SettingsSidebar: View {
     @Bindable var model: SettingsModel
     let pluginSections: [SettingsSection]

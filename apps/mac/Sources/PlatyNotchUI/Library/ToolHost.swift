@@ -245,9 +245,9 @@ struct ToolPage<Content: View>: View {
     static var column: CGFloat { 440 }
 }
 
-/// A tool's one primary action (Join): a teal capsule, the same whether the panel is key
-/// or not (a system prominent button turns grey in an inactive window). Text contrast:
-/// near-black on the bright dark-theme teal, white on the deeper light-theme teal.
+/// A tool's one primary action (Join): a white capsule with near-black text, the same
+/// whether the panel is key or not (a system prominent button turns grey in an inactive
+/// window).
 struct ToolPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         PrimaryCapsule(label: configuration.label, pressed: configuration.isPressed)

@@ -1,7 +1,7 @@
 import Foundation
 
 /// The matched-geometry ids of the open/close morph (spec 9): what in the pill grows into
-/// its place in Now's hero.
+/// its place in the open panel (Platy into the header).
 public enum MorphID {
     /// Platy: the pill's leading glyph and the hero's Platy (agents hero, Today summary).
     public static let platy = "morph.platy"

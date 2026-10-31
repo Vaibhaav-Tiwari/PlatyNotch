@@ -95,8 +95,8 @@ struct ExpandedPanel: View {
             }
             destination(shown, tool: open)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                // Home is left unclipped: it relies on the fit tests (`NowMetrics`,
-                // `NowViewTests`, `HeroViewsTests`) to stay inside, and must not clip Platy or
+                // Home is left unclipped: it relies on the fit tests (`HomeViewTests`) to stay
+                // inside, and must not clip Platy or
                 // the live glyph while they morph in from the pill. Other destinations stay clipped.
                 .clipped(unless: shown.destination == .home && open == nil)
                 .padding(.top, open == nil ? HomeMetrics.gap : ToolHost.gap)
@@ -130,10 +130,18 @@ struct ExpandedPanel: View {
             }
         case .agents:
             AgentsView(sessions: store.sessions, log: today.agentActivity.log,
-                       openLoops: LoopsFormat.open(store.loops).count,
+                       openLoops: openLoops,
                        onOpenTerminal: onOpenTerminal, onConnect: onConnectAgent,
-                       onOpenLoops: { openTool(LoopsWidget.widgetID) }, fixedNow: fixedNow)
+                       onOpenLoops: loopsOn ? { openTool(LoopsWidget.widgetID) } : nil, fixedNow: fixedNow)
         }
+    }
+
+    /// The Loops widget is on: "open loops" opens it (otherwise the line is plain text).
+    private var loopsOn: Bool { widgets.isEnabled(LoopsWidget.widgetID) }
+
+    /// Open loops as the Loops tool counts them (less those just marked done or dismissed).
+    private var openLoops: Int {
+        (widgets.widget(LoopsWidget.widgetID) as? LoopsWidget)?.openCount ?? LoopsFormat.open(store.loops).count
     }
 
     /// Home: chips, the media block beside Up next, the command line.

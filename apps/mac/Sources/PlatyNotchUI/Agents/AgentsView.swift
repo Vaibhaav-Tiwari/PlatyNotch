@@ -12,8 +12,8 @@ struct AgentsView: View {
     var openLoops: Int = 0
     let onOpenTerminal: (Session) -> Void
     let onConnect: () -> Void
-    /// "open loops" opens the loops list inside the panel.
-    var onOpenLoops: () -> Void = {}
+    /// "open loops" opens the loops list inside the panel; nil (the Loops widget is off): plain text.
+    var onOpenLoops: (() -> Void)?
     /// Renders only: the status lines' clock.
     var fixedNow: Date?
     @Environment(\.panelTicking) private var ticking
@@ -21,7 +21,7 @@ struct AgentsView: View {
 
     init(sessions: [Session], log: AgentFinishLog, openLoops: Int = 0,
          onOpenTerminal: @escaping (Session) -> Void, onConnect: @escaping () -> Void,
-         onOpenLoops: @escaping () -> Void = {}, fixedNow: Date? = nil) {
+         onOpenLoops: (() -> Void)? = nil, fixedNow: Date? = nil) {
         self.sessions = sessions
         self.log = log
         self.openLoops = openLoops
@@ -130,11 +130,15 @@ struct AgentsView: View {
     /// `2 open loops · Search memory with ⌘K`: "open loops" opens the loops list.
     private func footerLine(_ text: String) -> some View {
         HStack(spacing: 0) {
-            Button(action: onOpenLoops) {
+            if let onOpenLoops {
+                Button(action: onOpenLoops) {
+                    Text(verbatim: AgentsFooter.loops(openLoops))
+                }
+                .buttonStyle(.plain)
+                .help("Show open loops")
+            } else {
                 Text(verbatim: AgentsFooter.loops(openLoops))
             }
-            .buttonStyle(.plain)
-            .help("Show open loops")
             Text(verbatim: " · " + AgentsFooter.searchHint)
         }
         .font(DS.font(TypeScale.caption))
@@ -142,7 +146,7 @@ struct AgentsView: View {
         .lineLimit(1)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(text)
-        .accessibilityAction(named: "Show open loops", onOpenLoops)
+        .accessibilityAction(named: "Show open loops") { onOpenLoops?() }
     }
 }
 

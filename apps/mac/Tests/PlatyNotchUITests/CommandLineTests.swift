@@ -231,6 +231,18 @@ final class CommandLineTests: DefaultsTestCase {
         XCTAssertEqual(spy.routes.last, PanelRoute(destination: .home, tool: GamesWidget.widgetID))
     }
 
+    /// Final review Minor 2: `play` with Games off says so instead of landing on Home.
+    func testPlayWithGamesOffSaysWhy() {
+        var opened: [PanelRoute] = []
+        var actions = CommandActions()
+        actions.open = { opened.append($0) }
+        actions.gamesOn = { false }
+        let runner = CommandRunner(actions: actions)
+        let row = CommandSuggestion(command: .play(.snake), title: "Play", detail: nil)
+        XCTAssertEqual(runner.run(row), "Turn on Games in Settings")
+        XCTAssertTrue(opened.isEmpty)
+    }
+
     func testSearchOpensMemoryWithTheQuery() {
         let spy = Spy()
         let (l, model) = logic(spy)
