@@ -34,16 +34,17 @@ struct ChipsRow: View {
                             Circle().fill(DS.dynamicColor(tone)).frame(width: 7, height: 7)
                         }
                         if let symbol = Self.symbol(for: chip) {
-                            Image(systemName: symbol).font(.system(size: 11))
+                            Image(systemName: symbol).font(DS.font(TypeScale.secondary))
                         }
                         Text(verbatim: chip.text)
-                            .font(.system(size: 12).monospacedDigit())
+                            .font(DS.font(TypeScale.secondary).monospacedDigit())
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
+                    .foregroundStyle(DS.primary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 3)
-                    .background(Color.white.opacity(0.07), in: Capsule())
+                    .background(DS.fill, in: Capsule())
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -51,8 +52,8 @@ struct ChipsRow: View {
             }
             if overflow > 0 {
                 Text(verbatim: "+\(overflow)")
-                    .font(.system(size: 12).monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .font(DS.font(TypeScale.secondary).monospacedDigit())
+                    .foregroundStyle(DS.secondary)
                     .accessibilityLabel("\(overflow) more")
             }
             Spacer(minLength: 0)

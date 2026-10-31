@@ -45,7 +45,7 @@ struct FileActionsTool: View {
                 ForEach(Self.actions, id: \.title) { action in
                     HStack(spacing: Space.s) {
                         DS.icon(action.symbol, size: IconSize.symbol)
-                            .foregroundStyle(DS.dynamicColor(.working))
+                            .foregroundStyle(DS.secondary)
                             .frame(width: 22)
                         Text(verbatim: action.title)
                             .font(DS.font(TypeScale.body))

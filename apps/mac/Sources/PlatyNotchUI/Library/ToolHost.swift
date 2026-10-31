@@ -262,18 +262,18 @@ struct ToolPrimaryButtonStyle: ButtonStyle {
         var body: some View {
             label
                 .font(DS.font(TypeStyle(size: TypeScale.body.size, weight: .semibold)))
-                .foregroundStyle(scheme == .light ? Color.white : Color.black.opacity(0.85))
+                .foregroundStyle(Color.black.opacity(0.85))
                 .padding(.horizontal, Space.l)
                 .frame(height: 30)
-                .background(DS.color(.working).opacity(pressed ? 0.75 : 1), in: Capsule())
+                .background(DS.primary.opacity(pressed ? 0.75 : 1), in: Capsule())
                 .contentShape(Capsule())
         }
     }
 }
 
 /// An icon-led tool page for a tool with no list to show (Baskets, Keep awake on a
-/// desktop): the tool's symbol in a large teal well, a title and one line, then its
-/// controls, the whole centred in the room.
+/// desktop): the tool's symbol (monochrome, no square behind it), a title and one line,
+/// then its controls, the whole centred in the room.
 struct ToolIconPage<Content: View>: View {
     let systemImage: String
     let title: String
@@ -286,11 +286,8 @@ struct ToolIconPage<Content: View>: View {
         VStack(spacing: Space.m) {
             Image(systemName: systemImage)
                 .symbolRenderingMode(.monochrome)
-                .font(.system(size: 24, weight: .medium))
-                .foregroundStyle(DS.dynamicColor(.working))
-                .frame(width: Self.well, height: Self.well)
-                .background(DS.dynamicColor(.working, alpha: 0.12),
-                            in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+                .font(.system(size: IconSize.header))
+                .foregroundStyle(DS.secondary)
                 .accessibilityHidden(true)
             VStack(spacing: Space.xs) {
                 Text(verbatim: title)

@@ -250,7 +250,7 @@ private struct WeekdayChips: View {
                     Text(verbatim: symbols[day - 1])
                         .font(DS.font(TypeScale.caption).weight(.semibold))
                         .frame(width: 18, height: 16)
-                        .foregroundStyle(on ? AnyShapeStyle(DS.dynamicColor(.working)) : AnyShapeStyle(.secondary))
+                        .foregroundStyle(on ? DS.primary : DS.secondary)
                         .background(on ? DS.dynamicColor(.working, alpha: 0.18) : Color.secondary.opacity(0.15),
                                     in: Capsule())
                 }

@@ -132,7 +132,7 @@ struct ShelfCard: View {
         let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
         if inTool {
             ToolCardFill(hovering: selected)
-                .overlay { if selected { shape.strokeBorder(DS.dynamicColor(.working), lineWidth: 1.5) } }
+                .overlay { if selected { shape.strokeBorder(DS.secondary, lineWidth: 1.5) } }
         } else {
             shape.fill(.primary.opacity(selected ? 0.18 : 0.06))
         }
@@ -460,8 +460,8 @@ struct ShelfDropZone: View {
         let on = shelf.dropTargeted
         RoundedRectangle(cornerRadius: 12)
             .strokeBorder(style: StrokeStyle(lineWidth: on ? 2 : 1.5, dash: on ? [] : [6, 4]))
-            .foregroundStyle(on ? DS.dynamicColor(.working) : Color.secondary)
-            .background(RoundedRectangle(cornerRadius: 12).fill(DS.dynamicColor(.working).opacity(on ? 0.15 : 0)))
+            .foregroundStyle(on ? DS.primary : DS.secondary)
+            .background(RoundedRectangle(cornerRadius: Radius.card).fill(on ? DS.ink(0.14) : Color.clear))
             .overlay {
                 VStack(spacing: 6) {
                     Image(systemName: on ? "tray.and.arrow.down.fill" : "tray.and.arrow.down")

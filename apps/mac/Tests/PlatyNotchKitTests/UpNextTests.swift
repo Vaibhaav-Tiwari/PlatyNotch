@@ -86,4 +86,15 @@ final class UpNextTests: XCTestCase {
     func testEmpty() {
         XCTAssertEqual(rows([]), [])
     }
+
+    /// Phase 2 review carry-over: no row with a time, no empty 58 pt column.
+    func testTimeColumnCollapsesWithoutTimes() {
+        let untimed = UpNextRow(id: "a", time: "", title: "Book flights", note: "reminder", overdue: false)
+        let timed = UpNextRow(id: "b", time: "3:44 PM", title: "Design review", note: nil, overdue: false)
+        let overdue = UpNextRow(id: "c", time: "Overdue", title: "Send invoice", note: nil, overdue: true)
+        XCTAssertFalse(UpNext.showsTimeColumn([untimed, untimed]))
+        XCTAssertFalse(UpNext.showsTimeColumn([]))
+        XCTAssertTrue(UpNext.showsTimeColumn([untimed, timed]))
+        XCTAssertTrue(UpNext.showsTimeColumn([overdue]))
+    }
 }

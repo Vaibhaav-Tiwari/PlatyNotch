@@ -37,12 +37,12 @@ struct DropTargetsView: View {
         HStack(spacing: HomeMetrics.columnGap) {
             ForEach(titles, id: \.self) { title in
                 let zone: Zone = title == Self.airDropTitle ? .airDrop : .shelf
-                VStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Image(systemName: zone == .shelf ? "tray.and.arrow.down" : "dot.radiowaves.up.forward")
-                        .font(.system(size: 20, weight: .medium))
-                    Text(verbatim: title).font(.system(size: 13, weight: .medium))
+                        .font(.system(size: IconSize.header))
+                    Text(verbatim: title).font(DS.font(TypeScale.secondary))
                 }
-                .foregroundStyle(hovered == zone ? Color.primary : Color.secondary)
+                .foregroundStyle(hovered == zone ? DS.primary : DS.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(title)
@@ -51,9 +51,9 @@ struct DropTargetsView: View {
         .frame(maxWidth: .infinity)
         .frame(height: HomeMetrics.dropBoxHeight)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
                 .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
-                .foregroundStyle(hovered != nil ? Color.primary.opacity(0.6) : Color.secondary.opacity(0.6))
+                .foregroundStyle(hovered != nil ? DS.secondary : DS.tertiary)
         )
     }
 }
