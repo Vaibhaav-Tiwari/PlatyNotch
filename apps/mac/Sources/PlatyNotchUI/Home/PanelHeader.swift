@@ -31,6 +31,7 @@ struct PanelHeader<Nav: View, Controls: View>: View {
                     .frame(width: 20, height: 20)
             }
             nav
+                .fixedSize()
             Spacer(minLength: 4)
             ForEach(Array(status.enumerated()), id: \.offset) { _, part in
                 Text(verbatim: part)
@@ -38,8 +39,10 @@ struct PanelHeader<Nav: View, Controls: View>: View {
                     .foregroundStyle(DS.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .layoutPriority(-1)
             }
             controls
+                .fixedSize()
         }
     }
 }

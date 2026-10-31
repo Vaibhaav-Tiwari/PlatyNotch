@@ -53,6 +53,7 @@ struct HeaderToggles: View {
                 if on { KeepAwakeTime(session: session, fixedNow: fixedNow) }
             }
             .foregroundStyle(on ? DS.color(.needsYou) : DS.secondary)
+            .fixedSize()
             .frame(minWidth: 24, minHeight: 24)
             .contentShape(Rectangle())
         }
