@@ -96,8 +96,32 @@ struct TimerTool: View {
     /// The header's mode chips.
     static func modeTitles() -> [String] { TimerMode.allCases.map(\.title) }
 
+    /// Something counts (a timer, focus or the stopwatch): only then does the tool tick.
+    private func anythingRuns(_ now: Date) -> Bool {
+        (time?.state.timers.contains { $0.isRunning(at: now) } ?? false)
+            || (focus?.timer?.isRunning(at: now) ?? false)
+            || (time?.state.stopwatch.isRunning ?? false)
+    }
+
+    /// The right column's list in every mode (laps in Stopwatch): the running timers, the
+    /// soonest first, or one quiet line when none runs.
+    static func columnRows(mode: TimerMode, timers: [CountdownTimer], laps: [TimeInterval], now: Date) -> [String] {
+        if mode == .stopwatch, !laps.isEmpty {
+            return laps.enumerated().reversed().prefix(4).map { "Lap \($0.offset + 1) · \(Stopwatch.format($0.element))" }
+        }
+        let rows = RunningTimers.rows(timers, now: now).prefix(4).map(\.text)
+        return rows.isEmpty ? [noneRunning] : Array(rows)
+    }
+
+    static let noneRunning = "No timers running"
+
+    /// Focus minutes for a length: rounded, at least one (a custom "30s" is a minute).
+    static func focusMinutes(_ t: TimeInterval) -> Int { max(1, Int((t / 60).rounded())) }
+
     var body: some View {
-        TickingNow(fixed: fixedNow) { now in
+        let now: Date = fixedNow ?? Date()
+        // Idle, nothing changes each second: no tick (M2).
+        TickingNow(fixed: fixedNow ?? (anythingRuns(now) ? nil : now)) { now in
             HStack(alignment: .center, spacing: 18) {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(verbatim: bigText(now: now))
@@ -210,7 +234,7 @@ struct TimerTool: View {
                 ToolButton(title: "Stop", primary: false) { focus?.stop() }
             }
         } else {
-            ToolButton(title: "Start", primary: true) { focus?.start(minutes: Int(model.focusSelection / 60)) }
+            ToolButton(title: "Start", primary: true) { focus?.start(minutes: Self.focusMinutes(model.focusSelection)) }
                 .disabled(focus == nil)
         }
     }
@@ -227,14 +251,18 @@ struct TimerTool: View {
     }
 
     @ViewBuilder private func list(now: Date) -> some View {
-        if model.mode == .stopwatch, let laps = time?.state.stopwatch.laps, !laps.isEmpty {
-            ForEach(Array(laps.enumerated().reversed().prefix(4)), id: \.offset) { i, lap in
-                row(dot: nil, text: "Lap \(i + 1) · \(Stopwatch.format(lap))")
-            }
+        let laps: [TimeInterval] = time?.state.stopwatch.laps ?? []
+        let texts = Self.columnRows(mode: model.mode, timers: time?.state.timers ?? [], laps: laps, now: now)
+        if texts == [Self.noneRunning] {
+            Text(verbatim: Self.noneRunning)
+                .font(DS.font(TypeScale.caption))
+                .foregroundStyle(DS.tertiary)
+                .padding(.horizontal, 4)
+                .padding(.top, 2)
         } else {
-            let rows = RunningTimers.rows(time?.state.timers ?? [], now: now)
-            ForEach(rows.prefix(4), id: \.id) { r in
-                row(dot: r.soonest ? DS.color(.needsYou) : DS.tertiary, text: r.text)
+            let lapping: Bool = model.mode == .stopwatch && !laps.isEmpty
+            ForEach(Array(texts.enumerated()), id: \.offset) { i, text in
+                row(dot: lapping ? nil : (i == 0 ? DS.color(.needsYou) : DS.tertiary), text: text)
             }
         }
     }

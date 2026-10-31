@@ -7,8 +7,9 @@ struct MemoryTool: View {
     let search: AnyView
     let loops: [Loop]
     let onOpenGraph: () -> Void
-    var onResolve: (Loop) -> Void = { _ in }
-    var onDismiss: (Loop) -> Void = { _ in }
+    /// nil when no one can answer loops (the Loops widget is not registered): no buttons.
+    var onResolve: ((Loop) -> Void)?
+    var onDismiss: ((Loop) -> Void)?
 
     static let empty = "No open loops. Platy's keeping watch."
 
@@ -43,8 +44,8 @@ struct MemoryTool: View {
                     ToolRow(symbol: "circle.dashed", icon: nil, title: loop.title, detail: loop.kind,
                             selected: false) {
                         HStack(spacing: 4) {
-                            iconButton("checkmark", "Done") { onResolve(loop) }
-                            iconButton("xmark", "Dismiss") { onDismiss(loop) }
+                            if let onResolve { iconButton("checkmark", "Done") { onResolve(loop) } }
+                            if let onDismiss { iconButton("xmark", "Dismiss") { onDismiss(loop) } }
                         }
                     }
                 }
@@ -95,8 +96,8 @@ struct MemoryToolHost: View {
             MemoryTool(search: AnyView(MemoryTab(store: store, memory: memory, mode: .search, modePicker: false)),
                        loops: LoopsFormat.open(store.loops).filter { !hidden.contains($0.id) },
                        onOpenGraph: { graph = true },
-                       onResolve: { actions?.set($0, .resolved) },
-                       onDismiss: { actions?.set($0, .dismissed) })
+                       onResolve: actions.map { a in { a.set($0, .resolved) } },
+                       onDismiss: actions.map { a in { a.set($0, .dismissed) } })
         }
     }
 }

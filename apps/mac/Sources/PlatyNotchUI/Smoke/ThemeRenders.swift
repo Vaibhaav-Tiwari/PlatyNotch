@@ -523,7 +523,6 @@ enum HomeRenders {
                           today: rig.today, widgets: rig.registry, memory: memory ?? MemoryServices(client: rig.client),
                           extraTabs: extraTabs, route: Binding(get: { current }, set: { current = $0 }),
                           onCollapse: {}, header: services, homeSettings: homeSettings, commandLine: commandLine,
-                          commandFocused: commandFocused,
                           dropping: dropping, fixedNow: at, memoryMode: memoryMode, tourSample: tourSample,
                           onBodyHeight: onBody, onDecide: { _, _ in }, onOpenTerminal: { _ in })
                 .frame(width: width, height: height, alignment: .top)

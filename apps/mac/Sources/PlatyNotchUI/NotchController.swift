@@ -386,11 +386,7 @@ public final class NotchController {
     }
 
     /// Opens the search with its field focused and the keyboard given: its list of
-    /// everything it can do shows (the global shortcut, the dock's Search, the menu's "What
-    /// Platy can do…").
-    @discardableResult
-    func openSearch() -> Bool { openCommandLine() }
-
+    /// everything it can do shows (the global shortcut, the menu's "What Platy can do…").
     @discardableResult
     func openCommandLine() -> Bool {
         if machine.mode != .expanded { handle(.click) }

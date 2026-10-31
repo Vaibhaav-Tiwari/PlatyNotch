@@ -37,8 +37,6 @@ struct ExpandedPanel: View {
     var homeSettings = HomeSettings()
     /// The full-panel search (`SearchView`), shown for `PanelTools.search`.
     var commandLine: AnyView = AnyView(EmptyView())
-    /// Unused since the search took the panel (kept for callers).
-    var commandFocused = false
     /// The dock's slots in the user's order.
     var dockLayout: DockLayout = .standard
     /// The global search shortcut's display; nil while it is off.
@@ -136,6 +134,7 @@ struct ExpandedPanel: View {
                 .clipped(unless: shown.destination == .home && open == nil)
                 .padding(.top, searching ? 0 : (open == nil ? HomeMetrics.gap : ToolHost.gap))
                 .environment(\.openPanelRoute, { route = $0 })   // the games tile opens its tool
+                .environment(\.closePanel, { [onCollapse] in onCollapse() })
                 .environment(\.openMemorySettings, { [memory] in memory.onOpenSettings() })   // empty states' one button
         }
         .coordinateSpace(name: Self.space)

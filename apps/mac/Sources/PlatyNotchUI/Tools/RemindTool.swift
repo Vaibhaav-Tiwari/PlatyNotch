@@ -10,6 +10,8 @@ struct RemindTool: View {
     let onAdd: (String) -> String?
     var onAllow: () -> Void = {}
     var onComplete: (ReminderItem) -> Void = { _ in }
+    /// The widget's last outcome ("Added to Reminders", a completion that failed).
+    var status: String?
     var fixedNow: Date?
     @State private var draft = ""
     @State private var message: String?
@@ -57,7 +59,7 @@ struct RemindTool: View {
                     if message == nil { draft = "" }
                     focused = true
                 }
-                if let message {
+                if let message = message ?? status {
                     Text(verbatim: message).font(DS.font(TypeScale.caption)).foregroundStyle(DS.tertiary)
                         .padding(.horizontal, 4)
                 }

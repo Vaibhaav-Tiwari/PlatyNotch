@@ -38,6 +38,16 @@ final class CommandRunner {
 
     /// Runs `s`; the message to show in its row, or nil when it ran. An explanation row
     /// (no command) never runs and has no message of its own to add.
+    /// Where a game opens: Platy Chase its own tool, another game its board (`games.play`),
+    /// no game named the Games list.
+    static func gameTool(_ kind: GameKind?) -> String {
+        switch kind {
+        case .chase?: PanelTools.chase
+        case nil: GamesWidget.widgetID
+        default: PanelTools.gamesPlay
+        }
+    }
+
     func run(_ s: CommandSuggestion) -> String? {
         guard let command = s.command else { return nil }
         switch command {
@@ -56,7 +66,7 @@ final class CommandRunner {
         case .play(let kind):
             guard actions.gamesOn() else { return "Turn on Games in Settings" }
             if let kind { actions.selectGame(kind) }
-            actions.open(PanelRoute(destination: .home, tool: kind == .chase ? PanelTools.chase : GamesWidget.widgetID))
+            actions.open(PanelRoute(destination: .home, tool: Self.gameTool(kind)))
             return nil
         case .open(let tool):
             actions.open(PanelRoute(destination: .home, tool: tool))

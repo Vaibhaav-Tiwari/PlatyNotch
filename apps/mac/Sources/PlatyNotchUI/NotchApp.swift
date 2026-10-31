@@ -300,7 +300,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuBar = MenuBarController(capture: capture, updater: updater, surfaces: surfaces, clipboard: clipboard,
                                     games: gamesWidget, gamesOn: { [weak self] in self?.widgets.isEnabled(GamesWidget.widgetID) ?? false },
                                     onOpenGame: { [weak self] kind in
-                                        self?.openPanel(tab: kind == .chase ? PanelTools.chase : GamesWidget.tabID)
+                                        self?.openPanel(tab: CommandRunner.gameTool(kind))
                                     },
                                     openTools: { [weak self] in self?.menuTools() ?? [] },
                                     onOpenTool: { [weak self] id in self?.openPanel(tab: id) },

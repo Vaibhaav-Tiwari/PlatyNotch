@@ -202,11 +202,13 @@ final class RemindersWidget: NotchWidget {
                            onAdd: { [weak self] text in
                                guard let self else { return nil }
                                self.draft = text
-                               return self.add(self.parsed())
+                               let why = self.add(self.parsed())
+                               if why == nil { self.draft = "" }
+                               return why
                            },
                            onAllow: { [weak self] in Task { await self?.allow() } },
                            onComplete: { [weak self] in self?.complete($0) },
-                           fixedNow: fixedNow))
+                           status: status, fixedNow: fixedNow))
     }
 
     /// Renders: a pinned clock for the tool's list.

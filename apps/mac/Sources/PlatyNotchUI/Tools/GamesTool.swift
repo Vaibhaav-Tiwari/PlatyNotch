@@ -1,20 +1,17 @@
 import PlatyNotchKit
 import SwiftUI
 
-/// Which game the Games tool shows (nil: the list).
-@MainActor @Observable
-final class GamesToolModel {
-    private(set) var picked: GameKind?
-    func open(_ kind: GameKind) { picked = kind }
-    func back() { picked = nil }
-}
-
 /// The Games tool (Island spec 4): one row per game with its hint and best score; a click
 /// opens the game in the panel.
 struct GamesTool: View {
     let host: GameHost
-    @State private var model = GamesToolModel()
     @Environment(\.openPanelRoute) private var openRoute
+
+    /// A row: pick the game and open its board full-panel (`games.play`).
+    static func play(_ kind: GameKind, host: GameHost, openRoute: ((PanelRoute) -> Void)?) {
+        host.select(kind)
+        openRoute?(PanelRoute(destination: .home, tool: CommandRunner.gameTool(kind)))
+    }
 
     static func hint(_ kind: GameKind) -> String {
         switch kind {
@@ -49,10 +46,8 @@ struct GamesTool: View {
         let rows = Self.rows(host.session.scores)
         ToolList(items: Array(zip(GameKind.allCases, rows))) { pair in
             Button {
-                model.open(pair.0)
-                host.select(pair.0)
                 // The board takes the whole panel (its own surface, no card).
-                openRoute?(PanelRoute(destination: .home, tool: PanelTools.gamesPlay))
+                Self.play(pair.0, host: host, openRoute: openRoute)
             } label: {
                 ToolRow(symbol: Self.symbol(pair.0), icon: nil, title: pair.1.title, detail: pair.1.detail,
                         selected: false) {

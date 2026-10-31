@@ -78,7 +78,8 @@ final class CommandLineLogic {
         }
         let bare: Bool = !text.contains(where: { $0.isWhitespace })
         let matches: [CommandCatalog.Entry] = CommandCatalog.filter(catalog(), query: text).filter { e in
-            if case .fill = e.action { return bare }
+            // Do rows show only for a bare word ("timer"): under "timer 10m" the parsed command is the row.
+            if e.group == .do { return bare }
             return true
         }
         let opened: Set<String> = Set(matches.compactMap { e -> String? in
