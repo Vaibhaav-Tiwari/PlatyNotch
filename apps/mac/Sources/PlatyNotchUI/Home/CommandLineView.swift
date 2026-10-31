@@ -408,3 +408,17 @@ private struct CaretWindowReader: NSViewRepresentable {
         DispatchQueue.main.async { [weak v] in box.window = v?.window }
     }
 }
+
+/// A section's small caps label (the command list's sections).
+struct ColumnLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(verbatim: text.uppercased())
+            .font(DS.font(TypeScale.caption))
+            .tracking(0.66)
+            .foregroundStyle(DS.tertiary)
+            .padding(.bottom, 3)
+            .accessibilityHidden(true)
+    }
+}

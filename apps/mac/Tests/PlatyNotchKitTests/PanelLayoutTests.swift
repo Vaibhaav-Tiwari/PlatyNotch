@@ -49,7 +49,7 @@ final class PanelLayoutTests: XCTestCase {
         let e = mbp.contentRect(for: .expanded)
         XCTAssertEqual(e.maxY, 982)
         XCTAssertEqual(e.size, PanelLayout.expandedSize)
-        XCTAssertEqual(e.width, 600)
+        XCTAssertEqual(e.width, 640)
         XCTAssertEqual(e.midX, 756)
         let p = ext.contentRect(for: .peek(.approval))
         XCTAssertEqual(p.maxY, 1055)
@@ -60,10 +60,11 @@ final class PanelLayoutTests: XCTestCase {
         XCTAssertEqual(ext.hitRect(for: .expanded), ext.contentRect(for: .expanded))
     }
 
-    func testExpandedIsSixHundredWide() {
-        XCTAssertEqual(mbp.contentRect(for: .expanded).width, 600)
-        XCTAssertEqual(ext.contentRect(for: .expanded).width, 600)
-        XCTAssertEqual(mbp.windowFrame.width, 600)
+    /// Island spec 2: the open panel is 640 pt wide.
+    func testExpandedIsSixHundredFortyWide() {
+        XCTAssertEqual(mbp.contentRect(for: .expanded).width, 640)
+        XCTAssertEqual(ext.contentRect(for: .expanded).width, 640)
+        XCTAssertEqual(mbp.windowFrame.width, 640)
     }
 
     func testExpandedHeightIsClamped() {

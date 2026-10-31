@@ -11,28 +11,44 @@ final class DesignTokensTests: DefaultsTestCase {
             TypeStyle(size: size, weight: w, mono: mono)
         }
         let rows: [(String, AnyHashable, AnyHashable)] = [
-            ("type.title", TypeScale.title.desc, ts(13, .semibold).desc),
+            ("type.title", TypeScale.title.desc, ts(14, .semibold).desc),
+            ("type.display", TypeScale.display.map(\.desc),
+             [TypeStyle(size: 34, weight: .semibold, rounded: true).desc, TypeStyle(size: 54, weight: .semibold, rounded: true).desc]),
+            ("type.small", [TypeScale.dockLabel.desc, TypeScale.badge.desc, TypeScale.pillTime.desc],
+             [ts(10.5, .regular).desc, ts(10, .semibold).desc, TypeStyle(size: 12, weight: .semibold, rounded: true).desc]),
             ("type.body", TypeScale.body.desc, ts(13, .regular).desc),
             ("type.secondary", TypeScale.secondary.desc, ts(12, .regular).desc),
             ("type.caption", TypeScale.caption.desc, ts(11, .regular).desc),
             ("type.mono", TypeScale.mono.desc, ts(12, .regular, mono: true).desc),
             ("type.glyph", TypeScale.glyph.desc, ts(15, .semibold).desc),
             ("type.all", TypeScale.all.map(\.desc), [TypeScale.title, TypeScale.body, TypeScale.secondary,
-                                                  TypeScale.caption, TypeScale.mono, TypeScale.glyph].map(\.desc)),
+                                                  TypeScale.caption, TypeScale.mono, TypeScale.glyph,
+                                                  TypeScale.dockLabel, TypeScale.badge, TypeScale.pillTime].map(\.desc)),
             ("type.maximum", TypeScale.maximum, CGFloat(15)),
-            ("type.minimum", TypeScale.minimum, CGFloat(11)),
+            ("type.minimum", TypeScale.minimum, CGFloat(10)),
+            ("type.literalMinimum", TypeScale.literalMinimum, CGFloat(11)),
             ("space.scale", Space.scale, [CGFloat(4), 8, 12, 16, 24, 32]),
-            ("space.panel", [Space.panelTop, Space.panelSide, Space.panelBottom], [CGFloat(30), 18, 16]),
+            ("space.panel", [Space.panelTop, Space.panelSide, Space.panelBottom], [CGFloat(30), 16, 14]),
             ("space.header", Space.header, CGFloat(14)),
             ("space.columnGap", Space.columnGap, CGFloat(22)),
-            ("radius", [Radius.keycap, Radius.small, Radius.medium, Radius.card, Radius.panelBottom],
-             [CGFloat(4), 6, 8, 12, 22]),
-            ("radius.scale", Radius.scale, [CGFloat(4), 6, 8, 12, 22]),
+            ("radius", [Radius.keycap, Radius.small, Radius.medium, Radius.card, Radius.island, Radius.panelBottom],
+             [CGFloat(4), 6, 8, 12, 16, 22]),
+            ("radius.scale", Radius.scale, [CGFloat(4), 6, 8, 12, 16, 22]),
+            ("surface", [Surface.card, Surface.raised, Surface.stroke, Surface.countBlue].map(\.hexString),
+             ["121214", "1C1C1F", "2A2A2E", "4C8DFF"]),
+            ("home", [HomeMetrics.panelWidth, HomeMetrics.artSize, HomeMetrics.dockCircle, HomeMetrics.dockSlot,
+                      HomeMetrics.agentIcon], [CGFloat(640), 74, 38, 66, 24]),
+            ("home.cards", [HomeMetrics.cardGap, HomeMetrics.dockTop, HomeMetrics.cardPadding, HomeMetrics.toolPadding,
+                            HomeMetrics.sourceBadge, HomeMetrics.sourceBadgeBorder, HomeMetrics.glowBlur,
+                            HomeMetrics.progressHeight, HomeMetrics.weatherSymbol, HomeMetrics.weekDay, HomeMetrics.weekMark,
+                            HomeMetrics.nowPlayingRatio], [CGFloat(10), 12, 12, 14, 20, 2, 34, 4, 40, 22, 20, 1.25]),
+            ("home.glow", [HomeMetrics.glowOpacity, HomeMetrics.liveFill], [0.45, 0.18]),
             ("icon", [IconSize.symbol, IconSize.header], [CGFloat(14), 16]),
             ("brand.cream", Brand.cream.hexString, "F2E6C9"),
             ("panel", PanelPalette.panel.hexString, "000000"),
             ("approvalCard", PanelPalette.approvalCard.hexString, "111111"),
-            ("ink", [Ink.primary, Ink.secondary, Ink.tertiary, Ink.hairline, Ink.fill], [0.92, 0.56, 0.32, 0.10, 0.07]),
+            ("ink", [Ink.primary, Ink.secondary, Ink.tertiary, Ink.hairline, Ink.rowHairline], [0.94, 0.60, 0.36, 0.06, 0.05]),
+            ("ink.fill", Ink.fill, 0.07),
         ]
         let states: [(StateTone, String, Double, String, String)] = [
             (.working, "32D74B", 1, "bolt.fill", "Working"),
@@ -54,8 +70,11 @@ final class DesignTokensTests: DefaultsTestCase {
         }
     }
 
+    /// Text styles stay in 10…15; the two display numbers (temperature, timer) are separate.
     func testTypeNeverAboveFifteen() {
-        XCTAssertTrue(TypeScale.all.allSatisfy { $0.size <= 15 && $0.size >= 11 })
+        XCTAssertTrue(TypeScale.all.allSatisfy { $0.size <= 15 && $0.size >= 10 })
+        XCTAssertEqual(TypeScale.display.map(\.size), [34, 54])
+        XCTAssertFalse(TypeScale.display.contains { d in TypeScale.all.contains { $0 == d } })
         XCTAssertEqual(TypeScale.all.map(\.size).max(), TypeScale.maximum)
         XCTAssertEqual(TypeScale.all.map(\.size).min(), TypeScale.minimum)
     }
@@ -104,10 +123,10 @@ final class DesignTokensTests: DefaultsTestCase {
 }
 
 private extension TypeStyle {
-    var desc: String { "\(size) \(weight) mono=\(mono)" }
+    var desc: String { "\(size) \(weight) mono=\(mono) rounded=\(rounded)" }
 }
 
-private extension RGB {
+extension RGB {
     var hexString: String {
         func c(_ v: Double) -> String { String(format: "%02X", Int((v * 255).rounded())) }
         return c(r) + c(g) + c(b)

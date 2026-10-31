@@ -1622,3 +1622,50 @@ working directory where a step says so.
   Finder keeps the keyboard. Hover-open the panel, click once in the field and type: the
   letters go into the field. With an approval waiting and text in the field, ⌘⌫ deletes the
   text and never denies the approval.
+
+## Island phase A
+
+Hardware checks for the two-card Home (Island spec 2, 3, 5). The smoke runs print
+`SMOKE OK … renders=120`, `SMOKE SETTINGS OK sections=9 …` and `SMOKE-POWER OK widgets=6`;
+the renders `home-rest`, `home-resume`, `home-never-played`, `home-sky-*`, `home-free-week`,
+`home-no-location` and `home-no-calendar` show every state below.
+
+- [ ] **320. Two cards at 640 pt.** Open the panel with music playing: it is 640 pt wide.
+  Now Playing (left, wider) and Today (right) are the same height, 10 pt apart, on #121214
+  with 16 pt corners. The header has no date or weather text. The album's colour glows softly
+  behind the left half of Now Playing, with the playing app's icon on the art's corner (no
+  icon when the app is not installed: never letters). A long title or artist ends in "…".
+- [ ] **321. Every sky.** In Settings › Home › Weather, pick cities that have each weather
+  now (search a forecast site for one with sun, cloud, rain, thunder, snow and fog; check
+  one city by night): the Today card's top shows that condition's gradient and colour symbol,
+  the temperature large and rounded, "Sunny · City" by day ("Clear" at night), then one line
+  (`Umbrella till 11 PM` while it rains, `Rain from 5 PM` when rain is coming, else
+  `H 27° · L 18°`). Clouds drift, rain streaks fall, thunder flashes now and then, snow
+  falls, only while the panel is open; with Reduce Motion on the sky is still.
+- [ ] **322. Use my location asks only on click.** Reset Location for PlatyNotch
+  (`tccutil reset Location dev.platynotch.app`), quit and relaunch: opening the panel shows
+  "Use my location" and "Add a city" on a grey sky and **no** macOS prompt. Click "Use my
+  location": the prompt appears once; Allow: the sky shows your place's weather and name.
+  Deny instead: no second prompt, ever; the sky offers "Add a city", and a city picked in
+  Settings shows. "Add a city" opens Settings › Home.
+- [ ] **323. Resume after quitting Music.** Play a track in Apple Music, then quit Music:
+  Now Playing shows "Nothing playing", a `Resume "<title>"` chip with Music's icon, up to two
+  of your playlists (only when PlatyNotch already has Automation for Music), Platy and a
+  greeting for the time of day. Click Resume: Music opens and plays. With Spotify as the last
+  app the chip resumes Spotify and no playlists show. On a fresh install the card says
+  "Play something and it shows here."
+- [ ] **324. Week strip when free.** With no more events today (Calendar allowed): the bottom
+  of Today reads "Free today" ("Free tonight" from 17:00) over seven days from today, and the
+  next day with an event wears a blue circle; a click anywhere on the strip opens Calendar
+  (on today). With Calendar off or not allowed: "This week",
+  today circled, and "Connect Calendar ›" opens Settings › Privacy (no prompt).
+- [ ] **325. CPU, closed and open.** `scripts/perf-idle.sh` and `scripts/perf-idle.sh --state music`:
+  PASS under 1 %. `scripts/perf-open.sh` (music on; clear, rain and snow skies, the panel held
+  open about 40 s each): open under 5 %, and under 1 % from the second second after closing.
+  Keep the pointer and clicks away from the notch while it runs (a click elsewhere closes the
+  panel; the script reopens it and notes it).
+- [ ] **326. Weather never stuck on Loading.** Allow Location from Settings › Privacy (or the
+  first run): the sky loads at once. Turn Wi-Fi off with no city saved and click "Use my
+  location": the sky says "Can't find your location" with "Try again" and "Add a city". With a
+  city and Wi-Fi off before the first load: "Offline"; with an earlier reading: the reading
+  and "updated 12 min ago".

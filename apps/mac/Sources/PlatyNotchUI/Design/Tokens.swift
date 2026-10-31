@@ -47,6 +47,13 @@ enum DS {
     static let tertiary = ink(Ink.tertiary)
     static let hairline = ink(Ink.hairline)
     static let fill = ink(Ink.fill)
+    static let rowHairline = ink(Ink.rowHairline)
+
+    /// Island's surfaces (spec 9): cards, raised controls, outlines and the count blue.
+    static let card = Color(Surface.card)
+    static let raised = Color(Surface.raised)
+    static let stroke = Color(Surface.stroke)
+    static let countBlue = Color(Surface.countBlue)
 
     /// A state colour at its own opacity (done and idle are white ink).
     static func color(_ tone: StateTone, alpha: Double = 1) -> Color {

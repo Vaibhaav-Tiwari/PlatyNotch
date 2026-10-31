@@ -51,6 +51,20 @@ public enum MeetingLinks {
         return current
     }
 
+    /// The meeting provider's name for a join link ("Google Meet", "Zoom", "Microsoft
+    /// Teams", "Webex", "FaceTime"), else nil.
+    public static func providerName(_ url: URL) -> String? {
+        let scheme = url.scheme?.lowercased() ?? ""
+        let host = url.host?.lowercased() ?? ""
+        func on(_ domain: String) -> Bool { host == domain || host.hasSuffix("." + domain) }
+        if scheme == "zoommtg" || scheme == "zoomus" || on("zoom.us") || on("zoomgov.com") { return "Zoom" }
+        if scheme == "msteams" || host == "teams.microsoft.com" || host == "teams.live.com" { return "Microsoft Teams" }
+        if scheme == "webex" || scheme == "wbx" || on("webex.com") { return "Webex" }
+        if scheme == "facetime" || host == "facetime.apple.com" { return "FaceTime" }
+        if host == "meet.google.com" { return "Google Meet" }
+        return nil
+    }
+
     /// Meeting apps' own link schemes (they open only that app).
     public static let appSchemes: Set<String> = ["zoommtg", "zoomus", "msteams", "webex", "wbx", "facetime"]
 

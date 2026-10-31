@@ -24,4 +24,12 @@ final class PermissionTableTests: XCTestCase {
             XCTAssertEqual(PermissionTable.row(id).action, .request, "\(id) asks on a click, as today")
         }
     }
+
+    /// Location powers Weather and is asked only on a click (Island spec 5).
+    func testLocationRowForWeather() {
+        let row = PermissionTable.row(.location)
+        XCTAssertEqual(row.title, "Location")
+        XCTAssertTrue(row.powers.contains("Weather"), row.powers)
+        XCTAssertEqual(row.action, .request)
+    }
 }

@@ -16,7 +16,7 @@ final class SetupPresetTests: DefaultsTestCase {
                 mode: .alwaysOn, agents: false),
             Row(p: .developer, on: everydayOn + ["fileActions", "snap"], off: [],
                 mode: .alwaysOn, agents: true),
-            Row(p: .minimal, on: ["music"], off: allBuiltIns.filter { $0 != "music" },
+            Row(p: .minimal, on: ["music", "weather"], off: allBuiltIns.filter { $0 != "music" && $0 != "weather" },
                 mode: .minimal, agents: true),
         ]
         XCTAssertEqual(SetupPreset.allCases, rows.map(\.p))
@@ -41,7 +41,7 @@ final class SetupPresetTests: DefaultsTestCase {
 
     func testMinimalNeedsConfirmation() {
         let change = PresetChange.plan(.minimal, enabled: ["music", "meeting", "time"])
-        XCTAssertEqual(change.turnOn, [])
+        XCTAssertEqual(change.turnOn, ["weather"])
         XCTAssertEqual(change.turnOff, ["meeting", "time"])
         XCTAssertTrue(change.needsConfirmation)
         XCTAssertFalse(PresetChange.plan(.minimal, enabled: ["music"]).needsConfirmation)
@@ -154,8 +154,16 @@ final class SetupPresetTests: DefaultsTestCase {
             "Turns on Meeting, Time, Weather, Shelf, Clipboard.",
             "The notch stays on.",
         ])
-        let current = PresetPlan.plan(.minimal, enabled: ["music"], mode: .minimal)
+        let current = PresetPlan.plan(.minimal, enabled: ["music", "weather"], mode: .minimal)
         XCTAssertTrue(current.isCurrent)
         XCTAssertFalse(current.asks(firstRun: false), "nothing to change: nothing to ask")
+    }
+
+    /// Island spec 6: weather is on in all three presets.
+    func testWeatherOnInEveryPreset() {
+        for p in SetupPreset.allCases {
+            XCTAssertTrue(p.turnsOn.contains("weather"), "\(p)")
+            XCTAssertFalse(p.turnsOff.contains("weather"), "\(p)")
+        }
     }
 }

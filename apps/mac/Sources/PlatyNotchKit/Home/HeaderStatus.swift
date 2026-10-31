@@ -36,20 +36,6 @@ public enum KeepAwakeLabel {
     }
 }
 
-/// Home's header text: `Fri 31 · 14° Clear`, or `Fri 31` without weather.
-public enum HeaderDate {
-    public static func text(now: Date, weather: String?, calendar: Calendar, locale: Locale) -> String {
-        let f = DateFormatter()
-        f.calendar = calendar
-        f.timeZone = calendar.timeZone
-        f.locale = locale
-        f.dateFormat = "EEE d"
-        let day: String = f.string(from: now)
-        guard let weather, !weather.isEmpty else { return day }
-        return day + " · " + weather
-    }
-}
-
 extension KeepAwakeDuration {
     public static let preferenceKey = "keepAwake.duration"
 

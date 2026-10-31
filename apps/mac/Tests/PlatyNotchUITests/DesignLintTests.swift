@@ -75,7 +75,7 @@ final class DesignLintTests: DefaultsTestCase {
     func testNoLiteralFontBelowEleven() throws {
         let found = try Self.offenders(#"\.system\(size:\s*([0-9]+(?:\.[0-9]+)?)"#) { match, ns in
             let value = Double(ns.substring(with: match.range(at: 1))) ?? 0
-            return value < Double(TypeScale.minimum)
+            return value < Double(TypeScale.literalMinimum)
         }
         XCTAssertTrue(found.isEmpty, "text below 11 pt:\n" + found.joined(separator: "\n"))
     }
@@ -177,6 +177,8 @@ final class DesignLintTests: DefaultsTestCase {
         "NowPlaying.swift": "the playing track's artwork tint",
         "Music/MusicVisualiser.swift": "the artwork's own colours in the visualiser",
         "Games/GameRenders.swift": "the game boards' own colours",
+        "Home/NowPlayingCard.swift": "the art glow: the album's own colour (Island spec 3.1)",
+        "Home/WeatherSkyView.swift": "the sky: weather colour (Island spec 5)",
     ]
 
     /// Colour only for state (spec 5.3): in panel views, no named system colours, no
@@ -323,8 +325,8 @@ final class DesignLintTests: DefaultsTestCase {
         for (key, reason) in Self.radiusAllowlist {
             XCTAssertFalse(reason.trimmingCharacters(in: .whitespaces).isEmpty, "\(key) needs a reason")
         }
-        XCTAssertEqual(Radius.scale, [4, 6, 8, 12, 22])
-        XCTAssertTrue(found.isEmpty, "radii outside 4 / 6 / 8 / 12 / 22 (use a Radius token):\n"
+        XCTAssertEqual(Radius.scale, [4, 6, 8, 12, 16, 22])
+        XCTAssertTrue(found.isEmpty, "radii outside 4 / 6 / 8 / 12 / 16 / 22 (use a Radius token):\n"
                       + found.joined(separator: "\n"))
     }
 

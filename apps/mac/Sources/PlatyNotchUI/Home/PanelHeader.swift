@@ -1,9 +1,9 @@
 import PlatyNotchKit
 import SwiftUI
 
-/// The header row of both views (spec 2.1): Platy (20 × 15 pt), the view switcher, a
-/// flexible space, the view's status text (12 pt secondary; mono for Agents' usage numbers),
-/// then the icon toggles, 14 pt apart.
+/// The header row of both views (Island spec 2): Platy, the view switcher, a flexible space,
+/// the view's status text (Agents' usage only; Home has none: the weather is the Today
+/// card), then the icon toggles, 14 pt apart.
 struct PanelHeader<Nav: View, Controls: View>: View {
     let status: [String]
     var mono = false
@@ -16,12 +16,6 @@ struct PanelHeader<Nav: View, Controls: View>: View {
         self.mono = mono
         self.nav = nav()
         self.controls = controls()
-    }
-
-    /// Home's status text: `Fri 31 · 14° Clear`, or `Fri 31` without a weather reading.
-    static func homeStatus(now: Date, weather: String?, calendar: Calendar = .current,
-                           locale: Locale = .current) -> String {
-        HeaderDate.text(now: now, weather: weather, calendar: calendar, locale: locale)
     }
 
     var body: some View {

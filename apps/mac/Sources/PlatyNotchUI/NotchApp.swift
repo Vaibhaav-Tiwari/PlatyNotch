@@ -251,12 +251,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Smoke runs never script Music or Spotify (an unbundled run's Apple Events would
         // be the terminal's, and could prompt for it).
         if options.smoke || options.smokeSettings { today.nowPlaying.sendsAppleEvents = false }
+        // Resume and recents (Island spec 3.5); smoke and perf runs never read or save them.
+        if !options.smoke, !options.smokeSettings, !options.perfRun {
+            today.nowPlaying.lastPlayedStore = .standard
+            today.nowPlaying.recentsProvider = MusicAppRecents.system
+        }
         // The upgrade steps run before any widget reads its saved settings (Wellbeing reads
         // them in `init`): an existing user's water nudge must be saved before it is read.
         if !options.smoke, !options.smokeSettings, !options.perfRun { prepareFirstRun(layoutSaved: layoutSaved) }
         BuiltInWidgets.register(in: widgets, store: store, today: today,
                                 persist: !options.smoke && !options.smokeSettings, clipboard: clipboard,
                                 keepAwake: headerServices.keepAwake)
+        // The sky's "Add a city": Settings › Home.
+        if let weather = widgets.widget(WeatherWidget.widgetID) as? WeatherWidget {
+            weather.onOpenSettings = { [weak self] in self?.openSettings(section: SettingsPageID.home.rawValue) }
+            // Allow on the Location row (Privacy, onboarding) goes through the widget (review C1).
+            settingsServices.permissions.weatherLocation = { [weak weather] in await weather?.useMyLocation() }
+        }
         headerServices.start()
         let router = self.router
         widgets.appPeeks = { [weak router] in router?.peekView(id: $0) }
@@ -273,6 +284,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsServices.commandHotKey = commandHotKey
 
         rebuildControllers()
+        if let sky = options.perfSky { startPerfSky(sky) }
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main
         ) { [weak self] _ in
@@ -423,6 +435,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - Settings, onboarding, plugins
+
+    /// Perf runs: pin the weather to `sky` (a fixed reading), open Home so the sky moves, and
+    /// close it after `perfOpenSeconds` (scripts/perf-open.sh measures both sides).
+    private func startPerfSky(_ sky: WeatherCondition) {
+        let code: Int = switch sky {
+        case .clear: 0
+        case .clouds: 3
+        case .rain: 61
+        case .thunder: 95
+        case .snow: 73
+        case .fog: 45
+        }
+        widgets.setEnabled(WeatherWidget.widgetID, true)
+        (widgets.widget(WeatherWidget.widgetID) as? WeatherWidget)?.pinForPerf(
+            place: GeoPlace(id: 1, name: "Perf", latitude: 0, longitude: 0),
+            weather: WeatherNow(temperatureC: 18, code: code, isDay: true, time: Date(), hourly: [], high: 22, low: 14))
+        let seconds = options.perfOpenSeconds
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            self?.primaryController?.expand(tab: nil)
+            NSLog("PERF-SKY open \(sky.rawValue)")
+            guard let seconds else { return }
+            // Re-open if something closed it (a click elsewhere), and say so in the log.
+            let end = Date().addingTimeInterval(seconds)
+            while Date() < end {
+                try? await Task.sleep(for: .seconds(1))
+                if let c = self?.primaryController, c.panelModel.mode != .expanded {
+                    NSLog("PERF-SKY reopened (was \(String(describing: c.panelModel.mode)))")
+                    c.expand(tab: nil)
+                }
+            }
+            self?.primaryController?.collapse()
+            NSLog("PERF-SKY closed")
+        }
+    }
 
     private func wireSettingsEntryPoints() {
         memory.onOpenSettings = { [weak self] in self?.openSettings(section: "memory") }

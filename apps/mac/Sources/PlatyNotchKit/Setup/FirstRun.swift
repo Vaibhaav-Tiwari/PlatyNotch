@@ -80,3 +80,19 @@ public enum QuietNotchMigration {
         defaults.set(true, forKey: key)
     }
 }
+
+/// Island's one-time migration for existing users (Island spec 11). This phase: a city
+/// saved before Island becomes the weather location, so they never see a Location prompt.
+public enum IslandMigration {
+    public static let key = "ui.island.migrated"
+
+    public static func run(defaults: UserDefaults, existingUser: Bool) {
+        guard existingUser, !defaults.bool(forKey: key) else { return }
+        if WeatherLocation.load(from: defaults) == nil,
+           let place = defaults.data(forKey: WeatherLocation.legacyPlaceKey)
+               .flatMap({ try? JSONDecoder().decode(GeoPlace.self, from: $0) }) {
+            WeatherLocation.city(place).save(to: defaults)
+        }
+        defaults.set(true, forKey: key)
+    }
+}

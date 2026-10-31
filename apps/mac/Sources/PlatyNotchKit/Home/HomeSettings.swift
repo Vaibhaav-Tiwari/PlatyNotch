@@ -1,6 +1,8 @@
 import Foundation
 
-/// Settings › Home: what fills Home's right column (spec 2.2, 7).
+/// Quiet Notch's Settings › Home choice of right column. Island has no right column; the
+/// value still decodes, and the Island migration reads it once (a Mail column user gets
+/// Mail in the dock).
 public struct HomeSettings: Codable, Equatable, Sendable {
     /// What the right column shows. Notes and Mail are offered only while their widget is on.
     public enum RightColumn: String, Codable, CaseIterable, Sendable { case upNext, notes, mail }
@@ -23,14 +25,5 @@ public struct HomeSettings: Codable, Equatable, Sendable {
     public func save(to defaults: UserDefaults) {
         guard let data = try? JSONEncoder().encode(self) else { return }
         defaults.set(data, forKey: Self.key)
-    }
-
-    /// The column to draw: the chosen one, or Up next while its widget is off.
-    public func effectiveColumn(notesOn: Bool, mailOn: Bool) -> RightColumn {
-        switch rightColumn {
-        case .upNext: .upNext
-        case .notes: notesOn ? .notes : .upNext
-        case .mail: mailOn ? .mail : .upNext
-        }
     }
 }

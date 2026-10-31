@@ -27,7 +27,7 @@ public enum SetupPreset: String, CaseIterable, Codable, Sendable {
         switch self {
         case .everyday: "Music, meetings, timers, weather, shelf and clipboard."
         case .developer: "Everyday plus agents, usage limits, file actions and snapping."
-        case .minimal: "The notch stays hidden until something is live."
+        case .minimal: "Music and weather; the notch stays hidden until something is live."
         }
     }
 
@@ -35,7 +35,7 @@ public enum SetupPreset: String, CaseIterable, Codable, Sendable {
         switch self {
         case .everyday: Self.everydayOn
         case .developer: Self.everydayOn + ["fileActions", "snap"]
-        case .minimal: ["music"]
+        case .minimal: ["music", "weather"]
         }
     }
 
@@ -43,7 +43,7 @@ public enum SetupPreset: String, CaseIterable, Codable, Sendable {
         switch self {
         case .everyday: ["fileActions", "snap"]
         case .developer: []
-        case .minimal: Self.builtIns.filter { $0 != "music" }
+        case .minimal: Self.builtIns.filter { $0 != "music" && $0 != "weather" }
         }
     }
 
@@ -118,16 +118,18 @@ extension FirstRunState {
     /// Launch: who gets the first run or the tour card, before any widget starts (spec 10,
     /// 14). A new install is marked pending (a layout saved during its first launches never
     /// makes it an existing user) and needs no upgrade; anyone else gets `UpgradeMigration`
-    /// and `QuietNotchMigration` once. `layoutSaved`: a widget layout was saved before this launch.
+    /// `QuietNotchMigration` and `IslandMigration` once. `layoutSaved`: a widget layout was saved before this launch.
     public static func prepare(defaults: UserDefaults, onboardingDone: Bool, layoutSaved: Bool) -> FirstRunState {
         let state = resolve(onboardingDone: onboardingDone, layoutSaved: layoutSaved, defaults: defaults)
         if state == .firstRun {
             defaults.set(true, forKey: pendingKey)
             defaults.set(true, forKey: UpgradeMigration.key)
             defaults.set(true, forKey: QuietNotchMigration.key)
+            defaults.set(true, forKey: IslandMigration.key)
         }
         UpgradeMigration.run(defaults: defaults, existingUser: state != .firstRun)
         QuietNotchMigration.run(defaults: defaults, existingUser: state != .firstRun)
+        IslandMigration.run(defaults: defaults, existingUser: state != .firstRun)
         return state
     }
 

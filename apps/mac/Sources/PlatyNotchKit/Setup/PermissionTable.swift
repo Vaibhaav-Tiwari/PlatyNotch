@@ -2,7 +2,7 @@ import Foundation
 
 /// The macOS permissions PlatyNotch can use (spec 10, step 3).
 public enum PermissionID: String, CaseIterable, Sendable {
-    case accessibility, calendars, reminders, automation, camera, notifications, bluetooth
+    case accessibility, calendars, reminders, automation, camera, notifications, bluetooth, location
 }
 
 /// What a row's button does. Nothing here creates a new place a prompt can come from:
@@ -59,6 +59,9 @@ public enum PermissionTable {
                       powers: "AirPods battery and the connect peek",
                       withoutIt: "No headphone battery or connect peek",
                       action: .openOwner(settingsSection: "widgets/system")),
+        PermissionRow(id: .location, title: "Location",
+                      powers: "Weather where you are, rounded to about 1 km",
+                      withoutIt: "Weather for a city you pick", action: .request),
     ]
 
     public static func row(_ id: PermissionID) -> PermissionRow {

@@ -58,7 +58,12 @@ public struct WeatherClient: Sendable {
 
     /// The forecast for a place (only its rounded coordinates are sent).
     public func forecast(for place: GeoPlace) async throws -> WeatherNow {
-        try WeatherDecoder.decode(try await get(OpenMeteo.forecastURL(latitude: place.latitude, longitude: place.longitude)))
+        try await forecast(latitude: place.latitude, longitude: place.longitude)
+    }
+
+    /// The forecast at coordinates (rounded to 2 decimals in the URL).
+    public func forecast(latitude: Double, longitude: Double) async throws -> WeatherNow {
+        try WeatherDecoder.decode(try await get(OpenMeteo.forecastURL(latitude: latitude, longitude: longitude)))
     }
 
     private func get(_ url: URL) async throws -> Data {

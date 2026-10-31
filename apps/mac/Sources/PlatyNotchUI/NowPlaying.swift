@@ -23,6 +23,20 @@ public final class NowPlaying {
     /// The artwork's dominant colour (the tile's glow), worked out off the main thread once
     /// per artwork; nil without artwork or until it is ready.
     public private(set) var artworkTint: Color?
+    /// `artworkTint` as RGB (the Now Playing card's glow).
+    public private(set) var artworkRGB: RGB?
+    /// The last titled track that played (Resume, when nothing plays) and its app's icon.
+    public private(set) var lastPlayed: LastPlayed?
+    public private(set) var lastPlayedIcon: NSImage?
+    /// Where `lastPlayed` is saved; nil (the default: renders, tests, smoke and perf runs)
+    /// keeps it in memory only. The app sets `.standard`.
+    @ObservationIgnored var lastPlayedStore: UserDefaults? {
+        didSet { setLastPlayed(lastPlayedStore.flatMap(LastPlayed.load(from:))) }
+    }
+    /// Apple Music's first playlists, beside Resume (empty for other apps).
+    public private(set) var recents: [String] = []
+    /// Reads nothing until the app sets `MusicAppRecents.system`.
+    @ObservationIgnored var recentsProvider: MusicRecentsProviding = NoRecents()
     /// The playing app's icon and name (Safari for a web player), looked up once per app.
     public private(set) var appIcon: NSImage?
     public private(set) var appName: String?
@@ -88,6 +102,72 @@ public final class NowPlaying {
     static let likeMessageSeconds: Double = 30
 
     public init() {}
+
+    private func setLastPlayed(_ p: LastPlayed?) {
+        let appChanged = p?.bundleID != lastPlayed?.bundleID
+        lastPlayed = p
+        if appChanged || (p != nil && lastPlayedIcon == nil) {
+            lastPlayedIcon = p.flatMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0.bundleID) }
+                .map { NSWorkspace.shared.icon(forFile: $0.path) }
+            if appChanged { recents = [] }
+        }
+    }
+
+    /// Resume: play in the last app. Music and Spotify by AppleScript (it opens the app if
+    /// it was quit; the Automation prompt can only come from this click), others by the
+    /// media-remote play command.
+    public func resume() {
+        guard !inert, let last = lastPlayed else { return }
+        if let player = AppleScriptPlayer(rawValue: last.bundleID) {
+            guard sendsAppleEvents else { return }
+            AppleScriptPlayer.queue.async { player.play() }
+        } else if let files = AdapterFiles.locate() {
+            AdapterStream.send(files: files, arguments: ["send", "0"])
+        }
+    }
+
+    /// A recent chip: plays that Apple Music playlist (only Music has recents).
+    public func playRecent(_ name: String) {
+        guard !inert, sendsAppleEvents, recents.contains(name) else { return }
+        let escaped = name.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        AppleScriptPlayer.queue.async {
+            _ = AppleScriptPlayer.execute("""
+            with timeout of 5 seconds
+                tell application id "\(AppleScriptPlayer.music.rawValue)" to play playlist "\(escaped)"
+            end timeout
+            return ""
+            """)
+        }
+    }
+
+    /// Reads the last app's recents (Apple Music only, only with Automation already granted),
+    /// while the empty card is on screen.
+    public func refreshRecents() async {
+        guard !inert, let last = lastPlayed, info == nil else { return }
+        let found = await recentsProvider.recents(for: last.bundleID)
+        guard lastPlayed?.bundleID == last.bundleID else { return }
+        if found != recents { recents = found }
+    }
+
+    /// Tests and renders: the playing app's icon and name.
+    func debugSetApp(icon: NSImage?, name: String?) {
+        appIcon = icon
+        appName = name
+    }
+
+    /// Renders: the last-played track, its app icon and recents, without reading anything.
+    func debugSetLastPlayed(_ p: LastPlayed?, icon: NSImage?, recents: [String]) {
+        lastPlayed = p
+        lastPlayedIcon = icon
+        self.recents = recents
+    }
+
+    /// Renders: the glow colour without decoding artwork.
+    func debugSetTint(_ rgb: RGB?) {
+        artworkGeneration += 1
+        artworkRGB = rgb
+        artworkTint = rgb.map { Color($0) }
+    }
 
     /// Starts reading (idempotent). Called by the music widget when it starts (at launch
     /// when the widget is enabled).
@@ -282,6 +362,11 @@ public final class NowPlaying {
             showLikeMessage(nil)
         }
         info = new
+        let played = LastPlayed.update(new, previous: lastPlayed, now: now)
+        if played != lastPlayed {
+            setLastPlayed(played)
+            if !inert, let store = lastPlayedStore { played?.save(to: store) }
+        }
         if new == nil || isPlaying {
             setPaused(nil)
         } else if wasPlaying {
@@ -361,6 +446,7 @@ public final class NowPlaying {
     private func tintArtwork(_ data: Data?) {
         artworkGeneration += 1
         artworkTint = nil
+        artworkRGB = nil
         guard let data else { return }
         let generation = artworkGeneration
         // The decode runs detached and never sees `self`; the result is applied back here
@@ -369,6 +455,7 @@ public final class NowPlaying {
             let rgb = await Task.detached(priority: .utility) { NowPlaying.dominantColor(of: data) }.value
             guard let self, let rgb, self.artworkGeneration == generation else { return }
             self.artworkTint = Color(red: rgb.r, green: rgb.g, blue: rgb.b)
+            self.artworkRGB = RGB(rgb)
         }
     }
 
@@ -665,6 +752,16 @@ enum AppleScriptPlayer: String, CaseIterable, Sendable {
         return last
     }
 
+    /// Resume: `play`, opening the player if it was quit (a click on Resume only).
+    nonisolated func play() {
+        _ = Self.execute("""
+        with timeout of 5 seconds
+            tell application id "\(rawValue)" to play
+        end timeout
+        return ""
+        """)
+    }
+
     /// `verb` is one of our fixed commands (playpause, next track, previous track).
     nonisolated func run(_ verb: String) {
         _ = Self.execute("""
@@ -676,7 +773,7 @@ enum AppleScriptPlayer: String, CaseIterable, Sendable {
         """)
     }
 
-    private nonisolated static func execute(_ source: String) -> String? {
+    nonisolated static func execute(_ source: String) -> String? {
         executeDetailed(source).output
     }
 

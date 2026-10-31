@@ -38,16 +38,6 @@ final class HeaderStatusTests: DefaultsTestCase {
     }
 
     /// 31 October 2025 is a Friday (the brief says 2026-10-31, which is a Saturday).
-    func testDateAndWeather() {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "UTC") ?? .current
-        let locale = Locale(identifier: "en_US_POSIX")
-        let noon = DateComponents(calendar: cal, year: 2025, month: 10, day: 31, hour: 12).date ?? Date()
-        XCTAssertEqual(HeaderDate.text(now: noon, weather: "14° Clear", calendar: cal, locale: locale), "Fri 31 · 14° Clear")
-        XCTAssertEqual(HeaderDate.text(now: noon, weather: nil, calendar: cal, locale: locale), "Fri 31")
-        XCTAssertEqual(HeaderDate.text(now: noon, weather: "", calendar: cal, locale: locale), "Fri 31")
-    }
-
     func testPreferredDurationDefaultsToTwoHours() {
         let d = defaults()
         XCTAssertEqual(KeepAwakeDuration.preferred(in: d), .twoHours)

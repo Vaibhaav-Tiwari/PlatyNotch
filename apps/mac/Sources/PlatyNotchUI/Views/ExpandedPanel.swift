@@ -33,7 +33,7 @@ struct ExpandedPanel: View {
     var onOpenSettings: () -> Void = {}
     /// Keep awake, Mirror and the battery badge in the header; nil leaves just the gear.
     var header: HeaderServices?
-    /// Settings › Home: the right column.
+    /// Settings › Home (Quiet Notch's column choice; Island's Home ignores it).
     var homeSettings = HomeSettings()
     /// The command line under Home's hairline.
     var commandLine: AnyView = AnyView(EmptyView())
@@ -146,7 +146,7 @@ struct ExpandedPanel: View {
         (widgets.widget(LoopsWidget.widgetID) as? LoopsWidget)?.openCount ?? LoopsFormat.open(store.loops).count
     }
 
-    /// Home: chips, the media block beside Up next, the command line.
+    /// Home: Now Playing beside Today, the chips and the command line.
     var homeView: HomeView {
         HomeView(today: today, widgets: widgets, settings: homeSettings, tourSample: store.approvals.isEmpty ? tourSample : nil, fixedNow: fixedNow,
                  dropping: dropping, dropHover: dropHover, onOpenTool: { openTool($0) }, commandLine: commandLine,
@@ -177,26 +177,22 @@ struct ExpandedPanel: View {
         return normal.destination == .home ? normal.tool.flatMap { panelTool($0) } : nil
     }
 
-    /// The status text at the header's trailing side: Home's date and weather, or Agents'
-    /// usage as small mono numbers (`UsageLine`). An open tool has its own header.
+    /// The status text at the header's trailing side: Agents' usage as small mono numbers
+    /// (`UsageLine`); none on Home (Island spec 2: the weather is the Today card). An open
+    /// tool has its own header.
     private var headerStatus: [String] {
-        switch route.normalized(agentsVisible: agentsVisible).destination {
-        case .home: [PanelHeader<EmptyView, EmptyView>.homeStatus(now: fixedNow ?? Date(), weather: weatherText)]
-        case .agents: UsageLine.parts(store.usage)
+        Self.headerStatus(for: route.normalized(agentsVisible: agentsVisible).destination, usage: store.usage)
+    }
+
+    static func headerStatus(for destination: PanelDestination, usage: Usage) -> [String] {
+        switch destination {
+        case .home: []
+        case .agents: UsageLine.parts(usage)
         }
     }
 
     private var headerIsUsage: Bool {
         route.normalized(agentsVisible: agentsVisible).destination == .agents
-    }
-
-    /// `14° Clear` while the Weather widget is on and has a reading.
-    private var weatherText: String? {
-        guard widgets.isEnabled(WeatherWidget.widgetID),
-              let w = widgets.widget(WeatherWidget.widgetID) as? WeatherWidget, w.place != nil,
-              let now = w.weather else { return nil }
-        let d = WeatherCode.describe(now.code, isDay: now.isDay)
-        return "\(WeatherFormat.temperature(now.temperatureC, unit: w.unit)) \(d.text)"
     }
 
     // MARK: - Features inside the panel

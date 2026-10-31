@@ -12,6 +12,8 @@
   widget's headphones sub-feature uses IOBluetooth connect notifications: bluetooth.
   The v0.2 camera mirror (asked only from its button) needs device.camera under the
   hardened runtime, or AVCaptureDevice access is refused without a prompt.
+  Island's weather "Use my location" (asked only from that button) needs
+  personal-information.location under the hardened runtime.
 -->
 <plist version="1.0">
 <dict>
@@ -24,6 +26,8 @@
 	<key>com.apple.security.device.bluetooth</key>
 	<true/>
 	<key>com.apple.security.device.camera</key>
+	<true/>
+	<key>com.apple.security.personal-information.location</key>
 	<true/>
 </dict>
 </plist>

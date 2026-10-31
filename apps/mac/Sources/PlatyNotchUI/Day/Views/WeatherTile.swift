@@ -8,19 +8,19 @@ struct WeatherTile: View {
     let widget: WeatherWidget
 
     var body: some View {
-        if let place = widget.place {
-            TimelineView(.periodic(from: .now, by: 60)) { ctx in
-                content(place: place, now: ctx.date)
-            }
-        } else {
-            Label("Choose a city in Settings › Widgets › Weather", systemImage: "cloud.sun")
+        if let empty = WeatherWidget.emptyText(widget.source) {
+            Label(empty.detail, systemImage: "cloud.sun")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
+        } else {
+            TimelineView(.periodic(from: .now, by: 60)) { ctx in
+                content(name: widget.placeName, now: ctx.date)
+            }
         }
     }
 
     @ViewBuilder
-    private func content(place: GeoPlace, now: Date) -> some View {
+    private func content(name: String?, now: Date) -> some View {
         if let w = widget.weather {
             let d = WeatherCode.describe(w.code, isDay: w.isDay)
             HStack(spacing: 10) {
@@ -33,7 +33,7 @@ struct WeatherTile: View {
                     .font(.system(size: TypeScale.maximum, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(verbatim: "\(d.text) · \(place.name)").font(.system(size: 12, weight: .medium)).lineLimit(1)
+                    Text(verbatim: name.map { "\(d.text) · \($0)" } ?? d.text).font(.system(size: 12, weight: .medium)).lineLimit(1)
                     Text(rain(w)).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                     if let note = widget.ageNote(at: now) {
                         Text(verbatim: note).font(DS.font(TypeScale.caption)).foregroundStyle(Theme.tint(.warning)).lineLimit(1)
@@ -49,11 +49,11 @@ struct WeatherTile: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         } else if widget.offline {
-            Label("Offline: weather for \(place.name) loads when you are back online.", systemImage: "wifi.slash")
+            Label("Offline: the weather loads when you are back online.", systemImage: "wifi.slash")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         } else {
-            Label("Loading weather for \(place.name)…", systemImage: "cloud.sun")
+            Label("Loading weather…", systemImage: "cloud.sun")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }
@@ -112,9 +112,9 @@ struct WeatherSettings: View {
             .pickerStyle(.segmented)
             .frame(maxWidth: 200)
             SettingsNote("Weather data by Open-Meteo.com. Search sends the city name you type to Open-Meteo's geocoding service; "
-                 + "the forecast request carries only the chosen place's coordinates, rounded to about a kilometre. "
-                 + "No location access, account, cookies or tracking. Refreshes every 30 minutes while this widget is on, "
-                 + "never while the Mac sleeps or is offline.")
+                 + "the forecast request carries only the place's coordinates, rounded to about a kilometre. "
+                 + "Your location is used only after you turn on Use my location. No account, cookies or tracking. "
+                 + "Refreshes every 30 minutes while this widget is on, never while the Mac sleeps or is offline.")
                 .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

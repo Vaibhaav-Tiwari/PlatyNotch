@@ -222,14 +222,17 @@ enum HomeRenders {
     /// (file name, view, needs a hosting view): Platy is a layer-backed view.
     static func views() -> [(String, AnyView, Bool)] {
         var out: [(String, AnyView, Bool)] = []
-        out.append(("home-rest", panel(homeRest()), true))
+        let day = at(hour: 14), night = at(hour: 21)
+        out.append(("home-rest", panel(homeRest(), now: day), true))
         out.append(("home-header-keep-awake", panel(homeRest(), header: headerServices(keepAwake: true)), true))
         out.append(("home-header-charging", panel(homeRest(), header: headerServices(
             battery: BatteryState(percent: 64, charging: true, pluggedIn: true, minutesRemaining: nil))), true))
         out.append(("home-live", panel(homeLive()), true))
         out.append(("home-nothing-playing", panel(builtIns(meeting: false)), true))
+        out.append(("home-resume", panel(resume(), now: night), true))
+        out.append(("home-never-played", panel(builtIns(meeting: false)), true))
         out.append(("home-drop", panel(builtIns(meeting: false), dropping: true), true))
-        out.append(("home-notes-column", panel(builtIns(meeting: false), homeSettings: HomeSettings(rightColumn: .notes)), true))
+        out += skies(day: day, night: night)
         out.append(("home-command", panel(homeRest(), command: "timer 10m tea"), true))
         out.append(("home-command-list", panel(homeRest(), command: "", commandFocused: true), true))
         out.append(("home-command-hint", panel(homeRest(), commandHint: true), true))
@@ -250,12 +253,116 @@ enum HomeRenders {
         return rig
     }
 
-    /// Home at rest: a track, a meeting later today and three tasks, nothing live.
-    static func homeRest() -> Rig {
-        let rig = musicHero()
-        rig.today.nowPlaying.debugApply(NowPlayingInfo(bundleIdentifier: "com.apple.Music", title: "Weightless",
-                                                       artist: "Marconi Union", isPlaying: true,
-                                                       elapsed: 161, duration: 473, rate: 1, timestamp: Date()))
+    /// Home at rest (wireframe A): Green Light playing, sunny in Bengaluru, a meeting in 45 min.
+    static func homeRest(at now: Date = at(hour: 14)) -> Rig {
+        island(playing: true, sky: reading(0, day: true, 22, at: now), now: now,
+               next: [meeting(at: now.addingTimeInterval(45 * 60), title: "Design review")])
+    }
+
+    // MARK: - Island skies (spec 5)
+
+    /// One render per sky, plus the week strip, no location and no calendar. The thunder
+    /// render carries 200-character titles (truncation).
+    static func skies(day: Date, night: Date) -> [(String, AnyView, Bool)] {
+        let cal = Calendar.current
+        let monday: Set<Date> = [cal.startOfDay(for: cal.date(byAdding: .day, value: 2, to: day) ?? day)]
+        let design = meeting(at: day.addingTimeInterval(45 * 60), title: "Design review")
+        let long = String(String(repeating: "A very long title that keeps going ", count: 7).prefix(200))
+        var out: [(String, AnyView, Bool)] = []
+        func add(_ name: String, _ rig: Rig, _ now: Date) { out.append((name, panel(rig, now: now), true)) }
+        add("home-sky-clear-day", island(playing: true, sky: reading(0, day: true, 22, at: day), now: day, next: [design]), day)
+        add("home-sky-clear-night", island(playing: true, sky: reading(0, day: false, 16, at: night), now: night,
+                                            next: [], days: monday), night)
+        add("home-sky-clouds", island(playing: true, sky: reading(3, day: true, 19, at: day), now: day,
+                                      next: [meeting(at: day.addingTimeInterval(-20 * 60), title: "Standup")]), day)
+        add("home-sky-rain-night", island(playing: false, sky: reading(61, day: false, 17, at: night, rainy: true),
+                                          now: night, next: [], days: monday), night)
+        add("home-sky-thunder", island(playing: true, title: long, sky: reading(95, day: true, 24, at: day), now: day,
+                                       next: [meeting(at: day.addingTimeInterval(3 * 3600), title: long)]), day)
+        add("home-sky-snow", island(playing: true, sky: reading(73, day: true, -2, at: day), place: "Oslo", now: day,
+                                    next: [design]), day)
+        add("home-sky-fog", island(playing: true, sky: reading(45, day: true, 9, at: day), place: "London", now: day,
+                                   next: [design]), day)
+        add("home-free-week", island(playing: true, sky: reading(2, day: true, 21, at: day), now: day, next: [],
+                                     days: monday), day)
+        add("home-no-location", island(playing: true, sky: nil, now: day, next: [design]), day)
+        add("home-no-calendar", island(playing: false, sky: reading(1, day: true, 23, at: day), now: day, next: nil), day)
+        return out
+    }
+
+    /// A reading for the renders: today's high and low, and a rainy run for rain.
+    static func reading(_ code: Int, day: Bool, _ temperature: Double, at now: Date, rainy: Bool = false) -> WeatherNow {
+        let hour = Calendar.current.dateInterval(of: .hour, for: now)?.start ?? now
+        let chances: [Double] = rainy ? [80, 60, 20, 10] : [0, 5, 10, 10]
+        let hourly = chances.enumerated().map { HourlyPrecip(time: hour.addingTimeInterval(Double($0.offset) * 3600),
+                                                             probability: $0.element) }
+        return WeatherNow(temperatureC: temperature, code: code, isDay: day, time: now, hourly: hourly,
+                          high: temperature + 5, low: temperature - 4)
+    }
+
+    static func meeting(at start: Date, title: String) -> CalendarMeeting {
+        CalendarMeeting(id: title, title: title, start: start, end: start.addingTimeInterval(45 * 60),
+                        joinURL: URL(string: "https://meet.google.com/abc-defg-hij"))
+    }
+
+    /// Home as in wireframes A and B: Green Light playing (or Resume), the sky, and the
+    /// calendar (`next` nil: Calendar not granted).
+    static func island(playing: Bool, title: String = "Green Light", sky: WeatherNow?, place: String = "Bengaluru",
+                       now: Date, next: [CalendarMeeting]?, days: Set<Date> = []) -> Rig {
+        let rig = builtIns(meeting: false, at: now)
+        let np = rig.today.nowPlaying
+        if playing {
+            np.debugApply(NowPlayingInfo(bundleIdentifier: AppleScriptPlayer.music.rawValue, title: title,
+                                         artist: title == "Green Light" ? "Lorde" : title, album: "Melodrama",
+                                         isPlaying: true, artwork: albumArt(), elapsed: 72, duration: 234, rate: 1,
+                                         timestamp: now), now: now)
+            np.debugSetTint(RGB(hex: 0xFF7A59))
+        } else {
+            setLastPlayed(rig)
+        }
+        if let w = rig.registry.widget(WeatherWidget.widgetID) as? WeatherWidget {
+            if let sky {
+                w.showForRendering(place: GeoPlace(id: 1, name: place, latitude: 12.97, longitude: 77.59), weather: sky)
+            } else {
+                w.showEmptyForRendering()
+            }
+        }
+        if let next {
+            rig.today.calendar.setForTesting(access: .granted, meetings: next, weekDays: days)
+        } else {
+            rig.today.calendar.setForTesting(access: .unavailable, meetings: [])
+        }
+        return rig
+    }
+
+    /// Render-only stand-in album art: a warm 135° gradient (wireframe A).
+    static func albumArt() -> Data? {
+        let side = 240
+        guard let ctx = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        let colors = [RGB(hex: 0xFF7A59), RGB(hex: 0xC43A78), RGB(hex: 0x4B2A7A)].map { NSColor($0).cgColor } as CFArray
+        guard let g = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 0.6, 1])
+        else { return nil }
+        ctx.drawLinearGradient(g, start: CGPoint(x: 0, y: CGFloat(side)), end: CGPoint(x: CGFloat(side), y: 0), options: [])
+        ctx.setFillColor(CGColor(gray: 1, alpha: 0.85))
+        ctx.fillEllipse(in: CGRect(x: 150, y: 150, width: 46, height: 46))
+        guard let image = ctx.makeImage() else { return nil }
+        return NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
+    }
+
+    private static func setLastPlayed(_ rig: Rig) {
+        let music = NSWorkspace.shared.urlForApplication(withBundleIdentifier: AppleScriptPlayer.music.rawValue)
+            .map { NSWorkspace.shared.icon(forFile: $0.path) }
+        rig.today.nowPlaying.debugSetLastPlayed(
+            LastPlayed(title: "Green Light", artist: "Lorde", bundleID: AppleScriptPlayer.music.rawValue, at: Date()),
+            icon: music, recents: ["Lo-fi beats", "Liked songs"])
+    }
+
+    /// Nothing playing after Apple Music played "Green Light": Resume and two playlists.
+    static func resume() -> Rig {
+        let rig = builtIns(meeting: false)
+        setLastPlayed(rig)
         return rig
     }
 
@@ -344,6 +451,8 @@ enum HomeRenders {
             // Inert: a render never reads the Mac's real player (its track is set by hand).
             let nowPlaying = NowPlaying()
             nowPlaying.inert = true
+            nowPlaying.lastPlayedStore = nil
+            nowPlaying.recentsProvider = NoRecents()
             today = TodayServices(client: client, nowPlaying: nowPlaying,
                                   visualiser: MusicVisualiser(defaults: glances),
                                   calendar: CalendarService(eventKit: false),

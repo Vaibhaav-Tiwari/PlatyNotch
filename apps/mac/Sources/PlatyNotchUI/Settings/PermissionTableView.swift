@@ -39,6 +39,7 @@ struct PermissionTableView: View {
         case .camera: "camera"
         case .notifications: "bell.badge"
         case .bluetooth: "headphones"
+        case .location: "location"
         }
     }
 
@@ -114,6 +115,12 @@ struct PermissionTableView: View {
             case .notDetermined: return .notAsked
             default: return .denied
             }
+        case .location:
+            switch permissions.locationAuth {
+            case .granted: return .granted
+            case .denied: return .denied
+            case .notDetermined: return .notAsked
+            }
         }
     }
 
@@ -133,6 +140,7 @@ struct PermissionTableView: View {
         case .calendars: Task { await permissions.requestCalendar() }
         case .reminders: Task { await permissions.requestReminders() }
         case .notifications: permissions.requestNotifications()
+        case .location: Task { await permissions.requestLocation() }
         case .automation, .camera, .bluetooth: break   // never asked from the table
         }
     }
@@ -146,6 +154,7 @@ struct PermissionTableView: View {
         case .camera: Permissions.open(.camera)
         case .notifications: Permissions.open(.notifications)
         case .bluetooth: Permissions.open(.bluetooth)
+        case .location: Permissions.open(.location)
         }
     }
 }

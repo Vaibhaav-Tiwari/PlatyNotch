@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 import PlatyNotchKit
 import XCTest
@@ -16,6 +17,35 @@ private final class FakeFetcher: WeatherFetching, @unchecked Sendable {
     func data(from url: URL) async throws -> Data {
         lock.withLock { asked.append(url) }
         return try answer(url)
+    }
+}
+
+/// macOS Location stand-in: counts permission requests, answers with a fixed place.
+@MainActor
+private final class FakeLocation: LocationProviding {
+    var auth: LocationAuth
+    var onAuthChange: (() -> Void)?
+    /// `fix()` throws while set (no Wi-Fi, `kCLErrorLocationUnknown`).
+    var failFix = false
+    private let grant: LocationAuth
+    private(set) var requests = 0
+    private(set) var fixes = 0
+
+    init(auth: LocationAuth, grant: LocationAuth = .granted) {
+        self.auth = auth
+        self.grant = grant
+    }
+
+    func requestAccess() async -> LocationAuth {
+        requests += 1
+        auth = grant
+        return auth
+    }
+
+    func fix() async throws -> LocationFix {
+        fixes += 1
+        if failFix { throw LocationError.failed("unknown") }
+        return LocationFix(latitude: 12.97, longitude: 77.59, name: "Bengaluru")
     }
 }
 
@@ -172,6 +202,53 @@ final class DayWidgetsTests: DefaultsTestCase {
         XCTAssertEqual(fetcher.urls, [])
     }
 
+    // MARK: - Weather location (Island spec 5)
+
+    /// Opening (starting) the widget never asks for Location; it waits for a click.
+    func testOpeningNeverRequestsLocation() async {
+        let fetcher = okFetcher()
+        let fake = FakeLocation(auth: .notDetermined)
+        let weather = WeatherWidget(defaults: defaults(), fetcher: { fetcher }, watchSystem: false, location: fake)
+        weather.start(context: context())
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(fake.requests, 0)
+        XCTAssertEqual(fake.fixes, 0)
+        XCTAssertEqual(weather.source, .needsPermission)
+        XCTAssertEqual(fetcher.urls, [])
+        weather.stop()
+    }
+
+    /// "Use my location" asks once, then fetches the forecast at the fix.
+    func testUseMyLocationAsksOnceThenFetches() async {
+        let fetcher = okFetcher()
+        let fake = FakeLocation(auth: .notDetermined)
+        let weather = WeatherWidget(defaults: defaults(), fetcher: { fetcher }, watchSystem: false, location: fake)
+        weather.start(context: context())
+        await weather.useMyLocation()
+        await waitUntil { weather.weather != nil }
+        XCTAssertEqual(fake.requests, 1)
+        XCTAssertEqual(fetcher.urls, [OpenMeteo.forecastURL(latitude: 12.97, longitude: 77.59)])
+        XCTAssertEqual(weather.placeName, "Bengaluru")
+        XCTAssertEqual(WeatherLocation.load(from: defaults()), .automatic)
+        // Already granted: a second click asks nothing.
+        await weather.useMyLocation()
+        XCTAssertEqual(fake.requests, 1)
+        weather.stop()
+    }
+
+    /// Denied: the saved city, and no second prompt.
+    func testDeniedUsesTheSavedCity() async {
+        let fetcher = okFetcher()
+        let fake = FakeLocation(auth: .denied, grant: .denied)
+        let weather = WeatherWidget(defaults: defaults(), fetcher: { fetcher }, watchSystem: false, location: fake)
+        weather.start(context: context())
+        weather.choose(Self.lisbon)
+        WeatherLocation.automatic.save(to: defaults())
+        XCTAssertEqual(weather.source, .place(latitude: Self.lisbon.latitude, longitude: Self.lisbon.longitude, name: "Lisbon"))
+        XCTAssertEqual(fake.requests, 0)
+        weather.stop()
+    }
+
     // MARK: - Meetings
 
     private func meetingWidget(now: Date, meetings: [CalendarMeeting], focusUntil: Date? = nil,
@@ -311,5 +388,158 @@ final class DayWidgetsTests: DefaultsTestCase {
         ])
         XCTAssertEqual(widget.shown(at: now).map(\.id), ["b", "a"])
         XCTAssertTrue(widget.isOverdue(widget.shown(at: now)[0], at: now))
+    }
+}
+
+/// Phase A review fixes: Location from the Privacy row, failed fixes and fetches, the
+/// tool's copy and the geocoder's rounding.
+@MainActor
+final class WeatherRecoveryTests: DefaultsTestCase {
+    private func waitUntil(_ condition: @MainActor () -> Bool) async {
+        for _ in 0..<400 where !condition() { try? await Task.sleep(for: .milliseconds(5)) }
+    }
+
+    private func context() -> WidgetContext {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("pnwx\(UUID().uuidString)")
+        return WidgetContext(store: AppStore(), client: CoreClient(socketPath: "/nonexistent"),
+                             config: ConfigFileStore(url: dir.appendingPathComponent("config.json")),
+                             events: CoreEventHub(), defaults: defaults(), notify: NoopNotifier(), surfaces: nil,
+                             openPanel: { _ in })
+    }
+
+    nonisolated private static let forecast: Data = {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../PlatyNotchKitTests/Fixtures/forecast-daily.json").standardized
+        return (try? Data(contentsOf: url)) ?? Data()
+    }()
+
+    private final class Fetcher: WeatherFetching, @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+        private var failing: Bool
+        init(failing: Bool) { self.failing = failing }
+        var asked: Int { lock.withLock { count } }
+        func setFailing(_ f: Bool) { lock.withLock { failing = f } }
+        func data(from url: URL) async throws -> Data {
+            let fail = lock.withLock { count += 1; return failing }
+            if fail { throw URLError(.cannotConnectToHost) }
+            return WeatherRecoveryTests.forecast
+        }
+    }
+
+    private final class Location: LocationProviding {
+        var auth: LocationAuth
+        var onAuthChange: (() -> Void)?
+        var failFix = false
+        private(set) var requests = 0
+        init(auth: LocationAuth) { self.auth = auth }
+        func requestAccess() async -> LocationAuth { requests += 1; auth = .granted; return auth }
+        func fix() async throws -> LocationFix {
+            if failFix { throw LocationError.failed("unknown") }
+            return LocationFix(latitude: 12.97, longitude: 77.59, name: "Bengaluru")
+        }
+    }
+
+    private let lisbon = GeoPlace(id: 1, name: "Lisbon", latitude: 38.72, longitude: -9.13)
+
+    /// C1: Allow on the Privacy (or onboarding) row goes through the widget and loads the sky.
+    func testPrivacyAllowLoadsTheSky() async {
+        let fetcher = Fetcher(failing: false)
+        let loc = Location(auth: .notDetermined)
+        let weather = WeatherWidget(defaults: defaults(), fetcher: { fetcher }, watchSystem: false, location: loc)
+        weather.start(context: context())
+        let permissions = Permissions(calendar: CalendarService(eventKit: false), reminders: RemindersService(eventKit: false))
+        permissions.weatherLocation = { await weather.useMyLocation() }
+        await permissions.requestLocation(defaults: defaults())
+        await waitUntil { weather.weather != nil }
+        XCTAssertEqual(loc.requests, 1)
+        XCTAssertNotNil(weather.weather, "the sky loads straight away")
+        XCTAssertEqual(SkyContent.of(weather, now: Date())?.texts.dropFirst().first, "Sunny · Bengaluru")
+        XCTAssertTrue(weather.usesMyLocation)
+        weather.stop()
+    }
+
+    /// C1: `.automatic` written from outside, then access granted in System Settings: a fetch.
+    func testExternalChoiceAndGrantFetch() async {
+        let fetcher = Fetcher(failing: false)
+        let loc = Location(auth: .notDetermined)
+        let weather = WeatherWidget(defaults: defaults(), fetcher: { fetcher }, watchSystem: false, location: loc)
+        weather.start(context: context())
+        WeatherLocation.automatic.save(to: defaults())
+        loc.auth = .granted
+        loc.onAuthChange?()
+        await waitUntil { weather.weather != nil }
+        XCTAssertNotNil(weather.weather)
+        XCTAssertEqual(loc.requests, 0, "nothing asked")
+        weather.stop()
+    }
+
+    /// I1: a failed fix with no city never shows "Loading…" forever: it says so, retries, recovers.
+    func testFailedFixShowsErrorAndRetries() async {
+        let fetcher = Fetcher(failing: false)
+        let loc = Location(auth: .granted)
+        loc.failFix = true
+        let weather = WeatherWidget(defaults: defaults(), fetcher: { fetcher }, watchSystem: false, location: loc)
+        weather.start(context: context())
+        await weather.useMyLocation()
+        XCTAssertFalse(weather.locating)
+        XCTAssertEqual(weather.failures, 1)
+        XCTAssertEqual(SkyContent.of(weather, now: Date()), .failed(title: "Can't find your location", retry: true))
+        XCTAssertEqual(SkyContent.of(weather, now: Date())?.texts, ["Can't find your location", "Try again", "Add a city"])
+        loc.failFix = false
+        weather.retryNow()
+        await waitUntil { weather.weather != nil }
+        XCTAssertNotNil(weather.weather)
+        weather.stop()
+    }
+
+    /// I2: a failing first fetch, and offline, show a real state instead of "Loading…".
+    func testFailedFetchAndOfflineStates() async {
+        let fetcher = Fetcher(failing: true)
+        let weather = WeatherWidget(defaults: defaults(), fetcher: { fetcher }, watchSystem: false, location: Location(auth: .denied))
+        weather.start(context: context())
+        weather.choose(lisbon)
+        await waitUntil { weather.failures > 0 }
+        XCTAssertEqual(SkyContent.of(weather, now: Date()), .failed(title: "Can't get weather", retry: true))
+        weather.setOnline(false)
+        XCTAssertEqual(SkyContent.of(weather, now: Date()), .failed(title: "Offline", retry: false))
+        weather.setOnline(true)
+        // Recovers, then a later failure keeps the data and shows its age.
+        fetcher.setFailing(false)
+        weather.retryNow()
+        await waitUntil { weather.weather != nil }
+        fetcher.setFailing(true)
+        await weather.fetch()
+        guard case .reading(_, _, _, _, let detail)? = SkyContent.of(weather, now: Date().addingTimeInterval(2 * 3600)) else {
+            return XCTFail("stale data still shows")
+        }
+        XCTAssertTrue(detail?.contains("updated 2 h ago") ?? false, "\(detail ?? "nil")")
+        weather.stop()
+    }
+
+    /// I4: the place name follows the real source; the copy never claims no location access.
+    func testPlaceNameAndCopyFollowTheSource() async {
+        defaults().set(try! JSONEncoder().encode(lisbon), forKey: WeatherWidget.placeKey)
+        let loc = Location(auth: .granted)
+        let weather = WeatherWidget(defaults: defaults(), fetcher: { Fetcher(failing: false) }, watchSystem: false,
+                                    location: loc)
+        weather.start(context: context())
+        XCTAssertEqual(weather.placeName, "Lisbon")
+        await weather.useMyLocation()
+        XCTAssertEqual(weather.placeName, "Bengaluru", "the reading at your location is named for it")
+        for source in [WeatherSource.needsPermission, .needsCity] {
+            let text = WeatherWidget.emptyText(source)
+            XCTAssertNotNil(text)
+            XCTAssertFalse(text!.detail.contains("No location access"), "\(source)")
+        }
+        XCTAssertNil(WeatherWidget.emptyText(.place(latitude: 1, longitude: 2, name: nil)))
+        weather.stop()
+    }
+
+    /// I3: the reverse geocoder gets the rounded position.
+    func testGeocoderGetsTheRoundedPosition() {
+        let r = SystemLocation.rounded(.init(latitude: 12.971_598_7, longitude: 77.594_562_1))
+        XCTAssertEqual(r.coordinate.latitude, 12.97, accuracy: 1e-9)
+        XCTAssertEqual(r.coordinate.longitude, 77.59, accuracy: 1e-9)
     }
 }
