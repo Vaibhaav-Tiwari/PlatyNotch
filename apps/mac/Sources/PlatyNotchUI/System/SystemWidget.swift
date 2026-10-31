@@ -138,6 +138,8 @@ final class SystemWidget: NotchWidget {
     /// The plug-in / unplug peek on show.
     private(set) var powerPeek: PowerPeek?
     let keepAwake: KeepAwake
+    /// False when the app injected the header's `KeepAwake`: turning this widget off leaves it running.
+    @ObservationIgnored private let ownsKeepAwake: Bool
     private(set) var options: Options
     /// Connected headphones (headphones on and running).
     private(set) var headphones: [HeadphonesInfo] = []
@@ -178,7 +180,8 @@ final class SystemWidget: NotchWidget {
 
     init(power: PowerSourceReading = SystemPowerSource(), asserter: PowerAsserting = SystemPowerAsserter(),
          headphones: HeadphonesSource = SystemHeadphones(), downloads: DownloadsServices = .system(),
-         defaults: UserDefaults = .standard, persist: Bool = true, clock: @escaping () -> Date = Date.init) {
+         defaults: UserDefaults = .standard, persist: Bool = true, clock: @escaping () -> Date = Date.init,
+         keepAwake shared: KeepAwake? = nil) {
         self.power = power
         headphoneSource = headphones
         self.downloads = downloads
@@ -186,7 +189,10 @@ final class SystemWidget: NotchWidget {
         self.defaults = defaults
         self.persist = persist
         self.clock = clock
-        keepAwake = KeepAwake(asserter: asserter, clock: clock)
+        // The app passes the header's keep awake, so the tile and the header share one assertion;
+        // that one outlives this widget being turned off.
+        ownsKeepAwake = shared == nil
+        keepAwake = shared ?? KeepAwake(asserter: asserter, clock: clock)
     }
 
     /// Reads no battery, asserts nothing and saves nothing (smoke runs).
@@ -237,7 +243,7 @@ final class SystemWidget: NotchWidget {
         batteryRetryTask = nil
         if powerPeek != nil { context.endPeek(id: Self.powerPeekID) }
         clearPowerPeek()
-        keepAwake.stop()
+        if ownsKeepAwake { keepAwake.stop() }
         stopHeadphones()
         stopDownloads()
         battery = nil
@@ -246,7 +252,7 @@ final class SystemWidget: NotchWidget {
 
     /// Turned off: the assertion is already released by `stop`; again for safety.
     func disabled() {
-        keepAwake.stop()
+        if ownsKeepAwake { keepAwake.stop() }
     }
 
     // MARK: - Battery

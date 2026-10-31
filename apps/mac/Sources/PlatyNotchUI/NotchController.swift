@@ -87,6 +87,8 @@ public final class NotchController {
     static func showsNow(_ mode: PanelMode) -> Bool { mode == .expanded || mode == .peek(.hover) }
     /// The open panel's gear (the menu bar icon may be hidden): the app shows Settings.
     var onOpenSettings: () -> Void = {}
+    /// The header toggles' services (the app's one); set before the panel first shows.
+    var header: HeaderServices? { didSet { model.header = header } }
     /// The Agents empty state's "Connect an agent": the app shows Settings › Agents.
     var onOpenAgentSettings: () -> Void = {}
     /// What the panel's views read (tests press its buttons through it).

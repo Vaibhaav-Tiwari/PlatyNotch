@@ -43,6 +43,8 @@ final class PanelViewModel {
     var toastNotice: Notice?
     /// Settings › Now (hero cycling), refreshed when the saved settings change.
     var nowSettings = NowSettings()
+    /// The header toggles' services (the app's one; nil in renders and tests).
+    var header: HeaderServices?
 }
 
 /// Places the mode's content inside the fixed-size panel window.
@@ -205,6 +207,7 @@ struct PanelRootView: View {
                           widgets: widgets, memory: memory, extraTabs: extraTabs,
                           route: Binding(get: { model.route }, set: { model.route = $0 }),
                           onCollapse: model.onClick, onOpenSettings: model.onOpenSettings,
+                          header: model.header,
                           deck: Binding(get: { model.heroDeck }, set: { model.heroDeck = $0 }),
                           agentsVisible: today.agentActivity.agentsVisibility.isVisible,
                           onConnectAgent: model.onConnectAgent,

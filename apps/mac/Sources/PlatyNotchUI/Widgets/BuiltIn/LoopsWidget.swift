@@ -87,7 +87,8 @@ enum BuiltInWidgets {
     /// `clipboard`: the app keeps its instance for the menu bar's pause item (C23).
     /// `clock`: the meeting widget's time (renders pass a fixed one).
     static func register(in registry: WidgetRegistry, store: AppStore, today: TodayServices, persist: Bool = true,
-                         clipboard: ClipboardWidget? = nil, clock: @escaping () -> Date = Date.init) {
+                         clipboard: ClipboardWidget? = nil, clock: @escaping () -> Date = Date.init,
+                         keepAwake: KeepAwake? = nil) {
         registry.register(MusicWidget(nowPlaying: today.nowPlaying, visualiser: today.visualiser))
         let meeting = MeetingWidget(calendar: today.calendar, clock: clock)
         registry.register(meeting)
@@ -114,7 +115,7 @@ enum BuiltInWidgets {
             guard let registry, let shelf, registry.running.contains(ShelfWidget.widgetID) else { return nil }
             return { shelf.addFile($0) }
         }
-        registry.register(persist ? SystemWidget(downloads: .system(shelf: toShelf)) : SystemWidget.inert())
+        registry.register(persist ? SystemWidget(downloads: .system(shelf: toShelf), keepAwake: keepAwake) : SystemWidget.inert())
         // On by default; does nothing until a game is played. Smoke: scores never saved.
         let games = persist ? GamesWidget() : GamesWidget.inert()
         // A new best: a 2-second moment, once per best and never during an approval.
