@@ -421,7 +421,7 @@ final class PanelRoutingTests: DefaultsTestCase {
                                 extraTabs: [pluginTab])
         let p = panel(r, tabs: [pluginTab])
         let ids: Set<String> = ToolCatalog.ids(widgets: r.registry, extraTabs: [pluginTab])
-        for id in [ClipboardWidget.widgetID, LaunchWidget.widgetID, BasketsWidget.widgetID, TimeWidget.widgetID,
+        for id in [ClipboardWidget.widgetID, LaunchWidget.widgetID, BasketsWidget.widgetID,
                    PanelTools.memory, PanelTools.chase] {
             XCTAssertTrue(ids.contains(id), id)
             c.expand(tab: id)
@@ -430,6 +430,10 @@ final class PanelRoutingTests: DefaultsTestCase {
             c.escapePressed()
             XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .home), id)
         }
+        // Island: the old Time and Focus ids open the Timer tool.
+        c.expand(tab: TimeWidget.widgetID)
+        XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .home, tool: PanelTools.timer))
+        c.escapePressed()
         c.expand(tab: "fake.tab")
         XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .home, tool: "plugin:fake.tab"))
     }

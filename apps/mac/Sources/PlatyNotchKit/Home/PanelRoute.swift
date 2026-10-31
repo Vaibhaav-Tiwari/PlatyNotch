@@ -21,7 +21,9 @@ public struct PanelRoute: Equatable, Sendable {
         switch tab {
         case "now", "today", "home", "library": return PanelRoute(destination: .home)
         case "agents": return PanelRoute(destination: .agents)
-        case "focus", PanelTools.memory, "games": return PanelRoute(destination: .home, tool: tab)
+        case "focus": return PanelRoute(destination: .home, tool: PanelTools.timerFocus)
+        case "time": return PanelRoute(destination: .home, tool: PanelTools.timer)
+        case PanelTools.memory, "games": return PanelRoute(destination: .home, tool: tab)
         default: break
         }
         if tools.contains(tab) { return PanelRoute(destination: .home, tool: tab) }
@@ -49,6 +51,11 @@ public struct PanelRoute: Equatable, Sendable {
 public enum PanelTools {
     /// Memory search and graph.
     public static let memory = "memory"
+    /// The Timer tool (Timer, Focus, Stopwatch), and the same tool opened in Focus.
+    public static let timer = "timer"
+    public static let timerFocus = "timer.focus"
+    /// The full-panel search.
+    public static let search = "search"
     /// Platy Chase keeps its own entry beside Games.
     public static let chase = "games.chase"
     /// A plugin `PanelTab` as a tool: "plugin:<tab id>".

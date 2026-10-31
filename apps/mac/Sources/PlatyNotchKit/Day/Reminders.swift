@@ -98,3 +98,11 @@ public enum QuickAddFormat {
         FormatterCache.formatter(template, template: true, calendar: calendar, locale: locale).string(from: d)
     }
 }
+
+/// The Remind slot's badge and the Remind tool's list (Island spec 3.4, 4).
+public enum RemindersDue {
+    /// Incomplete reminders overdue or due today.
+    public static func count(_ items: [ReminderItem], now: Date, calendar: Calendar) -> Int {
+        RemindersDay.today(items, now: now, calendar: calendar).count
+    }
+}
