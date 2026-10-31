@@ -119,15 +119,16 @@ field is optional and old readers ignore it **[call]**.
 
 **Resolution** (pure, in Kit), first match wins:
 
-1. Terminal (`term_program` `Apple_Terminal` or host `com.apple.Terminal`) with a valid tty →
-   select that tab (today's AppleScript, tty passed as `argv`).
-2. iTerm2 (`iTerm.app` or `com.googlecode.iterm2`) with a valid tty → select that session.
-3. `term_program` `tmux` with a valid tty → `tmux select-window` / `select-pane` on the pane
+1. `term_program` `tmux` with a valid tty → `tmux select-window` / `select-pane` on the pane
    whose `pane_tty` matches, then activate the host app **[call]**.
-4. A host bundle id whose app is installed → activate it (launch it if it is not running
-   **[call]**).
-5. No host, but a known `term_program` from an older hook (ghostty, WarpTerminal, vscode) →
-   today's mapping **[call]**.
+2. Terminal (`term_program` `Apple_Terminal`, or host `com.apple.Terminal` when `term_program`
+   names no other known app) with a valid tty → select that tab (AppleScript, tty as `argv`).
+3. iTerm2 (`iTerm.app`, or host `com.googlecode.iterm2` on the same condition) with a valid
+   tty → select that session.
+4. A known `term_program` (ghostty, WarpTerminal, vscode) beats an inherited Terminal/iTerm2
+   host: a VS Code session started from Terminal says "Open Code".
+5. A valid host bundle id (reverse-DNS, at most 255 bytes; invalid counts as absent) whose app
+   is installed → activate it (launch it if it is not running **[call]**).
 6. Otherwise, with a cwd → **Show folder**: reveal the cwd in Finder.
 7. No cwd either → no button **[call]**.
 
