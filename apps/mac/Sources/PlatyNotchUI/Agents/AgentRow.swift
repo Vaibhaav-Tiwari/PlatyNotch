@@ -1,67 +1,75 @@
+import AppKit
 import PlatyNotchKit
 import SwiftUI
 
-/// One session in the Agents list (spec 6.5): the agent's icon with its state badge, the
-/// project, the status line, the last action in monospaced caption, and one action from
-/// `TerminalFocus.title(for:)` ("Open Claude" / "Show folder"). Both answer in the session's host app.
+/// One session in the Agents list (Quiet Notch spec 2.3, wireframe C), one dense line in four
+/// columns (18 / flexible / auto / auto, 10 pt apart, 7 pt above and below): the agent's app
+/// icon (else its name), the **project** with ` · status · age`, a 7 pt state dot, and one
+/// button naming the app it opens (`TerminalFocus.title(for:)`, "Open Claude" / "Show
+/// folder"). A click anywhere on the row does the same.
 struct AgentRow: View {
-    static let height: CGFloat = 52
+    /// The badge column: an 18 pt slot for the 16 pt icon.
+    static let badgeColumn: CGFloat = 18
+    static let gap: CGFloat = 10
+    static let verticalPadding: CGFloat = 7
+    /// The project never takes more than this, so the status stays readable beside it.
+    static let projectMaxWidth: CGFloat = 240
     let session: Session
     let attention: AgentAttention
     let now: Date
-    /// When the session finished (`AgentFinishLog.finishedAt`), for "Finished · n m ago".
+    /// When the session finished (`AgentFinishLog.finishedAt`), for "finished · 3 m".
     var finishedAt: Date? = nil
+    /// The first column's width (`AgentBadge.column`): 18 for icons, wider for names.
+    var badgeWidth: CGFloat = AgentRow.badgeColumn
+    /// The button column's width, so the dots and buttons line up down the list.
+    var buttonWidth: CGFloat?
     let onOpenTerminal: (Session) -> Void
 
+    /// The widest button among `titles` (12 pt text plus its 9 pt padding each side).
+    static func buttonColumn(_ titles: [String]) -> CGFloat? {
+        let font = NSFont.systemFont(ofSize: TypeScale.secondary.size)
+        let widths: [CGFloat] = titles.map { ceil(($0 as NSString).size(withAttributes: [.font: font]).width) + 18 }
+        return widths.max()
+    }
+
     var body: some View {
-        let action = AgentRowAction(attention)
         let openTitle: String? = TerminalFocus.title(for: session)
         let tone: StateTone = attention.tone
         Button { onOpenTerminal(session) } label: {
-            HStack(spacing: Space.m) {
-                AgentBadge(brand: AgentBrand(agent: session.agent, agentName: session.agentName), tone: tone)
+            HStack(spacing: Self.gap) {
+                AgentBadge(brand: AgentBrand(agent: session.agent, agentName: session.agentName))
+                    .frame(width: badgeWidth, alignment: .leading)
                     .help(session.agentName)
-                VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 0) {
                     Text(verbatim: project)
                         .font(DS.font(TypeScale.title))
+                        .foregroundStyle(DS.primary)
                         .lineLimit(1)
                         .truncationMode(.tail)
-                    Text(verbatim: status)
-                        .font(DS.font(TypeScale.body))
-                        .foregroundStyle(attention == .needsYou || attention == .errored
-                                         ? AnyShapeStyle(DS.dynamicColor(tone)) : AnyShapeStyle(.secondary))
+                        // Its own width up to the cap (a long name truncates there).
+                        .frame(maxWidth: Self.projectMaxWidth, alignment: .leading)
+                        .fixedSize(horizontal: true, vertical: false)
+                    Text(verbatim: " · " + status)
+                        .font(DS.font(TypeScale.secondary))
+                        .foregroundStyle(DS.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
-                    if let last = Self.lastLine(session, attention: attention) {
-                        Text(verbatim: last)
-                            .font(DS.font(TypeScale.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                AgentDot(color: DS.dynamicNSColor(tone), style: tone == .working ? .pulse : .solid)
                 if let openTitle {
-                    Text(verbatim: openTitle)
-                        .font(DS.font(TypeScale.body).weight(.semibold))
-                        .foregroundStyle(action == .answer ? AnyShapeStyle(DS.dynamicColor(.needsYou)) : AnyShapeStyle(.primary))
-                        .lineLimit(1)
-                        .fixedSize()
-                        .padding(.horizontal, Space.s)
-                        .padding(.vertical, 3)
-                        .background(Theme.card, in: Capsule())
+                    PanelButtonLabel(title: openTitle, minWidth: buttonWidth)
+                } else if let buttonWidth {
+                    Color.clear.frame(width: buttonWidth, height: 1)
                 }
             }
-            .padding(.vertical, Space.xs)
-            .padding(.leading, Space.xs)
-            .padding(.trailing, Space.s)
-            .frame(minHeight: Self.height)
+            .padding(.vertical, Self.verticalPadding)
             .contentShape(Rectangle())
         }
         .buttonStyle(RowButtonStyle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
-        .accessibilityHint(openTitle == nil ? "" : action == .answer
+        .accessibilityHint(openTitle == nil ? "" : AgentRowAction(attention) == .answer
                            ? "Answers in the app running this session" : "Shows the app running this session")
         .accessibilityAddTraits(openTitle == nil ? [] : .isButton)
         .accessibilityActions {
@@ -72,13 +80,7 @@ struct AgentRow: View {
     private var project: String { Self.project(session) }
 
     private var status: String {
-        SessionStatusLine.text(session, attention: attention, now: now, finishedAt: finishedAt)
-    }
-
-    /// The last action, unless the status line already says it ("Edit · 4 m" over "Edit").
-    static func lastLine(_ s: Session, attention: AgentAttention) -> String? {
-        if attention == .working, s.message == nil, s.title == nil { return nil }
-        return SessionStatusLine.lastAction(s)
+        SessionStatusLine.compact(session, attention: attention, now: now, finishedAt: finishedAt)
     }
 
     static func project(_ s: Session) -> String {
@@ -86,23 +88,52 @@ struct AgentRow: View {
         return s.title ?? s.agentName
     }
 
-    /// The row's visible text, top to bottom then the action (tests).
+    /// The row's visible text in order (tests): project, status, then the button.
     @MainActor static func texts(_ s: Session, attention: AgentAttention, now: Date, finishedAt: Date? = nil) -> [String] {
-        var out: [String] = [project(s), SessionStatusLine.text(s, attention: attention, now: now, finishedAt: finishedAt)]
-        if let last = lastLine(s, attention: attention) { out.append(last) }
+        var out: [String] = [project(s), SessionStatusLine.compact(s, attention: attention, now: now, finishedAt: finishedAt)]
         if let title = TerminalFocus.title(for: s) { out.append(title) }
         return out
     }
 
+    /// VoiceOver: the agent, the project, the state in words (the dot's meaning), the status
+    /// and the button.
     private var accessibilityText: String {
-        var parts: [String] = [session.agentName, project, status]
-        if let last = Self.lastLine(session, attention: attention) { parts.append(last) }
+        var parts: [String] = [session.agentName, project, attention.tone.word, status]
         if let title = TerminalFocus.title(for: session) { parts.append(title) }
         return parts.joined(separator: ", ")
     }
 }
 
-/// Highlights a row on hover and press.
+/// A small panel button's look (spec 5.1): 12 pt, padding 3 × 9, radius 6, on the fill.
+/// `tone` tints it (Allow: green text on green at 0.12).
+struct PanelButtonLabel: View {
+    let title: String
+    var keycap: String?
+    var tone: StateTone?
+    /// Buttons in a column share one width (the title centred).
+    var minWidth: CGFloat?
+
+    var body: some View {
+        let ink: Color = tone.map { DS.color($0) } ?? DS.primary
+        let fill: Color = tone.map { DS.color($0, alpha: 0.12) } ?? DS.fill
+        HStack(spacing: 5) {
+            Text(verbatim: title)
+                .font(DS.font(TypeScale.secondary))
+                .lineLimit(1)
+            if let keycap {
+                Keycap(text: keycap, color: tone == nil ? DS.tertiary : ink.opacity(0.8))
+            }
+        }
+        .foregroundStyle(ink)
+        .fixedSize()
+        .padding(.horizontal, 9)
+        .frame(minWidth: minWidth)
+        .padding(.vertical, 3)
+        .background(fill, in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
+    }
+}
+
+/// Highlights a row on hover and press: the fill behind it, no border.
 struct RowButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         RowBody(configuration: configuration)
@@ -116,7 +147,8 @@ struct RowButtonStyle: ButtonStyle {
             configuration.label
                 .background(
                     RoundedRectangle(cornerRadius: Radius.small, style: .continuous)
-                        .fill(Theme.card.opacity(configuration.isPressed ? 1 : hovering ? 0.7 : 0))
+                        .fill(DS.fill.opacity(configuration.isPressed ? 1 : hovering ? 0.7 : 0))
+                        .padding(.horizontal, -6)
                 )
                 .onHover { hovering = $0 }
         }

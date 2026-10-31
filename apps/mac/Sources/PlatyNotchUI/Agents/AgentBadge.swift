@@ -2,7 +2,7 @@ import AppKit
 import PlatyNotchKit
 import SwiftUI
 
-/// Where an agent's icon comes from (user change: agent icons): the agent's own Mac app,
+/// Where an agent's icon comes from: the agent's own Mac app,
 /// already installed on this Mac, looked up by the fixed allowlist in
 /// `AgentBrand.appBundleIDs`. Nothing is bundled. Each agent is looked up once, the first
 /// time a visible view asks (the Agents list, the agents hero, the hover peek), and the
@@ -19,8 +19,9 @@ final class AgentIconSource: @unchecked Sendable {
         ) { [weak source] _ in source?.clearMisses() }
         return source
     }()
-    /// Monograms only (renders, so they are the same on every Mac).
-    static let monogramsOnly = AgentIconSource(lookup: { _ in nil })
+    /// No icons: every agent shows its name (renders, so they are the same on every Mac and
+    /// never carry a third-party logo).
+    static let namesOnly = AgentIconSource(lookup: { _ in nil })
 
     private let lookup: Lookup
     private let lock = NSLock()
@@ -32,7 +33,7 @@ final class AgentIconSource: @unchecked Sendable {
         self.lookup = lookup
     }
 
-    /// The installed app's icon for `brand`, or nil (show the monogram).
+    /// The installed app's icon for `brand`, or nil (show the name).
     func icon(for brand: AgentBrand) -> NSImage? {
         lock.lock()
         defer { lock.unlock() }
@@ -59,99 +60,56 @@ final class AgentIconSource: @unchecked Sendable {
 }
 
 extension EnvironmentValues {
-    /// Where agent icons come from (renders and tests pass `.monogramsOnly` or a fake).
+    /// Where agent icons come from (renders and tests pass `.namesOnly` or a fake).
     @Entry var agentIcons: AgentIconSource = .installed
 }
 
-/// An agent's 28 pt identity icon (its installed app's icon, else a monogram on the
-/// agent's colour) with the session's state as a small monochrome symbol badge at the
-/// bottom right. The row or chip beside it always says the state in words too.
+/// An agent's identity (Quiet Notch spec 5.3): its installed app's icon at 16 pt with no
+/// background, else its name as plain text. Never initials, never a tinted square. The row or
+/// card beside it says the state with a dot and words.
 struct AgentBadge: View {
     enum Face: Equatable {
         case app
-        case monogram(String)
+        case name(String)
     }
 
+    static let size: CGFloat = IconSize.header
     let brand: AgentBrand
-    /// nil: no state badge (the usage chips).
-    let tone: StateTone?
-    var size: CGFloat = 28
+    /// Without an icon, show nothing (the approval card, which names the agent itself).
+    var nameFallback: Bool = true
     @Environment(\.agentIcons) private var icons
-    @Environment(\.colorScheme) private var scheme
-
-    init(brand: AgentBrand, tone: StateTone?, size: CGFloat = 28) {
-        self.brand = brand
-        self.tone = tone
-        self.size = size
-    }
-
-    /// The plan's form: an agent identity and a state.
-    init(agent: AgentIdentity, tone: StateTone) {
-        self.init(brand: AgentBrand(agent: agent.rawValue), tone: tone)
-    }
 
     static func face(for brand: AgentBrand, source: AgentIconSource) -> Face {
-        source.icon(for: brand) == nil ? .monogram(brand.monogram) : .app
+        source.icon(for: brand) == nil ? .name(brand.displayName) : .app
+    }
+
+    /// The Agents list's first column: 18 pt while every agent has its app icon, else as wide
+    /// as the longest name shown (at most 84 pt), so the projects line up.
+    static func column(for brands: [AgentBrand], source: AgentIconSource) -> CGFloat {
+        let font = NSFont.systemFont(ofSize: TypeScale.secondary.size)
+        var width: CGFloat = AgentRow.badgeColumn
+        for brand in brands where source.icon(for: brand) == nil {
+            let text: CGFloat = (brand.displayName as NSString).size(withAttributes: [.font: font]).width
+            width = max(width, ceil(text) + 2)
+        }
+        return min(width, 84)
     }
 
     var body: some View {
-        face
-            .frame(width: size, height: size)
-            .overlay(alignment: .bottomTrailing) {
-                if let tone {
-                    StateBadge(tone: tone).offset(x: StateBadge.overhang, y: StateBadge.overhang)
-                }
-            }
-            .accessibilityHidden(true)
-    }
-
-    @ViewBuilder private var face: some View {
         if let image = icons.icon(for: brand) {
             Image(nsImage: image)
                 .resizable()
                 .interpolation(.high)
                 .aspectRatio(contentMode: .fit)
-        } else {
-            let dark: Bool = scheme != .light
-            let radius: CGFloat = size * 0.25
-            let textSize: CGFloat = max(TypeScale.minimum, 13 * size / 28)
-            RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .fill(Color(brand.background(dark: dark)))
-                .overlay {
-                    Text(verbatim: brand.monogram)
-                        .font(.system(size: textSize, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color(brand.ink(dark: dark).rgb))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
+                .frame(width: Self.size, height: Self.size)
+                .accessibilityHidden(true)
+        } else if nameFallback {
+            Text(verbatim: brand.displayName)
+                .font(DS.font(TypeScale.secondary))
+                .foregroundStyle(DS.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .accessibilityHidden(true)
         }
-    }
-}
-
-/// A session state as one monochrome SF Symbol on a 16 pt circle of the panel surface
-/// with a 1 pt keyline, the way macOS draws its own status badges.
-struct StateBadge: View {
-    static let size: CGFloat = 16
-    /// How far the badge sits past the icon's corner (its centre 2 pt inside the corner),
-    /// so it covers the corner, not the monogram.
-    static let overhang: CGFloat = 6
-    let tone: StateTone
-    @Environment(\.colorScheme) private var scheme
-
-    var body: some View {
-        let dark: Bool = scheme != .light
-        let surface: RGB = PanelPalette.panel
-        let keyline: Color = dark ? Color.white.opacity(0.18) : Color.black.opacity(0.18)
-        Circle()
-            .fill(Color(surface))
-            .overlay(Circle().strokeBorder(keyline, lineWidth: 1))
-            .overlay {
-                Image(systemName: tone.symbol)
-                    .symbolRenderingMode(.monochrome)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(DS.color(tone))
-            }
-            .frame(width: Self.size, height: Self.size)
-            .accessibilityHidden(true)
     }
 }

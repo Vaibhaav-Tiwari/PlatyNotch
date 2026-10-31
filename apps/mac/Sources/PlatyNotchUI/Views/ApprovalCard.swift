@@ -1,9 +1,12 @@
 import PlatyNotchKit
 import SwiftUI
 
-/// One pending approval: who asks (agent, project, tool), the summary in a monospaced,
-/// selectable, scrollable view (hidden characters made visible), a countdown to
-/// `expires_at`, and Deny / Allow.
+/// One pending approval in the v0.2 style (Quiet Notch spec 5.4): on #111 with radius 12 and
+/// 12 pt padding, a header with the agent's app icon, its name in semibold, the project in
+/// secondary, the tool in a small chip and the countdown in mono; the command in mono 12 on
+/// the fill (selectable, hidden characters made visible; a command longer than a line wraps
+/// and scrolls, never truncated); then right-aligned "Deny ⌘⌫" and "Allow ⌘↩" with keycaps,
+/// Allow in green.
 ///
 /// Return never answers: no button is a default action, and Allow cannot take keyboard
 /// focus. ⌘↩ allows and ⌘⌫ denies, only on the card given `shortcuts` (the oldest).
@@ -32,7 +35,17 @@ struct ApprovalCard: View {
     var showChanges: Bool = false
     let onDecide: (ApprovalBehavior) -> Void
     let onOpenTerminal: (Session) -> Void
-    @Environment(\.colorScheme) private var scheme
+
+    /// Deny's and Allow's shortcuts, shown in keycaps.
+    static let keycaps = ["\u{2318}\u{232B}", "\u{2318}\u{21A9}"]
+    /// The command's font: SF Mono 12.
+    static let commandFont: Font = DS.font(TypeScale.mono)
+    /// One line of `commandFont`, used to size the command box.
+    static let commandLineHeight: CGFloat = 15
+    /// 12 at the sides; 10 above and below, so one card with a full diff box still fits the
+    /// 240 pt approvals region without scrolling.
+    static let padding: CGFloat = 12
+    static let verticalPadding: CGFloat = 10
 
     var body: some View {
         let visible = VisibleApproval(approval)
@@ -43,7 +56,7 @@ struct ApprovalCard: View {
                 header(visible, status, lookFirst: lookFirst)
                 if hasHidden {
                     Label("Contains hidden characters", systemImage: "exclamationmark.triangle.fill")
-                        .font(DS.font(TypeScale.caption).weight(.medium))
+                        .font(DS.font(TypeScale.secondary))
                         .foregroundStyle(Theme.warning)
                 }
                 SummaryView(summary: summaryText, maxLines: maxLines)
@@ -53,8 +66,9 @@ struct ApprovalCard: View {
                 footer(status)
             }
         }
-        .padding(8)
-        .panelFill()
+        .padding(.horizontal, Self.padding)
+        .padding(.vertical, Self.verticalPadding)
+        .background(Theme.approvalCard, in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(visible.agentName) asks to run \(visible.tool)")
     }
@@ -72,16 +86,17 @@ struct ApprovalCard: View {
     }
 
     private func header(_ visible: VisibleApproval, _ status: ApprovalCardStatus, lookFirst: Bool) -> some View {
-        HStack(spacing: 6) {
-            // The agent's own icon (or monogram), as everywhere else.
-            AgentBadge(brand: AgentBrand(agent: approval.agent, agentName: approval.agentName), tone: nil, size: 16)
+        HStack(spacing: 8) {
+            // The agent's installed app icon; without one, the name beside it says who asks.
+            AgentBadge(brand: AgentBrand(agent: approval.agent, agentName: approval.agentName), nameFallback: false)
             Text(verbatim: visible.agentName)
-                .font(.system(size: 12, weight: .semibold))
+                .font(DS.font(TypeScale.title))
+                .foregroundStyle(DS.primary)
                 .lineLimit(1)
             if let project = visible.project, !project.isEmpty {
                 Text(verbatim: project)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .font(DS.font(TypeScale.secondary))
+                    .foregroundStyle(DS.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .help(visible.cwd ?? project)
@@ -92,6 +107,7 @@ struct ApprovalCard: View {
             statusLabel(status, lookFirst: lookFirst)
                 .layoutPriority(2)
         }
+        .frame(minHeight: AgentBadge.size)
         .contentShape(Rectangle())
         .onTapGesture { onExpand?() }
         .accessibilityAction(named: "Show all approvals") { onExpand?() }
@@ -101,19 +117,19 @@ struct ApprovalCard: View {
         Group {
             switch status {
             case .ready where lookFirst:
-                Text("Look first…").foregroundStyle(Theme.color(.attention))
+                Text("Look first…").foregroundStyle(DS.color(.needsYou))
             case .ready(let countdown, _):
-                Text(countdown).monospacedDigit().foregroundStyle(.secondary)
+                Text(countdown).font(DS.font(TypeScale.mono)).foregroundStyle(DS.secondary)
                     .accessibilityLabel("Expires in \(countdown)")
             case .reconnecting(let countdown):
-                Text("Reconnecting… \(countdown)").monospacedDigit().foregroundStyle(Theme.color(.attention))
+                Text("Reconnecting… \(countdown)").monospacedDigit().foregroundStyle(DS.color(.needsYou))
             case .sending:
-                Text("Sending…").foregroundStyle(.secondary)
+                Text("Sending…").foregroundStyle(DS.secondary)
             case .expired:
-                Text("Expired — answer in the terminal").foregroundStyle(Theme.color(.attention))
+                Text("Expired — answer in the terminal").foregroundStyle(DS.color(.needsYou))
             }
         }
-        .font(.system(size: 11))
+        .font(DS.font(TypeScale.secondary))
         .lineLimit(1)
     }
 
@@ -121,8 +137,8 @@ struct ApprovalCard: View {
         VStack(alignment: .leading, spacing: 4) {
             if case .ready(_, let error?) = status {
                 Text(verbatim: error)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Theme.color(.critical))
+                    .font(DS.font(TypeScale.caption))
+                    .foregroundStyle(DS.color(.error))
                     .lineLimit(2)
             }
             HStack(spacing: 8) {
@@ -153,68 +169,72 @@ struct ApprovalCard: View {
         .controlSize(.small)
     }
 
-    /// Deny and Allow; neither is a default action, so Return does nothing. Allow never
-    /// takes keyboard focus, so Space with Full Keyboard Access cannot allow either.
+    /// Deny and Allow with their keycaps; neither is a default action, so Return does
+    /// nothing. Allow never takes keyboard focus, so Space with Full Keyboard Access cannot
+    /// allow either.
     private func decisionButtons(enabled: Bool) -> some View {
         HStack(spacing: 8) {
             Button { onDecide(.deny) } label: {
-                Label { Text("Deny") } icon: { Text("⌘⌫").foregroundStyle(.secondary) }
-                    .labelStyle(TrailingIconLabelStyle())
+                PanelButtonLabel(title: "Deny", keycap: Self.keycaps[0])
             }
             .keyboardShortcut(shortcuts ? KeyboardShortcut(.delete, modifiers: .command) : nil)
             .accessibilityLabel("Deny")
             .accessibilityHint(shortcuts ? "Command-Delete" : "")
             Button { onDecide(.allow) } label: {
-                Label { Text("Allow") } icon: { Text("⌘↩").foregroundStyle(.secondary) }
-                    .labelStyle(TrailingIconLabelStyle())
+                PanelButtonLabel(title: "Allow", keycap: Self.keycaps[1], tone: .working)
             }
-            .tint(Theme.allow)
             .focusable(false)
             .keyboardShortcut(shortcuts ? KeyboardShortcut(.return, modifiers: .command) : nil)
             .accessibilityLabel("Allow")
             .accessibilityHint(shortcuts ? "Command-Return" : "")
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(PressableButtonStyle())
         .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.45)
     }
 }
 
-/// The summary: monospaced, selectable, growing to `maxLines` and then scrolling.
-private struct SummaryView: View {
+/// The command: SF Mono 12 on the fill (radius 6, padding 6 × 9), selectable. One line for
+/// a one-line command; a longer one wraps and grows to `maxLines`, then scrolls (never
+/// truncated: every character asked about stays readable).
+struct SummaryView: View {
     let summary: String
     let maxLines: Int
+    static let insets = EdgeInsets(top: 6, leading: 9, bottom: 6, trailing: 9)
 
     var body: some View {
-        let height = CGFloat(min(ApprovalFormat.visibleLines(for: summary), maxLines)) * Theme.monoLineHeight
+        let lines: CGFloat = CGFloat(min(ApprovalFormat.visibleLines(for: summary), maxLines))
+        let line: CGFloat = ApprovalCard.commandLineHeight
+        let vertical: CGFloat = Self.insets.top + Self.insets.bottom
         ViewThatFits(in: .vertical) {
             text
             ScrollView(.vertical) { text }
                 .scrollIndicators(.automatic)
         }
-        .frame(maxWidth: .infinity, minHeight: Theme.monoLineHeight, maxHeight: max(height, Theme.monoLineHeight) + 8,
+        .frame(maxWidth: .infinity, minHeight: line + vertical, maxHeight: max(lines, 1) * line + vertical,
                alignment: .topLeading)
-        .background(Theme.codeBackground, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .background(DS.fill, in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
     }
 
     private var text: some View {
         // Verbatim: never interpreted as Markdown or a localization key.
         Text(verbatim: summary)
-            .font(Theme.mono)
+            .font(ApprovalCard.commandFont)
+            .foregroundStyle(DS.primary)
             .lineSpacing(0)
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(4)
+            .padding(Self.insets)
     }
 }
 
-/// Title first, then the shortcut hint.
-private struct TrailingIconLabelStyle: LabelStyle {
+/// A plain button that dims while pressed (the label draws its own fill).
+struct PressableButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 4) {
-            configuration.title
-            configuration.icon.font(DS.font(TypeScale.caption))
-        }
+        configuration.label
+            .opacity(configuration.isPressed ? 0.7 : 1)
+            .contentShape(Rectangle())
     }
 }
 
@@ -229,11 +249,11 @@ struct ApprovalRow: View {
     var body: some View {
         let visible = VisibleApproval(approval)
         HStack(spacing: 6) {
-            // The agent's own icon (or monogram), as everywhere else.
-            AgentBadge(brand: AgentBrand(agent: approval.agent, agentName: approval.agentName), tone: nil, size: 16)
+            // The agent's installed app icon; the text beside it names the agent.
+            AgentBadge(brand: AgentBrand(agent: approval.agent, agentName: approval.agentName), nameFallback: false)
             if visible.hadHidden {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(Theme.color(.attention))
+                    .foregroundStyle(DS.color(.needsYou))
                     .help("Contains hidden characters")
                     .accessibilityLabel("Contains hidden characters")
             }
@@ -257,7 +277,7 @@ struct ApprovalRow: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .panelFill()
+        .background(Theme.approvalCard, in: RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))
         .accessibilityElement(children: .contain)
     }
 }

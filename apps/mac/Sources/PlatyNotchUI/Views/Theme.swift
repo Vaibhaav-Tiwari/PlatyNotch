@@ -29,9 +29,10 @@ enum Theme {
     static let codeBackground = DS.fill
     static let divider = DS.hairline
 
-    static let mono = DS.font(TypeScale.mono)
-    /// Line height of `mono`, used to size the approval summary.
-    static let monoLineHeight: CGFloat = 15
+    /// The diff box's and the peek row's mono (11 pt; the diff box is unchanged).
+    static let mono = DS.font(TypeScale.caption, design: .monospaced).weight(.regular)
+    /// Line height of `mono`, used to size the diff box.
+    static let monoLineHeight: CGFloat = 14
 
     /// `color(_:)` as an NSColor (layer-backed dots): the state palette (`StateTone`),
     /// resolved against the view's appearance. Exited sessions are a faint idle.
@@ -44,12 +45,11 @@ enum Theme {
         DS.dynamicColor(StateTone(tone))
     }
 
-    /// A live activity's tint: neutral is primary ink; accent, warning and critical are the
-    /// working, needs-you and error states.
+    /// A live activity's tint: neutral and accent are primary ink (the panel has no accent
+    /// colour); warning and critical are the needs-you and error states.
     static func tint(_ tint: LiveTint) -> Color {
         switch tint {
-        case .neutral: DS.primary
-        case .accent: DS.color(.working)
+        case .neutral, .accent: DS.primary
         case .warning: DS.color(.needsYou)
         case .critical: DS.color(.error)
         }

@@ -22,6 +22,10 @@ enum ShowcaseRenders {
     static let canvas = CGSize(width: 800, height: 450)
 
     static func write(to dir: URL) -> Result<Int, ThemeRenders.RenderError> {
+        AgentsRenders.withHostNames { writeAll(to: dir) }
+    }
+
+    private static func writeAll(to dir: URL) -> Result<Int, ThemeRenders.RenderError> {
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         } catch {
@@ -137,7 +141,7 @@ enum ShowcaseRenders {
         .clipShape(Theme.panelShape(hasNotch: true))
         .shadow(color: .black.opacity(scheme == .dark ? 0.45 : 0.22), radius: 24, y: 10)
         .environment(\.colorScheme, scheme)
-        .environment(\.agentIcons, .monogramsOnly)
+        .environment(\.agentIcons, .namesOnly)
     }
 
     /// Drawn by an off-screen hosting view at 2x (Platy and the pond are layers).

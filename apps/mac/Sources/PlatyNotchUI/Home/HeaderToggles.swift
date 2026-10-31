@@ -4,7 +4,7 @@ import SwiftUI
 /// The header's icon toggles (spec 2.1): the battery badge (only when charging or low), Keep
 /// awake, Mirror and Settings. Every icon is 16 pt.
 struct HeaderToggles: View {
-    static let iconSize: CGFloat = 16
+    static let iconSize: CGFloat = IconSize.header
     let services: HeaderServices
     let widgets: WidgetRegistry
     @Binding var route: PanelRoute
@@ -26,7 +26,7 @@ struct HeaderToggles: View {
                     Image(systemName: badge.symbol)
                     Text(verbatim: badge.text)
                 }
-                .font(.system(size: 11, weight: .medium).monospacedDigit())
+                .font(DS.font(TypeScale.secondary).monospacedDigit())
                 .foregroundStyle(DS.dynamicColor(badge.tone))
                 .lineLimit(1)
                 .fixedSize()
@@ -52,7 +52,7 @@ struct HeaderToggles: View {
                     .font(.system(size: Self.iconSize))
                 if on { KeepAwakeTime(session: session, fixedNow: fixedNow) }
             }
-            .foregroundStyle(on ? AnyShapeStyle(DS.dynamicColor(.needsYou)) : AnyShapeStyle(.secondary))
+            .foregroundStyle(on ? DS.color(.needsYou) : DS.secondary)
             .frame(minWidth: 24, minHeight: 24)
             .contentShape(Rectangle())
         }
@@ -71,7 +71,7 @@ struct HeaderToggles: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: Self.iconSize))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(DS.secondary)
                 .frame(width: 24, height: 24)
                 .contentShape(Rectangle())
         }
@@ -98,7 +98,7 @@ private struct KeepAwakeTime: View {
     @ViewBuilder private func label(_ now: Date) -> some View {
         if let text = KeepAwakeLabel.remaining(session, now: now) {
             Text(verbatim: text)
-                .font(.system(size: 11, weight: .medium).monospacedDigit())
+                .font(DS.font(TypeScale.secondary).monospacedDigit())
                 .lineLimit(1)
                 .fixedSize()
         }

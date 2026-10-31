@@ -5,7 +5,7 @@ import SwiftUI
 import XCTest
 @testable import PlatyNotchUI
 
-/// Task 18: the Agents destination, and (user change) agent icons and usage chips.
+/// The Agents destination (Quiet Notch wireframe C): dense rows, agent icons or names.
 @MainActor
 final class AgentsViewTests: DefaultsTestCase {
     private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
@@ -40,14 +40,10 @@ final class AgentsViewTests: DefaultsTestCase {
         XCTAssertEqual(AgentRow.texts(none, attention: .working, now: t0).count, 2)
     }
 
-    private func usage(_ json: String) -> Usage {
-        (try? JSONCoding.decoder.decode(Usage.self, from: Data(json.utf8))) ?? Usage()
-    }
-
     func testRowsFollowAttentionOrder() {
         let sessions = [session("idle", .idle, updated: 50), session("work", .active, updated: 40),
                         session("ask", .waitingInput, updated: 10)]
-        let view = AgentsView(sessions: sessions, usage: Usage(), log: AgentFinishLog(), onOpenTerminal: { _ in },
+        let view = AgentsView(sessions: sessions, log: AgentFinishLog(), onOpenTerminal: { _ in },
                               onConnect: {})
         XCTAssertEqual(view.rows(now: t0.addingTimeInterval(60)).map(\.key), ["ask", "work", "idle"])
         let shown = view.visibleTexts(now: t0.addingTimeInterval(60))
@@ -58,21 +54,18 @@ final class AgentsViewTests: DefaultsTestCase {
         if let ask, let work { XCTAssertLessThan(ask, work, "\(shown)") }
     }
 
-    func testLimitsHintOnlyAsTooltip() {
+    /// Usage is small numbers in the header (`UsageLine`), never rings or tiles in the list;
+    /// the open-loops line closes the list and hides at zero.
+    func testListShowsNoUsageAndTheLoopsLine() {
+        stubHostNames()
         let sessions = [session("a", .active)]
-        let hint = PanelFormat.claudeLimitsHint(usage: Usage(), sessions: sessions)
-        XCTAssertNotNil(hint)
-        let rings = UsageRings(usage: Usage(), hint: hint)
-        XCTAssertEqual(rings.hint, hint)
-        let shown = AgentsView(sessions: sessions, usage: Usage(), log: AgentFinishLog(),
-                               onOpenTerminal: { _ in }, onConnect: {}).visibleTexts(now: t0)
-        XCTAssertFalse(shown.isEmpty)
-        XCTAssertTrue(shown.contains(UsageChip.unavailableText), "\(shown)")
-        XCTAssertFalse(shown.contains { $0.contains("status line") }, "\(shown)")
-        // With limits, the chip says the provider, percent and window.
-        let u = usage(#"{"claude":{"five_hour":{"used_percent":62},"updated_at":"2026-10-25T09:00:00Z"}}"#)
-        XCTAssertNil(UsageRings(usage: u, hint: PanelFormat.claudeLimitsHint(usage: u, sessions: sessions)).hint)
-        XCTAssertEqual(UsageRings(usage: u, hint: nil).visibleTexts, ["62%", "5 h"])
+        let none = AgentsView(sessions: sessions, log: AgentFinishLog(), onOpenTerminal: { _ in }, onConnect: {})
+            .visibleTexts(now: t0)
+        XCTAssertFalse(none.contains { $0.contains("%") }, "\(none)")
+        XCTAssertFalse(none.contains { $0.contains("open loop") }, "\(none)")
+        let two = AgentsView(sessions: sessions, log: AgentFinishLog(), openLoops: 2, onOpenTerminal: { _ in },
+                             onConnect: {}).visibleTexts(now: t0)
+        XCTAssertEqual(two.last, "2 open loops · Search memory with \u{2318}K")
     }
 
     func testAgentsTabHiddenUntilConnected() {
@@ -120,7 +113,7 @@ final class AgentsViewTests: DefaultsTestCase {
 
     func testEmptyStateConnectCallsSettings() {
         var connected = 0
-        let view = AgentsView(sessions: [], usage: Usage(), log: AgentFinishLog(), onOpenTerminal: { _ in },
+        let view = AgentsView(sessions: [], log: AgentFinishLog(), onOpenTerminal: { _ in },
                               onConnect: { connected += 1 })
         let shown = view.visibleTexts(now: t0)
         XCTAssertTrue(shown.contains("No agents running"), "\(shown)")
@@ -146,48 +139,61 @@ final class AgentsViewTests: DefaultsTestCase {
         XCTAssertEqual(AgentBadge.face(for: codex, source: source), .app)
     }
 
-    func testMissingAppFallsBackToMonogram() {
+    /// No installed app: the agent's name as text, never initials (Quiet Notch spec 5.3).
+    func testMissingAppShowsAgentName() {
         var asked: [String] = []
         let source = AgentIconSource { asked.append($0); return nil }
         let claude = AgentBrand(agent: "claude-code")
         XCTAssertNil(source.icon(for: claude))
-        XCTAssertEqual(AgentBadge.face(for: claude, source: source), .monogram("Cl"))
+        XCTAssertEqual(AgentBadge.face(for: claude, source: source), .name("Claude"))
         _ = source.icon(for: claude)
         XCTAssertEqual(asked, ["com.anthropic.claudefordesktop"], "a miss is cached too")
         // No allowlisted app: never looked up.
-        XCTAssertEqual(AgentBadge.face(for: AgentBrand(agent: "gemini"), source: source), .monogram("Ge"))
+        XCTAssertEqual(AgentBadge.face(for: AgentBrand(agent: "gemini"), source: source), .name("Gemini"))
         XCTAssertEqual(asked.count, 1)
-        XCTAssertEqual(AgentBadge.face(for: claude, source: .monogramsOnly), .monogram("Cl"))
+        XCTAssertEqual(AgentBadge.face(for: AgentBrand(agent: "aider", agentName: "Aider"), source: .namesOnly),
+                       .name("Aider"))
+        // The names column lines the projects up: 18 pt with icons, wider with names.
+        let icon = AgentIconSource { _ in NSImage(size: NSSize(width: 8, height: 8)) }
+        XCTAssertEqual(AgentBadge.column(for: [claude], source: icon), AgentRow.badgeColumn)
+        XCTAssertGreaterThan(AgentBadge.column(for: [claude], source: .namesOnly), AgentRow.badgeColumn)
+    }
+
+    /// A 200-character project truncates; the row stays inside the 600 pt panel's content.
+    func testLongProjectTruncates() {
+        stubHostNames()
+        var s = session("p", .active)
+        s.project = String(repeating: "long-project-", count: 16).prefix(200).description
+        let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelSide
+        let row = AgentRow(session: s, attention: .working, now: t0, onOpenTerminal: { _ in })
+            .frame(maxWidth: width)
+            .environment(\.agentIcons, .namesOnly)
+        let size = NSHostingView(rootView: row).fittingSize
+        XCTAssertLessThanOrEqual(size.width, width)
+        let short = AgentRow(session: session("p", .active), attention: .working, now: t0, onOpenTerminal: { _ in })
+            .frame(maxWidth: width)
+            .environment(\.agentIcons, .namesOnly)
+        XCTAssertEqual(size.height, NSHostingView(rootView: short).fittingSize.height, "still one line")
     }
 
     func testRowSaysTheStateInWords() {
         stubHostNames()
-        let shown = AgentsView(sessions: [session("p", .waitingInput)], usage: Usage(), log: AgentFinishLog(),
+        let shown = AgentsView(sessions: [session("p", .waitingInput)], log: AgentFinishLog(),
                                onOpenTerminal: { _ in }, onConnect: {}).visibleTexts(now: t0)
-        XCTAssertTrue(shown.contains("Needs your input"), "\(shown)")
+        XCTAssertTrue(shown.contains("waiting for you · just now"), "\(shown)")
         XCTAssertEqual(shown.last, "Open Claude")
     }
 
-    /// A working session with only a tool says it once ("Edit · just now"), not again below.
-    func testLastActionNotRepeated() {
+    /// One dense line: project, " · status · age", the button; the mono last-action line is gone.
+    func testRowIsOneLine() {
         stubHostNames()
         var s = session("p", .active)
         s.tool = "Edit"
-        XCTAssertEqual(AgentRow.texts(s, attention: .working, now: t0), ["p", "Edit · just now", "Open Claude"])
         s.message = "Edit\u{200B} a.swift"
-        XCTAssertEqual(AgentRow.texts(s, attention: .working, now: t0),
-                       ["p", "Edit · just now", "Edit⟨U+200B⟩ a.swift", "Open Claude"])
+        XCTAssertEqual(AgentRow.texts(s, attention: .working, now: t0), ["p", "edit · just now", "Open Claude"])
         var ask = session("q", .waitingInput)
         ask.tool = "AskUserQuestion"
-        XCTAssertEqual(AgentRow.texts(ask, attention: .needsYou, now: t0),
-                       ["q", "Needs your input", "AskUserQuestion", "Open Claude"])
-    }
-
-    /// Approvals above leave little room: the header steps aside so a row still shows.
-    func testHeaderStepsAsideWhenTight() {
-        XCTAssertTrue(AgentsView.showsHeader(height: 300))
-        XCTAssertFalse(AgentsView.showsHeader(height: 80))
-        XCTAssertGreaterThanOrEqual(AgentsView.headerRoom, AgentRow.height)
+        XCTAssertEqual(AgentRow.texts(ask, attention: .needsYou, now: t0), ["q", "waiting for you · just now", "Open Claude"])
     }
 
     /// Needs you and errors are counted apart; an errored row offers Open terminal.
@@ -197,10 +203,10 @@ final class AgentsViewTests: DefaultsTestCase {
         log.noteFailure(sessionKey: "err", at: t0)
         let sessions = [session("ask", .waitingInput), session("err", .idle), session("w1", .active),
                         session("w2", .active)]
-        let view = AgentsView(sessions: sessions, usage: Usage(), log: log, onOpenTerminal: { _ in }, onConnect: {})
+        let view = AgentsView(sessions: sessions, log: log, onOpenTerminal: { _ in }, onConnect: {})
         XCTAssertEqual(view.countsLine(now: t0.addingTimeInterval(5)), "4 sessions · 1 needs you · 1 error")
         XCTAssertEqual(AgentRow.texts(sessions[1], attention: .errored, now: t0).last, "Open Claude")
-        let two = AgentsView(sessions: [session("a", .idle), session("b", .idle)], usage: Usage(),
+        let two = AgentsView(sessions: [session("a", .idle), session("b", .idle)],
                              log: { var l = AgentFinishLog(); l.noteFailure(sessionKey: "a", at: t0)
                                     l.noteFailure(sessionKey: "b", at: t0); return l }(),
                              onOpenTerminal: { _ in }, onConnect: {})

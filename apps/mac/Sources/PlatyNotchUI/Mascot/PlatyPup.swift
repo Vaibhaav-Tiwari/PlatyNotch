@@ -86,3 +86,24 @@ private struct PupCanvas: View {
             .environment(\.colorScheme, dark ? .dark : .light)
     }
 }
+
+/// A session state as one monochrome SF Symbol on a 16 pt circle of the panel surface with
+/// a 1 pt keyline: the pups' state in the mascot gallery (the panel's rows use a state dot).
+struct StateBadge: View {
+    static let size: CGFloat = 16
+    let tone: StateTone
+
+    var body: some View {
+        Circle()
+            .fill(Theme.surface)
+            .overlay(Circle().strokeBorder(DS.ink(0.18), lineWidth: 1))
+            .overlay {
+                Image(systemName: tone.symbol)
+                    .symbolRenderingMode(.monochrome)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DS.color(tone))
+            }
+            .frame(width: Self.size, height: Self.size)
+            .accessibilityHidden(true)
+    }
+}

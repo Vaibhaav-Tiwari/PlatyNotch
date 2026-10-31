@@ -11,6 +11,10 @@ enum ThemeRenders {
     /// Writes every render (or, with `only`, those whose name starts with one of its
     /// prefixes); returns the number written, or the first problem.
     static func write(to dir: URL, only: [String]? = nil) -> Result<Int, RenderError> {
+        AgentsRenders.withHostNames { writeAll(to: dir, only: only) }
+    }
+
+    private static func writeAll(to dir: URL, only: [String]?) -> Result<Int, RenderError> {
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         } catch {
@@ -53,8 +57,8 @@ enum ThemeRenders {
             .padding(12)
             .background(Theme.surface)
             .environment(\.colorScheme, scheme)
-            // Monograms, so renders look the same on every Mac (one render passes a fake app icon).
-            .environment(\.agentIcons, .monogramsOnly)
+            // Names, so renders look the same on every Mac (one render passes a stand-in app icon).
+            .environment(\.agentIcons, .namesOnly)
     }
 
     private static func render(_ view: AnyView, scheme: ColorScheme) -> Data? {
@@ -384,16 +388,30 @@ enum HomeRenders {
         // Plain Home with no approval hugs its content, as the controller sizes the live
         // panel; every other view takes the full height.
         var height: CGFloat = available
-        if !full, route.destination == .home, route.tool == nil, rig.store.approvals.isEmpty {
-            let probe = HomeView(today: rig.today, widgets: rig.registry, settings: homeSettings, tourSample: tourSample,
-                                 fixedNow: at, dropping: dropping, commandLine: commandLine)
-            let host = NSHostingView(rootView: probe.frame(width: width).fixedSize(horizontal: false, vertical: true)
-                .environment(\.colorScheme, .dark).environment(\.panelTicking, false)
-                .environment(\.platyMood, rig.mood))
-            host.layoutSubtreeIfNeeded()
-            var l = layout
-            l.expandedContentHeight = l.expandedHeight(forBody: HomeMetrics.nav + HomeMetrics.gap + host.fittingSize.height)
-            height = l.contentRect(for: .expanded).height - l.contentInset(for: .expanded) - Space.panelBottom
+        if !full, route.tool == nil, rig.store.approvals.isEmpty {
+            // Plain Home and a short Agents list hug their content, as the controller sizes the
+            // live panel (`ExpandedPanel.reportedBody`).
+            let probe: AnyView? = switch route.destination {
+            case .home:
+                AnyView(HomeView(today: rig.today, widgets: rig.registry, settings: homeSettings, tourSample: tourSample,
+                                 fixedNow: at, dropping: dropping, commandLine: commandLine))
+            case .agents:
+                CGFloat(rig.store.sessions.count) * HomeMetrics.agentRow <= PanelLayout.expandedHeights.upperBound - 160
+                    ? AnyView(AgentsView(sessions: rig.store.sessions, log: rig.today.agentActivity.log,
+                                         openLoops: LoopsFormat.open(rig.store.loops).count,
+                                         onOpenTerminal: { _ in }, onConnect: {}, fixedNow: at))
+                    : nil
+            }
+            if let probe {
+                let host = NSHostingView(rootView: probe.frame(width: width).fixedSize(horizontal: false, vertical: true)
+                    .environment(\.colorScheme, .dark).environment(\.panelTicking, false)
+                    .environment(\.agentIcons, .namesOnly)
+                    .environment(\.platyMood, rig.mood))
+                host.layoutSubtreeIfNeeded()
+                var l = layout
+                l.expandedContentHeight = l.expandedHeight(forBody: HomeMetrics.nav + HomeMetrics.gap + host.fittingSize.height)
+                height = l.contentRect(for: .expanded).height - l.contentInset(for: .expanded) - Space.panelBottom
+            }
         }
         let view = ExpandedPanel(store: rig.store, responder: ApprovalResponder(client: rig.client), arming: ApprovalArming(),
                                  today: rig.today, widgets: rig.registry, memory: memory ?? MemoryServices(client: rig.client),
@@ -590,9 +608,10 @@ enum AgentsRenders {
 
     static func session(_ key: String, _ agent: String, _ name: String, project: String, _ state: SessionState,
                         title: String? = nil, tool: String? = nil, message: String? = nil,
-                        updated: TimeInterval = 0) -> Session {
+                        updated: TimeInterval = 0, host: String? = "com.anthropic.claudefordesktop") -> Session {
         Session(key: key, agent: agent, agentName: name, sessionID: key, project: project, state: state, title: title,
-                tool: tool, message: message, startedAt: start, updatedAt: Date().addingTimeInterval(-updated))
+                tool: tool, message: message, hostBundleID: host, startedAt: start,
+                updatedAt: Date().addingTimeInterval(-updated))
     }
 
     static func one() -> [Session] {
@@ -619,26 +638,46 @@ enum AgentsRenders {
         let ask = session("ask", "claude-code", "Claude Code", project: "platynotch", .waitingInput, tool: "AskUserQuestion",
                           message: "Which colour should the badge use?")
         let err = session("err", "codex", "Codex", project: "api", .idle, tool: "Bash", message: "go test ./... (exit 1)",
-                          updated: 30)
+                          updated: 30, host: "com.mitchellh.ghostty")
         let work = session("work", "cursor", "Cursor", project: "web", .active, title: "Fixing the login form",
-                           tool: "Edit", message: "Edit src/login.tsx", updated: 10)
-        var done = session("done", "opencode", "OpenCode", project: "docs", .active, tool: "Write", updated: 120)
+                           tool: "Edit", message: "Edit src/login.tsx", updated: 10, host: "com.todesktop.230313mzl4w4u92")
+        var done = session("done", "opencode", "OpenCode", project: "docs", .active, tool: "Write", updated: 120,
+                           host: "com.apple.Terminal")
         let r = rig([ask, err, work, done])
         r.today.agentActivity.sessionsChanged([ask, err, work, done], now: Date())
         done.state = .idle
         r.today.agentActivity.sessionsChanged([ask, err, work, done], now: Date())
         r.today.agentActivity.notice(Notice(kind: "session-failed", title: "Codex stopped", sessionKey: "err"), now: Date())
-        try? r.store.apply(Envelope.make(.snapshot, Snapshot(sessions: [ask, err, work, done], usage: r.store.usage)))
+        try? r.store.apply(Envelope.make(.snapshot, Snapshot(sessions: [ask, err, work, done], usage: r.store.usage,
+                                                             loops: r.store.loops)))
         return r
     }
 
     static func rig(_ sessions: [Session]) -> HomeRenders.Rig {
         var r = HomeRenders.Rig()
         r.mood = sessions.isEmpty ? .idle : .working
-        let json = #"{"claude":{"five_hour":{"used_percent":62},"weekly":{"used_percent":31},"updated_at":"2026-10-25T09:00:00Z"},"codex":{"weekly":{"used_percent":91},"updated_at":"2026-10-25T09:00:00Z"}}"#
+        let json = #"{"claude":{"five_hour":{"used_percent":62},"weekly":{"used_percent":31},"updated_at":"2026-10-25T09:00:00Z"},"codex":{"five_hour":{"used_percent":18},"updated_at":"2026-10-25T09:00:00Z"}}"#
         let usage: Usage = (try? JSONCoding.decoder.decode(Usage.self, from: Data(json.utf8))) ?? Usage()
-        try? r.store.apply(Envelope.make(.snapshot, Snapshot(sessions: sessions, usage: usage)))
+        let now = Date()
+        let loops = [Loop(id: "l1", title: "Send Priya the deck", kind: "promise", status: "open", detectedAt: now),
+                     Loop(id: "l2", title: "Review the PR", kind: "follow-up", status: "open", detectedAt: now)]
+        try? r.store.apply(Envelope.make(.snapshot, Snapshot(sessions: sessions, usage: usage, loops: loops)))
         return r
+    }
+
+    /// The host apps the renders' sessions name, the same on every Mac (the real lookup asks
+    /// Launch Services, which differs per Mac).
+    static let hostNames: [String: String] = [
+        "com.anthropic.claudefordesktop": "Claude", "com.mitchellh.ghostty": "Ghostty",
+        "com.todesktop.230313mzl4w4u92": "Cursor", "com.apple.Terminal": "Terminal",
+    ]
+
+    /// Runs `body` with `hostNames` as the host-app lookup, then restores the real one.
+    static func withHostNames<T>(_ body: () -> T) -> T {
+        let saved = HostAppName.lookup
+        HostAppName.lookup = { hostNames[$0] }
+        defer { HostAppName.lookup = saved }
+        return body()
     }
 
     /// A stand-in for an installed app's icon: a plain gradient tile with a symbol.
@@ -664,7 +703,7 @@ enum AgentsRenders {
         let icon = fakeAppIcon()
         let source = AgentIconSource { $0 == "com.anthropic.claudefordesktop" ? icon : nil }
         let r = rig(one() + [session("b", "codex", "Codex", project: "api", .idle, updated: 400)])
-        let view = AgentsView(sessions: r.store.sessions, usage: r.store.usage, log: AgentFinishLog(),
+        let view = AgentsView(sessions: r.store.sessions, log: AgentFinishLog(),
                               onOpenTerminal: { _ in }, onConnect: {})
             .frame(width: PanelLayout.expandedSize.width - 2 * Space.panelSide, height: 170, alignment: .top)
             .environment(\.agentIcons, source)

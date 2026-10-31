@@ -41,7 +41,7 @@ struct ApprovalDiffBox: View {
 
     static func tone(_ kind: DiffLine.Kind) -> StateTone? {
         switch kind {
-        case .added: .done
+        case .added: .working
         case .removed: .error
         case .context, .hunk: nil
         }

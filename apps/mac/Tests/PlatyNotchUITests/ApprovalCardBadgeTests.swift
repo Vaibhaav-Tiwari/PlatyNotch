@@ -4,9 +4,9 @@ import SwiftUI
 import XCTest
 @testable import PlatyNotchUI
 
-/// The approval card and the "+n more" row show the agent's badge (its app icon or
-/// monogram) like every other surface, without changing their size (approval safety:
-/// nothing moves).
+/// The approval card and the "+n more" row show the agent's app icon when it is installed
+/// (the name beside it otherwise), without changing their size (approval safety: nothing
+/// moves).
 @MainActor
 final class ApprovalCardBadgeTests: XCTestCase {
     private func approval() -> Approval {
@@ -25,7 +25,7 @@ final class ApprovalCardBadgeTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(buttonHeight, 16, "the 16 pt badge fits inside the button's height")
         let row = ApprovalRow(approval: approval(), more: 2, onOpen: {})
             .frame(width: 396)
-            .environment(\.agentIcons, .monogramsOnly)
+            .environment(\.agentIcons, .namesOnly)
         XCTAssertEqual(NSHostingView(rootView: row).fittingSize.height, buttonHeight + 8)
 
         func cardHeight(_ icons: AgentIconSource) -> CGFloat {
@@ -35,9 +35,9 @@ final class ApprovalCardBadgeTests: XCTestCase {
                 .environment(\.agentIcons, icons)
             return NSHostingView(rootView: card).fittingSize.height
         }
-        // A large app icon is drawn at 16 pt, the same as a monogram.
+        // A large app icon is drawn at 16 pt: the card is as tall as with no icon.
         let bigIcon = AgentIconSource(lookup: { _ in NSImage(size: NSSize(width: 512, height: 512)) })
-        XCTAssertEqual(cardHeight(.monogramsOnly), cardHeight(bigIcon))
+        XCTAssertEqual(cardHeight(.namesOnly), cardHeight(bigIcon))
     }
 
     /// The card renders in both themes with the badge.
