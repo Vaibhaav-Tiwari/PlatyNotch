@@ -47,6 +47,14 @@ final class WeatherWidget: NotchWidget {
     private(set) var searching = false
     private(set) var searchMessage: String?
 
+    /// Renders only (a widget that does not persist): a fixed place and reading, so the
+    /// header says "14° Clear" without a network call.
+    func showForRendering(place: GeoPlace, weather: WeatherNow) {
+        guard !persist else { return }
+        self.place = place
+        self.weather = weather
+    }
+
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let persist: Bool
     @ObservationIgnored private let makeFetcher: () -> WeatherFetching

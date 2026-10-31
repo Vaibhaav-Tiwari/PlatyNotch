@@ -1,8 +1,8 @@
 # PlatyNotch
 
 <p align="center">
-  <img src="docs/assets/showcase/now-agent-dark.png" width="720"
-       alt="PlatyNotch open from a MacBook notch, below the menu bar: Now shows Claude Code running tests in the platynotch project with Platy paddling, an Open terminal button and four glances: the next meeting, Claude usage, water and open loops.">
+  <img src="docs/assets/showcase/agents-dark.png" width="720"
+       alt="PlatyNotch open from a MacBook notch, below the menu bar: the black Agents view lists three sessions, one per line, each with its project, status, age, a state dot and a button naming the app it opens (Open Ghostty, Open Claude, Open Terminal), with Claude and Codex usage as small numbers in the header and a line about two open loops.">
 </p>
 
 PlatyNotch is an open-source MacBook notch app. It combines an agent hub

@@ -2,18 +2,18 @@ import AppKit
 import PlatyNotchKit
 import SwiftUI
 
-/// `--render-showcase <dir>` (spec 12): the five hero scenes, each the open panel as it
-/// really looks on a 14-inch MacBook Pro (560 pt wide, the pure-black band level with the
-/// camera housing), hanging from a drawn menu bar and notch over a calm gradient wallpaper
-/// drawn here in code (no third-party image, no Apple wallpaper), 16:9 at 2x, dark and
-/// light: Now with music, Now with an agent working, an approval with its diff, the Agents list
-/// and Platy's idle pond. The same inert models as the theme renders: nothing is read,
-/// played or saved.
+/// `--render-showcase <dir>`: the five Quiet Notch scenes (wireframes A–C, E), each the open
+/// panel as it really looks on a 14-inch MacBook Pro (600 pt wide, always black, the band
+/// level with the camera housing), hanging from a drawn menu bar and notch over a calm
+/// gradient wallpaper drawn here in code (no third-party image, no Apple wallpaper), 16:9 at
+/// 2x, on a dark and a light desktop: Home with music, Home with live chips, Agents, an
+/// approval above the Agents rows, and the command line. Agents show their names (renders
+/// never carry an app's icon). The same inert models as the theme renders: nothing is
+/// read, played or saved.
 @MainActor
 enum ShowcaseRenders {
-    static let scenes = ["now-music", "now-agent", "approval-diff", "agents-list", "platy-idle"]
-    /// The scenes' clock: today at 14:59 (the pond at 19:12), so a regeneration shows the
-    /// same times.
+    static let scenes = ["home-music", "home-live", "agents", "approval", "command-line"]
+    /// The scenes' clock: today at 14:59, so a regeneration shows the same times.
     static var clock: Date {
         Calendar.current.date(bySettingHour: 14, minute: 59, second: 0, of: Date()) ?? Date()
     }
@@ -37,7 +37,7 @@ enum ShowcaseRenders {
                 let file = dir.appendingPathComponent("\(name)-\(scheme == .dark ? "dark" : "light").png")
                 let s = scene(name)
                 let picture = ShowcaseDesktop(scheme: scheme, time: s.time) {
-                    panel(s.content, height: s.height, scheme: scheme)
+                    panel(s.content, height: s.height)
                 }
                 guard let png = render(picture, scheme: scheme) else {
                     return .failure(ThemeRenders.RenderError(message: "\(name) did not render"))
@@ -53,7 +53,7 @@ enum ShowcaseRenders {
 
     struct Scene {
         let content: AnyView
-        /// The panel's height, cropped to its content (no empty band under the last row).
+        /// The panel's content height (the panel hugs it, as the live panel does).
         let height: CGFloat
         /// The menu bar clock.
         let time: Date
@@ -65,82 +65,134 @@ enum ShowcaseRenders {
         let now = clock
         var rig: HomeRenders.Rig
         var route = PanelRoute(destination: .home)
-        var time: Date = now
-        var height: CGFloat = 352
+        var header: HeaderServices?
+        var command: String?
+        var panelNow: Date? = now
         switch name {
-        case "now-music":
-            rig = HomeRenders.musicHero(at: now)
-            rig.mood = PlatyMoodResolver.mood(sessions: [], approvalsPending: 0, musicPlaying: true, focusActive: false,
-                                              justFinished: false, hour: 14)
-        case "now-agent":
-            rig = HomeRenders.agentsHero(at: now)
-        case "approval-diff":
-            // The card's countdown and the rows' times run on the real clock (as in the app),
-            // so the approval is 20 s old in real time; its "4:40" never changes.
-            rig = AgentsRenders.approvals([diffApproval()])
+        case "home-music":
+            rig = homeRig(at: now, live: false)
+        case "home-live":
+            rig = homeRig(at: now, live: true)
+            // Two hours of keep awake started 40 minutes ago: "1:20" left (wireframe B).
+            header = HomeRenders.headerServices(keepAwake: true,
+                                                battery: BatteryState(percent: 64, charging: true, pluggedIn: true,
+                                                                      minutesRemaining: nil),
+                                                startedAt: now.addingTimeInterval(-40 * 60))
+        case "agents":
+            rig = agentsRig(at: now)
             route = PanelRoute(destination: .agents)
-            height = PanelLayout.expandedSize.height
-        case "agents-list":
-            rig = AgentsRenders.mixed()
+        case "approval":
+            // The card's countdown runs on the real clock (as in the app), so the approval is
+            // 20 s old in real time; the rows' ages count from the real clock too.
+            rig = agentsRig(at: Date())
+            try? rig.store.apply(Envelope.make(.approvalAdded, bashApproval()))
             route = PanelRoute(destination: .agents)
-            height = 360
+            panelNow = nil
         default:
-            time = HomeRenders.at(hour: 19)
-            rig = HomeRenders.builtIns(meeting: false, at: time)
+            rig = homeRig(at: now, live: false)
+            command = "timer 10m tea"
         }
         rig.store.apply(.connected)
-        // The approval's rows count from the real clock, like its card; the others use the
-        // fixed one.
-        let panelNow: Date? = name == "approval-diff" ? nil : time
-        return Scene(content: HomeRenders.panel(rig, route: route, now: panelNow), height: height, time: time)
+        let content = HomeRenders.panel(rig, route: route, command: command, now: panelNow, header: header)
+        let measured: CGFloat = NSHostingView(rootView: content).fittingSize.height
+        return Scene(content: content, height: measured, time: now)
     }
 
-    /// A believable Edit: eight lines of Swift with a small, readable change.
-    static func diffApproval() -> Approval {
-        let old = """
-        func refresh(now: Date) {
-            let due = timers.filter { $0.end <= now }
-            for timer in due {
-                ring(timer)
+    /// Home at `now`: Weightless playing with drawn artwork, the weather in the header, and Up
+    /// next as in wireframe A (a meeting in 45 minutes, a timed reminder, one overdue). `live`
+    /// adds wireframe B's chips: focus, a tea timer and the shelf.
+    static func homeRig(at now: Date, live: Bool) -> HomeRenders.Rig {
+        var rig = HomeRenders.builtIns(meeting: false, at: now)
+        rig.mood = .idle
+        rig.today.nowPlaying.debugApply(NowPlayingInfo(bundleIdentifier: "com.apple.Music", title: "Weightless",
+                                                       artist: "Marconi Union", isPlaying: true, artwork: artwork(),
+                                                       elapsed: 161, duration: 473, rate: 0, timestamp: now), now: now)
+        let meeting = CalendarMeeting(id: "design", title: "Design review", start: now.addingTimeInterval(45 * 60),
+                                      end: now.addingTimeInterval(75 * 60))
+        rig.today.calendar.setForTesting(access: .granted, meetings: [meeting])
+        let cal = Calendar.current
+        let five = cal.date(bySettingHour: 17, minute: 0, second: 0, of: now) ?? now
+        let yesterday = cal.date(byAdding: .day, value: -1, to: now) ?? now
+        let reminders = [ReminderItem(id: "priya", title: "Call Priya", due: five, hasTime: true),
+                         ReminderItem(id: "invoice", title: "Send invoice", due: yesterday, hasTime: true)]
+        (rig.registry.widget(RemindersWidget.widgetID) as? RemindersWidget)?.reminders
+            .setForTesting(access: .granted, items: reminders)
+        (rig.registry.widget(WeatherWidget.widgetID) as? WeatherWidget)?.showForRendering(
+            place: GeoPlace(id: 1, name: "Lisbon", latitude: 38.72, longitude: -9.14),
+            weather: WeatherNow(temperatureC: 14, code: 0, isDay: true, time: now, hourly: []))
+        if live {
+            rig.today.focus.start(minutes: 25, now: now.addingTimeInterval(-(6 * 60 + 18)))
+            if let time = rig.registry.widget(TimeWidget.widgetID) as? TimeWidget {
+                _ = time.startTimer(duration: 190, label: "Tea")
             }
-            scheduleWake(after: now)
+            (rig.registry.widget(ShelfWidget.widgetID) as? ShelfWidget)?.showForRendering([
+                ShelfItem(kind: .text("Release checklist"), addedAt: now),
+                ShelfItem(kind: .text("Meeting notes"), addedAt: now),
+                ShelfItem(kind: .url(URL(string: "https://example.com/report")!), addedAt: now),
+            ])
         }
-        """
-        let new = """
-        func refresh(now: Date) {
-            let due = timers.filter { $0.end <= now && !$0.isSnoozed }
-            for timer in due where !ringing.contains(timer.id) {
-                ring(timer)
-            }
-            scheduleWake(after: now)
-        }
-        """
+        return rig
+    }
+
+    /// Wireframe C: three sessions in three apps, usage in the header, two open loops.
+    static func agentsRig(at now: Date) -> HomeRenders.Rig {
+        let s = AgentsRenders.session
+        let start = now.addingTimeInterval(-12 * 60)
+        var tests = s("tests", "claude-code", "Claude Code", "platynotch", .active, "Running tests", "Bash", nil, 0,
+                      "com.anthropic.claudefordesktop")
+        tests.startedAt = start
+        tests.updatedAt = now
+        var ask = s("ask", "claude-code", "Claude Code", "agent-orchestrator", .waitingInput, nil, "AskUserQuestion", nil,
+                    0, "com.mitchellh.ghostty")
+        ask.updatedAt = now.addingTimeInterval(-3 * 60)
+        var done = s("done", "codex", "Codex", "brian2", .idle, nil, "Write", nil, 0, "com.apple.Terminal")
+        done.updatedAt = now.addingTimeInterval(-62 * 60)
+        let rig = AgentsRenders.rig([tests, ask, done])
+        return rig
+    }
+
+    /// A short Bash command (wireframe C's card).
+    static func bashApproval() -> Approval {
         let created = Date().addingTimeInterval(-20)
-        let input: [String: JSONValue] = [
-            "file_path": .string("/Users/me/src/platynotch/apps/mac/Sources/PlatyNotchUI/Widgets/TimeWidget.swift"),
-            "old_string": .string(old), "new_string": .string(new),
-        ]
-        return Approval(id: "showcase-edit", sessionKey: "a", agent: "claude-code", agentName: "Claude Code",
-                        project: "platynotch", tool: "Edit", summary: "Edit Sources/PlatyNotchUI/Widgets/TimeWidget.swift",
-                        input: RawJSON(.object(input)), createdAt: created, expiresAt: created.addingTimeInterval(300))
+        let command = "rm -rf ./build && npm test -- --grep \"panel\""
+        return Approval(id: "showcase-bash", sessionKey: "tests", agent: "claude-code", agentName: "Claude Code",
+                        project: "platynotch", tool: "Bash", summary: command,
+                        input: RawJSON(.object(["command": .string(command)])), createdAt: created,
+                        expiresAt: created.addingTimeInterval(300))
     }
 
-    /// The open panel around `content`, as `PanelRootView` draws it, `height` tall.
-    static func panel(_ content: AnyView, height: CGFloat, scheme: ColorScheme) -> some View {
+    /// Original artwork drawn in code: two soft fields, nothing from a real cover.
+    static func artwork() -> Data? {
+        let size = NSSize(width: 108, height: 108)
+        let image = NSImage(size: size, flipped: false) { rect in
+            NSGradient(colors: [NSColor(srgbRed: 0.23, green: 0.29, blue: 0.39, alpha: 1),
+                                NSColor(srgbRed: 0.64, green: 0.44, blue: 0.48, alpha: 1)])?
+                .draw(in: rect, angle: -45)
+            NSColor(white: 1, alpha: 0.12).setFill()
+            NSBezierPath(ovalIn: CGRect(x: 52, y: 14, width: 64, height: 64)).fill()
+            return true
+        }
+        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return nil }
+        return rep.representation(using: .png, properties: [:])
+    }
+
+    /// The open panel around `content` (`height` tall), as `PanelRootView` draws it: always
+    /// black, 22 pt bottom corners, the content below the housing with the panel's padding.
+    static func panel(_ content: AnyView, height: CGFloat) -> some View {
         let layout = HomeRenders.layout
         let width: CGFloat = PanelLayout.expandedSize.width
         let top: CGFloat = layout.contentInset(for: .expanded)
-        let band: CGFloat = layout.anchor.height
+        let total: CGFloat = top + height + Space.panelBottom
         return ZStack(alignment: .top) {
             Theme.surface
-            Color(PanelPalette.darkSurface).frame(height: band)
             content
-                .padding(EdgeInsets(top: top, leading: Space.panelSide, bottom: Space.panelBottom, trailing: Space.panelSide))
+                .padding(EdgeInsets(top: top, leading: Space.panelSide, bottom: Space.panelBottom,
+                                    trailing: Space.panelSide))
         }
-        .frame(width: width, height: height, alignment: .top)
-        .clipShape(Theme.panelShape(hasNotch: true))
-        .shadow(color: .black.opacity(scheme == .dark ? 0.45 : 0.22), radius: 24, y: 10)
-        .environment(\.colorScheme, scheme)
+        .frame(width: width, height: total, alignment: .top)
+        .clipShape(Theme.panelShape(hasNotch: true, open: true))
+        .shadow(color: .black.opacity(0.4), radius: 24, y: 10)
+        .environment(\.colorScheme, .dark)
         .environment(\.agentIcons, .namesOnly)
     }
 
@@ -193,16 +245,16 @@ private struct ShowcaseDesktop<Panel: View>: View {
         .environment(\.colorScheme, scheme)
     }
 
-    /// Soft teal and slate fields, darker in the dark set; nothing photographic.
+    /// Soft slate and dusk fields, darker on the dark desktop; nothing photographic.
     private var wallpaper: some View {
         let dark: Bool = scheme == .dark
-        let top = Color(RGB(hex: dark ? 0x10232B : 0xCFE3E2))
+        let top = Color(RGB(hex: dark ? 0x1A2230 : 0xD6DEE8))
         let bottom = Color(RGB(hex: dark ? 0x1B1A2E : 0xE9E1D4))
-        let tealGlow = Color(RGB(hex: dark ? 0x1F5C5A : 0x9FD3CB))
+        let slateGlow = Color(RGB(hex: dark ? 0x2E4560 : 0xAFC3D9))
         let duskGlow = Color(RGB(hex: dark ? 0x3B2E4F : 0xF2D9C0))
         return ZStack {
             LinearGradient(colors: [top, bottom], startPoint: .topLeading, endPoint: .bottomTrailing)
-            RadialGradient(colors: [tealGlow.opacity(0.75), tealGlow.opacity(0)], center: UnitPoint(x: 0.15, y: 0.85),
+            RadialGradient(colors: [slateGlow.opacity(0.75), slateGlow.opacity(0)], center: UnitPoint(x: 0.15, y: 0.85),
                            startRadius: 0, endRadius: 420)
             RadialGradient(colors: [duskGlow.opacity(0.7), duskGlow.opacity(0)], center: UnitPoint(x: 0.9, y: 0.2),
                            startRadius: 0, endRadius: 380)

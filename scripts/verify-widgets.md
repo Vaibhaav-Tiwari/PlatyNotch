@@ -1377,44 +1377,47 @@ block containing `- [ ] in code`.
   a quick note at once: all three are `[x]` and the note line is there (every write runs
   one after another).
 
-## Showcase renders (spec 12)
+## Showcase renders (spec 12; Quiet Notch phase 3)
 
 The README header and the website hero come from these renders. They are the project's
-own renders, so nothing in them is someone else's artwork.
+own renders, so nothing in them is someone else's artwork: agents show their names (never
+an installed app's icon), and the album art is drawn in code.
 
 Regenerate them from `apps/mac` with:
 
 ```sh
-swift build && PLATYNOTCH_HOME=$(mktemp -d) .build/debug/PlatyNotch --render-showcase ../../docs/assets/showcase
+swift build --scratch-path /private/tmp/claude-501/pn-build-shared && PLATYNOTCH_HOME=$(mktemp -d) /private/tmp/claude-501/pn-build-shared/debug/PlatyNotch --render-showcase ../../docs/assets/showcase
 ```
 
-This prints `SHOWCASE OK renders=10`. It writes ten PNGs: five scenes, each in dark and light:
+This prints `SHOWCASE OK renders=10`. It writes ten PNGs: five scenes, each on a dark and a
+light desktop (the panel itself is black on both):
 
-- `now-music`
-- `now-agent`
-- `approval-diff`
-- `library`
-- `platy-idle`, which shows the evening pond
+- `home-music`: Home with a track playing and Up next (wireframe A)
+- `home-live`: Home with focus, a tea timer and the shelf as chips, charging and keep
+  awake in the header (wireframe B)
+- `agents`: three sessions in three apps, usage in the header, the open-loops line
+  (wireframe C)
+- `approval`: a Bash approval in the v0.2 card above the Agents rows (wireframe C)
+- `command-line`: `timer 10m tea` typed, its suggestion below (wireframe E)
 
-Each PNG is 16:9 (800 × 450 points at 2×). It shows the open panel, cropped to its
-content, hanging from a drawn menu bar and camera notch over a gradient wallpaper drawn in
-code, so it uses no photograph and no Apple wallpaper.
+Each PNG is 16:9 (800 × 450 points, forced to 2×: 1600 × 900 pixels). It shows the open
+panel, cropped to its content, hanging from a drawn menu bar and camera notch over a
+gradient wallpaper drawn in code, so it uses no photograph and no Apple wallpaper.
 
 The command uses inert models: it reads no player, calendar or agent and saves nothing. It
-draws in an off-screen window, so nothing appears on screen.
+opens its windows off screen.
 
-The README header is `docs/assets/showcase/now-agent-dark.png`.
+The README header is `docs/assets/showcase/agents-dark.png`.
 
 The 20-second screen recording is scripted in `docs/showcase/recording-script.md`.
 
 - [ ] **271. Showcase renders.** After regenerating, compare the ten PNGs in `docs/assets/showcase`
-  with the app. Check that:
-  - every scene shows "Now", "Agents" and "Library";
-  - nothing is clipped;
+  with the app and the wireframes. Check that:
+  - every scene shows "Home" and "Agents" as plain text, the selected one bold;
+  - nothing is clipped and nothing in the panel is larger than 15 pt;
   - the header is quiet: no "Connecting…";
-  - the light set uses the light surface under the black band;
-  - the same meeting name appears everywhere;
-  - the Library grid ends on a full row.
+  - the panel is black on the light desktop too;
+  - no teal, no tinted icon squares, no initials in place of an agent's icon.
 
 ## UI redesign (Now, Agents, Library)
 
