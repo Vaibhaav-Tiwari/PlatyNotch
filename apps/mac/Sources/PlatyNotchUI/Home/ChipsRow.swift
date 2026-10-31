@@ -9,11 +9,12 @@ struct ChipsRow: View {
     let onOpen: (String) -> Void
 
     /// The tool a chip opens.
-    static func tool(for chip: LiveChip) -> String {
+    static func tool(for chip: LiveChip) -> String? {
         switch chip.kind {
         case .focus: FocusWidget.widgetID
         case .timer: TimeWidget.widgetID
         case .shelf: ShelfWidget.widgetID
+        case .sample: nil   // the first run's "Try it" sample opens nothing
         }
     }
 
@@ -27,7 +28,7 @@ struct ChipsRow: View {
     var body: some View {
         HStack(spacing: 6) {
             ForEach(Array(chips.enumerated()), id: \.offset) { _, chip in
-                Button { onOpen(Self.tool(for: chip)) } label: {
+                Button { if let tool = Self.tool(for: chip) { onOpen(tool) } } label: {
                     HStack(spacing: 6) {
                         if let tone = chip.tone {
                             Circle().fill(DS.dynamicColor(tone)).frame(width: 7, height: 7)

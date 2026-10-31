@@ -38,7 +38,7 @@ struct DropTargetsView: View {
             ForEach(titles, id: \.self) { title in
                 let zone: Zone = title == Self.airDropTitle ? .airDrop : .shelf
                 VStack(spacing: 6) {
-                    Image(systemName: zone == .shelf ? "tray.and.arrow.down" : "airplayaudio")
+                    Image(systemName: zone == .shelf ? "tray.and.arrow.down" : "dot.radiowaves.up.forward")
                         .font(.system(size: 20, weight: .medium))
                     Text(verbatim: title).font(.system(size: 13, weight: .medium))
                 }

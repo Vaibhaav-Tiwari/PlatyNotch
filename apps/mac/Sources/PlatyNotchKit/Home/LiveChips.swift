@@ -2,7 +2,7 @@ import Foundation
 
 /// One chip in Home's live row: something running right now (spec 2.2).
 public struct LiveChip: Equatable, Sendable {
-    public enum Kind: Equatable, Sendable { case focus, timer(UUID), shelf }
+    public enum Kind: Equatable, Sendable { case focus, timer(UUID), shelf, sample }
 
     public let kind: Kind
     public let text: String

@@ -80,7 +80,8 @@ final class PanelLayoutTests: XCTestCase {
         var e = ext
         e.expandedContentHeight = 200
         XCTAssertEqual(e.contentRect(for: .expanded).height, 200 + PanelLayout.headerStripExtra)
-        XCTAssertEqual(l.contentRect(for: .peek(.drop)).height, 380, "the drop zone keeps the full size")
+        XCTAssertEqual(l.contentRect(for: .peek(.drop)).height, 224, "the drop view hugs its content like Home")
+        XCTAssertLessThan(l.contentRect(for: .peek(.drop)).height, PanelLayout.expandedHeights.upperBound)
         XCTAssertLessThanOrEqual(l.contentRect(for: .peek(.drop)).height, l.windowFrame.height)
     }
 

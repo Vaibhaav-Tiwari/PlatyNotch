@@ -22,7 +22,7 @@ final class CommandLineTests: DefaultsTestCase {
         var actions: CommandActions {
             var a = CommandActions()
             a.startTimer = { [self] d, l in timers.append((d, l)); return true }
-            a.startFocus = { [self] in focus.append($0) }
+            a.startFocus = { [self] in focus.append($0); return nil }
             a.remind = { [self] in reminded.append($0); return remindReply }
             a.note = { [self] in notes.append($0); return noteReply }
             a.search = { [self] in searches.append($0) }
@@ -205,6 +205,17 @@ final class CommandLineTests: DefaultsTestCase {
         r.registry.stopAll()
     }
 
+    func testFocusWithFocusOffSaysWhy() {
+        let r = HomeRenders.builtIns(meeting: false)
+        r.registry.setEnabled(FocusWidget.widgetID, false)
+        let root = PanelRootView(model: PanelViewModel(), store: r.store, responder: ApprovalResponder(client: r.client),
+                                 today: r.today, widgets: r.registry, memory: MemoryServices(client: r.client),
+                                 extraTabs: [], onOpenTerminal: { _ in })
+        XCTAssertEqual(root.commandActions.startFocus(25), "Turn on Focus in Settings")
+        XCTAssertNil(r.today.focus.timer, "nothing started")
+        r.registry.stopAll()
+    }
+
     func testPlayChaseOpensChase() {
         let spy = Spy()
         let (l, model) = logic(spy)
@@ -277,5 +288,27 @@ final class CommandLineTests: DefaultsTestCase {
         XCTAssertNil(NotchPanel.typedText(try key("\r", .command, code: 36)))
         XCTAssertNil(NotchPanel.typedText(try key("\u{7F}", .command, code: 51)))
         XCTAssertEqual(used, [])
+    }
+}
+
+/// I2: typing to start the command line keeps the first character.
+@MainActor
+final class CommandLineCaretTests: XCTestCase {
+    func testFocusPutsTheCaretAfterTheText() throws {
+        let model = PanelViewModel()
+        let logic = CommandLineLogic(model: model, runner: CommandRunner(actions: CommandActions()))
+        let panel = NSPanel(contentRect: CGRect(x: -10_000, y: 10_000, width: 500, height: 200),
+                            styleMask: [.borderless], backing: .buffered, defer: false)
+        panel.contentView = NSHostingView(rootView: CommandLineView(model: model, logic: logic, memory: nil)
+            .frame(width: 500, height: 200))
+        panel.makeKeyAndOrderFront(nil)
+        defer { panel.orderOut(nil) }
+        model.commandText = "t"
+        model.commandFocused = true
+        for _ in 0..<20 { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+        guard let editor = panel.firstResponder as? NSTextView else {
+            throw XCTSkip("the field did not take focus in this headless window")
+        }
+        XCTAssertEqual(editor.selectedRange(), NSRange(location: 1, length: 0), "caret after the typed text, nothing selected")
     }
 }

@@ -87,7 +87,7 @@ public final class NotchController {
     }
 
     /// The modes that show Now's hero.
-    static func showsNow(_ mode: PanelMode) -> Bool { mode == .expanded || mode == .peek(.hover) }
+    static func showsHome(_ mode: PanelMode) -> Bool { mode == .expanded || mode == .peek(.hover) }
     /// The open panel's gear (the menu bar icon may be hidden): the app shows Settings.
     var onOpenSettings: () -> Void = {}
     /// The header toggles' services (the app's one); set before the panel first shows.
@@ -361,12 +361,12 @@ public final class NotchController {
     /// the window. Without a window (tests) only the view model.
     private func apply() {
         // Now shows (open, or the hover peek's hero): told after the view model has the mode.
-        let showsNow: Bool = Self.showsNow(machine.mode)
+        let showsHome: Bool = Self.showsHome(machine.mode)
         let shownBefore: Bool = nowShown
-        nowShown = showsNow
+        nowShown = showsHome
         defer {
             surfaces.sinkStateChanged()   // the media-key tap's view of where a HUD would show
-            if showsNow, !shownBefore { onExpanded() } else if !showsNow, shownBefore { onCollapsed() }
+            if showsHome, !shownBefore { onExpanded() } else if !showsHome, shownBefore { onCollapsed() }
         }
         if machine.mode != .expanded, model.commandFocused || !model.commandText.isEmpty || model.commandMessage != nil {
             model.commandText = ""   // a closed panel keeps no half-typed command

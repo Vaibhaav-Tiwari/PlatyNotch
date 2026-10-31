@@ -29,7 +29,12 @@ struct HomeData {
         data.chips = live.shown
         data.overflow = live.overflow
         if let tourSample, let title = tourSample.title {
-            data.chips.insert(LiveChip(kind: .shelf, text: title, tone: nil), at: 0)
+            // At most four chips even with the sample: the one it pushes out joins "+n".
+            data.chips.insert(LiveChip(kind: .sample, text: title, tone: nil), at: 0)
+            if data.chips.count > LiveChips.maxShown {
+                data.chips.removeLast()
+                data.overflow += 1
+            }
         }
         let notesOn: Bool = widgets.isEnabled(NotesWidget.widgetID)
         let mailOn: Bool = widgets.isEnabled(MailWidget.widgetID)
@@ -97,11 +102,11 @@ struct HomeView: View {
     /// Everything Home prints, in reading order (tests).
     static func texts(_ data: HomeData, nowPlaying: NowPlaying) -> [String] {
         var out: [String] = []
-        if let drop = data.drop {
-            return DropTargetsView.titles(shelfOn: drop.shelfOn, airDrop: drop.airDrop)
-        }
         out += data.chips.map(\.text)
         if data.overflow > 0 { out.append("+\(data.overflow)") }
+        if let drop = data.drop {
+            return out + DropTargetsView.titles(shelfOn: drop.shelfOn, airDrop: drop.airDrop)
+        }
         out.append(nowPlaying.title ?? MediaBlock.nothingPlaying)
         if let artist = nowPlaying.artist, nowPlaying.title != nil { out.append(artist) }
         switch data.column {
@@ -139,12 +144,12 @@ struct HomeView: View {
 
     @ViewBuilder private func content(_ data: HomeData) -> some View {
         VStack(alignment: .leading, spacing: 12) {
+            if !data.chips.isEmpty {
+                ChipsRow(chips: data.chips, overflow: data.overflow, onOpen: onOpenTool)
+            }
             if let drop = data.drop {
                 DropTargetsView(shelfOn: drop.shelfOn, airDrop: drop.airDrop, hovered: dropHover)
             } else {
-                if !data.chips.isEmpty {
-                    ChipsRow(chips: data.chips, overflow: data.overflow, onOpen: onOpenTool)
-                }
                 TwoColumns(ratio: HomeMetrics.columnRatio, gap: HomeMetrics.columnGap) {
                     MediaBlock(nowPlaying: today.nowPlaying, fixedNow: fixedNow)
                     rightColumn(data)
@@ -197,7 +202,7 @@ struct TwoColumns: Layout {
     }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let total: CGFloat = proposal.width ?? 560
+        let total: CGFloat = proposal.width ?? (PanelLayout.expandedWidth - 2 * Space.panelMargin)
         let (l, r) = widths(total)
         var h: CGFloat = 0
         if subviews.count == 2 {

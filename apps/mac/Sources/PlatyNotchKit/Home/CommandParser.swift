@@ -61,6 +61,7 @@ public enum CommandParser {
         case "note": return [note(rest)]
         case "search": return [search(rest)]
         case "play": return [play(rest)]
+        case "open": return openFeature(rest, tools: tools)
         default: return freeText(trimmed, tools: tools, now: now, calendar: calendar)
         }
     }
@@ -136,15 +137,35 @@ public enum CommandParser {
         return CommandSuggestion(command: .play(match), title: "Play \(match.title)", detail: nil)
     }
 
+    /// `open <feature>`: up to three features whose title (or a word of it) starts with what
+    /// was typed, so `open sites` finds "Sites & Shortcuts".
+    private static func openFeature(_ rest: [String], tools: [CommandTool]) -> [CommandSuggestion] {
+        guard !rest.isEmpty else { return [explain("Open", "Open what? Try: open clipboard")] }
+        let name: String = rest.joined(separator: " ").lowercased()
+        let matches: [CommandTool] = tools.filter { titleMatches($0.title, name) }.prefix(maxOpenMatches).map { $0 }
+        guard !matches.isEmpty else { return [explain("Open", "No feature called \"\(rest.joined(separator: " "))\"")] }
+        return matches.map { CommandSuggestion(command: .open(tool: $0.id), title: "Open \($0.title)", detail: nil) }
+    }
+
+    /// Whether `title` starts with `name`, or any of its words does.
+    private static func titleMatches(_ title: String, _ name: String) -> Bool {
+        let lower: String = title.lowercased()
+        if lower.hasPrefix(name) { return true }
+        return lower.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).contains { $0.hasPrefix(name) }
+    }
+
     // MARK: - Free text
 
     private static func freeText(_ text: String, tools: [CommandTool], now: Date,
                                  calendar: Calendar) -> [CommandSuggestion] {
         var out: [CommandSuggestion] = [
             CommandSuggestion(command: .search(text), title: "Search memory for \"\(text)\"", detail: nil),
-            CommandSuggestion(command: .remind(QuickAddParser.parse(text, now: now, calendar: calendar)),
-                              title: "Remind me: \(text)", detail: nil),
         ]
+        // A text that is only a date ("tomorrow") has nothing to remind of: no row.
+        let quick: QuickAdd = QuickAddParser.parse(text, now: now, calendar: calendar)
+        if !quick.title.isEmpty {
+            out.append(CommandSuggestion(command: .remind(quick), title: "Remind me: \(text)", detail: nil))
+        }
         let lower: String = text.lowercased()
         let matches: [CommandTool] = tools.filter { $0.title.lowercased().hasPrefix(lower) }.prefix(maxOpenMatches).map { $0 }
         for tool in matches {

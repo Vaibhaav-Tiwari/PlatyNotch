@@ -92,7 +92,9 @@ public enum UpNext {
         if overdue {
             time = "Overdue"
         } else if item.kind == .reminder && !item.hasTime {
-            time = QuickAddFormat.dayWord(date, now: now, calendar: calendar, locale: locale)
+            // An all-day item has no time: its column stays empty today ("Home is today") and
+            // names the day otherwise.
+            time = today ? "" : QuickAddFormat.dayWord(date, now: now, calendar: calendar, locale: locale)
         } else if today {
             time = clock
         } else {

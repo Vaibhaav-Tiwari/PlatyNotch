@@ -142,12 +142,11 @@ public struct PanelLayout: Equatable, Sendable {
             NotchGeometry.panelFrame(anchor: anchor, size: CGSize(width: Self.peekSize.width,
                                                                   height: (hasNotch ? anchor.height : 0) + Self.hoverPeekHeight),
                                      screenFrame: usable)
-        case .expanded:
+        case .expanded, .peek(.drop):
+            // The drop view is Home with its body swapped for the drop box: the same height.
             NotchGeometry.panelFrame(anchor: anchor, size: CGSize(width: Self.expandedWidth,
                                                                   height: expandedContentHeight + stripExtra),
                                      screenFrame: usable)
-        case .peek(.drop):
-            NotchGeometry.panelFrame(anchor: anchor, size: expandedSize, screenFrame: usable)
         case .peek(.widget): below(width: Self.surfaceWidth, height: Self.widgetPeekHeight)
         case .peek(.ringing): below(width: Self.surfaceWidth, height: Self.ringingHeight)
         case .peek(.hud): below(width: max(Self.hudMinWidth, compactRect.width), height: Self.hudHeight)

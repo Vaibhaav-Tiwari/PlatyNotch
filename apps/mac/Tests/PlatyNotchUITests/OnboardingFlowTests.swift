@@ -57,9 +57,6 @@ final class OnboardingFlowTests: DefaultsTestCase {
         XCTAssertFalse(OnboardingLaunch.showsFirstRun(.offerTour))
         XCTAssertFalse(OnboardingLaunch.showsFirstRun(.settled))
         XCTAssertTrue(OnboardingLaunch.showsFirstRun(.firstRun))
-        XCTAssertTrue(OnboardingLaunch.offersTourCard(.offerTour, tourOffered: false))
-        XCTAssertFalse(OnboardingLaunch.offersTourCard(.offerTour, tourOffered: true), "taken or dismissed: gone")
-        XCTAssertFalse(OnboardingLaunch.offersTourCard(.firstRun, tourOffered: false))
         // A new install's own saved layout does not make it an existing user next launch.
         d.set(true, forKey: FirstRunState.pendingKey)
         XCTAssertEqual(FirstRunState.resolve(onboardingDone: false, layoutSaved: true, defaults: d), .firstRun)
@@ -91,10 +88,10 @@ final class OnboardingFlowTests: DefaultsTestCase {
 
     /// The hover peek shows Now's hero: with Open on "Peek, then click" it completes Try it.
     func testTryItCompletesOnHoverPeek() {
-        XCTAssertTrue(NotchController.showsNow(.peek(.hover)))
-        XCTAssertTrue(NotchController.showsNow(.expanded))
-        XCTAssertFalse(NotchController.showsNow(.peek(.approval)))
-        XCTAssertFalse(NotchController.showsNow(.compact))
+        XCTAssertTrue(NotchController.showsHome(.peek(.hover)))
+        XCTAssertTrue(NotchController.showsHome(.expanded))
+        XCTAssertFalse(NotchController.showsHome(.peek(.approval)))
+        XCTAssertFalse(NotchController.showsHome(.compact))
     }
 
     /// The sample leaves after the time limit even if Now stays open.

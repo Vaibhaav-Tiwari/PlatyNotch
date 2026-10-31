@@ -27,8 +27,6 @@ public struct PlatyPoseValues: Equatable, Sendable {
     public var check = false
     /// The little "z"s (sleepy).
     public var zzz = false
-    /// Both paws up (celebrating).
-    public var cheer = false
     /// A water line at Platy's feet (working: paddling along). Drawn at every size, so
     /// working reads at 22 pt and in still frames.
     public var water = false

@@ -218,6 +218,9 @@ enum HomeRenders {
     static func views() -> [(String, AnyView, Bool)] {
         var out: [(String, AnyView, Bool)] = []
         out.append(("home-rest", panel(homeRest()), true))
+        out.append(("home-header-keep-awake", panel(homeRest(), header: headerServices(keepAwake: true)), true))
+        out.append(("home-header-charging", panel(homeRest(), header: headerServices(
+            battery: BatteryState(percent: 64, charging: true, pluggedIn: true, minutesRemaining: nil))), true))
         out.append(("home-live", panel(homeLive()), true))
         out.append(("home-nothing-playing", panel(builtIns(meeting: false)), true))
         out.append(("home-drop", panel(builtIns(meeting: false), dropping: true), true))
@@ -243,7 +246,8 @@ enum HomeRenders {
     static func homeRest() -> Rig {
         let rig = musicHero()
         rig.today.nowPlaying.debugApply(NowPlayingInfo(bundleIdentifier: "com.apple.Music", title: "Weightless",
-                                                       artist: "Marconi Union", isPlaying: true))
+                                                       artist: "Marconi Union", isPlaying: true,
+                                                       elapsed: 161, duration: 473, rate: 1, timestamp: Date()))
         return rig
     }
 
@@ -251,7 +255,8 @@ enum HomeRenders {
     static func homeLive() -> Rig {
         let rig = everythingOn()
         rig.today.nowPlaying.debugApply(NowPlayingInfo(bundleIdentifier: "com.apple.Music", title: "Weightless",
-                                                       artist: "Marconi Union", isPlaying: true))
+                                                       artist: "Marconi Union", isPlaying: true,
+                                                       elapsed: 161, duration: 473, rate: 1, timestamp: Date()))
         _ = (rig.registry.widget(TimeWidget.widgetID) as? TimeWidget)?.addTimer("25m")
         _ = (rig.registry.widget(TimeWidget.widgetID) as? TimeWidget)?.addTimer("5m")
         rig.today.focus.start(minutes: 25)
@@ -266,7 +271,8 @@ enum HomeRenders {
     static func musicHero(at now: Date = Date()) -> Rig {
         let rig = builtIns(meeting: false, at: now)
         rig.today.nowPlaying.debugApply(NowPlayingInfo(bundleIdentifier: "com.apple.Music", title: "Weightless",
-                                                       artist: "Marconi Union", isPlaying: true))
+                                                       artist: "Marconi Union", isPlaying: true,
+                                                       elapsed: 161, duration: 473, rate: 1, timestamp: Date()))
         return rig
     }
 
@@ -304,7 +310,7 @@ enum HomeRenders {
                                     auxLeft: CGRect(x: 0, y: 944, width: 654, height: 38),
                                     auxRight: CGRect(x: 858, y: 944, width: 654, height: 38))
 
-    /// Today at `hour`:12 (the pond renders).
+    /// Today at `hour`:12 (the renders).
     static func at(hour: Int) -> Date {
         Calendar.current.date(bySettingHour: hour, minute: 12, second: 0, of: Date()) ?? Date()
     }
@@ -362,26 +368,53 @@ enum HomeRenders {
     static func panel(_ rig: Rig, route: PanelRoute = PanelRoute(destination: .home), extraTabs: [PanelTab] = [],
                       memory: MemoryServices? = nil, memoryMode: MemoryTab.Mode = .search,
                       homeSettings: HomeSettings = HomeSettings(), dropping: Bool = false, command: String? = nil,
-                      tourSample: LiveActivity? = nil, now: Date? = nil) -> AnyView {
+                      tourSample: LiveActivity? = nil, now: Date? = nil, header: HeaderServices? = nil,
+                      full: Bool = false) -> AnyView {
         let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelMargin
-        let height: CGFloat = available
+        rig.store.apply(.connected)   // a quiet header, as in the running app
         var current = route
         let commandModel = PanelViewModel()
         commandModel.commandText = command ?? ""
         let logic = CommandLineLogic(model: commandModel, runner: CommandRunner(actions: CommandActions()),
                                      tools: { [] }, clock: { fixedNow }, calendar: .current)
         let commandLine = AnyView(CommandLineView(model: commandModel, logic: logic, memory: nil))
+        let services: HeaderServices = header ?? headerServices()
+        let at: Date = now ?? fixedNow
+        // Plain Home with no approval hugs its content, as the controller sizes the live
+        // panel; every other view takes the full height.
+        var height: CGFloat = available
+        if !full, route.destination == .home, route.tool == nil, rig.store.approvals.isEmpty {
+            let probe = HomeView(today: rig.today, widgets: rig.registry, settings: homeSettings, tourSample: tourSample,
+                                 fixedNow: at, dropping: dropping, commandLine: commandLine)
+            let host = NSHostingView(rootView: probe.frame(width: width).fixedSize(horizontal: false, vertical: true)
+                .environment(\.colorScheme, .dark).environment(\.panelTicking, false)
+                .environment(\.platyMood, rig.mood))
+            host.layoutSubtreeIfNeeded()
+            var l = layout
+            l.expandedContentHeight = l.expandedHeight(forBody: HomeMetrics.nav + HomeMetrics.gap + host.fittingSize.height)
+            height = l.contentRect(for: .expanded).height - l.contentInset(for: .expanded) - 10
+        }
         let view = ExpandedPanel(store: rig.store, responder: ApprovalResponder(client: rig.client), arming: ApprovalArming(),
                                  today: rig.today, widgets: rig.registry, memory: memory ?? MemoryServices(client: rig.client),
                                  extraTabs: extraTabs, route: Binding(get: { current }, set: { current = $0 }),
-                                 onCollapse: {}, homeSettings: homeSettings, commandLine: commandLine, dropping: dropping,
-                                 fixedNow: now ?? fixedNow, memoryMode: memoryMode, tourSample: tourSample,
+                                 onCollapse: {}, header: services, homeSettings: homeSettings, commandLine: commandLine,
+                                 dropping: dropping, fixedNow: at, memoryMode: memoryMode, tourSample: tourSample,
                                  onDecide: { _, _ in }, onOpenTerminal: { _ in })
             .frame(width: width, height: height, alignment: .top)
             .clipped()
             .environment(\.platyMood, rig.mood)
             .environment(\.panelTicking, false)
         return AnyView(view)
+    }
+
+    /// Header toggles for a render: inert power (no assertion, no IOKit), optionally with
+    /// keep awake running (`1:20`-style time) and a battery reading.
+    static func headerServices(keepAwake: Bool = false, battery: BatteryState? = nil) -> HeaderServices {
+        let power = RenderPower(state: battery)
+        let services = HeaderServices(keepAwake: KeepAwake(asserter: RenderAsserter()), power: power,
+                                      defaults: UserDefaults(suiteName: "dev.platynotch.render-header") ?? .standard)
+        if keepAwake { services.startKeepAwake(.oneHour) }
+        return services
     }
 
     /// The room below the camera housing in the open panel at full height.
@@ -736,4 +769,22 @@ enum ToolRenders {
         .frame(maxWidth: .infinity, alignment: .leading)
         .dsCard()
     }
+}
+
+
+/// A battery reading fixed for a render.
+@MainActor
+private final class RenderPower: PowerSourceReading {
+    let state: BatteryState?
+    init(state: BatteryState?) { self.state = state }
+    func read() -> BatteryState? { state }
+    func start(onChange: @escaping @MainActor () -> Void) {}
+    func stop() {}
+}
+
+/// Hands out an assertion id without touching IOKit.
+@MainActor
+private final class RenderAsserter: PowerAsserting {
+    func begin(reason: String) -> UInt32? { 7 }
+    func end(_ id: UInt32) {}
 }

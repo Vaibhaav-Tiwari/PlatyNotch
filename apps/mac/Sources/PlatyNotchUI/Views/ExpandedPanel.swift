@@ -140,7 +140,7 @@ struct ExpandedPanel: View {
     /// What to tell the controller about the body's height.
     private var reportedBody: CGFloat? {
         let plainHome: Bool = open == nil && route.normalized(agentsVisible: agentsVisible).destination == .home
-        guard plainHome, store.approvals.isEmpty, !dropping, let homeBody else { return nil }
+        guard plainHome, store.approvals.isEmpty, let homeBody else { return nil }
         return HomeMetrics.nav + HomeMetrics.gap + homeBody
     }
 
@@ -264,16 +264,14 @@ struct ExpandedPanel: View {
     private var controls: some View {
         HStack(spacing: 2) {
             if store.connection != .connected {
-                let text: String = store.connection == .connecting ? "Connecting…" : "Reconnecting…"
-                ViewThatFits(in: .horizontal) {
-                    Label(text, systemImage: "bolt.horizontal.circle")
-                    Image(systemName: "bolt.horizontal.circle")
-                }
-                .font(.system(size: 11))
-                .lineLimit(1)
-                .foregroundStyle(Theme.color(.attention))
-                .help(text)
-                .accessibilityLabel(text)
+                // Core status is not "needs you": a quiet icon, the words for hover and VoiceOver.
+                let text: String = store.connection == .connecting ? "Connecting to the core…" : "Reconnecting to the core…"
+                Image(systemName: "bolt.horizontal.circle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 20, height: 20)
+                    .help(text)
+                    .accessibilityLabel(text)
             }
             if let header {
                 HeaderToggles(services: header, widgets: widgets, route: $route, onOpenSettings: onOpenSettings,

@@ -198,7 +198,7 @@ final class GamesWidgetTests: DefaultsTestCase {
             r.host.frame(now: t, from: r.tab)
         }
         XCTAssertEqual(r.host.session.phase, .over)
-        XCTAssertEqual(r.widget.celebration?.result, GameResult(kind: .snake, score: 1))
+        XCTAssertEqual(r.host.session.newBest, GameResult(kind: .snake, score: 1), "the game-over line says so")
         XCTAssertEqual(HighScores.load(from: r.defaults).best("snake"), 1, "UserDefaults (the test suite here)")
         XCTAssertEqual(GamesWidget(defaults: r.defaults).host.session.best, 1, "read back on the next launch")
     }

@@ -13,7 +13,7 @@ public final class TodayServices {
     public let reminders: RemindersService
     public let focus: FocusModel
     public let loops: LoopActions
-    /// Platy's timed mood inputs (just finished, celebrating, the hour), one for every display.
+    /// Platy's timed mood inputs (just finished, the hour), one for every display.
     public let platy: PlatyMoodModel
     /// The app's one session tracker: finishes and failures in the last 10 minutes.
     let agentActivity: AgentActivityModel

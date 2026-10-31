@@ -13,7 +13,7 @@ final class RenderClockTests: XCTestCase {
         let data = HomeData.make(today: rig.today, widgets: rig.registry, settings: HomeSettings(), tourSample: nil,
                                  now: at, dropping: false)
         XCTAssertEqual(data.rows.count, UpNext.limit)
-        XCTAssertEqual(data.rows.first?.time, "Today", "the seeded tasks are due today")
+        XCTAssertEqual(data.rows.first?.time, "", "the seeded tasks are all-day today")
         XCTAssertEqual(data.rows.first?.note, "reminder")
         rig.registry.stopAll()
     }

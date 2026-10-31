@@ -5,7 +5,7 @@ import PlatyNotchKit
 /// return is the row's message (a reason it did not run); nil means done.
 struct CommandActions {
     var startTimer: (TimeInterval, String?) -> Bool = { _, _ in false }
-    var startFocus: (Int) -> Void = { _ in }
+    var startFocus: (Int) -> String? = { _ in nil }
     var remind: (QuickAdd) -> String? = { _ in nil }
     var note: (String) -> String? = { _ in nil }
     var search: (String) -> Void = { _ in }
@@ -30,8 +30,7 @@ final class CommandRunner {
         case .timer(let duration, let label):
             return actions.startTimer(duration, label) ? nil : "Turn on Time in Settings, or clear a finished timer"
         case .focus(let minutes):
-            actions.startFocus(minutes)
-            return nil
+            return actions.startFocus(minutes)
         case .remind(let q):
             return actions.remind(q)
         case .note(let text):

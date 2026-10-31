@@ -190,15 +190,21 @@ struct PanelRootView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .contentShape(Rectangle())
             .onTapGesture { model.onClick() }
-        case .expanded:
-            // Approval cards are not chrome: they show at once (arming counts from then).
+        case .expanded, .peek(.drop):
+            // The drop view is the same panel with Home's body swapped for the drop box: the
+            // header and chips stay (wireframe B). Approval cards are not chrome: they show at
+            // once (arming counts from then).
+            let dropping: Bool = model.mode == .peek(.drop)
+            let dropHover: DropTargetsView.Zone? = (widgets.widget(ShelfWidget.widgetID) as? ShelfWidget)?.dropZone
             ChromeSettle {
             ExpandedPanel(store: store, responder: responder, arming: model.arming, today: today,
                           widgets: widgets, memory: memory, extraTabs: extraTabs,
-                          route: Binding(get: { model.route }, set: { model.route = $0 }),
+                          route: dropping ? .constant(PanelRoute(destination: .home))
+                                          : Binding(get: { model.route }, set: { model.route = $0 }),
                           onCollapse: model.onClick, onOpenSettings: model.onOpenSettings,
                           header: model.header,
                           homeSettings: model.homeSettings, commandLine: commandLineView,
+                          dropping: dropping, dropHover: dropHover,
                           agentsVisible: today.agentActivity.agentsVisibility.isVisible,
                           onConnectAgent: model.onConnectAgent,
                           tourSample: model.tourSample,
@@ -236,12 +242,6 @@ struct PanelRootView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .contentShape(Rectangle())
                 .onTapGesture { model.onClick() }
-        case .peek(.drop):
-            // The Home body becomes drop targets: Shelf and AirDrop in one dashed box.
-            HomeView(today: today, widgets: widgets, settings: model.homeSettings, dropping: true,
-                     dropHover: (widgets.widget(ShelfWidget.widgetID) as? ShelfWidget)?.dropZone)
-                .padding(EdgeInsets(top: top, leading: Space.panelMargin, bottom: 10, trailing: Space.panelMargin))
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
     }
 
@@ -293,7 +293,11 @@ extension PanelRootView {
                   let time = widgets.widget(TimeWidget.widgetID) as? TimeWidget else { return false }
             return time.startTimer(duration: duration, label: label)
         }
-        a.startFocus = { minutes in today.focus.start(minutes: minutes) }
+        a.startFocus = { minutes in
+            guard widgets.isEnabled(FocusWidget.widgetID) else { return "Turn on Focus in Settings" }
+            today.focus.start(minutes: minutes)
+            return nil
+        }
         a.remind = { q in
             guard widgets.isEnabled(RemindersWidget.widgetID),
                   let reminders = widgets.widget(RemindersWidget.widgetID) as? RemindersWidget else {

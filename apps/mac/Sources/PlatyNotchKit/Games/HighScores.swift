@@ -10,7 +10,7 @@ public struct HighScores: Codable, Equatable, Sendable {
     public init(scores: [String: Int] = [:]) { self.scores = scores }
 
     /// Records `score` for `game`; true when it beats the best so far (a new best: Platy
-    /// celebrates, Task 13). A tie or zero is not a new best.
+    /// keeps the score). A tie or zero is not a new best.
     @discardableResult
     public mutating func record(game: String, score: Int) -> Bool {
         guard score > best(game) else { return false }

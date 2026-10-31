@@ -249,6 +249,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Smoke runs never script Music or Spotify (an unbundled run's Apple Events would
         // be the terminal's, and could prompt for it).
         if options.smoke || options.smokeSettings { today.nowPlaying.sendsAppleEvents = false }
+        // The upgrade steps run before any widget reads its saved settings (Wellbeing reads
+        // them in `init`): an existing user's water nudge must be saved before it is read.
+        if !options.smoke, !options.smokeSettings, !options.perfRun { prepareFirstRun(layoutSaved: layoutSaved) }
         BuiltInWidgets.register(in: widgets, store: store, today: today,
                                 persist: !options.smoke && !options.smokeSettings, clipboard: clipboard,
                                 keepAwake: headerServices.keepAwake)
@@ -258,7 +261,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // The Finder service is inert until picked; smoke runs never offer it.
         if !options.smoke, !options.smokeSettings { NSApp.servicesProvider = finderService }
         startPlugins()
-        if !options.smoke, !options.smokeSettings, !options.perfRun { prepareFirstRun(layoutSaved: layoutSaved) }
         startWidgets()
 
         rebuildControllers()
@@ -559,7 +561,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// "Try it": a sample in Now until Now has shown it; then Platy celebrates.
+    /// "Try it": a sample in Now until Now has shown it; then it closes.
     private func armTryIt(onDone: @escaping () -> Void) {
         tour.controllers = controllers
         tour.arm(onDone: onDone)

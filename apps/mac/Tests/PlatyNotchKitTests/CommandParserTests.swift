@@ -100,4 +100,24 @@ final class CommandParserTests: XCTestCase {
         let long = String(repeating: "x", count: 200)
         XCTAssertEqual(suggestions("note " + long).first?.command, .note(long))
     }
+
+    func testOpenKeyword() {
+        let tools = [CommandTool(id: "clipboard", title: "Clipboard"), CommandTool(id: "launch", title: "Sites & Shortcuts"),
+                     CommandTool(id: "baskets", title: "Baskets"), CommandTool(id: "time", title: "Time")]
+        XCTAssertEqual(suggestions("open clipboard", tools: tools).map(\.title), ["Open Clipboard"])
+        XCTAssertEqual(suggestions("Open clip", tools: tools).first?.command, .open(tool: "clipboard"))
+        XCTAssertEqual(suggestions("open sites", tools: tools).first?.command, .open(tool: "launch"), "a word of the title")
+        XCTAssertEqual(suggestions("open baskets", tools: tools).first?.command, .open(tool: "baskets"))
+        XCTAssertEqual(suggestions("open time", tools: tools).first?.command, .open(tool: "time"))
+        XCTAssertEqual(suggestions("open shortcuts", tools: tools).first?.command, .open(tool: "launch"))
+    }
+
+    func testOpenUnknownExplains() {
+        let tools = [CommandTool(id: "clipboard", title: "Clipboard")]
+        for text in ["open", "open pong"] {
+            XCTAssertNil(suggestions(text, tools: tools).first?.command, text)
+            XCTAssertNotNil(suggestions(text, tools: tools).first?.detail, text)
+        }
+    }
+
 }

@@ -34,9 +34,6 @@ public final class GamesWidget: NotchWidget {
     /// Nothing saved (smoke runs).
     public static func inert() -> GamesWidget { GamesWidget(defaults: nil) }
 
-    /// The latest new best (the game-over line says so; nothing celebrates).
-    public var celebration: GameCelebration? { host.celebration }
-
     public func start(context: WidgetContext) {
         let store = context.store
         let surfaces = context.surfaces

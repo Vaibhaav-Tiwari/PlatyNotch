@@ -1,3 +1,4 @@
+import AppKit
 import PlatyNotchKit
 import SwiftUI
 
@@ -88,10 +89,14 @@ struct CommandLineView: View {
     let logic: CommandLineLogic
     let memory: MemoryServices?
     @FocusState private var focused: Bool
+    @State private var windowBox = WindowBox()
 
     static let placeholder = "Add a reminder, start a timer, search memory…"
     /// Memory hits listed under a `search` row.
     static let hitLimit = 5
+    /// The most height the suggestions take before they scroll: Home with everything live
+    /// (chips, music, three Up next rows) still fits the 380 pt panel with this under it.
+    static let listMaxHeight: CGFloat = 76
 
     var body: some View {
         let rows = logic.suggestions
@@ -106,6 +111,7 @@ struct CommandLineView: View {
                     .onKeyPress(.upArrow) { logic.move(by: -1); return .handled }
                     .onKeyPress(.downArrow) { logic.move(by: 1); return .handled }
                     .accessibilityLabel("Command line")
+                    .background(CaretWindowReader(box: windowBox))
                 Text(verbatim: "\u{2318}K")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(.tertiary)
@@ -117,13 +123,21 @@ struct CommandLineView: View {
             .padding(.vertical, 7)
             .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             if !rows.isEmpty {
-                suggestionList(rows)
+                // Results take the room Home has left, then scroll inside it (spec 2).
+                ViewThatFits(in: .vertical) {
+                    suggestionList(rows, selected: logic.selectedIndex)
+                    ScrollView(.vertical) { suggestionList(rows, selected: logic.selectedIndex) }
+                }
+                .frame(maxHeight: Self.listMaxHeight)
             } else if let message = model.commandMessage {
                 Text(verbatim: message).font(.system(size: 12)).foregroundStyle(.secondary)
             }
         }
         .onChange(of: model.commandFocused) { _, new in if focused != new { focused = new } }
-        .onChange(of: focused) { _, new in if model.commandFocused != new { model.commandFocused = new } }
+        .onChange(of: focused) { _, new in
+            if model.commandFocused != new { model.commandFocused = new }
+            if new { Self.caretToEnd(in: windowBox) }
+        }
         .onChange(of: model.commandText) { _, _ in
             model.commandSelection = 0
             model.commandMessage = nil
@@ -132,7 +146,16 @@ struct CommandLineView: View {
         .onAppear { if model.commandFocused { focused = true } }
     }
 
-    private func suggestionList(_ rows: [CommandSuggestion]) -> some View {
+    /// A field that takes focus selects its text; the next key would then replace the first
+    /// character the user typed to start the line. Puts the caret after the text instead.
+    static func caretToEnd(in box: WindowBox) {
+        DispatchQueue.main.async {
+            guard let editor = box.window?.firstResponder as? NSTextView else { return }
+            editor.setSelectedRange(NSRange(location: (editor.string as NSString).length, length: 0))
+        }
+    }
+
+    private func suggestionList(_ rows: [CommandSuggestion], selected: Int) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
                 Button { logic.submit(index: index) } label: {
@@ -149,12 +172,12 @@ struct CommandLineView: View {
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 3)
-                    .background(index == logic.selectedIndex ? Color.white.opacity(0.07) : .clear,
+                    .background(index == selected ? Color.white.opacity(0.07) : .clear,
                                 in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityAddTraits(index == logic.selectedIndex ? .isSelected : [])
+                .accessibilityAddTraits(index == selected ? .isSelected : [])
                 if case .search = row.command, let hits = memoryHits {
                     ForEach(hits, id: \.threadID) { hit in
                         Text(verbatim: hit.title)
@@ -183,5 +206,24 @@ struct CommandLineView: View {
         let text = model.commandText.trimmingCharacters(in: .whitespaces)
         guard text.lowercased().hasPrefix("search "), text.count > 7 else { return }
         memory.search.query = String(text.dropFirst(7)).trimmingCharacters(in: .whitespaces)
+    }
+}
+
+/// The window a view sits in, for the caret fix.
+final class WindowBox {
+    weak var window: NSWindow?
+}
+
+private struct CaretWindowReader: NSViewRepresentable {
+    let box: WindowBox
+
+    func makeNSView(context: Context) -> NSView {
+        let v = NSView()
+        DispatchQueue.main.async { [weak v] in box.window = v?.window }
+        return v
+    }
+
+    func updateNSView(_ v: NSView, context: Context) {
+        DispatchQueue.main.async { [weak v] in box.window = v?.window }
     }
 }

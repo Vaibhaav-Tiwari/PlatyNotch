@@ -135,6 +135,10 @@ final class WellbeingWidget: NotchWidget {
         guard !running else { return }
         running = true
         self.context = context
+        // Settings saved since `init` (the upgrade step) count: never start on stale ones.
+        if persist, let saved = Self.load(NudgeSettings.self, NudgeSettings.key, defaults), saved != settings {
+            settings = saved
+        }
         let now = clock()
         var p = progress.clamped(now: now)
         for kind in NudgeKind.allCases where p.lastDone[kind] == nil { p.lastDone[kind] = now }

@@ -50,6 +50,21 @@ final class HomeViewTests: DefaultsTestCase {
         r.registry.stopAll()
     }
 
+    /// I3: command results never push Home past the 380 pt cap; they scroll inside.
+    func testHomeFitsWithCommandResults() {
+        let r = HomeRenders.homeLive()
+        for _ in 0..<3 { _ = (r.registry.widget(TimeWidget.widgetID) as? TimeWidget)?.addTimer("9m") }
+        let model = PanelViewModel()
+        model.commandText = "s"
+        let tools = ["Sites", "Shelf", "Snap", "Sound"].map { CommandTool(id: $0, title: $0) }
+        let logic = CommandLineLogic(model: model, runner: CommandRunner(actions: CommandActions()), tools: { tools })
+        XCTAssertGreaterThanOrEqual(logic.suggestions.count, 4)
+        let v = HomeView(today: r.today, widgets: r.registry, settings: HomeSettings(), fixedNow: Date(),
+                         commandLine: AnyView(CommandLineView(model: model, logic: logic, memory: nil)))
+        XCTAssertLessThanOrEqual(size(v).height, room)
+        r.registry.stopAll()
+    }
+
     func testRestHeightFitsTheSmallestPanel() {
         let r = HomeRenders.homeRest()
         let h = size(view(r)).height
@@ -91,6 +106,19 @@ final class HomeViewTests: DefaultsTestCase {
         XCTAssertEqual(chips.map(ChipsRow.tool(for:)), [FocusWidget.widgetID, TimeWidget.widgetID, ShelfWidget.widgetID])
     }
 
+    /// The "Try it" sample is a chip that opens nothing, and the row stays at four.
+    func testTourSampleChipOpensNothingAndKeepsFour() {
+        let r = HomeRenders.homeLive()
+        for _ in 0..<3 { _ = (r.registry.widget(TimeWidget.widgetID) as? TimeWidget)?.addTimer("9m") }
+        let d = HomeData.make(today: r.today, widgets: r.registry, settings: HomeSettings(), tourSample: TryItSession.sample,
+                              now: Date(), dropping: false)
+        XCTAssertEqual(d.chips.count, LiveChips.maxShown)
+        XCTAssertEqual(d.chips.first?.kind, .sample)
+        XCTAssertNil(ChipsRow.tool(for: d.chips[0]))
+        XCTAssertGreaterThan(d.overflow, 0)
+        r.registry.stopAll()
+    }
+
     func testRightColumnFollowsSetting() {
         let r = rig()
         let notes = HomeSettings(rightColumn: .notes)
@@ -122,6 +150,16 @@ final class HomeViewTests: DefaultsTestCase {
         let r = rig()
         let d = data(r, dropping: true)
         XCTAssertEqual(HomeView.texts(d, nowPlaying: r.today.nowPlaying), ["Drop to keep on Shelf", "AirDrop"])
+        r.registry.stopAll()
+    }
+
+    /// I4: the chips stay above the box (wireframe B).
+    func testDropKeepsTheChips() {
+        let r = HomeRenders.homeLive()
+        let texts = HomeView.texts(data(r, dropping: true), nowPlaying: r.today.nowPlaying)
+        XCTAssertTrue(texts.contains { $0.hasPrefix("Focus") })
+        XCTAssertEqual(texts.suffix(2), ["Drop to keep on Shelf", "AirDrop"])
+        XCTAssertFalse(texts.contains("Up next"), "the body is the box")
         r.registry.stopAll()
     }
 
@@ -277,7 +315,7 @@ final class MusicPauseExpiryTests: DefaultsTestCase {
         XCTAssertNil(np.pausedAt, "nothing loaded")
     }
 
-    func testAgentActivityRerankOnClockChange() {
+    func testActivityRevisionBumpsOnClockChange() {
         let model = AgentActivityModel()
         let before = model.revision
         model.clockChanged(now: Date())

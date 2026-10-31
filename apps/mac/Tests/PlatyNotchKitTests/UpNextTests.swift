@@ -68,8 +68,11 @@ final class UpNextTests: XCTestCase {
         XCTAssertEqual(rows([reminder("r", at(9, 0))]).first?.note, "reminder")
     }
 
-    func testDatedReminderWithoutTimeShowsToday() {
-        XCTAssertEqual(rows([reminder("r", at(0, 0), hasTime: false)]).first?.time, "Today")
+    func testAllDayReminderHasAnEmptyTimeColumn() {
+        XCTAssertEqual(rows([reminder("r", at(0, 0), hasTime: false)]).first?.time, "", "an all-day item has no time")
+        XCTAssertEqual(rows([reminder("t", at(17, 0))]).first.map { plain($0.time) }, "5:00 PM", "a timed item shows its time")
+        let tomorrow = cal.date(from: DateComponents(year: 2026, month: 11, day: 1, hour: 0))!
+        XCTAssertEqual(rows([reminder("n", tomorrow, hasTime: false)]).first?.time, "Tomorrow")
         XCTAssertEqual(rows([reminder("r", at(0, 0, day: 31), hasTime: false)]).first?.overdue, false)
     }
 

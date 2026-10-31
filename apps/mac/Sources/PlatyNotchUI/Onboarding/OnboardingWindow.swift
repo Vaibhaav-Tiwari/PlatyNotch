@@ -3,14 +3,10 @@ import Observation
 import PlatyNotchKit
 import SwiftUI
 
-/// Who sees what at launch (spec 10, 14): a new install gets the first run; someone who
-/// used PlatyNotch before gets the tour card on Now, never a forced first run.
+/// Who sees what at launch (spec 10): a new install gets the first run; someone who used
+/// PlatyNotch before never gets a forced one (the tour stays in Settings › General).
 enum OnboardingLaunch {
     static func showsFirstRun(_ state: FirstRunState) -> Bool { state == .firstRun }
-
-    static func offersTourCard(_ state: FirstRunState, tourOffered: Bool) -> Bool {
-        state == .offerTour && !tourOffered
-    }
 }
 
 /// The first run's "Try it" (spec 10, step 4): armed with a sample in Now; showing once
