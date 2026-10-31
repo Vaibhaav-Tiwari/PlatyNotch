@@ -302,8 +302,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// are kept exactly. A new install is marked so a layout saved during its first launch
     /// never makes it an "existing user" later, and needs no upgrade.
     private func prepareFirstRun(layoutSaved: Bool) {
-        firstRun = FirstRunState.prepare(defaults: .standard, onboardingDone: onboarding.isDone, layoutSaved: layoutSaved,
-                                         glanceCapable: widgets.glanceCapableIDs)
+        firstRun = FirstRunState.prepare(defaults: .standard, onboardingDone: onboarding.isDone, layoutSaved: layoutSaved)
         today.agentActivity.reloadVisibility()   // the upgrade keeps Agents shown
     }
 

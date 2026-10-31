@@ -59,7 +59,7 @@ final class WellbeingTests: XCTestCase {
     /// Ruling (Task 8, C28): idle ≥ 300 s counts as a break. `due` is nil while idle, and
     /// the break resets stand and eyes (not water).
     func testIdleCountsAsABreak() {
-        let s = NudgeSettings()
+        let s = NudgeSettings(water: 60)
         let cal = calendar()
         let now = at(2026, 10, 21, 14)
         let overdue = done(90, before: now)
@@ -84,7 +84,7 @@ final class WellbeingTests: XCTestCase {
     }
 
     func testPriorityEyesFirst() {
-        let s = NudgeSettings()
+        let s = NudgeSettings(water: 60)
         let cal = calendar()
         let now = at(2026, 10, 21, 14)
         XCTAssertEqual(NudgeScheduler.due(s, NudgeContext(now: now, lastDone: done(90, before: now)), calendar: cal), .eyes)
@@ -244,11 +244,12 @@ final class WellbeingTests: XCTestCase {
 
     func testSettingsDefaultsAndTolerantDecoding() throws {
         let s = NudgeSettings()
-        XCTAssertEqual([s.water, s.stand, s.eyes, s.quietStart, s.quietEnd, s.dailyWaterGoal], [60, 50, 20, 22, 8, 8])
+        XCTAssertEqual([s.water, s.stand, s.eyes, s.quietStart, s.quietEnd, s.dailyWaterGoal], [0, 50, 20, 22, 8, 8],
+                       "water is off for new users")
         // Missing keys take defaults; out-of-range values are clamped.
         let partial = try JSONDecoder().decode(NudgeSettings.self, from: Data(#"{"eyes": 0, "quietStart": 30, "dailyWaterGoal": -2}"#.utf8))
         XCTAssertEqual(partial.eyes, 0)
-        XCTAssertEqual(partial.water, 60)
+        XCTAssertEqual(partial.water, NudgeSettings.legacyWaterMinutes, "saved before water could be off: kept")
         XCTAssertEqual(partial.quietStart, 23)
         XCTAssertEqual(partial.dailyWaterGoal, 1)
         let data = try JSONEncoder().encode(s)

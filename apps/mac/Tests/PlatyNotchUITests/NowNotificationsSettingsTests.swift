@@ -15,25 +15,31 @@ final class NowNotificationsSettingsTests: DefaultsTestCase {
         return r
     }
 
-    func testSlotPickerWritesSlots() {
+    func testHomeOptionsDisableOffWidgets() {
+        let o = HomeSection.options(notesOn: false, mailOn: true)
+        XCTAssertEqual(o.map(\.column), [.upNext, .notes, .mail])
+        XCTAssertEqual(o.map(\.enabled), [true, false, true])
+        XCTAssertEqual(HomeSection.options(notesOn: true, mailOn: true).map(\.enabled), [true, true, true])
+        XCTAssertEqual(HomeSection.options(notesOn: false, mailOn: false).map(\.enabled), [true, false, false])
+    }
+
+    /// Picking saves at once; an unavailable column is ignored, and a saved Notes choice shows
+    /// as Up next while Notes is off.
+    func testHomeModelSavesChoice() {
         let d = defaults()
-        GlanceSlots(ids: ["meeting", "weather"]).save(to: d)
-        let model = NowSettingsModel(widgets: registry(), defaults: d)
-        XCTAssertEqual(model.slots, ["meeting", "weather", nil, nil])
-        XCTAssertTrue(model.options.contains { $0.id == GlanceSlots.usageID && $0.title == "Claude/Codex usage" })
-        model.set(slot: 2, id: GlanceSlots.usageID)
-        XCTAssertEqual(GlanceSlots.decode(d.data(forKey: GlanceSlots.key))?.ids, ["meeting", "weather", GlanceSlots.usageID])
-        // A glance already in a slot swaps places: never in two slots.
-        model.set(slot: 0, id: "weather")
-        XCTAssertEqual(model.slots, ["weather", "meeting", GlanceSlots.usageID, nil])
-        // Drag reorders.
-        model.move(from: 2, to: 0)
-        XCTAssertEqual(GlanceSlots.decode(d.data(forKey: GlanceSlots.key))?.ids, [GlanceSlots.usageID, "weather", "meeting"])
-        model.set(slot: 1, id: nil)
-        XCTAssertEqual(GlanceSlots.decode(d.data(forKey: GlanceSlots.key))?.ids, [GlanceSlots.usageID, "meeting"])
-        // Hero cycling.
-        model.setHeroCycling(false)
-        XCTAssertFalse(NowSettings.load(from: d).heroCycling)
+        let r = registry()
+        r.setEnabled(NotesWidget.widgetID, false)
+        let model = HomeSettingsModel(widgets: r, defaults: d)
+        XCTAssertEqual(model.rightColumn, .upNext)
+        model.set(.notes)
+        XCTAssertEqual(model.rightColumn, .upNext, "Notes is off: not offered")
+        r.setEnabled(NotesWidget.widgetID, true)
+        model.set(.notes)
+        XCTAssertEqual(HomeSettings.load(from: d).rightColumn, .notes)
+        XCTAssertEqual(model.effective, .notes)
+        r.setEnabled(NotesWidget.widgetID, false)
+        XCTAssertEqual(model.effective, .upNext, "falls back while the widget is off")
+        XCTAssertEqual(HomeSettings.load(from: d).rightColumn, .notes, "the choice is kept for when it is back on")
     }
 
     func testLockedApprovalToggles() {

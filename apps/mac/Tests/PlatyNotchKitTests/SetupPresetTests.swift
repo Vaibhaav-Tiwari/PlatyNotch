@@ -83,15 +83,14 @@ final class SetupPresetTests: DefaultsTestCase {
         let d = defaults()
         let layout = savedLayout()
         d.set(layout, forKey: WidgetLayout.key)
-        UpgradeMigration.run(defaults: d, existingUser: true, glanceCapable: ["games", "snap", "weather", "system", "loops"])
+        UpgradeMigration.run(defaults: d, existingUser: true)
         XCTAssertEqual(d.data(forKey: WidgetLayout.key), layout, "byte-identical")
-        XCTAssertEqual(GlanceSlots.decode(d.data(forKey: GlanceSlots.key))?.ids, ["games", "snap", "weather", "system"],
-                       "the first four glance-capable widgets the caller passes")
+        XCTAssertNil(d.object(forKey: GlanceSlots.key), "glances are no longer chosen for them")
     }
 
     func testExistingUserKeepsAgents() {
         let d = defaults()
-        UpgradeMigration.run(defaults: d, existingUser: true, glanceCapable: [])
+        UpgradeMigration.run(defaults: d, existingUser: true)
         XCTAssertTrue(AgentsVisibility.load(from: d).everConnected, "Agents stays where it was")
         XCTAssertFalse(AgentsVisibility.load(from: d).forcedOn)
         // Chosen glances and appearance are kept.
@@ -99,26 +98,26 @@ final class SetupPresetTests: DefaultsTestCase {
         other.removeObject(forKey: UpgradeMigration.key)
         GlanceSlots(ids: ["music"]).save(to: other)
         AppearanceStore.save(AppearanceSettings(mode: .minimal), to: other)
-        UpgradeMigration.run(defaults: other, existingUser: true, glanceCapable: ["weather"])
+        UpgradeMigration.run(defaults: other, existingUser: true)
         XCTAssertEqual(GlanceSlots.decode(other.data(forKey: GlanceSlots.key))?.ids, ["music"])
         XCTAssertEqual(AppearanceStore.load(from: other).mode, .minimal)
     }
 
     func testMigrationIdempotent() {
         let d = defaults()
-        UpgradeMigration.run(defaults: d, existingUser: true, glanceCapable: ["weather"])
+        UpgradeMigration.run(defaults: d, existingUser: true)
         XCTAssertTrue(d.bool(forKey: UpgradeMigration.key))
         // The user later hides Agents and changes glances: a second run changes nothing.
         AgentsVisibility(everConnected: false).save(to: d)
         GlanceSlots(ids: ["music"]).save(to: d)
-        UpgradeMigration.run(defaults: d, existingUser: true, glanceCapable: ["weather"])
+        UpgradeMigration.run(defaults: d, existingUser: true)
         XCTAssertFalse(AgentsVisibility.load(from: d).everConnected)
         XCTAssertEqual(GlanceSlots.decode(d.data(forKey: GlanceSlots.key))?.ids, ["music"])
     }
 
     func testNewUserWritesNothing() {
         let d = defaults()
-        UpgradeMigration.run(defaults: d, existingUser: false, glanceCapable: ["weather"])
+        UpgradeMigration.run(defaults: d, existingUser: false)
         XCTAssertEqual(UserDefaults.standard.persistentDomain(forName: suiteName)?.keys.sorted() ?? [], [])
     }
 
@@ -127,19 +126,16 @@ final class SetupPresetTests: DefaultsTestCase {
     func testNewInstallAcrossLaunches() {
         let d = defaults()
         // Launch 1: nothing saved.
-        XCTAssertEqual(FirstRunState.prepare(defaults: d, onboardingDone: false, layoutSaved: false,
-                                             glanceCapable: ["weather"]), .firstRun)
+        XCTAssertEqual(FirstRunState.prepare(defaults: d, onboardingDone: false, layoutSaved: false), .firstRun)
         d.set(WidgetLayout(order: ["music"], enabled: ["music"]).encoded(), forKey: WidgetLayout.key)   // saved meanwhile
         // Launches 2 and 3: quit mid first run, a layout now saved.
         for _ in 0..<2 {
-            XCTAssertEqual(FirstRunState.prepare(defaults: d, onboardingDone: false, layoutSaved: true,
-                                                 glanceCapable: ["weather"]), .firstRun)
+            XCTAssertEqual(FirstRunState.prepare(defaults: d, onboardingDone: false, layoutSaved: true), .firstRun)
             XCTAssertFalse(AgentsVisibility.load(from: d).everConnected, "never upgraded into view")
         }
         // Finished: settled, still no upgrade.
         FirstRunState.finish(defaults: d)
-        XCTAssertEqual(FirstRunState.prepare(defaults: d, onboardingDone: true, layoutSaved: true,
-                                             glanceCapable: ["weather"]), .settled)
+        XCTAssertEqual(FirstRunState.prepare(defaults: d, onboardingDone: true, layoutSaved: true), .settled)
         XCTAssertFalse(AgentsVisibility.load(from: d).everConnected)
         XCTAssertNil(d.object(forKey: GlanceSlots.key), "the first run chose (or left) the glances")
     }
@@ -148,13 +144,11 @@ final class SetupPresetTests: DefaultsTestCase {
     func testExistingUserPrepare() {
         let d = defaults()
         d.set(WidgetLayout(order: ["music"], enabled: ["music"]).encoded(), forKey: WidgetLayout.key)
-        XCTAssertEqual(FirstRunState.prepare(defaults: d, onboardingDone: true, layoutSaved: true,
-                                             glanceCapable: ["weather"]), .offerTour)
+        XCTAssertEqual(FirstRunState.prepare(defaults: d, onboardingDone: true, layoutSaved: true), .offerTour)
         XCTAssertTrue(AgentsVisibility.load(from: d).everConnected)
         XCTAssertFalse(d.bool(forKey: FirstRunState.pendingKey))
         FirstRunState.finish(defaults: d)
-        XCTAssertEqual(FirstRunState.prepare(defaults: d, onboardingDone: true, layoutSaved: true,
-                                             glanceCapable: ["weather"]), .settled)
+        XCTAssertEqual(FirstRunState.prepare(defaults: d, onboardingDone: true, layoutSaved: true), .settled)
     }
 
     func testPresetPlanAsksOutsideTheFirstRun() {

@@ -286,7 +286,7 @@ struct SettingsRootView: View {
         switch model.selection {
         case SettingsPageID.general.rawValue: GeneralSection(services: services)
         case SettingsPageID.notch.rawValue: NotchSection()
-        case SettingsPageID.home.rawValue: NowSection(widgets: services.widgets)
+        case SettingsPageID.home.rawValue: HomeSection(widgets: services.widgets)
         case SettingsPageID.notifications.rawValue: NotificationsSection(sound: AnyView(PlipSoundSettings()))
         case SettingsPageID.widgets.rawValue: WidgetsSection(widgets: services.widgets, detail: $model.detail)
         case SettingsPageID.agents.rawValue: AgentsSection(services: services, detail: $model.detail)

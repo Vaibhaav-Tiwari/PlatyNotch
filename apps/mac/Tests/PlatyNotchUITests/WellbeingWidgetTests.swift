@@ -73,6 +73,10 @@ final class WellbeingWidgetTests: DefaultsTestCase {
                      defaults givenDefaults: UserDefaults? = nil, clock givenClock: Clock? = nil) -> Rig {
         let d = givenDefaults ?? defaults()
         let clock = givenClock ?? Clock(afternoon)
+        // Water is off for new users now; these tests are about a user who kept the old 60 minutes.
+        if d.object(forKey: NudgeSettings.key) == nil {
+            d.set(try! JSONEncoder().encode(NudgeSettings(water: NudgeSettings.legacyWaterMinutes)), forKey: NudgeSettings.key)
+        }
         if overdue {
             let past = clock.now.addingTimeInterval(-90 * 60)
             let p = NudgeProgress(lastDone: [.water: past, .stand: past, .eyes: past])
@@ -220,7 +224,7 @@ final class WellbeingWidgetTests: DefaultsTestCase {
 
     func testWaterCardPlusOneGlass() {
         let r = rig()
-        var s = NudgeSettings()
+        var s = NudgeSettings(water: 60)
         s.eyes = 0
         s.stand = 0
         r.widget.update(s)

@@ -17,7 +17,7 @@ final class BundleTypesTests: XCTestCase {
         for d in declared {
             if let id = d["UTTypeIdentifier"] as? String { conforms[id] = d["UTTypeConformsTo"] as? [String] ?? [] }
         }
-        for type in [UTType.platyNotchWidgetCard, UTType.platyNotchGlanceSlot] {
+        for type in [UTType.platyNotchWidgetCard] {
             XCTAssertEqual(conforms[type.identifier], ["public.data"], "\(type.identifier) is declared as data")
         }
     }

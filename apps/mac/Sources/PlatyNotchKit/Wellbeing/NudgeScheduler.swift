@@ -8,7 +8,7 @@ public enum NudgeKind: String, Codable, CodingKeyRepresentable, CaseIterable, Se
     public static let priority: [NudgeKind] = [.eyes, .stand, .water]
 }
 
-/// Settings › Widgets › Wellbeing. Intervals are minutes (0 = off); quiet hours are whole
+/// Settings › Widgets › Wellbeing. Intervals are minutes (0 = off; water is off for new users); quiet hours are whole
 /// hours of the local day, `quietStart` up to (not including) `quietEnd`, spanning
 /// midnight when start > end, none when start == end.
 public struct NudgeSettings: Codable, Equatable, Sendable {
@@ -16,6 +16,9 @@ public struct NudgeSettings: Codable, Equatable, Sendable {
     public static let key = "wellbeing.settings"
     /// The longest interval Settings offers.
     public static let maxMinutes = 240
+    /// Today's water interval: what an existing user keeps (`QuietNotchMigration`) and what a
+    /// saved value without a `water` key means.
+    public static let legacyWaterMinutes = 60
 
     public var water: Int
     public var stand: Int
@@ -24,7 +27,7 @@ public struct NudgeSettings: Codable, Equatable, Sendable {
     public var quietEnd: Int
     public var dailyWaterGoal: Int
 
-    public init(water: Int = 60, stand: Int = 50, eyes: Int = 20, quietStart: Int = 22, quietEnd: Int = 8,
+    public init(water: Int = 0, stand: Int = 50, eyes: Int = 20, quietStart: Int = 22, quietEnd: Int = 8,
                 dailyWaterGoal: Int = 8) {
         self.water = water
         self.stand = stand
@@ -39,7 +42,7 @@ public struct NudgeSettings: Codable, Equatable, Sendable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = NudgeSettings()
-        water = try c.decodeIfPresent(Int.self, forKey: .water) ?? d.water
+        water = try c.decodeIfPresent(Int.self, forKey: .water) ?? Self.legacyWaterMinutes
         stand = try c.decodeIfPresent(Int.self, forKey: .stand) ?? d.stand
         eyes = try c.decodeIfPresent(Int.self, forKey: .eyes) ?? d.eyes
         quietStart = try c.decodeIfPresent(Int.self, forKey: .quietStart) ?? d.quietStart

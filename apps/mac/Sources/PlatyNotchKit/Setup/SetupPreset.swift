@@ -131,15 +131,16 @@ extension FirstRunState {
     /// Launch: who gets the first run or the tour card, before any widget starts (spec 10,
     /// 14). A new install is marked pending (a layout saved during its first launches never
     /// makes it an existing user) and needs no upgrade; anyone else gets `UpgradeMigration`
-    /// once. `layoutSaved`: a widget layout was saved before this launch.
-    public static func prepare(defaults: UserDefaults, onboardingDone: Bool, layoutSaved: Bool,
-                               glanceCapable: [String]) -> FirstRunState {
+    /// and `QuietNotchMigration` once. `layoutSaved`: a widget layout was saved before this launch.
+    public static func prepare(defaults: UserDefaults, onboardingDone: Bool, layoutSaved: Bool) -> FirstRunState {
         let state = resolve(onboardingDone: onboardingDone, layoutSaved: layoutSaved, defaults: defaults)
         if state == .firstRun {
             defaults.set(true, forKey: pendingKey)
             defaults.set(true, forKey: UpgradeMigration.key)
+            defaults.set(true, forKey: QuietNotchMigration.key)
         }
-        UpgradeMigration.run(defaults: defaults, existingUser: state != .firstRun, glanceCapable: glanceCapable)
+        UpgradeMigration.run(defaults: defaults, existingUser: state != .firstRun)
+        QuietNotchMigration.run(defaults: defaults, existingUser: state != .firstRun)
         return state
     }
 
