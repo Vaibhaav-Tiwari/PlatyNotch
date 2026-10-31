@@ -7,7 +7,7 @@ import SwiftUI
 struct MusicTile: View {
     let nowPlaying: NowPlaying
     let visualiser: MusicVisualiser
-    @Environment(\.inLibraryTool) private var inTool
+    @Environment(\.inPanelTool) private var inTool
 
     /// The Library tool's artwork.
     static let toolArtwork: CGFloat = 116

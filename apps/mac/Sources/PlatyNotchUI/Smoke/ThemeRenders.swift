@@ -233,7 +233,7 @@ enum NowRenders {
             out.append(("now-pond-\(phase)", panel(pond(hour: hour), now: at(hour: hour)), true))
         }
         out += AgentsRenders.views()
-        out += LibraryRenders.views()
+        out += ToolRenders.views()
         return out
     }
 
@@ -353,7 +353,7 @@ enum NowRenders {
 
     /// The open panel as `PanelRootView` lays it out: 16 pt margins, content below the
     /// camera housing, 10 pt at the bottom; clipped, so anything too tall shows.
-    static func panel(_ rig: Rig, route: PanelRoute = PanelRoute(destination: .now), extraTabs: [PanelTab] = [],
+    static func panel(_ rig: Rig, route: PanelRoute = PanelRoute(destination: .home), extraTabs: [PanelTab] = [],
                       memory: MemoryServices? = nil, memoryMode: MemoryTab.Mode = .search,
                       tourOffer: TourOffer? = nil, tourSample: LiveActivity? = nil, now: Date? = nil) -> AnyView {
         let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelMargin
@@ -629,45 +629,40 @@ enum AgentsRenders {
     }
 }
 
-/// The Library (Task 21): the grid with the default widgets and with everything on, the
-/// dimmed "Set up" tiles, every built-in tool opened full-panel and a plugin tab as a tool.
+/// Every feature that opens inside the panel, full-panel with its back chevron: the built-in
+/// tools and a plugin tab.
 @MainActor
-enum LibraryRenders {
+enum ToolRenders {
     static func views() -> [(String, AnyView, Bool)] {
         var out: [(String, AnyView, Bool)] = []
-        out.append(("library-grid", NowRenders.panel(NowRenders.everythingOn(), route: grid, extraTabs: [pluginTab]), true))
-        out.append(("library-grid-default", NowRenders.panel(defaults(), route: grid), true))
-        out.append(("library-setup", NowRenders.panel(setUp(), route: grid), true))
-        out.append(("library-tool-focus", tool(FocusWidget.widgetID), true))
-        out.append(("library-tool-time", tool(TimeWidget.widgetID, rig: NowRenders.timerHero()), true))
-        out.append(("library-tool-time-empty", tool(TimeWidget.widgetID), true))
-        out.append(("library-tool-music", tool(MusicWidget.widgetID, rig: NowRenders.musicHero()), true))
-        out.append(("library-tool-clipboard", tool(ClipboardWidget.widgetID, rig: samples()), true))
-        out.append(("library-tool-shelf", tool(ShelfWidget.widgetID, rig: samples()), true))
-        out.append(("library-tool-memory-search", memory(.search), true))
-        out.append(("library-tool-memory-graph", memory(.graph), true))
-        out.append(("library-tool-games", tool(GamesWidget.widgetID), true))
-        out.append(("library-tool-chase", tool(LibraryTools.chase), true))
-        out.append(("library-tool-launch", tool(LaunchWidget.widgetID), true))
-        out.append(("library-tool-notes", tool(NotesWidget.widgetID), true))
-        out.append(("library-tool-mirror", tool(MirrorWidget.widgetID), true))
-        out.append(("library-tool-mail", tool(MailWidget.widgetID), true))
-        out.append(("library-tool-file-actions", tool(FileActionsWidget.widgetID), true))
-        out.append(("library-tool-snap", tool(WindowSnapWidget.widgetID), true))
+        out.append(("tool-focus", tool(FocusWidget.widgetID), true))
+        out.append(("tool-time", tool(TimeWidget.widgetID, rig: NowRenders.timerHero()), true))
+        out.append(("tool-time-empty", tool(TimeWidget.widgetID), true))
+        out.append(("tool-music", tool(MusicWidget.widgetID, rig: NowRenders.musicHero()), true))
+        out.append(("tool-clipboard", tool(ClipboardWidget.widgetID, rig: samples()), true))
+        out.append(("tool-shelf", tool(ShelfWidget.widgetID, rig: samples()), true))
+        out.append(("tool-memory-search", memory(.search), true))
+        out.append(("tool-memory-graph", memory(.graph), true))
+        out.append(("tool-games", tool(GamesWidget.widgetID), true))
+        out.append(("tool-chase", tool(PanelTools.chase), true))
+        out.append(("tool-launch", tool(LaunchWidget.widgetID), true))
+        out.append(("tool-notes", tool(NotesWidget.widgetID), true))
+        out.append(("tool-mirror", tool(MirrorWidget.widgetID), true))
+        out.append(("tool-mail", tool(MailWidget.widgetID), true))
+        out.append(("tool-file-actions", tool(FileActionsWidget.widgetID), true))
+        out.append(("tool-snap", tool(WindowSnapWidget.widgetID), true))
         // The other built-in tools, so every one is checked full-panel.
         for id in [MeetingWidget.widgetID, RemindersWidget.widgetID, LoopsWidget.widgetID, WeatherWidget.widgetID,
                    WellbeingWidget.widgetID, SystemWidget.widgetID, HUDWidget.widgetID, BasketsWidget.widgetID] {
-            out.append(("library-tool-\(id.lowercased())", tool(id, rig: NowRenders.meetingHero()), true))
+            out.append(("tool-\(id.lowercased())", tool(id, rig: NowRenders.meetingHero()), true))
         }
-        out.append(("library-tool-plugin", NowRenders.panel(NowRenders.everythingOn(),
-                                                            route: route(LibraryTools.plugin(pluginTab.id)),
-                                                            extraTabs: [pluginTab]), true))
+        out.append(("tool-plugin", NowRenders.panel(NowRenders.everythingOn(),
+                                                    route: route(PanelTools.plugin(pluginTab.id)),
+                                                    extraTabs: [pluginTab]), true))
         return out
     }
 
-    private static let grid = PanelRoute(destination: .library)
-
-    private static func route(_ id: String) -> PanelRoute { PanelRoute(destination: .library, tool: id) }
+    private static func route(_ id: String) -> PanelRoute { PanelRoute(destination: .home, tool: id) }
 
     private static func tool(_ id: String, rig: NowRenders.Rig? = nil) -> AnyView {
         NowRenders.panel(rig ?? NowRenders.builtIns(meeting: false), route: route(id))
@@ -698,28 +693,6 @@ enum LibraryRenders {
         return rig
     }
 
-    /// The built-ins with each one's default on/off, and nothing seeded.
-    private static func defaults() -> NowRenders.Rig {
-        let rig = NowRenders.Rig()
-        BuiltInWidgets.register(in: rig.registry, store: rig.store, today: rig.today, persist: false)
-        rig.startDefaults()
-        NowRenders.seed(rig, meeting: false)
-        return rig
-    }
-
-    /// Every built-in on and nothing seeded, with calendar and Reminders access never asked:
-    /// the widgets that need setup (meetings, reminders, weather, the HUD, snapping) are
-    /// dimmed with "Set up"; the rest show their calm lines.
-    private static func setUp() -> NowRenders.Rig {
-        let rig = NowRenders.Rig()
-        BuiltInWidgets.register(in: rig.registry, store: rig.store, today: rig.today, persist: false)
-        rig.startAll()
-        rig.today.calendar.setForTesting(access: .notAsked, meetings: [])
-        (rig.registry.widget(RemindersWidget.widgetID) as? RemindersWidget)?.reminders
-            .setForTesting(access: .notAsked, items: [])
-        return rig
-    }
-
     private static func memory(_ mode: MemoryTab.Mode) -> AnyView {
         let now = Date()
         let hits: [MemoryHit] = [
@@ -735,7 +708,7 @@ enum LibraryRenders {
         ]
         let services = MemoryServices(search: MemorySearchModel(preset: hits),
                                       graph: MemoryGraphModel(preset: MemoryGraphSample.week))
-        return NowRenders.panel(NowRenders.builtIns(meeting: false), route: route(LibraryTools.memory), memory: services,
+        return NowRenders.panel(NowRenders.builtIns(meeting: false), route: route(PanelTools.memory), memory: services,
                                 memoryMode: mode)
     }
 

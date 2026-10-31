@@ -116,8 +116,8 @@ final class AgentsOrderTests: DefaultsTestCase {
     }
 
     func testDestinationsFollowVisibility() {
-        XCTAssertEqual(PanelDestination.shown(agentsVisible: false), [.now, .library])
-        XCTAssertEqual(PanelDestination.shown(agentsVisible: true), [.now, .agents, .library])
+        XCTAssertEqual(PanelDestination.shown(agentsVisible: false), [.home])
+        XCTAssertEqual(PanelDestination.shown(agentsVisible: true), [.home, .agents])
     }
 
     /// Fix round 1, M4: "Finished · n m ago" counts from the logged finish when known.

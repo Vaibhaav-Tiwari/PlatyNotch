@@ -6,12 +6,12 @@ import SwiftUI
 /// really looks on a 14-inch MacBook Pro (560 pt wide, the pure-black band level with the
 /// camera housing), hanging from a drawn menu bar and notch over a calm gradient wallpaper
 /// drawn here in code (no third-party image, no Apple wallpaper), 16:9 at 2x, dark and
-/// light: Now with music, Now with an agent working, an approval with its diff, the Library
+/// light: Now with music, Now with an agent working, an approval with its diff, the Agents list
 /// and Platy's idle pond. The same inert models as the theme renders: nothing is read,
 /// played or saved.
 @MainActor
 enum ShowcaseRenders {
-    static let scenes = ["now-music", "now-agent", "approval-diff", "library", "platy-idle"]
+    static let scenes = ["now-music", "now-agent", "approval-diff", "agents-list", "platy-idle"]
     /// The scenes' clock: today at 14:59 (the pond at 19:12), so a regeneration shows the
     /// same times.
     static var clock: Date {
@@ -60,7 +60,7 @@ enum ShowcaseRenders {
     static func scene(_ name: String) -> Scene {
         let now = clock
         var rig: NowRenders.Rig
-        var route = PanelRoute(destination: .now)
+        var route = PanelRoute(destination: .home)
         var time: Date = now
         var height: CGFloat = 352
         switch name {
@@ -76,9 +76,9 @@ enum ShowcaseRenders {
             rig = AgentsRenders.approvals([diffApproval()])
             route = PanelRoute(destination: .agents)
             height = PanelLayout.expandedSize.height
-        case "library":
-            rig = library(at: now)
-            route = PanelRoute(destination: .library)
+        case "agents-list":
+            rig = AgentsRenders.mixed()
+            route = PanelRoute(destination: .agents)
             height = 360
         default:
             time = NowRenders.at(hour: 19)
@@ -119,25 +119,6 @@ enum ShowcaseRenders {
         return Approval(id: "showcase-edit", sessionKey: "a", agent: "claude-code", agentName: "Claude Code",
                         project: "platynotch", tool: "Edit", summary: "Edit Sources/PlatyNotchUI/Widgets/TimeWidget.swift",
                         input: RawJSON(.object(input)), createdAt: created, expiresAt: created.addingTimeInterval(300))
-    }
-
-    /// Twelve tiles, every one set up with something to say: three full rows, so the grid
-    /// ends cleanly.
-    static func library(at now: Date) -> NowRenders.Rig {
-        let rig = NowRenders.builtIns(meeting: true, at: now)
-        // Ten widgets, plus Platy Chase and Memory, which are always tools.
-        let shown: Set<String> = [MusicWidget.widgetID, MeetingWidget.widgetID, FocusWidget.widgetID, LoopsWidget.widgetID,
-                                  TimeWidget.widgetID, ShelfWidget.widgetID, RemindersWidget.widgetID,
-                                  WellbeingWidget.widgetID, SystemWidget.widgetID, GamesWidget.widgetID]
-        for w in rig.registry.orderedWidgets where !shown.contains(w.id) { rig.registry.setEnabled(w.id, false) }
-        rig.today.nowPlaying.debugApply(NowPlayingInfo(bundleIdentifier: "com.apple.Music", title: "Weightless",
-                                                       artist: "Marconi Union", isPlaying: true))
-        _ = (rig.registry.widget(TimeWidget.widgetID) as? TimeWidget)?.addTimer("25m")
-        (rig.registry.widget(ShelfWidget.widgetID) as? ShelfWidget)?.showForRendering([
-            ShelfItem(kind: .text("Release checklist: notarise, tag, appcast"), addedAt: now),
-            ShelfItem(kind: .url(URL(string: "https://example.com/specs/library")!), addedAt: now),
-        ])
-        return rig
     }
 
     /// The open panel around `content`, as `PanelRootView` draws it, `height` tall.

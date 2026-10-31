@@ -2,13 +2,13 @@ import Foundation
 
 /// The Settings window's built-in pages (spec 11).
 public enum SettingsPage: String, CaseIterable, Sendable {
-    case general, notch, now, notifications, widgets, agents, memory, privacy, about
+    case general, notch, home, notifications, widgets, agents, memory, privacy, about
 
     public var title: String {
         switch self {
         case .general: "General"
         case .notch: "Notch"
-        case .now: "Now"
+        case .home: "Home"
         case .notifications: "Notifications"
         case .widgets: "Widgets"
         case .agents: "Agents"
@@ -23,7 +23,7 @@ public enum SettingsPage: String, CaseIterable, Sendable {
         switch self {
         case .general: "gearshape"
         case .notch: "menubar.rectangle"
-        case .now: "rectangle.stack"
+        case .home: "house"
         case .notifications: "bell.badge"
         case .widgets: "square.grid.2x2"
         case .agents: "terminal"
@@ -45,7 +45,7 @@ public struct SettingsTarget: Equatable, Sendable {
         self.detail = detail
     }
 
-    /// `appearance` → Notch, `permissions` → Privacy & Permissions, `approvals` and
+    /// `now` → Home, `appearance` → Notch, `permissions` → Privacy & Permissions, `approvals` and
     /// `policy` → Agents' sub-pages, "<page>/<detail>" → that detail; nil or empty →
     /// General; anything else (a plug-in's section) passes through.
     public static func resolve(_ id: String?) -> SettingsTarget {
@@ -54,6 +54,7 @@ public struct SettingsTarget: Equatable, Sendable {
         let head: String = parts[0]
         let detail: String? = parts.count > 1 && !parts[1].isEmpty ? parts[1] : nil
         switch head.lowercased() {
+        case "now": return SettingsTarget(section: SettingsPage.home.rawValue, detail: detail)
         case "appearance": return SettingsTarget(section: SettingsPage.notch.rawValue, detail: detail)
         case "permissions": return SettingsTarget(section: SettingsPage.privacy.rawValue, detail: detail)
         case "approvals": return SettingsTarget(section: SettingsPage.agents.rawValue, detail: "approvals")

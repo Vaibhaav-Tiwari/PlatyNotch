@@ -555,7 +555,7 @@ struct NotesTile: View {
     @Bindable var widget: NotesWidget
     @State private var token = NotesTileToken()
     @Environment(\.panelTicking) private var shown
-    @Environment(\.inLibraryTool) private var inTool
+    @Environment(\.inPanelTool) private var inTool
 
     /// Open tasks the tile lists; the Library tool lists more (it scrolls).
     private var limit: Int { inTool ? 40 : NotesWidget.shownLimit }

@@ -17,7 +17,7 @@ extension UTType {
 }
 
 /// One widget in Settings › Widgets: its symbol in a tinted well, its name, a status line
-/// ("On · in Library", "Needs setup", "Off"), a "Power" tag for power features and its
+/// ("On · opens in panel", "Needs setup", "Off"), a "Power" tag for power features and its
 /// switch. The card is a button (keyboard and VoiceOver reach it) that opens its page;
 /// dragging it onto another card of its group reorders, and so do the "Move earlier" and
 /// "Move later" actions.
@@ -40,10 +40,10 @@ struct WidgetCard: View {
     static func status(isOn: Bool, needsSetup: Bool, inLibrary: Bool) -> String {
         guard isOn else { return "Off" }
         if needsSetup { return "Needs setup" }
-        return inLibrary ? "On · in Library" : "On"
+        return inLibrary ? "On · opens in panel" : "On"
     }
 
-    private var title: String { (widget as? LibraryLiveLine)?.libraryTitle ?? widget.title }
+    private var title: String { widget.title }
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)

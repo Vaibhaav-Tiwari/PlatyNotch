@@ -150,7 +150,7 @@ typealias SettingsPageID = PlatyNotchKit.SettingsPage
 final class SettingsModel {
     /// The sidebar, top to bottom (an explicit list: plug-in sections follow under
     /// "Extensions").
-    static let pages: [SettingsPageID] = [.general, .notch, .now, .notifications, .widgets, .agents, .memory, .privacy,
+    static let pages: [SettingsPageID] = [.general, .notch, .home, .notifications, .widgets, .agents, .memory, .privacy,
                                           .about]
 
     /// The built-in pages as (id, title, image).
@@ -286,7 +286,7 @@ struct SettingsRootView: View {
         switch model.selection {
         case SettingsPageID.general.rawValue: GeneralSection(services: services)
         case SettingsPageID.notch.rawValue: NotchSection()
-        case SettingsPageID.now.rawValue: NowSection(widgets: services.widgets)
+        case SettingsPageID.home.rawValue: NowSection(widgets: services.widgets)
         case SettingsPageID.notifications.rawValue: NotificationsSection(sound: AnyView(PlipSoundSettings()))
         case SettingsPageID.widgets.rawValue: WidgetsSection(widgets: services.widgets, detail: $model.detail)
         case SettingsPageID.agents.rawValue: AgentsSection(services: services, detail: $model.detail)
@@ -311,8 +311,8 @@ private struct SettingsSidebar: View {
     let pluginSections: [SettingsSection]
     @FocusState private var focused: Bool
 
-    /// General, Notch, Now, Notifications · Widgets, Agents, Memory · Privacy, About.
-    static let groups: [[SettingsPageID]] = [[.general, .notch, .now, .notifications], [.widgets, .agents, .memory],
+    /// General, Notch, Home, Notifications · Widgets, Agents, Memory · Privacy, About.
+    static let groups: [[SettingsPageID]] = [[.general, .notch, .home, .notifications], [.widgets, .agents, .memory],
                                               [.privacy, .about]]
 
     private var ids: [String] { SettingsModel.builtIn.map(\.id) + pluginSections.map(\.id) }

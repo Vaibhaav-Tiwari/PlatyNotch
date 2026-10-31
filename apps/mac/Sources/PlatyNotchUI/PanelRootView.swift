@@ -10,9 +10,9 @@ final class PanelViewModel {
     /// A full-screen app covers this panel's display (games pause).
     var fullScreen = false
     var layout: PanelLayout?
-    /// Where the open panel is: Now by default, or a destination or Library tool
+    /// Where the open panel is: Home by default, or Agents or a feature open inside Home
     /// (`NotchController.expand(tab:)` maps today's tab ids through `PanelRoute.legacy`).
-    var route = PanelRoute(destination: .now)
+    var route = PanelRoute(destination: .home)
     /// Which live item Now's hero shows; back to the top one on every open.
     var heroDeck = HeroDeck()
     /// Which approval cards have been on screen long enough to be answered (this window).

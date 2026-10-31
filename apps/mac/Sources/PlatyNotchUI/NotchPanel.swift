@@ -12,7 +12,7 @@ final class NotchPanel: NSPanel {
         didSet { if !allowsKey { clickedIn = false } }
     }
     var onEscape: (() -> Void)?
-    /// ⌘1 / ⌘2 / ⌘3 while the panel is key: true when it was used (Now, Agents, Library).
+    /// ⌘1 / ⌘2 while the panel is key: true when it was used (Home, Agents).
     var onCommandDigit: ((Int) -> Bool)?
 
     init(frame: CGRect) {
@@ -78,12 +78,12 @@ final class NotchPanel: NSPanel {
 
     override func cancelOperation(_ sender: Any?) { onEscape?() }
 
-    /// ⌘1…⌘3 with no other modifier; nil for anything else (Return is never a shortcut here).
+    /// ⌘1 and ⌘2 with no other modifier; nil for anything else (Return is never a shortcut here).
     static func commandDigit(_ event: NSEvent) -> Int? {
         guard event.type == .keyDown,
               event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.numericPad, .function]) == .command,
               let chars = event.charactersIgnoringModifiers, chars.count == 1,
-              let digit = Int(chars), (1...3).contains(digit) else { return nil }
+              let digit = Int(chars), (1...2).contains(digit) else { return nil }
         return digit
     }
 

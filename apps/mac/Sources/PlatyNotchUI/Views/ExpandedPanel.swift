@@ -3,9 +3,10 @@ import SwiftUI
 
 /// Today's internal tab ids (spec 14 "tab links"), kept so `WidgetContext.openPanel(tab:)`
 /// and `NotchController.expand(tab:)` callers keep working: each maps through
-/// `PanelRoute.legacy` (today → Now, focus / memory / games → that Library tool).
+/// `PanelRoute.legacy` (now / today / library → Home, focus / memory / games → that feature
+/// open inside Home).
 enum BuiltinTab {
-    /// The default destination (spec 6.4).
+    /// The default destination.
     static let now = "now"
     static let agents = "agents"
     static let library = "library"
@@ -15,8 +16,8 @@ enum BuiltinTab {
     static let games = GamesWidget.tabID
 }
 
-/// The open panel (spec 6.1): the three destinations (Now, Agents, Library) or an open
-/// Library tool's header, pending approvals (always on top), then the destination or tool.
+/// The open panel (spec 2): the two destinations (Home, Agents) or an open feature's header,
+/// pending approvals (always on top), then the destination or feature.
 struct ExpandedPanel: View {
     let store: AppStore
     let responder: ApprovalResponder
@@ -24,7 +25,7 @@ struct ExpandedPanel: View {
     let today: TodayServices
     let widgets: WidgetRegistry
     let memory: MemoryServices
-    /// Plugin `panelTabs()`: Library tools, never a destination of their own (spec 6.9).
+    /// Plugin `panelTabs()`: features that open inside Home, never a destination of their own.
     let extraTabs: [PanelTab]
     @Binding var route: PanelRoute
     let onCollapse: () -> Void
@@ -32,12 +33,11 @@ struct ExpandedPanel: View {
     var onOpenSettings: () -> Void = {}
     /// Keep awake, Mirror and the battery badge in the header; nil leaves just the gear.
     var header: HeaderServices?
-    /// Now's hero selection (the panel model's; reset on each open).
+    /// Home's hero selection (the panel model's; reset on each open).
     var deck: Binding<HeroDeck> = .constant(HeroDeck())
     /// Renders only: Now at a fixed time.
     var fixedNow: Date?
-    /// Where Now's chosen glances and the Library's recents are saved (renders and tests
-    /// pass their own).
+    /// Where Now's chosen glances are saved (renders and tests pass their own).
     var glanceDefaults: UserDefaults = .standard
     /// The Agents destination shows (`AgentsVisibility.isVisible`, via
     /// `PanelDestination.shown`); hidden until an agent first connects.
@@ -62,17 +62,16 @@ struct ExpandedPanel: View {
 
     var destinations: [PanelDestination] { Self.destinations(agentsVisible: agentsVisible) }
 
-    /// Where a glance, the quiet line or a tile opens a tool.
+    /// Where a glance, the quiet line or a chip opens a feature: inside Home.
     static func route(forTool id: String) -> PanelRoute {
-        PanelRoute(destination: .library, tool: id)
+        PanelRoute(destination: .home, tool: id)
     }
 
     var body: some View {
-        // An open tool is resolved alone (it redraws often); the grid builds the catalog.
+        // An open tool is resolved alone (it redraws often).
         let normal: PanelRoute = route.normalized(agentsVisible: agentsVisible)
-        let open: LibraryTool? = normal.destination == .library ? normal.tool.flatMap { libraryTool($0) } : nil
-        let tools: [LibraryTool] = normal.destination == .library && open == nil ? libraryTools : []
-        // A tool that is not in the Library now (its widget turned off) shows the grid.
+        let open: PanelTool? = normal.destination == .home ? normal.tool.flatMap { panelTool($0) } : nil
+        // A tool that is not available now (its widget turned off) shows Home.
         let shown: PanelRoute = open == nil ? PanelRoute(destination: normal.destination) : normal
         VStack(alignment: .leading, spacing: 0) {
             header(tool: open)
@@ -89,12 +88,12 @@ struct ExpandedPanel: View {
                     .layoutPriority(1)
                     .padding(.top, NowMetrics.gap)
             }
-            destination(shown, tool: open, tools: tools)
+            destination(shown, tool: open)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                // Now is left unclipped: it relies on the fit tests (`NowMetrics`,
+                // Home is left unclipped: it relies on the fit tests (`NowMetrics`,
                 // `NowViewTests`, `HeroViewsTests`) to stay inside, and must not clip Platy or
                 // the live glyph while they morph in from the pill. Other destinations stay clipped.
-                .clipped(unless: shown.destination == .now)
+                .clipped(unless: shown.destination == .home && open == nil)
                 .padding(.top, open == nil ? NowMetrics.gap : ToolHost.gap)
                 .environment(\.openPanelRoute, { route = $0 })   // the games tile opens its tool
                 .environment(\.openMemorySettings, { [memory] in memory.onOpenSettings() })   // empty states' one button
@@ -104,9 +103,9 @@ struct ExpandedPanel: View {
         .tint(DS.dynamicColor(.working))
     }
 
-    @ViewBuilder private func header(tool: LibraryTool?) -> some View {
+    @ViewBuilder private func header(tool: PanelTool?) -> some View {
         if let tool {
-            ToolHeader(title: tool.item.title, onBack: goBack, trailing: AnyView(controls))
+            ToolHeader(title: tool.title, onBack: goBack, trailing: AnyView(controls))
         } else {
             HStack(spacing: 2) {
                 nav
@@ -116,25 +115,22 @@ struct ExpandedPanel: View {
         }
     }
 
-    @ViewBuilder private func destination(_ shown: PanelRoute, tool: LibraryTool?, tools: [LibraryTool]) -> some View {
+    @ViewBuilder private func destination(_ shown: PanelRoute, tool: PanelTool?) -> some View {
         switch shown.destination {
-        case .now:
-            nowView
+        case .home:
+            if let tool {
+                ToolBody(content: tool.view())
+                    .id(tool.id)
+            } else {
+                nowView
+            }
         case .agents:
             AgentsView(sessions: store.sessions, usage: store.usage, log: today.agentActivity.log,
                        onOpenTerminal: onOpenTerminal, onConnect: onConnectAgent, fixedNow: fixedNow)
-        case .library:
-            if let tool {
-                ToolBody(content: tool.view())
-                    .id(tool.item.id)
-            } else {
-                LibraryView(items: sortedItems(tools), tile: { id in tools.first { $0.item.id == id }?.tile },
-                            onOpen: { openTool($0) }, onSetUp: { setUp($0) })
-            }
         }
     }
 
-    /// Now; its glances and quiet line open their tool directly.
+    /// Home's body until the Home view lands; its glances and quiet line open their tool directly.
     var nowView: NowView {
         NowView(store: store, widgets: widgets, today: today, deck: deck, glanceDefaults: glanceDefaults,
                 onOpenTool: { openTool($0) },
@@ -143,47 +139,34 @@ struct ExpandedPanel: View {
                 tourOffer: tourOffer, tourSample: tourSample)
     }
 
-    // MARK: - Library
+    // MARK: - Features inside the panel
 
-    /// One tool by id, or nil when it is not in the Library now.
-    func libraryTool(_ id: String) -> LibraryTool? {
+    /// One tool by id, or nil when it is not available now.
+    func panelTool(_ id: String) -> PanelTool? {
         let store = self.store
         let memory = self.memory
         let mode = memoryMode
-        return LibraryCatalog.tool(id, widgets: widgets, extraTabs: extraTabs,
-                                   memory: { AnyView(MemoryTab(store: store, memory: memory, mode: mode)) })
+        return ToolCatalog.tool(id, widgets: widgets, extraTabs: extraTabs,
+                                memory: { AnyView(MemoryTab(store: store, memory: memory, mode: mode)) })
     }
 
-    /// The Library's tools in input order (`LibraryCatalog`): widget tools, Platy Chase,
+    /// Every feature that opens inside the panel (`ToolCatalog`): widget tools, Platy Chase,
     /// Memory, plugin tabs.
-    var libraryTools: [LibraryTool] {
+    var panelTools: [PanelTool] {
         let store = self.store
         let memory = self.memory
         let mode = memoryMode
-        return LibraryCatalog.tools(widgets: widgets, extraTabs: extraTabs,
-                                    memory: { AnyView(MemoryTab(store: store, memory: memory, mode: mode)) })
+        return ToolCatalog.tools(widgets: widgets, extraTabs: extraTabs,
+                                 memory: { AnyView(MemoryTab(store: store, memory: memory, mode: mode)) })
     }
 
-    /// The grid's order: recently used first.
-    func sortedLibraryItems() -> [LibraryItem] { sortedItems(libraryTools) }
-
-    private func sortedItems(_ tools: [LibraryTool]) -> [LibraryItem] {
-        LibraryOrder.sorted(tools.map(\.item), recents: LibraryRecentsCache.resolve(from: glanceDefaults))
-    }
-
-    /// Opens a tool full-panel and notes it for the grid's order.
+    /// Opens a feature full-panel inside Home.
     func openTool(_ id: String) {
-        var recents = LibraryRecents.load(from: glanceDefaults)
-        recents.noteOpened(id, at: Date())
-        recents.save(to: glanceDefaults)
         route = Self.route(forTool: id)
     }
 
-    /// The back chevron: the Library grid.
+    /// The back chevron: plain Home.
     func goBack() { route = route.back() }
-
-    /// A dimmed tile's "Set up": the widget's own setup, else its settings page.
-    func setUp(_ id: String) { widgets.runSetup(id) }
 
     // MARK: - Chrome
 
@@ -213,7 +196,7 @@ struct ExpandedPanel: View {
         }
     }
 
-    /// Now, Agents (while shown) and Library.
+    /// Home and Agents (while shown).
     private var nav: some View {
         let current: PanelDestination = route.normalized(agentsVisible: agentsVisible).destination
         return HStack(spacing: 2) {
@@ -237,20 +220,18 @@ struct ExpandedPanel: View {
         }
     }
 
-    /// ⌘1 / ⌘2 / ⌘3 (`NotchController.commandDigit`).
+    /// ⌘1 / ⌘2 (`NotchController.commandDigit`).
     static func shortcutDigit(_ d: PanelDestination) -> Int {
         switch d {
-        case .now: 1
+        case .home: 1
         case .agents: 2
-        case .library: 3
         }
     }
 
     static func title(_ d: PanelDestination) -> String {
         switch d {
-        case .now: "Now"
+        case .home: "Home"
         case .agents: "Agents"
-        case .library: "Library"
         }
     }
 
@@ -315,19 +296,5 @@ struct ApprovalCardFramesKey: PreferenceKey {
     static let defaultValue: [String: CGRect] = [:]
     static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
         value.merge(nextValue()) { $1 }
-    }
-}
-
-/// The saved Library recents, decoded once per saved value (the grid reads them on every draw).
-@MainActor
-enum LibraryRecentsCache {
-    private static var last: (data: Data, recents: LibraryRecents)?
-
-    static func resolve(from defaults: UserDefaults) -> LibraryRecents {
-        guard let data = defaults.data(forKey: LibraryRecents.key) else { return LibraryRecents() }
-        if let last, last.data == data { return last.recents }
-        let recents = LibraryRecents.decode(data)
-        last = (data, recents)
-        return recents
     }
 }

@@ -5,7 +5,7 @@ import SwiftUI
 /// The Reminders tile: quick add on top, then overdue and today's reminders with a tick box.
 struct RemindersTile: View {
     @Bindable var widget: RemindersWidget
-    @Environment(\.inLibraryTool) private var inTool
+    @Environment(\.inPanelTool) private var inTool
 
     var body: some View {
         if inTool { tool } else { tile }

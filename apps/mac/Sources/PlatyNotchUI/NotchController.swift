@@ -209,11 +209,12 @@ public final class NotchController {
     }
 
     /// Opens the panel (menu bar "Open PlatyNotch", `platynotch://open`, a widget), at a
-    /// tab id when given: today's ids keep working through `PanelRoute.legacy` (`today` →
-    /// Now, `focus`, `memory`, `games` → that Library tool, a plugin's tab id → its tool).
+    /// tab id when given: today's ids keep working through `PanelRoute.legacy` (`now`, `today`,
+    /// `library` → Home, `focus`, `memory`, `games` → that feature inside Home, a plugin's tab id →
+    /// its feature).
     public func expand(tab: String? = nil) {
         if let tab {
-            model.route = PanelRoute.legacy(tab: tab, tools: LibraryCatalog.ids(widgets: widgets, extraTabs: extraTabs))
+            model.route = PanelRoute.legacy(tab: tab, tools: ToolCatalog.ids(widgets: widgets, extraTabs: extraTabs))
         }
         guard machine.mode != .expanded else { return }
         handle(.click)
@@ -230,25 +231,25 @@ public final class NotchController {
         handle(.click)
     }
 
-    /// Escape: an open Library tool goes back to the grid first; otherwise the state
+    /// Escape: an open feature goes back to Home first; otherwise the state
     /// machine's `.escape` (the open panel closes).
     func escapePressed() {
-        if machine.mode == .expanded, model.route.destination == .library, let tool = model.route.tool {
+        if machine.mode == .expanded, model.route.destination == .home, let tool = model.route.tool {
             // Back only from a tool that shows: one whose widget was turned off already
-            // shows the grid, so Esc closes (and the route is written back to the grid).
+            // shows Home, so Esc closes (and the route is written back to Home).
             model.route = model.route.back()
-            if LibraryCatalog.ids(widgets: widgets, extraTabs: extraTabs).contains(tool) { return }
+            if ToolCatalog.ids(widgets: widgets, extraTabs: extraTabs).contains(tool) { return }
         }
         handle(.escape)
     }
 
-    /// ⌘1 / ⌘2 / ⌘3 in the open panel: Now, Agents (only while it shows), Library. False
-    /// (not used) elsewhere, so the approval peek and other modes keep their keys.
+    /// ⌘1 / ⌘2 in the open panel: Home, Agents (only while it shows). False (not used)
+    /// elsewhere, so the approval peek and other modes keep their keys.
     @discardableResult
     func commandDigit(_ digit: Int) -> Bool {
         guard machine.mode == .expanded else { return false }
         let shown: [PanelDestination] = ExpandedPanel.destinations(agentsVisible: today.agentActivity.agentsVisibility.isVisible)
-        let all: [PanelDestination] = [.now, .agents, .library]
+        let all: [PanelDestination] = [.home, .agents]
         guard (1...all.count).contains(digit) else { return false }
         let target: PanelDestination = all[digit - 1]
         guard shown.contains(target) else { return false }

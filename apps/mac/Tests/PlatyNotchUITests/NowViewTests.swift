@@ -281,9 +281,9 @@ final class NowViewTests: DefaultsTestCase {
         XCTAssertLessThanOrEqual(controls.fittingSize.width, HeroFrame<EmptyView>.controlsWidth)
     }
 
-    func testDefaultRouteIsNow() {
-        XCTAssertEqual(PanelViewModel().route, PanelRoute(destination: .now))
-        XCTAssertEqual(PanelRoute.legacy(tab: BuiltinTab.now, tools: []), PanelRoute(destination: .now))
+    func testDefaultRouteIsHome() {
+        XCTAssertEqual(PanelViewModel().route, PanelRoute(destination: .home))
+        XCTAssertEqual(PanelRoute.legacy(tab: BuiltinTab.now, tools: []), PanelRoute(destination: .home))
         let store = AppStore()
         let client = CoreClient(socketPath: "/nonexistent")
         let today = TodayServices(client: client, calendar: CalendarService(eventKit: false),
@@ -295,8 +295,8 @@ final class NowViewTests: DefaultsTestCase {
                                   memory: MemoryServices(client: client), extraTabs: [],
                                   route: Binding(get: { route }, set: { route = $0 }),
                                   onCollapse: {}, onDecide: { _, _ in }, onOpenTerminal: { _ in })
-        XCTAssertEqual(panel.destinations.first, .now)
-        XCTAssertEqual(panel.destinations, [.now, .agents, .library])
+        XCTAssertEqual(panel.destinations.first, .home)
+        XCTAssertEqual(panel.destinations, [.home, .agents])
     }
 
     func testAgentActivityRecordsFinishAndFailure() {

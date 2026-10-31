@@ -231,7 +231,7 @@ struct MirrorTileView: View {
     let widget: MirrorWidget
     @State private var token = MirrorTileToken()
     @Environment(\.panelTicking) private var shown
-    @Environment(\.inLibraryTool) private var inTool
+    @Environment(\.inPanelTool) private var inTool
 
     var body: some View {
         Group {

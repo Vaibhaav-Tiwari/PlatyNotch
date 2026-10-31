@@ -91,12 +91,12 @@ final class AgentsViewTests: DefaultsTestCase {
                                       onOpenTerminal: { _ in })
             return panel.destinations
         }
-        XCTAssertEqual(destinations(AgentsVisibility()), [.now, .library])
-        XCTAssertEqual(destinations(AgentsVisibility(everConnected: true)), [.now, .agents, .library])
-        XCTAssertEqual(destinations(AgentsVisibility(forcedOn: true)), [.now, .agents, .library])
+        XCTAssertEqual(destinations(AgentsVisibility()), [.home])
+        XCTAssertEqual(destinations(AgentsVisibility(everConnected: true)), [.home, .agents])
+        XCTAssertEqual(destinations(AgentsVisibility(forcedOn: true)), [.home, .agents])
         // A route to Agents while it is hidden shows Now.
         XCTAssertEqual(PanelRoute(destination: .agents).normalized(agentsVisible: AgentsVisibility().isVisible),
-                       PanelRoute(destination: .now))
+                       PanelRoute(destination: .home))
     }
 
     /// The app's one model notes sessions: the first connect shows Agents and tells once.

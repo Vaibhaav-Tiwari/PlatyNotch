@@ -216,7 +216,7 @@ final class MailWidget: NotchWidget {
 /// The Today tile.
 struct MailTileView: View {
     let widget: MailWidget
-    @Environment(\.inLibraryTool) private var inTool
+    @Environment(\.inPanelTool) private var inTool
 
     var body: some View {
         Group {

@@ -5,7 +5,7 @@ import SwiftUI
 /// while the tile is on screen (the expanded panel).
 struct TimeTile: View {
     @Bindable var widget: TimeWidget
-    @Environment(\.inLibraryTool) private var inTool
+    @Environment(\.inPanelTool) private var inTool
 
     var body: some View {
         let content = VStack(alignment: .leading, spacing: inTool ? Space.m : 6) {
@@ -55,7 +55,7 @@ private struct TimeEmpty: View {
     let title: String
     let detail: String
     let line: String
-    @Environment(\.inLibraryTool) private var inTool
+    @Environment(\.inPanelTool) private var inTool
 
     var body: some View {
         if inTool {
