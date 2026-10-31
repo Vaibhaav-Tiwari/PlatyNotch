@@ -127,6 +127,9 @@ enum ThemeRenders {
         out.append(("pill-agents-music", PillRenders.pill(.music, width: .standard, notch: true), true))
         out.append(("pill-indicators", PillRenders.pill(.timer, width: .wide, notch: true), true))
         out.append(("settings-notch-preview", AnyView(NotchPreview(appearance: AppearanceSettings()).frame(width: 540)), true))
+        for p in SetupPreset.allCases {
+            out.append(("preset-preview-\(p.rawValue)", AnyView(PresetPreview(preset: p).frame(width: 380, alignment: .leading)), true))
+        }
         out.append(("settings-sound", soundSettings(error: false), true))
         out.append(("settings-sound-refused", soundSettings(error: true), true))
         out.append(("settings-notch-preview-open",
@@ -255,6 +258,18 @@ enum HomeRenders {
         return rig
     }
 
+    /// Home at rest for Settings' preset preview: the same sample as `homeRest`, but no
+    /// widget is started (Settings runs in the live app: nothing polls, nothing is fetched).
+    static func previewRig(at now: Date = at(hour: 14)) -> Rig {
+        let rig = Rig()
+        BuiltInWidgets.register(in: rig.registry, store: rig.store, today: rig.today, persist: false,
+                                clock: { now })
+        for w in rig.registry.orderedWidgets { rig.registry.setEnabled(w.id, true) }
+        seedIsland(rig, playing: true, title: "Green Light", sky: reading(0, day: true, 22, at: now), place: "Bengaluru",
+                   now: now, next: [meeting(at: now.addingTimeInterval(45 * 60), title: "Design review")], days: [])
+        return rig
+    }
+
     /// Home at rest (wireframe A): Green Light playing, sunny in Bengaluru, a meeting in 45 min.
     static func homeRest(at now: Date = at(hour: 14)) -> Rig {
         island(playing: true, sky: reading(0, day: true, 22, at: now), now: now,
@@ -312,6 +327,12 @@ enum HomeRenders {
     static func island(playing: Bool, title: String = "Green Light", sky: WeatherNow?, place: String = "Bengaluru",
                        now: Date, next: [CalendarMeeting]?, days: Set<Date> = []) -> Rig {
         let rig = builtIns(meeting: false, at: now)
+        seedIsland(rig, playing: playing, title: title, sky: sky, place: place, now: now, next: next, days: days)
+        return rig
+    }
+
+    private static func seedIsland(_ rig: Rig, playing: Bool, title: String, sky: WeatherNow?, place: String,
+                                   now: Date, next: [CalendarMeeting]?, days: Set<Date>) {
         let np = rig.today.nowPlaying
         if playing {
             np.debugApply(NowPlayingInfo(bundleIdentifier: AppleScriptPlayer.music.rawValue, title: title,
@@ -334,7 +355,6 @@ enum HomeRenders {
         } else {
             rig.today.calendar.setForTesting(access: .unavailable, meetings: [])
         }
-        return rig
     }
 
     /// Render-only stand-in album art: a warm 135° gradient (wireframe A).
@@ -496,7 +516,9 @@ enum HomeRenders {
                       memory: MemoryServices? = nil, memoryMode: MemoryTab.Mode = .search,
                       homeSettings: HomeSettings = HomeSettings(), dropping: Bool = false, command: String? = nil,
                       tourSample: LiveActivity? = nil, now: Date? = nil, header: HeaderServices? = nil,
-                      full: Bool = false, commandFocused: Bool = false, commandHint: Bool = false) -> AnyView {
+                      full: Bool = false, commandFocused: Bool = false, commandHint: Bool = false,
+                      dock: DockLayout = .standard, prefs: IslandPrefs = IslandPrefs(),
+                      agentsVisible: Bool = true) -> AnyView {
         let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelSide
         rig.store.apply(.connected)   // a quiet header, as in the running app
         // A command (even empty) opens the full-panel search with it typed.
@@ -522,8 +544,10 @@ enum HomeRenders {
             ExpandedPanel(store: rig.store, responder: ApprovalResponder(client: rig.client), arming: ApprovalArming(),
                           today: rig.today, widgets: rig.registry, memory: memory ?? MemoryServices(client: rig.client),
                           extraTabs: extraTabs, route: Binding(get: { current }, set: { current = $0 }),
-                          onCollapse: {}, header: services, homeSettings: homeSettings, commandLine: commandLine,
-                          dropping: dropping, fixedNow: at, memoryMode: memoryMode, tourSample: tourSample,
+                          onCollapse: {}, islandPrefs: prefs, header: services, homeSettings: homeSettings,
+                          commandLine: commandLine, dockLayout: dock,
+                          dropping: dropping, fixedNow: at, agentsVisible: agentsVisible, memoryMode: memoryMode,
+                          tourSample: tourSample,
                           onBodyHeight: onBody, onDecide: { _, _ in }, onOpenTerminal: { _ in })
                 .frame(width: width, height: height, alignment: .top)
                 .clipped()

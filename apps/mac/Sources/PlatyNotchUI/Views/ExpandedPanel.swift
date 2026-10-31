@@ -29,6 +29,8 @@ struct ExpandedPanel: View {
     let extraTabs: [PanelTab]
     @Binding var route: PanelRoute
     let onCollapse: () -> Void
+    /// The preset's Island choices (Settings › Dock, a preset): the folded dock.
+    var islandPrefs = IslandPrefs()
     /// Opens the Settings window (the gear; mouse only, no keyboard shortcut).
     var onOpenSettings: () -> Void = {}
     /// Keep awake, Mirror and the battery badge in the header; nil leaves just the gear.
@@ -197,7 +199,7 @@ struct ExpandedPanel: View {
         HomeView(today: today, widgets: widgets, settings: homeSettings,
                  tourSample: store.approvals.isEmpty ? tourSample : nil, fixedNow: fixedNow,
                  dropping: dropping, dropHover: dropHover, onOpen: { openDock($0) }, dockLayout: dockLayout,
-                 toolTitles: dockToolTitles, searchKey: searchKey)
+                 toolTitles: dockToolTitles, searchKey: searchKey, foldedDock: islandPrefs.dockFolded)
     }
 
     /// A dock slot: its tool in place; Search also focuses its field.

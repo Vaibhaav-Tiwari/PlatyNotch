@@ -87,7 +87,14 @@ public enum IslandMigration {
     public static let key = "ui.island.migrated"
 
     public static func run(defaults: UserDefaults, existingUser: Bool) {
-        guard existingUser, !defaults.bool(forKey: key) else { return }
+        guard existingUser else { return }
+        // A Quiet Notch Mail column user gets Mail in the dock, in Games' place. Runs while
+        // no dock is saved (also for someone who got the first part of this migration
+        // before the dock existed); a saved dock is never touched.
+        if defaults.data(forKey: DockLayout.key) == nil, HomeSettings.load(from: defaults).rightColumn == .mail {
+            DockLayout(slots: DockLayout.standard.slots.map { $0 == .core(.games) ? .tool("mail") : $0 }).save(to: defaults)
+        }
+        guard !defaults.bool(forKey: key) else { return }
         if WeatherLocation.load(from: defaults) == nil,
            let place = defaults.data(forKey: WeatherLocation.legacyPlaceKey)
                .flatMap({ try? JSONDecoder().decode(GeoPlace.self, from: $0) }) {

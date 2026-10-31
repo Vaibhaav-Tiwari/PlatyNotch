@@ -210,7 +210,8 @@ struct PanelRootView: View {
                           widgets: widgets, memory: memory, extraTabs: extraTabs,
                           route: dropping ? .constant(PanelRoute(destination: .home))
                                           : Binding(get: { model.route }, set: { model.route = $0 }),
-                          onCollapse: model.onClick, onOpenSettings: model.onOpenSettings,
+                          onCollapse: model.onClick, islandPrefs: IslandPrefs.load(from: .standard),
+                          onOpenSettings: model.onOpenSettings,
                           header: model.header,
                           homeSettings: model.homeSettings, commandLine: commandLineView,
                           dockLayout: DockLayout.load(from: .standard),

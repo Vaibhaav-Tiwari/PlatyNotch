@@ -17,7 +17,7 @@ final class SetupPresetTests: DefaultsTestCase {
             Row(p: .developer, on: everydayOn + ["fileActions", "snap"], off: [],
                 mode: .alwaysOn, agents: true),
             Row(p: .minimal, on: ["music", "weather"], off: allBuiltIns.filter { $0 != "music" && $0 != "weather" },
-                mode: .minimal, agents: true),
+                mode: .minimal, agents: false),
         ]
         XCTAssertEqual(SetupPreset.allCases, rows.map(\.p))
         for r in rows {
@@ -165,5 +165,87 @@ final class SetupPresetTests: DefaultsTestCase {
             XCTAssertTrue(p.turnsOn.contains("weather"), "\(p)")
             XCTAssertFalse(p.turnsOff.contains("weather"), "\(p)")
         }
+    }
+
+    // MARK: Island spec 6: presets set Home, the dock, the pill and the Agents tab.
+
+    private let everydayDock: [DockSlot] = [.core(.timer), .core(.note), .core(.remind), .core(.clipboard),
+                                           .core(.shelf), .core(.games), .core(.search)]
+
+    func testEverydayLayout() {
+        let l = SetupPreset.everyday.layout
+        XCTAssertEqual(l.dock.slots, everydayDock)
+        XCTAssertEqual(l.prefs.pillOrder, .musicFirst)
+        XCTAssertEqual(l.prefs.agentsTab, .whenHooksSetUp)
+        XCTAssertFalse(l.prefs.dockFolded)
+    }
+
+    func testDeveloperSwapsGamesForMemory() {
+        let l = SetupPreset.developer.layout
+        XCTAssertEqual(l.dock.slots, [.core(.timer), .core(.note), .core(.remind), .core(.clipboard), .core(.shelf),
+                                      .core(.memory), .core(.search)])
+        XCTAssertEqual(l.prefs.pillOrder, .agentsFirst)
+        XCTAssertEqual(l.prefs.agentsTab, .always)
+        XCTAssertFalse(l.prefs.dockFolded)
+        XCTAssertTrue(SetupPreset.developer.showsAgents)
+    }
+
+    func testMinimalFoldsDock() {
+        let l = SetupPreset.minimal.layout
+        XCTAssertTrue(l.prefs.dockFolded)
+        XCTAssertEqual(SetupPreset.minimal.mode, .minimal)
+        XCTAssertEqual(l.prefs.pillOrder, .musicFirst)
+        XCTAssertEqual(l.prefs.agentsTab, .whenHooksSetUp)
+    }
+
+    func testEveryPresetLooksDifferent() {
+        let layouts = SetupPreset.allCases.map(\.layout)
+        XCTAssertEqual(Set(layouts.map { "\($0)" }).count, 3, "each preset changes what you see")
+    }
+
+    func testPlanSummaryNamesDockAndPill() {
+        let e = SetupPreset.everyday
+        let plan = PresetPlan.plan(.developer, enabled: Set(e.turnsOn), mode: e.mode, dock: e.layout.dock,
+                                   prefs: e.layout.prefs)
+        XCTAssertFalse(plan.isCurrent, "only the dock, pill and Agents differ: still a change")
+        let lines = plan.summary(title: { $0 })
+        XCTAssertTrue(lines.contains("Dock: Timer, Note, Remind, Clipboard, Shelf, Memory."), "\(lines)")
+        XCTAssertTrue(lines.contains("The pill shows agents first."), "\(lines)")
+        XCTAssertTrue(lines.contains("Agents shows in the panel."), "\(lines)")
+        let minimal = PresetPlan.plan(.minimal, enabled: Set(e.turnsOn), mode: e.mode, dock: e.layout.dock,
+                                      prefs: e.layout.prefs)
+        let m = minimal.summary(title: { $0 })
+        XCTAssertTrue(m.contains("The dock folds into Search."), "\(m)")
+        XCTAssertFalse(m.contains { $0.hasPrefix("Dock:") }, "same dock, folded: no dock line")
+        let back = PresetPlan.plan(.everyday, enabled: Set(e.turnsOn), mode: e.mode,
+                                   dock: SetupPreset.developer.layout.dock, prefs: SetupPreset.developer.layout.prefs)
+        let b = back.summary(title: { $0 })
+        XCTAssertTrue(b.contains("Dock: Timer, Note, Remind, Clipboard, Shelf, Games."), "\(b)")
+        XCTAssertTrue(b.contains("The pill shows music first."), "\(b)")
+    }
+
+    func testApplyingCurrentPresetIsCurrent() {
+        let d = defaults()
+        let p = SetupPreset.developer
+        p.layout.dock.save(to: d)
+        p.layout.prefs.save(to: d)
+        let plan = PresetPlan.plan(p, enabled: Set(p.turnsOn), mode: p.mode, dock: DockLayout.load(from: d),
+                                   prefs: IslandPrefs.load(from: d))
+        XCTAssertTrue(plan.isCurrent)
+        XCTAssertNil(plan.dock)
+        XCTAssertNil(plan.prefs)
+    }
+
+    func testIslandPrefsRoundTripAndDefault() {
+        let d = defaults()
+        XCTAssertEqual(IslandPrefs.load(from: d), IslandPrefs())
+        XCTAssertEqual(IslandPrefs.key, "island.prefs")
+        var p = IslandPrefs()
+        p.dockFolded = true
+        p.pillOrder = .agentsFirst
+        p.save(to: d)
+        XCTAssertEqual(IslandPrefs.load(from: d), p)
+        d.set(Data("junk".utf8), forKey: IslandPrefs.key)
+        XCTAssertEqual(IslandPrefs.load(from: d), IslandPrefs())
     }
 }

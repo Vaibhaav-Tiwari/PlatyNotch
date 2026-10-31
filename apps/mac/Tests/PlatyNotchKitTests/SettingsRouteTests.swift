@@ -42,7 +42,7 @@ final class SettingsRouteTests: XCTestCase {
 
     func testPagesInOrder() {
         XCTAssertEqual(SettingsPage.allCases.map(\.rawValue),
-                       ["general", "notch", "home", "notifications", "widgets", "agents", "memory", "privacy", "about"])
+                       ["general", "notch", "home", "dock", "notifications", "widgets", "agents", "memory", "privacy", "about"])
         XCTAssertEqual(SettingsPage.privacy.title, "Privacy & Permissions")
         for page in SettingsPage.allCases {
             XCTAssertFalse(page.title.isEmpty)
@@ -51,5 +51,13 @@ final class SettingsRouteTests: XCTestCase {
         }
         XCTAssertEqual(SettingsPage.home.title, "Home")
         XCTAssertEqual(SettingsPage.home.systemImage, "house")
+    }
+
+    func testDockPageRoute() {
+        XCTAssertEqual(SettingsTarget.resolve("dock").section, "dock")
+        let pages = SettingsPage.allCases
+        XCTAssertEqual(pages[pages.firstIndex(of: .home)! + 1], .dock)
+        XCTAssertEqual(SettingsPage.dock.title, "Dock")
+        XCTAssertEqual(SettingsPage.dock.systemImage, "dock.rectangle")
     }
 }

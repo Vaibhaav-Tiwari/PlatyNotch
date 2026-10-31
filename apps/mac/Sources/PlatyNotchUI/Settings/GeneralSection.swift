@@ -9,6 +9,8 @@ struct GeneralSection: View {
     @State private var loginNote: String?
     /// A setup waiting for a yes.
     @State private var pending: SetupPreset?
+    /// The card shown in the preview (nothing is applied until Apply).
+    @State private var previewed: SetupPreset?
     /// Bumped after applying, so the "Current" badges are read again.
     @State private var revision = 0
 
@@ -28,13 +30,26 @@ struct GeneralSection: View {
                 Section {
                     HStack(spacing: 10) {
                         ForEach(SetupPreset.allCases, id: \.self) { p in
-                            PresetCard(preset: p, selected: false, compact: true,
-                                       current: services.presetPlan(p).isCurrent) { choose(p) }
+                            PresetCard(preset: p, selected: previewed == p, compact: true,
+                                       current: services.presetPlan(p).isCurrent) { previewed = p }
                         }
                         Spacer(minLength: 0)
                     }
                     .padding(.vertical, 4)
                     .id(revision)
+                    if let p = previewed {
+                        PresetPreview(preset: p)
+                            .padding(.vertical, 4)
+                        HStack {
+                            Text(verbatim: services.presetPlan(p).isCurrent ? "\(p.title) is your setup now."
+                                                                             : "Nothing changes until you apply.")
+                                .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
+                            Spacer()
+                            Button("Apply \(p.title)\u{2026}") { choose(p) }
+                                .disabled(services.presetPlan(p).isCurrent)
+                        }
+                        .id(revision)
+                    }
                     LabeledContent {
                         Button("Start") { services.showOnboarding() }
                     } label: {
@@ -42,7 +57,7 @@ struct GeneralSection: View {
                                      info: "Replays the first run: meet Platy, pick a setup, permissions, then try the notch. Nothing changes until you confirm.")
                     }
                 } header: {
-                    SettingLabel("Setup", info: "Everyday, Developer or Minimal choose which widgets are on and whether the notch hides. You see every change and confirm first.")
+                    SettingLabel("Setup", info: "Everyday, Developer or Minimal set the dock, what the pill shows first, the Agents tab, which widgets are on and whether the notch hides. Pick one to preview it; you see every change and confirm before it applies.")
                 }
             }
             .settingsForm()

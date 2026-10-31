@@ -2,13 +2,14 @@ import Foundation
 
 /// The Settings window's built-in pages (spec 11).
 public enum SettingsPage: String, CaseIterable, Sendable {
-    case general, notch, home, notifications, widgets, agents, memory, privacy, about
+    case general, notch, home, dock, notifications, widgets, agents, memory, privacy, about
 
     public var title: String {
         switch self {
         case .general: "General"
         case .notch: "Notch"
         case .home: "Home"
+        case .dock: "Dock"
         case .notifications: "Notifications"
         case .widgets: "Widgets"
         case .agents: "Agents"
@@ -24,6 +25,7 @@ public enum SettingsPage: String, CaseIterable, Sendable {
         case .general: "gearshape"
         case .notch: "menubar.rectangle"
         case .home: "house"
+        case .dock: "dock.rectangle"
         case .notifications: "bell.badge"
         case .widgets: "square.grid.2x2"
         case .agents: "terminal"

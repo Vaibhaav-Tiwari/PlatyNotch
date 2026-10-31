@@ -36,4 +36,43 @@ final class IslandMigrationTests: DefaultsTestCase {
         _ = FirstRunState.prepare(defaults: defaults(), onboardingDone: false, layoutSaved: false)
         XCTAssertTrue(defaults().bool(forKey: IslandMigration.key))
     }
+
+    func testMailColumnSwapsGames() {
+        HomeSettings(rightColumn: .mail).save(to: defaults())
+        IslandMigration.run(defaults: defaults(), existingUser: true)
+        let dock = DockLayout.load(from: defaults())
+        XCTAssertNotNil(defaults().data(forKey: DockLayout.key))
+        XCTAssertEqual(dock.slots[6], .tool("mail"))
+        XCTAssertFalse(dock.slots.contains(.core(.games)))
+        XCTAssertEqual(dock.slots.count, 8)
+
+        let other = UserDefaults(suiteName: suiteName + ".notes")!
+        other.removePersistentDomain(forName: suiteName + ".notes")
+        defer { other.removePersistentDomain(forName: suiteName + ".notes") }
+        HomeSettings(rightColumn: .notes).save(to: other)
+        IslandMigration.run(defaults: other, existingUser: true)
+        XCTAssertNil(other.data(forKey: DockLayout.key), "no Mail column: no dock saved")
+    }
+
+    func testMailSwapKeepsASavedDock() {
+        HomeSettings(rightColumn: .mail).save(to: defaults())
+        let mine = DockLayout(slots: [.core(.games), .core(.search)])
+        mine.save(to: defaults())
+        IslandMigration.run(defaults: defaults(), existingUser: true)
+        XCTAssertEqual(DockLayout.load(from: defaults()), mine)
+    }
+
+    func testSettingsUntouched() {
+        let d = defaults()
+        let layout = WidgetLayout(order: ["music", "mail"], enabled: ["music", "mail"]).encoded()
+        d.set(layout, forKey: WidgetLayout.key)
+        AppearanceStore.save(AppearanceSettings(mode: .minimal), to: d)
+        let appearance = d.data(forKey: AppearanceStore.key)
+        d.set("oneHour", forKey: KeepAwakeDuration.preferenceKey)
+        HomeSettings(rightColumn: .mail).save(to: d)
+        IslandMigration.run(defaults: d, existingUser: true)
+        XCTAssertEqual(d.data(forKey: WidgetLayout.key), layout)
+        XCTAssertEqual(d.data(forKey: AppearanceStore.key), appearance)
+        XCTAssertEqual(d.string(forKey: KeepAwakeDuration.preferenceKey), "oneHour")
+    }
 }
