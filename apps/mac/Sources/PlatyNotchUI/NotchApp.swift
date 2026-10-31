@@ -251,12 +251,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Smoke runs never script Music or Spotify (an unbundled run's Apple Events would
         // be the terminal's, and could prompt for it).
         if options.smoke || options.smokeSettings { today.nowPlaying.sendsAppleEvents = false }
+        // Resume and recents (Island spec 3.5); smoke and perf runs never read or save them.
+        if !options.smoke, !options.smokeSettings, !options.perfRun {
+            today.nowPlaying.lastPlayedStore = .standard
+            today.nowPlaying.recentsProvider = MusicAppRecents.system
+        }
         // The upgrade steps run before any widget reads its saved settings (Wellbeing reads
         // them in `init`): an existing user's water nudge must be saved before it is read.
         if !options.smoke, !options.smokeSettings, !options.perfRun { prepareFirstRun(layoutSaved: layoutSaved) }
         BuiltInWidgets.register(in: widgets, store: store, today: today,
                                 persist: !options.smoke && !options.smokeSettings, clipboard: clipboard,
                                 keepAwake: headerServices.keepAwake)
+        // The sky's "Add a city": Settings › Home.
+        (widgets.widget(WeatherWidget.widgetID) as? WeatherWidget)?.onOpenSettings = { [weak self] in
+            self?.openSettings(section: SettingsPageID.home.rawValue)
+        }
         headerServices.start()
         let router = self.router
         widgets.appPeeks = { [weak router] in router?.peekView(id: $0) }

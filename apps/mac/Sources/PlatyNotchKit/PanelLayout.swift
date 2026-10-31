@@ -41,9 +41,9 @@ public struct PanelLayout: Equatable, Sendable {
     public static let peekSize = CGSize(width: 420, height: 236)
     /// Height of a notice peek below the notch (or the menu bar).
     public static let noticeHeight: CGFloat = 64
-    /// The open panel is 600 pt wide (spec 2); its height follows its content between
+    /// The open panel is 640 pt wide (Island spec 2); its height follows its content between
     /// `expandedHeights` (`expandedContentHeight`).
-    public static let expandedWidth: CGFloat = 600
+    public static let expandedWidth: CGFloat = 640
     public static let expandedHeights: ClosedRange<CGFloat> = 160...380
     /// The largest the open panel gets, and the window's size.
     public static let expandedSize = CGSize(width: expandedWidth, height: expandedHeights.upperBound)

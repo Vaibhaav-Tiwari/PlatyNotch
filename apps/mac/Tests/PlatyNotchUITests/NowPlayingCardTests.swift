@@ -83,4 +83,17 @@ final class NowPlayingCardTests: DefaultsTestCase {
         let notGranted = await MusicAppRecents(automationGranted: { false }).recents(for: "com.apple.Music")
         XCTAssertEqual(notGranted, [])
     }
+
+    /// A titled track that plays is saved for Resume; a paused report does not replace it.
+    func testPlayingSavesLastPlayed() {
+        let np = NowPlaying()
+        np.lastPlayedStore = defaults()
+        var info = greenLight
+        info.isPlaying = true
+        np.debugApply(info)
+        XCTAssertEqual(LastPlayed.load(from: defaults())?.title, "Green Light")
+        XCTAssertEqual(np.lastPlayed?.bundleID, "com.spotify.client")
+        np.debugApply(nil)
+        XCTAssertEqual(np.lastPlayed?.title, "Green Light", "kept when nothing plays")
+    }
 }

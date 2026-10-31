@@ -129,6 +129,16 @@ final class WeatherWidget: NotchWidget {
         return nil
     }
 
+    /// Location is allowed and chosen but the first fix has not come back yet.
+    var locating: Bool {
+        guard chosenLocation == .automatic, fix == nil else { return false }
+        if case .place = source { return false }
+        return location.auth == .granted
+    }
+
+    /// "Add a city" on the sky: Settings › Home (set by the app).
+    @ObservationIgnored var onOpenSettings: (() -> Void)?
+
     /// Whether "Use my location" is the choice (Settings' switch).
     var usesMyLocation: Bool { chosenLocation == .automatic }
 

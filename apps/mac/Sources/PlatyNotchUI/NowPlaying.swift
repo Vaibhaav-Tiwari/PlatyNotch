@@ -28,13 +28,15 @@ public final class NowPlaying {
     /// The last titled track that played (Resume, when nothing plays) and its app's icon.
     public private(set) var lastPlayed: LastPlayed?
     public private(set) var lastPlayedIcon: NSImage?
-    /// Where `lastPlayed` is saved; nil (renders, tests) keeps it in memory only.
-    @ObservationIgnored var lastPlayedStore: UserDefaults? = .standard {
+    /// Where `lastPlayed` is saved; nil (the default: renders, tests, smoke and perf runs)
+    /// keeps it in memory only. The app sets `.standard`.
+    @ObservationIgnored var lastPlayedStore: UserDefaults? {
         didSet { setLastPlayed(lastPlayedStore.flatMap(LastPlayed.load(from:))) }
     }
     /// Apple Music's first playlists, beside Resume (empty for other apps).
     public private(set) var recents: [String] = []
-    @ObservationIgnored var recentsProvider: MusicRecentsProviding = MusicAppRecents.system
+    /// Reads nothing until the app sets `MusicAppRecents.system`.
+    @ObservationIgnored var recentsProvider: MusicRecentsProviding = NoRecents()
     /// The playing app's icon and name (Safari for a web player), looked up once per app.
     public private(set) var appIcon: NSImage?
     public private(set) var appName: String?
@@ -99,9 +101,7 @@ public final class NowPlaying {
     @ObservationIgnored private var likeMessageTask: Task<Void, Never>?
     static let likeMessageSeconds: Double = 30
 
-    public init() {
-        setLastPlayed(LastPlayed.load(from: .standard))
-    }
+    public init() {}
 
     private func setLastPlayed(_ p: LastPlayed?) {
         let appChanged = p?.bundleID != lastPlayed?.bundleID
@@ -123,6 +123,20 @@ public final class NowPlaying {
             AppleScriptPlayer.queue.async { player.play() }
         } else if let files = AdapterFiles.locate() {
             AdapterStream.send(files: files, arguments: ["send", "0"])
+        }
+    }
+
+    /// A recent chip: plays that Apple Music playlist (only Music has recents).
+    public func playRecent(_ name: String) {
+        guard !inert, sendsAppleEvents, recents.contains(name) else { return }
+        let escaped = name.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        AppleScriptPlayer.queue.async {
+            _ = AppleScriptPlayer.execute("""
+            with timeout of 5 seconds
+                tell application id "\(AppleScriptPlayer.music.rawValue)" to play playlist "\(escaped)"
+            end timeout
+            return ""
+            """)
         }
     }
 

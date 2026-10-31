@@ -26,6 +26,9 @@ public final class CalendarService {
     public private(set) var access: Access
     /// Timed and all-day events overlapping the next 12 hours (from 10 min ago), by start.
     public private(set) var meetings: [CalendarMeeting] = []
+    /// The start of each day in the coming week (today and six more) with a not-declined
+    /// event (the Today card's week strip). Read with the meetings, only while granted.
+    public private(set) var weekDaysWithEvents: Set<Date> = []
     /// Each meeting's calendar color, by meeting id.
     public private(set) var colors: [String: CGColor] = [:]
 
@@ -118,6 +121,7 @@ public final class CalendarService {
         } else if access != .granted {
             stopObservingChanges()
             meetings = []
+            weekDaysWithEvents = []
             colors = [:]
             joinCache = [:]
         }
@@ -137,6 +141,7 @@ public final class CalendarService {
         watching = false
         stopObservingChanges()
         meetings = []
+        weekDaysWithEvents = []
         colors = [:]
         joinCache = [:]
     }
@@ -170,6 +175,8 @@ public final class CalendarService {
         joinCache = cache
         found.sort { $0.start != $1.start ? $0.start < $1.start : $0.id < $1.id }
         if found != meetings { meetings = found }
+        let days = Self.daysWithEvents(store: store, now: now, calendar: .current)
+        if days != weekDaysWithEvents { weekDaysWithEvents = days }
         if colors != self.colors { self.colors = colors }
     }
 
@@ -205,9 +212,22 @@ public final class CalendarService {
     }
 
     /// Tests: pretend EventKit answered.
-    func setForTesting(access: Access, meetings: [CalendarMeeting]) {
+    func setForTesting(access: Access, meetings: [CalendarMeeting], weekDays: Set<Date> = []) {
         self.access = access
         self.meetings = meetings
+        weekDaysWithEvents = weekDays
+    }
+
+    /// Start of each day, today and the next six, with a not-declined event.
+    private static func daysWithEvents(store: EKEventStore, now: Date, calendar: Calendar) -> Set<Date> {
+        let start = calendar.startOfDay(for: now)
+        guard let end = calendar.date(byAdding: .day, value: 7, to: start) else { return [] }
+        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
+        var days: Set<Date> = []
+        for e in store.events(matching: predicate) where !isDeclined(e) {
+            days.insert(calendar.startOfDay(for: max(e.startDate, start)))
+        }
+        return days
     }
 
     private static func isDeclined(_ e: EKEvent) -> Bool {

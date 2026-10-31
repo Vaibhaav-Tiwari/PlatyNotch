@@ -73,7 +73,8 @@ struct NowPlayingCard: View {
     var body: some View {
         content
             .padding(HomeMetrics.cardPadding)
-            .frame(idealWidth: Self.idealWidth, maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .frame(idealWidth: Self.idealWidth, maxWidth: .infinity, maxHeight: .infinity,
+                   alignment: nowPlaying.title == nil ? .topLeading : .leading)
             .background { background }
             .clipShape(RoundedRectangle(cornerRadius: Radius.island, style: .continuous))
             .accessibilityElement(children: .contain)
@@ -103,14 +104,24 @@ struct NowPlayingCard: View {
         .animation(.easeInOut(duration: 0.6), value: nowPlaying.title)
     }
 
-    /// A blurred ellipse of the art's colour behind the left half, clipped by the card.
+    /// The art's colour as a soft ellipse behind the left half (spec 3.1: an ellipse blurred
+    /// 34 pt at 0.45), clipped by the card. Drawn as an elliptical gradient that falls off over
+    /// the blur's width: the same look with no blur filter (cheaper, and it renders the same in
+    /// snapshots).
     private var glow: some View {
         GeometryReader { g in
+            let color = Color(Self.glowColor(tint: nowPlaying.artworkRGB))
+            let blur: CGFloat = HomeMetrics.glowBlur
             Ellipse()
-                .fill(Color(Self.glowColor(tint: nowPlaying.artworkRGB)))
-                .frame(width: g.size.width * 0.8, height: g.size.height * 1.8)
-                .offset(x: -g.size.width * 0.2, y: -g.size.height * 0.4)
-                .blur(radius: HomeMetrics.glowBlur)
+                .fill(EllipticalGradient(stops: [
+                    .init(color: color, location: 0),
+                    .init(color: color.opacity(0.75), location: 0.4),
+                    .init(color: color.opacity(0.3), location: 0.72),
+                    .init(color: color.opacity(0), location: 1),
+                ]))
+                // The wireframe's ellipse (x −20%…60%, y −40%…140%) grown by the blur on each side.
+                .frame(width: g.size.width * 0.8 + 2 * blur, height: g.size.height * 1.8 + 2 * blur)
+                .position(x: g.size.width * 0.2, y: g.size.height * 0.5)
                 .opacity(HomeMetrics.glowOpacity)
         }
         .allowsHitTesting(false)
@@ -230,7 +241,7 @@ struct NowPlayingCard: View {
     private func nothingPlaying(_ e: MusicEmptyState) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(verbatim: e.caption)
-                .font(DS.font(TypeScale.caption).weight(.medium))
+                .font(DS.font(TypeScale.caption))
                 .textCase(.uppercase)
                 .tracking(0.6)
                 .foregroundStyle(DS.tertiary)
@@ -250,30 +261,44 @@ struct NowPlayingCard: View {
                     .buttonStyle(.plain)
                     .help("Play in \(nowPlaying.lastPlayed.map(\.bundleID).map(Self.appName) ?? "the last app")")
                     ForEach(e.recents, id: \.self) { name in
-                        Text(verbatim: name).lineLimit(1).truncationMode(.tail).chip()
+                        Button { nowPlaying.playRecent(name) } label: {
+                            Text(verbatim: name).lineLimit(1).truncationMode(.tail).chip()
+                        }
+                        .buttonStyle(.plain)
+                        .help("Play \(name) in Music")
                     }
                 }
             }
-            Spacer(minLength: 0)
-            HStack(spacing: 10) {
-                PlatyView(mood: .idle, size: 30)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(verbatim: e.greeting)
-                        .font(DS.font(TypeScale.secondary))
-                        .foregroundStyle(DS.secondary)
-                        .lineLimit(2)
-                    if let hint = e.hint {
-                        Text(verbatim: hint)
-                            .font(DS.font(TypeScale.caption))
-                            .foregroundStyle(DS.tertiary)
-                            .lineLimit(2)
-                    }
-                }
-                .fixedSize(horizontal: false, vertical: true)
+            if e.resume == nil {
+                // Never played: Platy larger, in the middle of the card.
+                Spacer(minLength: 4)
+                greeting(e, platy: 44)
+                Spacer(minLength: 0)
+            } else {
+                greeting(e, platy: 30)
             }
         }
-        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+        .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .task(id: nowPlaying.lastPlayed?.bundleID) { await nowPlaying.refreshRecents() }
+    }
+
+    private func greeting(_ e: MusicEmptyState, platy: CGFloat) -> some View {
+        HStack(spacing: 10) {
+            PlatyView(mood: .idle, size: platy)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(verbatim: e.greeting)
+                    .font(DS.font(TypeScale.secondary))
+                    .foregroundStyle(DS.secondary)
+                    .lineLimit(2)
+                if let hint = e.hint {
+                    Text(verbatim: hint)
+                        .font(DS.font(TypeScale.caption))
+                        .foregroundStyle(DS.tertiary)
+                        .lineLimit(2)
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     static func appName(_ bundleID: String) -> String {

@@ -5,17 +5,17 @@ import SwiftUI
 struct HomeData {
     var chips: [LiveChip] = []
     var overflow = 0
-    var column: HomeSettings.RightColumn = .upNext
-    var rows: [UpNextRow] = []
-    var noteLines: [String] = []
-    var mailUnread: Int?
-    var mailSubjects: [String] = []
+    /// The Today card's bottom part.
+    var next: TodayNext = .noCalendar(days: [])
     /// The drop targets while a file drag is near; nil otherwise.
     var drop: (shelfOn: Bool, airDrop: Bool)?
 
-    /// Collects Home's data. Calendar and Reminders are read only while their widget is on
-    /// and access is already granted (no prompts, ever). `tourSample` is the first run's
-    /// "Try it" item, shown as a chip.
+    /// The Today card's first-run sample (was a chip).
+    static let sample = TodayNext.sample(title: "This is Home", subtitle: "Every tool is one click away in the dock")
+
+    /// Collects Home's data. Calendar is read only while its widget is on and access is
+    /// already granted (no prompts, ever). `tourSample` is the first run's "Try it": the
+    /// Today card shows it.
     @MainActor
     static func make(today: TodayServices, widgets: WidgetRegistry, settings: HomeSettings,
                      tourSample: LiveActivity?, now: Date, dropping: Bool, airDrop: Bool = ShelfActions.canAirDrop,
@@ -28,45 +28,13 @@ struct HomeData {
                                    now: now)
         data.chips = live.shown
         data.overflow = live.overflow
-        if let tourSample, let title = tourSample.title {
-            // At most four chips even with the sample: the one it pushes out joins "+n".
-            data.chips.insert(LiveChip(kind: .sample, text: title, tone: nil), at: 0)
-            if data.chips.count > LiveChips.maxShown {
-                data.chips.removeLast()
-                data.overflow += 1
-            }
-        }
-        let notesOn: Bool = widgets.isEnabled(NotesWidget.widgetID)
-        let mailOn: Bool = widgets.isEnabled(MailWidget.widgetID)
-        data.column = settings.effectiveColumn(notesOn: notesOn, mailOn: mailOn)
-        switch data.column {
-        case .upNext:
-            var items: [UpNextItem] = []
-            if widgets.isEnabled(MeetingWidget.widgetID), today.calendar.access == .granted {
-                items += today.calendar.meetings.filter { !$0.declined }.map {
-                    UpNextItem(id: "e:" + $0.id, title: $0.title, date: $0.start, hasTime: true, isAllDay: $0.isAllDay,
-                               kind: .event, end: $0.end)
-                }
-            }
-            // The widget's own service (the app's shared one, except in renders and tests).
-            let reminders: RemindersService = (widgets.widget(RemindersWidget.widgetID) as? RemindersWidget)?.reminders
-                ?? today.reminders
-            if widgets.isEnabled(RemindersWidget.widgetID), reminders.access == .granted {
-                items += reminders.items.map {
-                    UpNextItem(id: "r:" + $0.id, title: $0.title, date: $0.due, hasTime: $0.hasTime, isAllDay: false,
-                               kind: .reminder)
-                }
-            }
-            data.rows = UpNext.rows(items, now: now, calendar: calendar, locale: locale)
-        case .notes:
-            if let notes = widgets.widget(NotesWidget.widgetID) as? NotesWidget {
-                data.noteLines = notes.tasks.filter { !$0.done }.prefix(3).map(\.text)
-            }
-        case .mail:
-            if let mail = widgets.widget(MailWidget.widgetID) as? MailWidget, case .inbox(let inbox) = mail.phase {
-                data.mailUnread = inbox.unread
-                data.mailSubjects = inbox.latest.prefix(3).map(\.subject)
-            }
+        if tourSample != nil {
+            data.next = sample
+        } else {
+            let calendarOn: Bool = widgets.isEnabled(MeetingWidget.widgetID) && today.calendar.access == .granted
+            data.next = TodayNextModel.make(meetings: calendarOn ? today.calendar.meetings : nil,
+                                            daysWithEvents: calendarOn ? today.calendar.weekDaysWithEvents : [],
+                                            now: now, calendar: calendar, locale: locale)
         }
         if dropping {
             data.drop = (shelf != nil, airDrop)
@@ -82,9 +50,9 @@ struct HomeHeightKey: PreferenceKey {
     static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) { value = nextValue() ?? value }
 }
 
-/// Home (spec 2.2): live chips, the media block beside Up next (or Notes or Mail) with a
-/// hairline between, a hairline, then the command line. While a file drag nears the notch
-/// the body becomes drop targets.
+/// Home (Island spec 3): the Now Playing card beside the Today card (1.25 : 1, 10 apart,
+/// always the same height), then (until the dock) the live chips and the command line.
+/// While a file drag nears the notch the cards become drop targets.
 struct HomeView: View {
     let today: TodayServices
     let widgets: WidgetRegistry
@@ -96,44 +64,40 @@ struct HomeView: View {
     /// Which drop target the pointer is over.
     var dropHover: DropTargetsView.Zone?
     var onOpenTool: (String) -> Void = { _ in }
-    /// The command line below the hairline.
+    /// The command line below the cards.
     var commandLine: AnyView = AnyView(EmptyView())
-    /// The command line has focus: the columns step aside so its rows (everything it can do,
+    /// The command line has focus: the cards step aside so its rows (everything it can do,
     /// or what the text suggests) have the room, like Spotlight. Esc brings them back.
     var commandFocused = false
 
-    /// Everything Home prints, in reading order (tests).
-    static func texts(_ data: HomeData, nowPlaying: NowPlaying) -> [String] {
-        var out: [String] = []
-        out += data.chips.map(\.text)
-        if data.overflow > 0 { out.append("+\(data.overflow)") }
-        if let drop = data.drop {
-            return out + DropTargetsView.titles(shelfOn: drop.shelfOn, airDrop: drop.airDrop)
-        }
-        out.append(nowPlaying.title ?? MediaBlock.nothingPlaying)
-        if let artist = nowPlaying.artist, nowPlaying.title != nil { out.append(artist) }
-        switch data.column {
-        case .upNext:
-            out.append(UpNextColumn.label)
-            if data.rows.isEmpty { out.append(UpNextColumn.empty) }
-            for r in data.rows { out += [r.time, r.title] + (r.note.map { [$0] } ?? []) }
-        case .notes:
-            out.append(NotesColumn.label)
-            out += data.noteLines.isEmpty ? [NotesColumn.empty] : data.noteLines
-        case .mail:
-            out.append(MailColumn.label)
-            out += data.mailSubjects
-        }
-        return out
+    /// The cards Home draws, in order (tests).
+    static func ids(_ data: HomeData) -> [String] {
+        data.drop == nil ? ["nowPlaying", "today"] : ["drop"]
     }
 
-    /// The identifier of the right column drawn (tests).
-    static func columnID(_ data: HomeData) -> String {
-        switch data.column {
-        case .upNext: "upNext"
-        case .notes: "notes"
-        case .mail: "mail"
+    /// The weather widget while it is on (the Today card's sky), else nil.
+    @MainActor
+    static func weather(_ widgets: WidgetRegistry) -> WeatherWidget? {
+        widgets.isEnabled(WeatherWidget.widgetID) ? widgets.widget(WeatherWidget.widgetID) as? WeatherWidget : nil
+    }
+
+    /// Everything Home prints, in reading order (tests).
+    @MainActor
+    static func texts(_ data: HomeData, nowPlaying: NowPlaying, weather: WeatherWidget? = nil,
+                      now: Date = Date()) -> [String] {
+        var out: [String] = []
+        if let drop = data.drop {
+            out += data.chips.map(\.text)
+            if data.overflow > 0 { out.append("+\(data.overflow)") }
+            return out + DropTargetsView.titles(shelfOn: drop.shelfOn, airDrop: drop.airDrop)
         }
+        let hour: Int = Calendar.current.component(.hour, from: now)
+        let empty = MusicEmptyState.make(last: nowPlaying.lastPlayed, recents: nowPlaying.recents, hour: hour)
+        out += NowPlayingCard.texts(nowPlaying, empty: empty)
+        out += TodayCard.texts(sky: SkyContent.of(weather, now: now)?.texts, next: data.next)
+        out += data.chips.map(\.text)
+        if data.overflow > 0 { out.append("+\(data.overflow)") }
+        return out
     }
 
     var body: some View {
@@ -146,20 +110,23 @@ struct HomeView: View {
     }
 
     @ViewBuilder private func content(_ data: HomeData) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if !data.chips.isEmpty {
-                ChipsRow(chips: data.chips, overflow: data.overflow, onOpen: onOpenTool)
-            }
+        VStack(alignment: .leading, spacing: HomeMetrics.dockTop) {
             if let drop = data.drop {
+                if !data.chips.isEmpty {
+                    ChipsRow(chips: data.chips, overflow: data.overflow, onOpen: onOpenTool)
+                }
                 DropTargetsView(shelfOn: drop.shelfOn, airDrop: drop.airDrop, hovered: dropHover)
             } else if commandFocused {
                 commandLine
             } else {
-                TwoColumns(ratio: HomeMetrics.columnRatio, gap: HomeMetrics.columnGap) {
-                    MediaBlock(nowPlaying: today.nowPlaying, fixedNow: fixedNow)
-                    rightColumn(data)
+                TwoColumns(ratio: HomeMetrics.nowPlayingRatio, gap: HomeMetrics.cardGap) {
+                    NowPlayingCard(nowPlaying: today.nowPlaying, recents: today.nowPlaying.recents, fixedNow: fixedNow)
+                    TodayCard(weather: Self.weather(widgets), next: data.next, fixedNow: fixedNow,
+                              onConnectCalendar: { today.calendar.openSettings() })
                 }
-                Hairline()
+                if !data.chips.isEmpty {
+                    ChipsRow(chips: data.chips, overflow: data.overflow, onOpen: onOpenTool)
+                }
                 commandLine
             }
         }
@@ -167,23 +134,6 @@ struct HomeView: View {
         .background(GeometryReader { g in
             Color.clear.preference(key: HomeHeightKey.self, value: g.size.height)
         })
-    }
-
-    /// The right column with the hairline before it.
-    @ViewBuilder private func rightColumn(_ data: HomeData) -> some View {
-        Group {
-            switch data.column {
-            case .upNext: UpNextColumn(rows: data.rows)
-            case .notes: NotesColumn(lines: data.noteLines)
-            case .mail: MailColumn(unread: data.mailUnread, subjects: data.mailSubjects)
-            }
-        }
-        .frame(maxHeight: .infinity, alignment: .topLeading)
-        .overlay(alignment: .leading) {
-            Rectangle().fill(Color.white.opacity(0.10)).frame(width: 1)
-                .offset(x: -HomeMetrics.columnGap / 2)
-                .accessibilityHidden(true)
-        }
     }
 }
 

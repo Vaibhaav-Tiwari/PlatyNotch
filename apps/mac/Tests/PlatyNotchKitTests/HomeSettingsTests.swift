@@ -16,14 +16,6 @@ final class HomeSettingsTests: DefaultsTestCase {
         XCTAssertEqual(HomeSettings.load(from: defaults()).rightColumn, .notes)
     }
 
-    func testFallsBackWhenWidgetOff() {
-        XCTAssertEqual(HomeSettings(rightColumn: .notes).effectiveColumn(notesOn: false, mailOn: true), .upNext)
-        XCTAssertEqual(HomeSettings(rightColumn: .mail).effectiveColumn(notesOn: true, mailOn: false), .upNext)
-        XCTAssertEqual(HomeSettings(rightColumn: .notes).effectiveColumn(notesOn: true, mailOn: false), .notes)
-        XCTAssertEqual(HomeSettings(rightColumn: .mail).effectiveColumn(notesOn: false, mailOn: true), .mail)
-        XCTAssertEqual(HomeSettings(rightColumn: .upNext).effectiveColumn(notesOn: false, mailOn: false), .upNext)
-    }
-
     func testDamagedValueLoadsDefault() {
         defaults().set(Data("damaged".utf8), forKey: HomeSettings.key)
         XCTAssertEqual(HomeSettings.load(from: defaults()), HomeSettings())
