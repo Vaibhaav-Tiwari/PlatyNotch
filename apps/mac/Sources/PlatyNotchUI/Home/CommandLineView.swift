@@ -63,28 +63,37 @@ final class CommandLineLogic {
         model.commandActive && model.commandText.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
-    /// The rows in order: the whole list while asked for and empty; else the parsed
-    /// suggestions, then the list's Open and Toggle matches that no suggestion already
-    /// offers. A Do row never shows under typed text: the parsed suggestion is that command,
-    /// and choosing the Do row would replace what was typed with its bare keyword.
+    /// The rows in order: the whole list while asked for and empty; else, for typed text,
+    /// 1. the features and tools the text names (title, alias, prefix or fuzzy),
+    /// 2. the parsed command, when it is one,
+    /// 3. "Search memory for …" last.
+    /// A Do row shows only for a bare word ("note"): under a longer command the parsed
+    /// suggestion is that command, and choosing the Do row would replace what was typed with
+    /// its bare keyword. A parsed row that a list row already offers is left out, as is an
+    /// explanation under a bare word the list matched.
     var rows: [CommandRow] {
         let text: String = model.commandText
         if text.trimmingCharacters(in: .whitespaces).isEmpty {
             return model.commandActive ? catalog().map { .entry($0) } : []
         }
-        let parsed: [CommandSuggestion] = suggestions
-        let opened: Set<String> = Set(parsed.compactMap { s -> String? in
-            if case .open(let tool)? = s.command { return tool }
+        let bare: Bool = !text.contains(where: { $0.isWhitespace })
+        let matches: [CommandCatalog.Entry] = CommandCatalog.filter(catalog(), query: text).filter { e in
+            if case .fill = e.action { return bare }
+            return true
+        }
+        let opened: Set<String> = Set(matches.compactMap { e -> String? in
+            if case .open(let tool) = e.action { return tool }
             return nil
         })
-        let matches = CommandCatalog.filter(catalog(), query: text).filter { e in
-            switch e.action {
-            case .fill: return false
-            case .open(let tool): return !opened.contains(tool)
-            case .toggleKeepAwake: return true
+        let parsed: [CommandSuggestion] = suggestions.filter { s in
+            switch s.command {
+            case nil: return matches.isEmpty
+            case .open(let tool)?: return !opened.contains(tool)
+            case .play(nil)?: return !opened.contains(GamesWidget.widgetID)
+            default: return true
             }
         }
-        return parsed.map { .suggestion($0) } + matches.map { .entry($0) }
+        return matches.map { .entry($0) } + parsed.map { .suggestion($0) }
     }
 
     /// The chosen row, kept inside the list.

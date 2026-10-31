@@ -42,6 +42,24 @@ final class CommandCatalogTests: DefaultsTestCase {
         XCTAssertEqual(CommandCatalog.filter(entries, query: "zzz"), [])
     }
 
+    func testAliasesAndFuzzyMatch() {
+        let entries = CommandCatalog.entries(tools: everything.union(["notes", "time"]), shortcuts: [:])
+        XCTAssertTrue(entries.allSatisfy { !$0.aliases.isEmpty }, "every entry has aliases")
+        func titles(_ q: String) -> [String] { CommandCatalog.filter(entries, query: q).map(\.title) }
+        XCTAssertEqual(titles("games"), ["Games"])
+        XCTAssertEqual(titles("game"), ["Games"])
+        XCTAssertEqual(titles("play"), ["Games"])
+        XCTAssertEqual(titles("notes"), ["Notes", "Note"], "an exact name ranks first")
+        XCTAssertEqual(titles("note"), ["Note", "Notes"])
+        XCTAssertEqual(titles("clip"), ["Clipboard"])
+        XCTAssertEqual(titles("mem"), ["Memory"])
+        XCTAssertEqual(titles("timer"), ["Timer"])
+        XCTAssertEqual(titles("time"), ["Time", "Timer"])
+        XCTAssertEqual(titles("gms"), ["Games"], "fuzzy: letters in order")
+        XCTAssertEqual(titles("xyzzy"), [])
+        XCTAssertEqual(titles("remind call mom at 5pm"), [])
+    }
+
     /// The upgrade hint shows on the first three opens, then never again.
     func testHintOnFirstThreeOpens() {
         let d = defaults()

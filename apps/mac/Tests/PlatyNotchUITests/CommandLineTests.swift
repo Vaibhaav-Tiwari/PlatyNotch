@@ -16,6 +16,7 @@ final class CommandLineTests: DefaultsTestCase {
         var searches: [String] = []
         var routes: [PanelRoute] = []
         var games: [GameKind] = []
+        var openedTools: [String] = []
         var remindReply: String?
         var noteReply: String?
 
@@ -28,6 +29,7 @@ final class CommandLineTests: DefaultsTestCase {
             a.search = { [self] in searches.append($0) }
             a.open = { [self] in routes.append($0) }
             a.selectGame = { [self] in games.append($0) }
+            a.openTool = { [self] in openedTools.append($0) }
             return a
         }
     }
@@ -38,6 +40,54 @@ final class CommandLineTests: DefaultsTestCase {
                                  approvalsPending: { approvals }, clock: { Date(timeIntervalSince1970: 1_793_448_000) },
                                  calendar: Calendar(identifier: .gregorian))
         return (l, model)
+    }
+
+    /// The row titles the command line shows for `text`, with every tool available.
+    private func rowTitles(_ text: String) -> [String] {
+        let ids: [String] = ["clipboard", "shelf", "baskets", "mirror", "memory", "launch", "games", "notes", "time"]
+        let tools: [CommandTool] = ids.map { CommandTool(id: $0, title: $0.capitalized) }
+        let model = PanelViewModel()
+        model.commandActive = true
+        model.commandText = text
+        let l = CommandLineLogic(model: model, runner: CommandRunner(actions: CommandActions()), tools: { tools },
+                                 catalog: { CommandCatalog.entries(tools: Set(ids), shortcuts: [:]) },
+                                 clock: { Date(timeIntervalSince1970: 1_793_448_000) },
+                                 calendar: Calendar(identifier: .gregorian))
+        return l.rows.map(\.title)
+    }
+
+    /// Bug: "games" and "notes" found only Search memory and Remind me. Features first, a
+    /// parsed command next, Search memory last.
+    func testRankingFeaturesThenCommandThenSearch() {
+        let search = { (t: String) in "Search memory for \"\(t)\"" }
+        XCTAssertEqual(rowTitles("games"), ["Games", search("games")])
+        XCTAssertEqual(rowTitles("game"), ["Games", search("game")])
+        XCTAssertEqual(rowTitles("play"), ["Games"], "play is a command and a feature: one row")
+        XCTAssertEqual(rowTitles("notes"), ["Notes", "Note", search("notes")])
+        XCTAssertEqual(rowTitles("note"), ["Note", "Notes"])
+        XCTAssertEqual(rowTitles("clip"), ["Clipboard", search("clip")])
+        XCTAssertEqual(rowTitles("mem"), ["Memory", search("mem")])
+        XCTAssertEqual(rowTitles("timer"), ["Timer"])
+        XCTAssertEqual(rowTitles("time"), ["Time", "Timer", search("time")])
+        XCTAssertEqual(rowTitles("timer 10m"), ["Timer"])
+        XCTAssertEqual(rowTitles("remind call mom at 5pm"), ["Remind"])
+        XCTAssertEqual(rowTitles("call mom 5pm"), ["Remind me: call mom 5pm", search("call mom 5pm")])
+        XCTAssertEqual(rowTitles("xyzzy"), [search("xyzzy")])
+    }
+
+    /// An exact name ranks first, so Return on "notes" opens the Notes tool.
+    func testReturnOnNotesOpensTheNotesTool() {
+        let spy = Spy()
+        let ids = ["notes", "time"]
+        let model = PanelViewModel()
+        model.commandActive = true
+        model.commandText = "notes"
+        let l = CommandLineLogic(model: model, runner: CommandRunner(actions: spy.actions),
+                                 tools: { ids.map { CommandTool(id: $0, title: $0.capitalized) } },
+                                 catalog: { CommandCatalog.entries(tools: Set(ids), shortcuts: [:]) })
+        l.submit()
+        XCTAssertEqual(spy.openedTools, ["notes"])
+        XCTAssertEqual(rowTitles("time").first, "Time")
     }
 
     private func controller() -> (NotchController, WidgetRegistry, HomeRenders.Rig) {
@@ -144,12 +194,17 @@ final class CommandLineTests: DefaultsTestCase {
         let spy = Spy()
         let (l, model) = logic(spy, tools: [CommandTool(id: "clipboard", title: "Clipboard")])
         model.commandText = "cli"
-        XCTAssertEqual(l.suggestions.count, 3)
+        XCTAssertEqual(l.suggestions.count, 2, "Open Clipboard, then Search memory")
         XCTAssertEqual(l.selectedIndex, 0)
         l.move(by: 1)
         XCTAssertEqual(l.selectedIndex, 1)
+        l.move(by: 1)
+        XCTAssertEqual(l.selectedIndex, 0, "wraps")
         l.move(by: -2)
-        XCTAssertEqual(l.selectedIndex, 2, "wraps")
+        XCTAssertEqual(l.selectedIndex, 0, "two back wraps round a two-row list")
+        l.move(by: -1)
+        XCTAssertEqual(l.selectedIndex, 1, "wraps backward")
+        l.move(by: 1)
         l.submit()
         XCTAssertEqual(spy.routes, [PanelRoute(destination: .home, tool: "clipboard")])
     }

@@ -58,11 +58,21 @@ final class CommandParserTests: XCTestCase {
         XCTAssertEqual(suggestions("play SNAKE").first?.command, .play(.snake))
     }
 
-    func testFreeTextOffersSearchRemindOpen() {
+    /// Open matches come first, a parsed command next, "Search memory" last.
+    func testFreeTextOffersOpenThenSearch() {
         let s = suggestions("cli", tools: [CommandTool(id: "clipboard", title: "Clipboard")])
-        XCTAssertEqual(s.map(\.title), ["Search memory for \"cli\"", "Remind me: cli", "Open Clipboard"])
-        XCTAssertEqual(s[2].command, .open(tool: "clipboard"))
-        XCTAssertEqual(s[0].command, .search("cli"))
+        XCTAssertEqual(s.map(\.title), ["Open Clipboard", "Search memory for \"cli\""])
+        XCTAssertEqual(s[0].command, .open(tool: "clipboard"))
+        XCTAssertEqual(s[1].command, .search("cli"))
+    }
+
+    /// A bare word is not a reminder; a date or time makes the text one.
+    func testRemindMeOnlyWithADateOrTime() {
+        XCTAssertEqual(suggestions("games").map(\.title), ["Search memory for \"games\""])
+        XCTAssertEqual(suggestions("buy milk").map(\.title), ["Search memory for \"buy milk\""])
+        let timed = suggestions("call mom 5pm")
+        XCTAssertEqual(timed.map(\.title), ["Remind me: call mom 5pm", "Search memory for \"call mom 5pm\""])
+        XCTAssertEqual(suggestions("call mom tomorrow").first?.title, "Remind me: call mom tomorrow")
     }
 
     func testOpenMatchesAtMostThreeByPrefix() {
