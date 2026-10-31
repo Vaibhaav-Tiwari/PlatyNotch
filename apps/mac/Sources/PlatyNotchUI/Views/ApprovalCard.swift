@@ -99,7 +99,8 @@ struct ApprovalCard: View {
                 .font(DS.font(TypeScale.title))
                 .foregroundStyle(DS.primary)
                 .lineLimit(1)
-            if let project = visible.project, !project.isEmpty {
+            // The shared name rule (`SessionName`): never a temporary folder or one letter.
+            if let project = SessionName.project(project: visible.project, cwd: approval.cwd) {
                 Text(verbatim: project)
                     .font(DS.font(TypeScale.secondary))
                     .foregroundStyle(DS.secondary)

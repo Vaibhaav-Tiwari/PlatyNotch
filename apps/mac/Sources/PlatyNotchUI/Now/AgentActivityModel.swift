@@ -130,7 +130,7 @@ final class AgentActivityModel {
     static func needsInputNotices(_ changes: SessionChanges, sessions: [Session]) -> [Notice] {
         changes.enteredNeedsYou.compactMap { key in
             guard let s = sessions.first(where: { $0.key == key }), s.state == .waitingInput else { return nil }
-            return Notice(kind: "needs-input", title: "\(s.agentName) needs your input", body: s.project, sessionKey: s.key)
+            return Notice(kind: "needs-input", title: "\(s.agentName) needs your input", body: SessionName.display(s), sessionKey: s.key)
         }
     }
 

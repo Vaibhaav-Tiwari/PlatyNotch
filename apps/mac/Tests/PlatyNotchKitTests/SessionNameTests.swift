@@ -29,4 +29,14 @@ final class SessionNameTests: DefaultsTestCase {
         XCTAssertEqual(SessionName.display(session(project: "api")), "api")
         XCTAssertEqual(SessionName.display(session(title: "  Ship it\nmore")), "Ship it", "the title's first line")
     }
+
+    func testTMPDIRAndApprovalsAndAgentFallback() {
+        XCTAssertTrue(SessionName.isTemporary(NSTemporaryDirectory() + "run-1"))
+        XCTAssertTrue(SessionName.isTemporary("/Volumes/scratch/tmp/a", extraRoots: ["/Volumes/scratch/tmp/"]))
+        XCTAssertNil(SessionName.project(project: "T", cwd: "/var/folders/ab/c/T"), "an approval's folder too")
+        XCTAssertEqual(SessionName.project(project: "platynotch", cwd: "/w/platynotch"), "platynotch")
+        XCTAssertEqual(SessionName.display(Session(key: "k", agent: "x", agentName: "X", sessionID: "k", state: .idle,
+                                                   startedAt: Date(), updatedAt: Date())), "Agent")
+        XCTAssertEqual(SessionName.agent("Codex"), "Codex")
+    }
 }
