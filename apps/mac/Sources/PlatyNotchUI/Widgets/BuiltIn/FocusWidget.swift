@@ -70,6 +70,6 @@ private struct FocusTile: View {
             }
         }
         .padding(6)
-        .dsCard()
+        .panelFill()
     }
 }

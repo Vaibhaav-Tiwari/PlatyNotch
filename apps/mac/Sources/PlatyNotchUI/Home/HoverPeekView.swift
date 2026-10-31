@@ -23,11 +23,11 @@ struct HoverPeekView: View {
             if let mood { PlatyView(mood: mood, size: 36) }
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: lines.title)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(DS.font(TypeScale.title))
                     .lineLimit(1).truncationMode(.tail)
                 if let subtitle = lines.subtitle {
                     Text(verbatim: subtitle)
-                        .font(.system(size: 12)).foregroundStyle(.secondary)
+                        .font(DS.font(TypeScale.secondary)).foregroundStyle(DS.secondary)
                         .lineLimit(1).truncationMode(.tail)
                 }
             }

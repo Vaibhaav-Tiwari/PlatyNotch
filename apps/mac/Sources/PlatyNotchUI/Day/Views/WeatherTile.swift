@@ -26,11 +26,11 @@ struct WeatherTile: View {
             HStack(spacing: 10) {
                 Image(systemName: d.symbol)
                     .symbolRenderingMode(.multicolor)
-                    .font(.system(size: 22))
+                    .font(.system(size: IconSize.header))
                     .frame(width: 30)
                     .accessibilityHidden(true)
                 Text(WeatherFormat.temperature(w.temperatureC, unit: widget.unit))
-                    .font(.system(size: 22, weight: .semibold, design: .rounded))
+                    .font(.system(size: TypeScale.maximum, weight: .semibold, design: .rounded))
                     .monospacedDigit()
                 VStack(alignment: .leading, spacing: 1) {
                     Text(verbatim: "\(d.text) · \(place.name)").font(.system(size: 12, weight: .medium)).lineLimit(1)
@@ -42,7 +42,7 @@ struct WeatherTile: View {
                 Spacer(minLength: 0)
             }
             .padding(6)
-            .dsCard()
+            .panelFill()
             .accessibilityElement(children: .combine)
         } else if let error = widget.lastError {
             Label("\(error). Trying again soon.", systemImage: "exclamationmark.triangle")

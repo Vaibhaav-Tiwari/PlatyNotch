@@ -198,7 +198,7 @@ struct PupSheet: View {
             }
         }
         .padding(14)
-        .background(dark ? Color(PanelPalette.panelDark) : Color(PanelPalette.lightSurface))
+        .background(Color(PanelPalette.panel))
         .environment(\.colorScheme, dark ? .dark : .light)
     }
 }

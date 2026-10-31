@@ -44,7 +44,6 @@ struct ToolHeader: View {
     let onBack: () -> Void
     var trailing: AnyView?
     @State private var hovering = false
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         HStack(spacing: Space.xs) {
@@ -61,7 +60,7 @@ struct ToolHeader: View {
             .help(ToolHost.backLabel + " (Esc)")
             .accessibilityLabel(ToolHost.backLabel)
             Text(verbatim: title)
-                .font(DS.font(TypeScale.headline))
+                .font(DS.font(TypeScale.title))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .truncationMode(.tail)
@@ -72,7 +71,7 @@ struct ToolHeader: View {
         }
     }
 
-    private var wash: Color { (scheme == .light ? Color.black : Color.white).opacity(0.08) }
+    private var wash: Color { DS.ink(0.08) }
 }
 
 /// A tool's content in one scroll view that never swaps it out (a swap would reset its
@@ -188,11 +187,11 @@ struct ToolEmptyState: View {
 
     var body: some View {
         VStack(spacing: Space.s) {
-            DS.icon(systemImage, size: IconSize.hero)
+            DS.icon(systemImage, size: IconSize.header)
                 .foregroundStyle(.secondary)
                 .padding(.bottom, Space.xs)
             Text(verbatim: title)
-                .font(DS.font(TypeScale.headline))
+                .font(DS.font(TypeScale.title))
                 .multilineTextAlignment(.center)
             Text(verbatim: detail)
                 .font(DS.font(TypeScale.body))
@@ -224,7 +223,7 @@ struct ToolPage<Content: View>: View {
             if let value {
                 VStack(spacing: 2) {
                     Text(verbatim: value)
-                        .font(DS.font(TypeScale.display))
+                        .font(DS.font(TypeScale.glyph))
                         .monospacedDigit()
                         .lineLimit(1)
                     if let label {
@@ -246,9 +245,9 @@ struct ToolPage<Content: View>: View {
     static var column: CGFloat { 440 }
 }
 
-/// A tool's one primary action (Join): a teal capsule, the same whether the panel is key
-/// or not (a system prominent button turns grey in an inactive window). Text contrast:
-/// near-black on the bright dark-theme teal, white on the deeper light-theme teal.
+/// A tool's one primary action (Join): a white capsule with near-black text, the same
+/// whether the panel is key or not (a system prominent button turns grey in an inactive
+/// window).
 struct ToolPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         PrimaryCapsule(label: configuration.label, pressed: configuration.isPressed)
@@ -257,23 +256,22 @@ struct ToolPrimaryButtonStyle: ButtonStyle {
     private struct PrimaryCapsule<Label: View>: View {
         let label: Label
         let pressed: Bool
-        @Environment(\.colorScheme) private var scheme
 
         var body: some View {
             label
                 .font(DS.font(TypeStyle(size: TypeScale.body.size, weight: .semibold)))
-                .foregroundStyle(scheme == .light ? Color.white : Color.black.opacity(0.85))
+                .foregroundStyle(Color.black.opacity(0.85))
                 .padding(.horizontal, Space.l)
                 .frame(height: 30)
-                .background(DS.color(.working, scheme).opacity(pressed ? 0.75 : 1), in: Capsule())
+                .background(DS.primary.opacity(pressed ? 0.75 : 1), in: Capsule())
                 .contentShape(Capsule())
         }
     }
 }
 
 /// An icon-led tool page for a tool with no list to show (Baskets, Keep awake on a
-/// desktop): the tool's symbol in a large teal well, a title and one line, then its
-/// controls, the whole centred in the room.
+/// desktop): the tool's symbol (monochrome, no square behind it), a title and one line,
+/// then its controls, the whole centred in the room.
 struct ToolIconPage<Content: View>: View {
     let systemImage: String
     let title: String
@@ -286,15 +284,12 @@ struct ToolIconPage<Content: View>: View {
         VStack(spacing: Space.m) {
             Image(systemName: systemImage)
                 .symbolRenderingMode(.monochrome)
-                .font(.system(size: 24, weight: .medium))
-                .foregroundStyle(DS.dynamicColor(.working))
-                .frame(width: Self.well, height: Self.well)
-                .background(DS.dynamicColor(.working, alpha: 0.12),
-                            in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+                .font(.system(size: IconSize.header))
+                .foregroundStyle(DS.secondary)
                 .accessibilityHidden(true)
             VStack(spacing: Space.xs) {
                 Text(verbatim: title)
-                    .font(DS.font(TypeScale.headline))
+                    .font(DS.font(TypeScale.title))
                     .accessibilityAddTraits(.isHeader)
                 Text(verbatim: detail)
                     .font(DS.font(TypeScale.body))
@@ -331,21 +326,13 @@ struct ScrollEdges: Equatable {
     var known = false
 }
 
-/// A control card's one edge treatment: a subtle fill with no keyline on the dark surface; a
-/// near-white card with a very soft shadow on the light one. A little brighter under the
-/// pointer.
+/// A control card's one edge treatment: a subtle fill with no keyline on the black panel,
+/// a little brighter under the pointer.
 struct ToolCardFill: View {
     let hovering: Bool
-    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
-        if scheme == .light {
-            shape
-                .fill(Color.white.opacity(hovering ? 1 : 0.86))
-                .shadow(color: .black.opacity(0.07), radius: 3, x: 0, y: 1)
-        } else {
-            shape.fill(Color.white.opacity(hovering ? 0.085 : 0.055))
-        }
+        RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
+            .fill(DS.ink(hovering ? 0.085 : 0.055))
     }
 }

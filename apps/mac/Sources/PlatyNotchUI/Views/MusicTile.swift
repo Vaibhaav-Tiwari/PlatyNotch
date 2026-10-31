@@ -98,7 +98,7 @@ struct MusicTile: View {
                 }
             }
             .padding(8)
-            .dsCard()
+            .panelFill()
         } else {
             Label("Nothing playing", systemImage: "music.note")
                 .font(.system(size: 11))
@@ -108,7 +108,7 @@ struct MusicTile: View {
 
     @ViewBuilder private func artwork(size: CGFloat) -> some View {
         let tint = nowPlaying.artworkTint
-        let symbol: CGFloat = size > 60 ? IconSize.hero : 18
+        let symbol: CGFloat = size > 60 ? IconSize.header : 18
         Group {
             if let image = nowPlaying.artwork {
                 Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)

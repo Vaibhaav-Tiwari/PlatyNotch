@@ -47,6 +47,12 @@ public struct UpNextRow: Equatable, Sendable {
 /// (oldest first), then by time. Pure: every query takes the time.
 public enum UpNext {
     public static let limit = 3
+
+    /// Whether the 58 pt time column shows: only when some row has a time (or "Overdue");
+    /// otherwise it collapses instead of leaving an empty column.
+    public static func showsTimeColumn(_ rows: [UpNextRow]) -> Bool {
+        rows.contains { !$0.time.isEmpty }
+    }
     /// An event this close to starting says "in N m".
     static let soonWindow: TimeInterval = 60 * 60
 

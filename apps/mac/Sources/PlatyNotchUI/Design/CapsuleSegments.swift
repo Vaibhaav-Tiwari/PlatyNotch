@@ -21,7 +21,7 @@ struct CapsuleSegments<Value: Hashable>: View {
                         .lineLimit(1)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 3)
-                        .background(selected ? Theme.card : .clear, in: Capsule())
+                        .background(selected ? DS.fill : .clear, in: Capsule())
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -31,19 +31,19 @@ struct CapsuleSegments<Value: Hashable>: View {
             }
         }
         .padding(2)
-        .background(Color.primary.opacity(0.05), in: Capsule())
+        .background(DS.ink(0.04), in: Capsule())
         .fixedSize()
         .accessibilityElement(children: .contain)
         .accessibilityLabel(label)
     }
 }
 
-/// A text link in the panel's one accent (brand teal, never system blue), a little dimmer
+/// A text link in secondary ink (no accent colour, never system blue), a little dimmer
 /// while pressed.
 struct PanelLinkButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(DS.dynamicColor(.working))
+            .foregroundStyle(DS.secondary)
             .opacity(configuration.isPressed ? 0.6 : 1)
             .contentShape(Rectangle())
     }

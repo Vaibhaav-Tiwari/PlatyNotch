@@ -44,8 +44,8 @@ struct FileActionsTool: View {
                       alignment: .leading, spacing: Space.s) {
                 ForEach(Self.actions, id: \.title) { action in
                     HStack(spacing: Space.s) {
-                        DS.icon(action.symbol, size: IconSize.row)
-                            .foregroundStyle(DS.dynamicColor(.working))
+                        DS.icon(action.symbol, size: IconSize.symbol)
+                            .foregroundStyle(DS.secondary)
                             .frame(width: 22)
                         Text(verbatim: action.title)
                             .font(DS.font(TypeScale.body))
@@ -55,7 +55,7 @@ struct FileActionsTool: View {
                     }
                     .padding(.horizontal, Space.m)
                     .frame(height: 36)
-                    .dsCard()
+                    .panelFill()
                     .accessibilityElement(children: .combine)
                 }
             }

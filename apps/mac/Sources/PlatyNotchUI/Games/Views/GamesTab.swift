@@ -194,6 +194,6 @@ struct GameOverlayCard: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(Theme.surface(scheme).opacity(0.85), in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+        .background(Theme.surface.opacity(0.85), in: RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
     }
 }

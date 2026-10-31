@@ -15,14 +15,14 @@ public enum AgentIdentity: String, CaseIterable, Sendable {
         }
     }
 
-    /// The agent's colour; light values reach 4.5:1 on the light surface. `other` is working.
-    public func rgb(dark: Bool) -> RGB {
+    /// The agent's colour on the black panel (the pill's per-agent dots). `other` is working.
+    public var rgb: RGB {
         switch self {
-        case .claude: RGB(hex: dark ? 0xE8833A : 0x904410)
-        case .codex: RGB(hex: dark ? 0x3DBE7A : 0x17693F)
-        case .cursor: RGB(hex: dark ? 0x5B9BF8 : 0x1F5BB8)
-        case .gemini: RGB(hex: dark ? 0xA987F5 : 0x6A3FC4)
-        case .other: StateTone.working.rgb(dark: dark)
+        case .claude: RGB(hex: 0xE8833A)
+        case .codex: RGB(hex: 0x3DBE7A)
+        case .cursor: RGB(hex: 0x5B9BF8)
+        case .gemini: RGB(hex: 0xA987F5)
+        case .other: StateTone.working.rgb
         }
     }
 }

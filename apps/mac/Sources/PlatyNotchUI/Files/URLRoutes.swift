@@ -177,7 +177,7 @@ struct RouteConfirmCard: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "link").font(.system(size: 16)).foregroundStyle(.secondary)
+            Image(systemName: "link").font(.system(size: IconSize.header)).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: router.question ?? "").font(.system(size: 12, weight: .semibold))
                 if let detail = router.detail {

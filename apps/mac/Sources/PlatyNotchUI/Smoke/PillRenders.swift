@@ -202,7 +202,7 @@ private struct PlainPill: View {
     var body: some View {
         pill
             .frame(width: size.width, height: size.height)
-            .background(Theme.panelShape(hasNotch: false).fill(Theme.surface(scheme)))
+            .background(Theme.panelShape(hasNotch: false).fill(Theme.surface))
             // Its edge, which on the render's matching background would not show.
             .overlay(Theme.panelShape(hasNotch: false).stroke(Color.gray.opacity(0.5), lineWidth: 1))
     }
@@ -225,7 +225,7 @@ enum MorphRenders {
     static func write(to dir: URL) -> Result<Int, PlatyRenders.Failure> {
         var count = 0
         for scene in Scene.allCases {
-            for theme in [AppearanceSettings.Theme.dark, .light] {
+            for theme in [ColorScheme.dark, .light] {
                 for open in [true, false] {
                     let shots = capture(scene, theme: theme, open: open)
                     for ((label, _), data) in zip(times, shots) {
@@ -251,7 +251,7 @@ enum MorphRenders {
     }
 
     /// The panel from compact to open (or back), captured at `times`.
-    static func capture(_ scene: Scene, theme: AppearanceSettings.Theme, open: Bool) -> [Data?] {
+    static func capture(_ scene: Scene, theme: ColorScheme, open: Bool) -> [Data?] {
         let rig = rig(scene)
         rig.store.apply(.connected)   // the live ear shows the item, not the reconnecting glyph
         let model = PanelViewModel()
@@ -259,8 +259,8 @@ enum MorphRenders {
         model.layout = layout
         model.visible = true
         model.mode = open ? .compact : .expanded
+        // `theme` is the system appearance around the panel; the panel itself is always black.
         var appearance = AppearanceSettings()
-        appearance.theme = theme
         appearance.motion = scene == .reduced ? .reduced : .calm
         model.appearance = appearance
         let root = PanelRootView(model: model, store: rig.store, responder: ApprovalResponder(client: rig.client),

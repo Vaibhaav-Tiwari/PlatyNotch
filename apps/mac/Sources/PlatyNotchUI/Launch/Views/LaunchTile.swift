@@ -31,7 +31,7 @@ struct LaunchTile: View {
         } else {
             content
                 .padding(10)
-                .dsCard()
+                .panelFill()
         }
     }
 
@@ -120,7 +120,7 @@ private struct SiteButton: View {
     }
 }
 
-/// A favicon, or the site's first letter on a tinted square.
+/// A favicon, or a plain globe symbol (never a letter tile). `letter` is kept for callers.
 struct SiteIcon: View {
     let image: NSImage?
     let letter: String
@@ -136,11 +136,10 @@ struct SiteIcon: View {
                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .accessibilityHidden(true)
         } else {
-            Text(verbatim: letter)
-                .font(.system(size: max(size * 0.5, TypeScale.minimum), weight: .bold, design: .rounded))
-                .foregroundStyle(.white)   // on the green letter tile, every theme
+            Image(systemName: "globe")
+                .font(.system(size: IconSize.symbol))
+                .foregroundStyle(DS.secondary)
                 .frame(width: size, height: size)
-                .background(Theme.tint(.accent).opacity(0.7), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .accessibilityHidden(true)
         }
     }
@@ -215,7 +214,7 @@ private struct ShortcutPicker: View {
         }
         .padding(6)
         // A darker well in both schemes; its text is semantic, so it stays legible in light.
-        .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
+        .background(Color.black.opacity(0.25), in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
     }
 }
 
@@ -292,7 +291,7 @@ struct LaunchResultPeek: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: notice.isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: IconSize.header, weight: .semibold))
                 .foregroundStyle(notice.isError ? Theme.tint(.warning) : Theme.tint(.accent))
                 .accessibilityHidden(true)
             Text(verbatim: notice.text)

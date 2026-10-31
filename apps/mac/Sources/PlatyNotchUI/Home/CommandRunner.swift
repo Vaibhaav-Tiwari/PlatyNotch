@@ -11,6 +11,8 @@ struct CommandActions {
     var search: (String) -> Void = { _ in }
     var open: (PanelRoute) -> Void = { _ in }
     var selectGame: (GameKind) -> Void = { _ in }
+    /// Whether the Games widget is on (`play` explains when it is not).
+    var gamesOn: () -> Bool = { true }
 }
 
 /// Runs the suggestion the user chose with Return or a click. Nothing runs from typing.
@@ -40,6 +42,7 @@ final class CommandRunner {
             actions.open(PanelRoute(destination: .home, tool: PanelTools.memory))
             return nil
         case .play(let kind):
+            guard actions.gamesOn() else { return "Turn on Games in Settings" }
             if let kind { actions.selectGame(kind) }
             actions.open(PanelRoute(destination: .home, tool: kind == .chase ? PanelTools.chase : GamesWidget.widgetID))
             return nil

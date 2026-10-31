@@ -35,6 +35,52 @@ public enum SessionStatusLine {
         }
     }
 
+    /// The dense row's status and age (Quiet Notch wireframe C): "running tests · 12 m",
+    /// "waiting for you · 3 m", "finished · 1 h", "ended". The status starts lower-case
+    /// unless its first word is capitalised throughout ("AskUserQuestion" stays).
+    public static func compact(_ s: Session, attention: AgentAttention, now: Date, finishedAt: Date? = nil) -> String {
+        let status: String
+        let since: Date
+        switch attention {
+        case .needsYou:
+            status = s.state == .blocked ? "waiting for approval" : "waiting for you"
+            since = s.updatedAt
+        case .errored:
+            status = "stopped with an error"
+            since = s.updatedAt
+        case .working:
+            status = lowerFirst(s.title ?? s.tool ?? "working")
+            since = s.startedAt
+        case .finished:
+            status = "finished"
+            since = finishedAt ?? s.updatedAt
+        case .idle:
+            status = "idle"
+            since = s.updatedAt
+        case .exited:
+            return "ended"
+        }
+        return "\(status) · \(age(from: since, to: now))"
+    }
+
+    /// "just now", "12 m", "1 h", "2 d"; never negative.
+    public static func age(from start: Date, to now: Date) -> String {
+        let m: Int = minutes(from: start, to: now)
+        if m == 0 { return "just now" }
+        if m < 60 { return "\(m) m" }
+        if m < 24 * 60 { return "\(m / 60) h" }
+        return "\(m / (24 * 60)) d"
+    }
+
+    /// "Running tests" → "running tests"; a word with another capital ("AskUserQuestion",
+    /// "README") is kept.
+    static func lowerFirst(_ text: String) -> String {
+        let firstWord: Substring = text.prefix { !$0.isWhitespace }
+        guard let first = firstWord.first, first.isUppercase,
+              !firstWord.dropFirst().contains(where: \.isUppercase) else { return text }
+        return first.lowercased() + text.dropFirst()
+    }
+
     /// The session's last message or tool, on one line, hidden characters spelled out
     /// (`SummarySanitizer`).
     public static func lastAction(_ s: Session) -> String? {

@@ -150,7 +150,7 @@ and the approval card's secondary button.
 | Hairline | white 0.10, 1 px, 12 pt above and below |
 | Fill (chips, command line, buttons, code) | white 0.07 |
 | State green / amber / red | `#32D74B` running, `#FFB340` needs you, `#FF6961` error |
-| Approval card | `#111111`, radius 12, padding 12 |
+| Approval card | `#111111`, radius 12, padding 12 at the sides and 10 above and below; command padding 6 × 9 **[call: one card with a full diff box fits the 240 pt approvals region]** |
 | Radii | 6 (buttons, code, keycap 4 **[call]**), 8 (command line, media art), 12 (approval card, drop box **[call: wireframe 10]**), 22 panel bottom; chips are capsules |
 | Panel padding | 30 top (below the notch), 18 sides, 16 bottom |
 | Header | 12 pt text, 14 pt gaps, 14 pt below it; icons 16 pt |
@@ -186,7 +186,8 @@ SF Pro 13 body, 12 secondary, 11 captions; one 13 pt semibold title per block; n
 Header row: the agent's app icon (the "brand glyph"; the name as text when no app is installed
 **[call: the wireframe's drawn glyph would be a bundled logo]**), agent name in semibold,
 project in secondary, the tool in a small chip, the countdown right-aligned in mono. Then the
-command in one mono 12 line on the fill (diffs keep today's fixed-height box). Then right-aligned
+command in mono 12 on the fill: one line for a one-line command; a longer one wraps up to
+`maxSummaryLines`, then scrolls, never truncated **[call]** (diffs keep today's fixed-height box). Then right-aligned
 "Deny ⌘⌫" and "Allow ⌘↩" with keycaps; Allow green. Arming, ordering, sanitising and keyboard
 rules are unchanged.
 
@@ -228,6 +229,8 @@ rules are unchanged.
   (always black, never glass **[call: glass is not black]**), and `motion` `lively` reads as
   `calm` **[call]**.
 - Library recents, glance slots, hero cycling and the pond keys are left in defaults, unread.
+- Existing users get no tour card (it lived in Now); Settings › General › "Take the tour
+  again" still runs the first run **[call]**.
 
 ## 8. Removed
 

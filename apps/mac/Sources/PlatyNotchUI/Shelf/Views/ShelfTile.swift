@@ -93,7 +93,7 @@ struct ShelfCard: View {
     static let size = CGSize(width: 72, height: 78)
     /// The Library tool's cards: five to a row of the panel's width.
     static let toolSize = CGSize(width: 96, height: 100)
-    static let toolSpacing: CGFloat = (PanelLayout.expandedSize.width - 2 * Space.panelMargin - 5 * 96) / 4
+    static let toolSpacing: CGFloat = (PanelLayout.expandedSize.width - 2 * Space.panelSide - 5 * 96) / 4
     let host: any ItemListHost
     let item: ShelfItem
     let missing: Bool
@@ -126,13 +126,13 @@ struct ShelfCard: View {
         .accessibilityLabel("\(run.title) \(item.title)")
     }
 
-    /// In the Library tool, the Library tile's own card (a soft fill on dark, a near-white
-    /// card on light), outlined in teal while selected; on the tile, the quiet wash.
+    /// In the Shelf tool, the card's soft fill, outlined in secondary ink while selected; on
+    /// the tile, the quiet wash.
     @ViewBuilder private var cardBackground: some View {
         let shape = RoundedRectangle(cornerRadius: Radius.card, style: .continuous)
         if inTool {
             ToolCardFill(hovering: selected)
-                .overlay { if selected { shape.strokeBorder(DS.dynamicColor(.working), lineWidth: 1.5) } }
+                .overlay { if selected { shape.strokeBorder(DS.secondary, lineWidth: 1.5) } }
         } else {
             shape.fill(.primary.opacity(selected ? 0.18 : 0.06))
         }
@@ -215,7 +215,7 @@ struct ShelfThumbnail: View {
             if let image {
                 Image(nsImage: image).resizable().aspectRatio(contentMode: .fit)
             } else {
-                Image(systemName: symbol).font(.system(size: 24)).foregroundStyle(.secondary)
+                Image(systemName: symbol).font(.system(size: IconSize.header)).foregroundStyle(.secondary)
             }
         }
         .task(id: missing ? nil : item.fileRef?.path) { await load() }
@@ -460,12 +460,12 @@ struct ShelfDropZone: View {
         let on = shelf.dropTargeted
         RoundedRectangle(cornerRadius: 12)
             .strokeBorder(style: StrokeStyle(lineWidth: on ? 2 : 1.5, dash: on ? [] : [6, 4]))
-            .foregroundStyle(on ? DS.dynamicColor(.working) : Color.secondary)
-            .background(RoundedRectangle(cornerRadius: 12).fill(DS.dynamicColor(.working).opacity(on ? 0.15 : 0)))
+            .foregroundStyle(on ? DS.primary : DS.secondary)
+            .background(RoundedRectangle(cornerRadius: Radius.card).fill(on ? DS.ink(0.14) : Color.clear))
             .overlay {
                 VStack(spacing: 6) {
                     Image(systemName: on ? "tray.and.arrow.down.fill" : "tray.and.arrow.down")
-                        .font(.system(size: 26, weight: .medium))
+                        .font(.system(size: IconSize.header, weight: .medium))
                     Text("Drop to keep on the Shelf").font(.system(size: 13, weight: .medium))
                     if !shelf.items.isEmpty {
                         Text(shelf.items.count == 1 ? "1 item on the shelf" : "\(shelf.items.count) items on the shelf")

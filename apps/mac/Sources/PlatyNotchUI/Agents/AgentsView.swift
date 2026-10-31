@@ -1,27 +1,33 @@
 import PlatyNotchKit
 import SwiftUI
 
-/// The Agents destination (spec 6.5): a header with the usage chips, then every session
-/// sorted by attention (`AgentsOrder`), each with one action. Pending approvals sit above
-/// it in the panel's approvals region, as before. Empty: Platy, "No agents running" and
-/// "Connect an agent" (Settings › Agents).
+/// The Agents destination (Quiet Notch spec 2.3, wireframe C): one dense row per session in
+/// attention order (`AgentsOrder`) with hairlines between, then a hairline and one quiet line
+/// about open loops. Pending approvals sit above it in the panel's approvals region; usage is
+/// small mono numbers in the header (`UsageLine`). Empty: Platy and "No agents running".
 struct AgentsView: View {
     let sessions: [Session]
-    let usage: Usage
     let log: AgentFinishLog
+    /// Open loops, for the quiet line under the list (hidden at zero).
+    var openLoops: Int = 0
     let onOpenTerminal: (Session) -> Void
     let onConnect: () -> Void
+    /// "open loops" opens the loops list inside the panel; nil (the Loops widget is off): plain text.
+    var onOpenLoops: (() -> Void)?
     /// Renders only: the status lines' clock.
     var fixedNow: Date?
     @Environment(\.panelTicking) private var ticking
+    @Environment(\.agentIcons) private var icons
 
-    init(sessions: [Session], usage: Usage, log: AgentFinishLog, onOpenTerminal: @escaping (Session) -> Void,
-         onConnect: @escaping () -> Void, fixedNow: Date? = nil) {
+    init(sessions: [Session], log: AgentFinishLog, openLoops: Int = 0,
+         onOpenTerminal: @escaping (Session) -> Void, onConnect: @escaping () -> Void,
+         onOpenLoops: (() -> Void)? = nil, fixedNow: Date? = nil) {
         self.sessions = sessions
-        self.usage = usage
         self.log = log
+        self.openLoops = openLoops
         self.onOpenTerminal = onOpenTerminal
         self.onConnect = onConnect
+        self.onOpenLoops = onOpenLoops
         self.fixedNow = fixedNow
     }
 
@@ -30,64 +36,35 @@ struct AgentsView: View {
         AgentsOrder.sorted(sessions, log: log, now: now)
     }
 
-    /// Below this height (approvals above take the room) the header steps aside so at
-    /// least one row shows; the usage chips come back when there is room.
-    static let headerRoom: CGFloat = 44 + Space.s + AgentRow.height
-
-    static func showsHeader(height: CGFloat) -> Bool { height >= headerRoom }
-
     var body: some View {
-        GeometryReader { g in
-            content(header: Self.showsHeader(height: g.size.height))
-                .frame(width: g.size.width, height: g.size.height, alignment: .top)
+        if sessions.isEmpty {
+            AgentsEmptyState(onConnect: onConnect)
+                .background(Self.naturalHeight)
+        } else if let fixedNow {
+            content(now: fixedNow)
+        } else if ticking {
+            // Ages in the rows move while the panel is shown.
+            TimelineView(.periodic(from: .now, by: 30)) { ctx in content(now: ctx.date) }
+        } else {
+            content(now: Date())
         }
     }
 
-    private func content(header showsHeader: Bool) -> some View {
-        VStack(alignment: .leading, spacing: Space.s) {
-            if showsHeader { header }
-            if sessions.isEmpty {
-                AgentsEmptyState(onConnect: onConnect)
-            } else if let fixedNow {
-                list(now: fixedNow)
-            } else if ticking {
-                // Minutes in the status lines move while the panel is shown.
-                TimelineView(.periodic(from: .now, by: 30)) { ctx in list(now: ctx.date) }
-            } else {
-                list(now: Date())
-            }
-        }
-    }
-
-    private var header: some View {
-        HStack(alignment: .center, spacing: Space.s) {
-            Text(verbatim: countsLine)
-                .font(DS.font(TypeScale.caption))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            Spacer(minLength: Space.s)
-            UsageRings(usage: usage, hint: PanelFormat.claudeLimitsHint(usage: usage, sessions: sessions))
-        }
-    }
-
-    /// Every text the destination lays out at `now`, in order (tests): the header, then
-    /// the rows or the empty state. Tooltips are not included.
+    /// Every text the destination lays out at `now`, in order (tests): the rows or the empty
+    /// state, then the open-loops line. Tooltips are not included.
     func visibleTexts(now: Date) -> [String] {
+        if sessions.isEmpty { return AgentsEmptyState.texts }
         var out: [String] = []
-        let counts = countsLine(now: now)
-        if !counts.isEmpty { out.append(counts) }
-        out += UsageRings(usage: usage, hint: PanelFormat.claudeLimitsHint(usage: usage, sessions: sessions)).visibleTexts
-        if sessions.isEmpty { return out + AgentsEmptyState.texts }
         for s in rows(now: now) {
             out += AgentRow.texts(s, attention: AgentAttention.of(s, log: log, now: now), now: now,
                                   finishedAt: log.finishedAt(s.key, now: now))
         }
+        if let footer = AgentsFooter.text(openLoops: openLoops) { out.append(footer) }
         return out
     }
 
-    private var countsLine: String { countsLine(now: fixedNow ?? Date()) }
-
-    /// "4 sessions · 1 needs you · 1 error": needs you and errors counted apart.
+    /// "4 sessions · 1 needs you · 1 error": needs you and errors counted apart (VoiceOver's
+    /// summary of the list).
     func countsLine(now: Date) -> String {
         guard !sessions.isEmpty else { return "" }
         let rated: [AgentAttention] = sessions.map { AgentAttention.of($0, log: log, now: now) }
@@ -99,61 +76,113 @@ struct AgentsView: View {
         return parts.joined(separator: " · ")
     }
 
-    private func list(now: Date) -> some View {
-        ScrollView(.vertical) {
-            LazyVStack(spacing: 0) {
-                ForEach(rows(now: now)) { s in
-                    AgentRow(session: s, attention: AgentAttention.of(s, log: log, now: now), now: now,
-                             finishedAt: log.finishedAt(s.key, now: now),
-                             onOpenTerminal: onOpenTerminal)
-                }
+    /// Reports the content's natural height (`HomeHeightKey`), whatever room it was given, so
+    /// the panel can hug it (spec 2).
+    private static var naturalHeight: some View {
+        GeometryReader { g in Color.clear.preference(key: HomeHeightKey.self, value: g.size.height) }
+    }
+
+    /// The rows and the open-loops line hug their height while they fit the room the panel
+    /// leaves (an approval above can take most of it), and scroll together inside it when
+    /// they do not.
+    private func content(now: Date) -> some View {
+        ViewThatFits(in: .vertical) {
+            stack(now: now)
+                .background(Self.naturalHeight)
+            ScrollView(.vertical) {
+                stack(now: now)
+                    .background(Self.naturalHeight)
+                    .preference(key: AgentsScrollsKey.self, value: true)
             }
-            // Room for the state badges that sit over the icons' corners.
-            .padding(.bottom, StateBadge.overhang)
+            .scrollIndicators(.automatic)
         }
-        .scrollIndicators(.automatic)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(countsLine(now: now))
+    }
+
+    private func stack(now: Date) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            list(now: now)
+            if let footer = AgentsFooter.text(openLoops: openLoops) {
+                Hairline().padding(.vertical, 8)
+                footerLine(footer)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func list(now: Date) -> some View {
+        let sorted: [Session] = rows(now: now)
+        let column: CGFloat = AgentBadge.column(for: sorted.map { AgentBrand(agent: $0.agent, agentName: $0.agentName) },
+                                                source: icons)
+        let buttons: CGFloat? = AgentRow.buttonColumn(sorted.compactMap { TerminalFocus.title(for: $0) })
+        return VStack(spacing: 0) {
+            ForEach(Array(sorted.enumerated()), id: \.element.id) { index, s in
+                if index > 0 { Hairline() }
+                AgentRow(session: s, attention: AgentAttention.of(s, log: log, now: now), now: now,
+                         finishedAt: log.finishedAt(s.key, now: now), badgeWidth: column, buttonWidth: buttons,
+                         onOpenTerminal: onOpenTerminal)
+            }
+        }
+    }
+
+    /// `2 open loops · Search memory with ⌘K`: "open loops" opens the loops list.
+    private func footerLine(_ text: String) -> some View {
+        HStack(spacing: 0) {
+            if let onOpenLoops {
+                Button(action: onOpenLoops) {
+                    Text(verbatim: AgentsFooter.loops(openLoops))
+                }
+                .buttonStyle(.plain)
+                .help("Show open loops")
+            } else {
+                Text(verbatim: AgentsFooter.loops(openLoops))
+            }
+            Text(verbatim: " · " + AgentsFooter.searchHint)
+        }
+        .font(DS.font(TypeScale.caption))
+        .foregroundStyle(DS.tertiary)
+        .lineLimit(1)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(text)
+        .accessibilityAction(named: "Show open loops") { onOpenLoops?() }
     }
 }
 
-/// No sessions yet: Platy (or the agents symbol without Platy), and one way forward.
+/// No sessions yet: Platy (or a quiet symbol without Platy), the words, and one way forward.
 struct AgentsEmptyState: View {
     let onConnect: () -> Void
     @Environment(\.platyMood) private var platyMood
 
     static let texts: [String] = ["No agents running", "Connect an agent"]
 
-    private func pups(_ agents: [AgentIdentity]) -> some View {
-        HStack(alignment: .bottom, spacing: Space.xs) {
-            ForEach(agents, id: \.self) { PlatyPupView(agent: $0, tone: .idle, size: 30, badge: false) }
-        }
-        .padding(.bottom, 2)
-    }
-
     func connect() { onConnect() }
 
     var body: some View {
-        VStack(spacing: Space.s) {
+        VStack(spacing: 8) {
             if let platyMood {
-                // Platy with the four known agents' pups at its feet, waiting (no state
-                // badge: nothing is running). The rows keep app icons as the identity.
-                HStack(alignment: .bottom, spacing: Space.s) {
-                    pups([.claude, .codex])
-                    PlatyView(mood: platyMood, size: 88)
-                    pups([.cursor, .gemini])
-                }
+                PlatyView(mood: platyMood, size: 54)
             } else {
-                DS.icon("terminal", size: IconSize.hero).foregroundStyle(.secondary)
+                DS.icon("terminal", size: IconSize.header).foregroundStyle(DS.tertiary)
             }
             Text(verbatim: Self.texts[0])
-                .font(DS.font(TypeScale.headline))
+                .font(DS.font(TypeScale.body))
+                .foregroundStyle(DS.secondary)
             Button(action: connect) {
-                Label(Self.texts[1], systemImage: "link")
-                    .font(DS.font(TypeScale.body).weight(.semibold))
+                PanelButtonLabel(title: Self.texts[1])
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.plain)
             .accessibilityLabel("Connect an agent")
             .accessibilityHint("Opens Settings, Agents")
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
     }
+}
+
+/// True while the Agents list scrolls inside the room it was given (layout tests).
+struct AgentsScrollsKey: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
 }

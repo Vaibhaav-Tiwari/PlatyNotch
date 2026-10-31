@@ -40,7 +40,7 @@ struct FocusTab: View {
     @ViewBuilder private func running(_ timer: FocusTimer, now: Date) -> some View {
         let done = timer.isDone(at: now)
         Text(done ? "Done" : TodayFormat.clock(timer.remaining(at: now)))
-            .font(.system(size: 34, weight: .semibold, design: .rounded))
+            .font(.system(size: TypeScale.maximum, weight: .semibold, design: .rounded))
             .monospacedDigit()
             .accessibilityLabel(done ? "Focus session done" : "\(TodayFormat.clock(timer.remaining(at: now))) left")
         Text(done ? "\(timer.minutes) minute session finished"

@@ -132,4 +132,24 @@ final class AgentsOrderTests: DefaultsTestCase {
                        "Finished · 5 m ago")
         XCTAssertEqual(SessionStatusLine.text(s, attention: .finished, now: now), "Finished · 1 m ago")
     }
+
+    /// The dense row's " · status · age" (Quiet Notch wireframe C): lower-case status, a short age.
+    func testCompactStatusLine() {
+        let now = t0.addingTimeInterval(12 * 60 + 5)
+        func line(_ s: Session, _ a: AgentAttention, finishedAt: Date? = nil) -> String {
+            SessionStatusLine.compact(s, attention: a, now: now, finishedAt: finishedAt)
+        }
+        XCTAssertEqual(line(session("a", .active, title: "Running tests"), .working), "running tests · 12 m")
+        XCTAssertEqual(line(session("a", .active, tool: "AskUserQuestion"), .working), "AskUserQuestion · 12 m",
+                       "a capitalised word is kept as it is")
+        XCTAssertEqual(line(session("a", .active), .working), "working · 12 m")
+        XCTAssertEqual(line(session("a", .waitingInput, updated: 9 * 60), .needsYou), "waiting for you · 3 m")
+        XCTAssertEqual(line(session("a", .blocked, updated: 12 * 60), .needsYou), "waiting for approval · just now")
+        XCTAssertEqual(line(session("a", .idle), .finished, finishedAt: now.addingTimeInterval(-3_700)), "finished · 1 h")
+        XCTAssertEqual(line(session("a", .idle, updated: 60), .errored), "stopped with an error · 11 m")
+        XCTAssertEqual(line(session("a", .idle, updated: -2 * 86_400), .idle), "idle · 2 d")
+        XCTAssertEqual(line(session("a", .exited), .exited), "ended")
+        XCTAssertEqual(line(session("a", .active, started: 13 * 60), .working), "working · just now",
+                       "a clock that went backwards shows just now")
+    }
 }

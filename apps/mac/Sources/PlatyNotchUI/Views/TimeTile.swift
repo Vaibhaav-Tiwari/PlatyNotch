@@ -30,7 +30,7 @@ struct TimeTile: View {
             content
                 .font(.system(size: 11))
                 .padding(6)
-                .dsCard()
+                .panelFill()
         }
     }
 }
@@ -90,7 +90,7 @@ private struct TimersSection: View {
             .controlSize(.small)
             if invalid {
                 Text(widget.timersFull ? "Up to \(TimeStore.maxTimers) timers." : "Try 10, 10m, 1h30, 90s or 25:00 (up to 24 h).")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Theme.warning)
             }
             if widget.state.timers.isEmpty {
                 TimeEmpty(systemImage: "timer", title: "No timers",
@@ -145,15 +145,16 @@ private struct StopwatchSection: View {
             HStack {
                 TimelineView(.periodic(from: .now, by: sw.isRunning ? 0.1 : 3600)) { ctx in
                     Text(Stopwatch.format(sw.elapsed(at: ctx.date)))
-                        .font(.system(size: 22, weight: .medium, design: .rounded))
+                        .font(.system(size: TypeScale.maximum, weight: .semibold, design: .rounded))
                         .monospacedDigit()
                 }
                 Spacer()
                 Button(sw.isRunning ? "Lap" : "Reset") { widget.lapOrResetStopwatch() }
                     .disabled(!sw.isRunning && sw.elapsed(at: Date()) == 0)
-                Button(sw.isRunning ? "Stop" : "Start") { widget.toggleStopwatch() }
-                    .buttonStyle(.borderedProminent)
-                    .tint(sw.isRunning ? .red : .green)
+                Button { widget.toggleStopwatch() } label: {
+                    PanelButtonLabel(title: sw.isRunning ? "Stop" : "Start", tone: sw.isRunning ? .error : .working)
+                }
+                .buttonStyle(PressableButtonStyle())
             }
             .controlSize(.small)
             if sw.laps.count >= Stopwatch.maxLaps {
@@ -250,8 +251,8 @@ private struct WeekdayChips: View {
                     Text(verbatim: symbols[day - 1])
                         .font(DS.font(TypeScale.caption).weight(.semibold))
                         .frame(width: 18, height: 16)
-                        .foregroundStyle(on ? AnyShapeStyle(DS.dynamicColor(.working)) : AnyShapeStyle(.secondary))
-                        .background(on ? DS.dynamicColor(.working, alpha: 0.18) : Color.secondary.opacity(0.15),
+                        .foregroundStyle(on ? DS.primary : DS.secondary)
+                        .background(on ? DS.ink(0.18) : DS.fill,
                                     in: Capsule())
                 }
                 .buttonStyle(.plain)
@@ -304,7 +305,7 @@ private struct ClocksSection: View {
         let d = clock.display(at: now, relativeTo: .autoupdatingCurrent)
         return HStack(spacing: 6) {
             Image(systemName: d.isNight ? "moon.stars.fill" : "sun.max.fill")
-                .foregroundStyle(d.isNight ? Color.indigo : .yellow)
+                .foregroundStyle(DS.secondary)
                 .accessibilityLabel(d.isNight ? "Night" : "Day")
             Text(verbatim: clock.label).lineLimit(1)
             Spacer(minLength: 4)

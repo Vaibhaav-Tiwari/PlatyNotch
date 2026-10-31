@@ -8,7 +8,7 @@ import SwiftUI
 /// and cached; never animated.
 ///
 /// Where pups appear (user ruling: recognisable icons first): the Agents rows keep the
-/// agent's installed app icon or monogram (`AgentBadge`) as the identity; pups appear only
+/// agent's installed app icon or name (`AgentBadge`) as the identity; pups appear only
 /// where they add warmth without costing clarity: the Agents empty state (the four known
 /// agents waiting) and the gallery.
 struct PlatyPupView: View {
@@ -77,12 +77,33 @@ private struct PupCanvas: View {
     let badge: Bool
 
     var body: some View {
-        let bandana = Color(agent.rgb(dark: true))
+        let bandana = Color(agent.rgb)
         PlatyCanvas(pose: .rest(.idle), size: size, bandana: bandana)
             .overlay(alignment: .bottomTrailing) {
                 if badge { StateBadge(tone: tone) }
             }
             .frame(width: size, height: size)
             .environment(\.colorScheme, dark ? .dark : .light)
+    }
+}
+
+/// A session state as one monochrome SF Symbol on a 16 pt circle of the panel surface with
+/// a 1 pt keyline: the pups' state in the mascot gallery (the panel's rows use a state dot).
+struct StateBadge: View {
+    static let size: CGFloat = 16
+    let tone: StateTone
+
+    var body: some View {
+        Circle()
+            .fill(Theme.surface)
+            .overlay(Circle().strokeBorder(DS.ink(0.18), lineWidth: 1))
+            .overlay {
+                Image(systemName: tone.symbol)
+                    .symbolRenderingMode(.monochrome)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(DS.color(tone))
+            }
+            .frame(width: Self.size, height: Self.size)
+            .accessibilityHidden(true)
     }
 }

@@ -30,26 +30,12 @@ public struct RGB: Equatable, Sendable {
     }
 }
 
-/// The panel's fixed colors per scheme (the views build their `Color`s from these).
+/// The panel's fixed colours (Quiet Notch spec 5.1): always black, in every system appearance.
 public enum PanelPalette {
-    /// The pill and anything touching the hardware notch: pure black.
-    public static let darkSurface = RGB(hex: 0x000000)
-    /// The open panel's dark surface (spec 7.1).
-    public static let panelDark = RGB(hex: 0x0B0D0D)
-    /// A card's 1 px inner keyline: this much white (dark) or black (light).
-    public static let keylineAlpha: Double = 0.08
-    /// The light theme's surface (macOS's light window background).
-    public static let lightSurface = RGB(hex: 0xECECEC)
-    /// Warning text ("Contains hidden characters") in the dark scheme: systemOrange.
-    public static let warningDark = RGB(hex: 0xFF9F0A)
-    /// In the light scheme: a darker orange that reaches 4.5:1 on the surface and a card.
-    public static let warningLight = RGB(hex: 0x8F4000)
-    /// The Allow button's tint in the light scheme (systemGreen text on its own tinted
-    /// fill is under 2:1 there); dark keeps systemGreen.
-    public static let allowLight = RGB(hex: 0x0B521F)
-    public static let systemGreenLight = RGB(hex: 0x34C759)
-    /// A bordered button's tinted fill: at most this much of its tint over the card.
-    public static let tintedFill = 0.2
-    /// Cards draw this much black (light) or white (dark) over the surface at most.
-    public static let cardOverlay = 0.08
+    /// The open panel, the pill and anything touching the hardware notch.
+    public static let panel = RGB(hex: 0x000000)
+    /// The pill's surface: the panel's black.
+    public static let darkSurface = panel
+    /// The approval card: one step up from the panel.
+    public static let approvalCard = RGB(hex: 0x111111)
 }

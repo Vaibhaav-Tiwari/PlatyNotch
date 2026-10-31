@@ -51,11 +51,12 @@ struct SettingLabel: View {
     }
 }
 
-/// The one accent in Settings: brand teal (never system blue) for switches, checkboxes,
-/// prominent buttons and selections, light and dark.
+/// The one accent in Settings and Onboarding (windows that follow the system): the user's
+/// accent colour for switches, checkboxes, prominent buttons and selections.
 enum SettingsTint {
-    static var accent: Color { DS.dynamicColor(.working) }
-    static var well: Color { DS.dynamicColor(.working, alpha: 0.14) }
+    /// Settings follows the system (Quiet Notch spec 1): the user's accent colour.
+    static var accent: Color { Color.accentColor }
+    static var well: Color { Color.accentColor.opacity(0.14) }
 }
 
 /// An SF Symbol in a small tinted well, as in the sidebar and page headers.

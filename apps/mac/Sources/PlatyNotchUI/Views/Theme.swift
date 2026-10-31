@@ -2,129 +2,60 @@ import AppKit
 import PlatyNotchKit
 import SwiftUI
 
-/// Colors, fonts and shapes shared by the panel views. The panel runs in the color
-/// scheme Appearance › Theme picks (`scheme`) and the views use semantic colors that
-/// resolve against it. Dark draws a black surface (it continues the notch).
+/// Colours, fonts and shapes shared by the panel views. The panel is always black (Quiet
+/// Notch spec 1) and runs in the dark scheme; text is white ink at three opacities.
 enum Theme {
+    /// The pill's bottom corners (unchanged); the open panel uses `Radius.panelBottom`.
     static let corner: CGFloat = 14
-    /// The dark surface (also what the compact pill on a notch always uses).
-    static let surface = Color.black
-    /// The light surface (`PanelPalette.lightSurface`, the contrast tests' reference).
-    static let lightSurface = Color(PanelPalette.lightSurface)
-    /// Level tracks (HUD bars) on either surface.
-    static let track = Color.primary.opacity(0.18)
+    /// Every panel surface: the pill, the open panel, peeks.
+    static let surface = Color(PanelPalette.panel)
+    /// Level tracks (HUD bars).
+    static let track = DS.ink(0.18)
 
-    static func surface(_ scheme: ColorScheme) -> Color {
-        scheme == .light ? lightSurface : surface
-    }
+    /// The amber behind black text (the pill's approval count, the ringing chip).
+    static let needsYouFill = Color(StateTone.needsYou.rgb)
 
-    /// The amber behind black text (the pill's approval count, the ringing chip): the dark
-    /// needs-you amber in every scheme, since black on the light amber is about 3.1:1.
-    static let needsYouFill = Color(StateTone.needsYou.rgb(dark: true))
+    /// The approval card's fill (#111111).
+    static let approvalCard = Color(PanelPalette.approvalCard)
 
-    /// The open panel's dark surface (#0B0D0D, `PanelPalette.panelDark`).
-    static let panelDark = Color(PanelPalette.panelDark)
+    /// The Allow button's green (green text on green at 0.12).
+    static let allow = DS.color(.working)
 
-    /// Whether the system glass effect exists (macOS 26 and later).
-    static var glassAvailable: Bool {
-        if #available(macOS 26, *) { return true }
-        return false
-    }
+    /// Small warning text ("Contains hidden characters"): needs-you amber.
+    static let warning = DS.color(.needsYou)
 
-    /// The surface behind a mode's content (spec 7.1): the pill (`.hidden` / `.compact`)
-    /// keeps `surface(scheme)`, which is pure black whenever it touches the notch; the open
-    /// panel and peeks are `panelDark` in dark and the light surface in light, or the
-    /// system glass when `style` is `.glass` (pass `effectiveSurface(glassAvailable:mode:
-    /// approvalsShowing:)`, which keeps every approval on an opaque surface). `hasNotch` is
-    /// reserved: the notch band is drawn separately (`PanelLayout.notchBand`).
-    ///
-    /// The opaque surfaces are one shape whose colour changes, so opening and closing
-    /// resize (and recolour) the same surface with the panel instead of cross-fading two
-    /// surfaces at their own sizes (a seam around the pill while closing).
-    @ViewBuilder
-    static func surface(_ scheme: ColorScheme, mode: PanelMode, hasNotch: Bool,
-                        style: AppearanceSettings.SurfaceStyle) -> some View {
-        let pill: Bool = mode == .hidden || mode == .compact
-        if !pill, style == .glass, #available(macOS 26, *) {
-            Rectangle().fill(Color.clear).glassEffect(.regular, in: Rectangle())
-        } else {
-            Rectangle().fill(surfaceColor(scheme, pill: pill))
-        }
-    }
+    /// The one fill (chips, the command line, buttons, code): white at `Ink.fill`.
+    static let card = DS.fill
+    static let codeBackground = DS.fill
+    static let divider = DS.hairline
 
-    /// The opaque surface's colour: the pill's (black on a notch) or the open panel's.
-    static func surfaceColor(_ scheme: ColorScheme, pill: Bool) -> Color {
-        if pill { return surface(scheme) }
-        return scheme == .light ? lightSurface : panelDark
-    }
-
-    /// The Allow button's tint: systemGreen in dark, a darker green in light (4.5:1 on
-    /// its tinted fill, `PanelPalette.allowLight`).
-    static func allow(_ scheme: ColorScheme) -> Color {
-        scheme == .light ? Color(PanelPalette.allowLight) : Color(nsColor: .systemGreen)
-    }
-
-    /// Small warning text ("Contains hidden characters"): systemOrange in dark, a darker
-    /// orange in light so it stays at 4.5:1 or more (`PanelPalette`, AppearanceTests).
-    static func warning(_ scheme: ColorScheme) -> Color {
-        Color(scheme == .light ? PanelPalette.warningLight : PanelPalette.warningDark)
-    }
-
-    /// The panel's color scheme for `theme`. The resting pill on a notch stays dark in
-    /// every theme: it continues the black camera housing, which a light pill would show
-    /// as a hole.
-    static func scheme(_ theme: AppearanceSettings.Theme, system: ColorScheme, mode: PanelMode,
-                       hasNotch: Bool) -> ColorScheme {
-        if hasNotch, mode == .compact || mode == .hidden { return .dark }
-        switch theme {
-        case .system: return system
-        case .dark: return .dark
-        case .light: return .light
-        }
-    }
-    static let card = Color(nsColor: .quaternaryLabelColor).opacity(0.5)
-    static let codeBackground = Color(nsColor: .textBackgroundColor).opacity(0.55)
-    static let divider = Color(nsColor: .separatorColor)
-
+    /// The diff box's and the peek row's mono (11 pt; the diff box is unchanged).
     static let mono = DS.font(TypeScale.caption, design: .monospaced).weight(.regular)
-    /// Line height of `mono`, used to size the approval summary.
+    /// Line height of `mono`, used to size the diff box.
     static let monoLineHeight: CGFloat = 14
 
-    /// `color(_:)` as an NSColor (layer-backed dots): the state palette (`StateTone`),
-    /// resolved against the view's appearance. Exited sessions are a faint idle.
+    /// `color(_:)` as an NSColor (layer-backed dots): the state palette (`StateTone`); exited
+    /// sessions draw as idle.
     static func nsColor(_ tone: AgentTone) -> NSColor {
-        DS.dynamicNSColor(StateTone(tone), alpha: tone == .off ? 0.35 : 1)
+        DS.dynamicNSColor(StateTone(tone))
     }
 
-    /// A session's tone in the state palette: working teal, needs-you amber, idle grey.
+    /// A session's tone in the state palette: working green, needs-you amber, idle ink.
     static func color(_ tone: AgentTone) -> Color {
-        DS.dynamicColor(StateTone(tone), alpha: tone == .off ? 0.35 : 1)
+        DS.dynamicColor(StateTone(tone))
     }
 
-    /// A live activity's tint: neutral is the label colour; accent, warning and critical
-    /// are the working, needs-you and error states.
+    /// A live activity's tint: neutral and accent are primary ink (the panel has no accent
+    /// colour); warning and critical are the needs-you and error states.
     static func tint(_ tint: LiveTint) -> Color {
         switch tint {
-        case .neutral: Color(nsColor: .labelColor)
-        case .accent: DS.dynamicColor(.working)
-        case .warning: DS.dynamicColor(.needsYou)
-        case .critical: DS.dynamicColor(.error)
+        case .neutral, .accent: DS.primary
+        case .warning: DS.color(.needsYou)
+        case .critical: DS.color(.error)
         }
     }
 
-    /// `tint(_:)` resolved for `scheme` up front. A dynamic colour resolves against the
-    /// drawing appearance, which under a clip (the pill's shape) can be the wrong one; the
-    /// pill reads the environment's scheme instead.
-    static func tint(_ tint: LiveTint, scheme: ColorScheme) -> Color {
-        switch tint {
-        case .neutral: Color(nsColor: .labelColor)
-        case .accent: DS.color(.working, scheme)
-        case .warning: DS.color(.needsYou, scheme)
-        case .critical: DS.color(.error, scheme)
-        }
-    }
-
-    /// Usage in the state palette (Task 18): working teal, needs-you amber, error coral.
+    /// Usage in the state palette: working green, needs-you amber, error red.
     static func color(_ level: UsageLevel) -> Color {
         DS.dynamicColor(level.tone)
     }
@@ -137,11 +68,13 @@ enum Theme {
         }
     }
 
-    /// Square top corners against the notch; a fully rounded pill otherwise.
-    static func panelShape(hasNotch: Bool) -> UnevenRoundedRectangle {
-        let top: CGFloat = hasNotch ? 0 : corner
-        return UnevenRoundedRectangle(topLeadingRadius: top, bottomLeadingRadius: corner,
-                                      bottomTrailingRadius: corner, topTrailingRadius: top, style: .continuous)
+    /// Square top corners against the notch; a fully rounded pill otherwise. The open panel
+    /// (`open`) has 22 pt bottom corners; the pill and peeks keep 14.
+    static func panelShape(hasNotch: Bool, open: Bool = false) -> UnevenRoundedRectangle {
+        let bottom: CGFloat = open ? Radius.panelBottom : corner
+        let top: CGFloat = hasNotch ? 0 : bottom
+        return UnevenRoundedRectangle(topLeadingRadius: top, bottomLeadingRadius: bottom,
+                                      bottomTrailingRadius: bottom, topTrailingRadius: top, style: .continuous)
     }
 }
 
@@ -268,18 +201,36 @@ final class AgentDotNSView: NSView {
     }
 }
 
-/// Small rounded tag, e.g. the tool name.
+/// A small capsule tag on the fill, e.g. the approval's tool (11 pt, padding 1 × 7).
 struct Tag: View {
     let text: String
 
     var body: some View {
         Text(verbatim: text)
-            .font(DS.font(TypeScale.caption, design: .monospaced).weight(.medium))
+            .font(DS.font(TypeScale.caption))
             .lineLimit(1)
-            .padding(.horizontal, 5)
+            .padding(.horizontal, 7)
             .padding(.vertical, 1)
-            .background(Theme.card, in: Capsule())
-            .foregroundStyle(.secondary)
+            .background(DS.fill, in: Capsule())
+            .foregroundStyle(DS.primary)
+    }
+}
+
+/// A keyboard shortcut in a keycap: 11 pt mono, a 1 px hairline border, padding 0 × 4.
+struct Keycap: View {
+    let text: String
+    var color: Color = DS.tertiary
+
+    var body: some View {
+        Text(verbatim: text)
+            .font(DS.font(TypeScale.caption, design: .monospaced))
+            .foregroundStyle(color)
+            .lineLimit(1)
+            .fixedSize()
+            .padding(.horizontal, 4)
+            .overlay(RoundedRectangle(cornerRadius: Radius.keycap, style: .continuous)
+                .stroke(DS.hairline, lineWidth: 1))
+            .accessibilityHidden(true)
     }
 }
 

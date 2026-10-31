@@ -41,7 +41,7 @@ struct ApprovalDiffBox: View {
 
     static func tone(_ kind: DiffLine.Kind) -> StateTone? {
         switch kind {
-        case .added: .done
+        case .added: .working
         case .removed: .error
         case .context, .hunk: nil
         }
@@ -65,7 +65,7 @@ struct ApprovalDiffBox: View {
                 .defaultScrollAnchor(.topLeading)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .frame(height: Self.boxHeight(preview: preview, cards: cards))
-                .background(Theme.codeBackground, in: RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
+                .background(Theme.codeBackground, in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
                 .accessibilityElement(children: .contain)
                 .accessibilityLabel("Changes, \(preview.diff.count) lines")
             }
@@ -103,7 +103,7 @@ struct ApprovalDiffBox: View {
 
     private func row(_ line: DiffLine) -> some View {
         let tone: StateTone? = Self.tone(line.kind)
-        let color: Color = tone.map { DS.color($0, scheme) } ?? (line.kind == .hunk ? Color.secondary : Color.primary)
+        let color: Color = tone.map { DS.color($0) } ?? (line.kind == .hunk ? Color.secondary : Color.primary)
         return Text(verbatim: Self.text(line))
             .font(Theme.mono)
             .foregroundStyle(color)

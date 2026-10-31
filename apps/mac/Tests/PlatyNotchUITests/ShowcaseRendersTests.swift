@@ -4,8 +4,10 @@ import XCTest
 
 @MainActor
 final class ShowcaseRendersTests: XCTestCase {
-    /// Five scenes, dark and light, each 16:9 at 2x: 800 x 450 points, 1600 x 900 pixels.
+    /// Five scenes (Quiet Notch wireframes A–C, E), on a dark and a light desktop (the panel
+    /// is black on both), each 16:9 at 2x: 800 x 450 points, 1600 x 900 pixels.
     func testShowcaseWritesTen() throws {
+        XCTAssertEqual(ShowcaseRenders.scenes, ["home-music", "home-live", "agents", "approval", "command-line"])
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pn-showcase-\(getpid())")
         defer { try? FileManager.default.removeItem(at: dir) }
         switch ShowcaseRenders.write(to: dir) {

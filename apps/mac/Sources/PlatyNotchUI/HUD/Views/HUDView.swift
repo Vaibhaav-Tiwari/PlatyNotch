@@ -83,7 +83,7 @@ struct HUDSettingsView: View {
         VStack(alignment: .leading, spacing: 6) {
             if let why = widget.explanation {
                 Label { Text(verbatim: why).fixedSize(horizontal: false, vertical: true) }
-                    icon: { Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange) }
+                    icon: { Image(systemName: "exclamationmark.triangle").foregroundStyle(Theme.warning) }
                 HUDAccessButtons(widget: widget, probe: probe)
             } else if widget.status == .on {
                 Label("On: volume, brightness and keyboard-backlight keys show this HUD instead of the system's.",

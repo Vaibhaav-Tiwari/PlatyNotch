@@ -102,26 +102,25 @@ struct CommandLineView: View {
         let rows = logic.suggestions
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(DS.font(TypeScale.body))
+                    .foregroundStyle(DS.tertiary)
+                    .accessibilityHidden(true)
                 TextField("", text: Binding(get: { model.commandText }, set: { model.commandText = $0 }),
-                          prompt: Text(verbatim: Self.placeholder).foregroundStyle(.tertiary))
+                          prompt: Text(verbatim: Self.placeholder).foregroundStyle(DS.tertiary))
                     .textFieldStyle(.plain)
-                    .font(.system(size: 13))
+                    .font(DS.font(TypeScale.body))
                     .focused($focused)
                     .onSubmit { logic.submit() }
                     .onKeyPress(.upArrow) { logic.move(by: -1); return .handled }
                     .onKeyPress(.downArrow) { logic.move(by: 1); return .handled }
                     .accessibilityLabel("Command line")
                     .background(CaretWindowReader(box: windowBox))
-                Text(verbatim: "\u{2318}K")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 4)
-                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.white.opacity(0.10), lineWidth: 1))
-                    .accessibilityHidden(true)
+                Keycap(text: model.commandText.isEmpty ? "\u{2318}K" : "\u{21A9}")
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(DS.fill, in: RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))
             if !rows.isEmpty {
                 // Results take the room Home has left, then scroll inside it (spec 2).
                 ViewThatFits(in: .vertical) {
@@ -130,7 +129,7 @@ struct CommandLineView: View {
                 }
                 .frame(maxHeight: Self.listMaxHeight)
             } else if let message = model.commandMessage {
-                Text(verbatim: message).font(.system(size: 12)).foregroundStyle(.secondary)
+                Text(verbatim: message).font(DS.font(TypeScale.secondary)).foregroundStyle(DS.secondary)
             }
         }
         .onChange(of: model.commandFocused) { _, new in if focused != new { focused = new } }
@@ -138,9 +137,11 @@ struct CommandLineView: View {
             if model.commandFocused != new { model.commandFocused = new }
             if new { Self.caretToEnd(in: windowBox) }
         }
-        .onChange(of: model.commandText) { _, _ in
+        .onChange(of: model.commandText) { _, new in
             model.commandSelection = 0
-            model.commandMessage = nil
+            // A command that ran empties the line: its confirmation ("Reminder added") stays
+            // until the user types again.
+            if !new.isEmpty { model.commandMessage = nil }
             searchIfNeeded()
         }
         .onAppear { if model.commandFocused { focused = true } }
@@ -161,19 +162,20 @@ struct CommandLineView: View {
                 Button { logic.submit(index: index) } label: {
                     HStack(spacing: 8) {
                         Text(verbatim: row.title)
-                            .font(.system(size: 13))
+                            .font(DS.font(TypeScale.body))
+                            .foregroundStyle(DS.primary)
                             .lineLimit(1).truncationMode(.tail)
                         if let detail = row.detail {
                             Text(verbatim: detail)
-                                .font(.system(size: 12)).foregroundStyle(.secondary)
+                                .font(DS.font(TypeScale.secondary)).foregroundStyle(DS.secondary)
                                 .lineLimit(1).truncationMode(.tail)
                         }
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 3)
-                    .background(index == selected ? Color.white.opacity(0.07) : .clear,
-                                in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .background(index == selected ? DS.fill : .clear,
+                                in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -181,14 +183,14 @@ struct CommandLineView: View {
                 if case .search = row.command, let hits = memoryHits {
                     ForEach(hits, id: \.threadID) { hit in
                         Text(verbatim: hit.title)
-                            .font(.system(size: 12)).foregroundStyle(.secondary)
+                            .font(DS.font(TypeScale.secondary)).foregroundStyle(DS.secondary)
                             .lineLimit(1).truncationMode(.tail)
                             .padding(.leading, 22)
                     }
                 }
             }
             if let message = model.commandMessage {
-                Text(verbatim: message).font(.system(size: 12)).foregroundStyle(.secondary).padding(.horizontal, 10)
+                Text(verbatim: message).font(DS.font(TypeScale.secondary)).foregroundStyle(DS.secondary).padding(.horizontal, 10)
             }
         }
     }

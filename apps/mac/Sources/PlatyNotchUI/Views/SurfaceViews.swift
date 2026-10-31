@@ -113,7 +113,7 @@ struct RingingFallback: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "alarm.fill")
-                .font(.system(size: 22, weight: .semibold))
+                .font(.system(size: IconSize.header, weight: .semibold))
                 .foregroundStyle(Theme.color(.attention))
             Text("Ringing").font(.system(size: 14, weight: .semibold))
             Spacer()

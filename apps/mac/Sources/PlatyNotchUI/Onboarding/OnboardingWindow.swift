@@ -18,8 +18,8 @@ final class TryItSession {
 
     /// Now's hero during "Try it".
     static let sample = LiveActivity(id: "tour.sample", widgetID: "tour", priority: LivePriority.alarmRinging,
-                                     glyph: .symbol("sparkles"), tint: .accent, accessibilityLabel: "This is Now",
-                                     title: "This is Now", subtitle: "What is live shows here first; glances sit below")
+                                     glyph: .symbol("sparkles"), tint: .accent, accessibilityLabel: "This is Home",
+                                     title: "This is Home", subtitle: "What is live shows here as chips; type to run a command")
 
     private(set) var phase: Phase = .idle
     private var onDone: (() -> Void)?
@@ -382,7 +382,7 @@ private struct PondBanner<Content: View>: View {
         }
         .frame(height: height)
         .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: Radius.hero, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
         .environment(\.colorScheme, .dark)
     }
 }
@@ -535,7 +535,7 @@ private struct PresetSketch: View {
             pill
         }
         .frame(height: height)
-        .clipShape(RoundedRectangle(cornerRadius: Radius.chip, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
         .environment(\.colorScheme, .dark)
         .accessibilityHidden(true)
     }
@@ -547,18 +547,18 @@ private struct PresetSketch: View {
             HStack(spacing: 0) {
                 Image(systemName: "calendar").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.8))
                 Spacer()
-                Image(systemName: "waveform").font(.system(size: 11, weight: .semibold)).foregroundStyle(DS.teal)
+                Image(systemName: "waveform").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.8))
             }
             .padding(.horizontal, 8)
             .frame(width: 128, height: 20)
             .background(Color.black, in: shape)
         case .developer:
             HStack(spacing: 3) {
-                ForEach([Color(red: 0.85, green: 0.47, blue: 0.34), DS.teal, Color(red: 0.55, green: 0.6, blue: 0.95)],
+                ForEach([Color(AgentIdentity.claude.rgb), Color(AgentIdentity.codex.rgb), Color(AgentIdentity.cursor.rgb)],
                         id: \.self) { c in Circle().fill(c).frame(width: 5, height: 5) }
                 Spacer()
                 Circle().trim(from: 0, to: 0.7)
-                    .stroke(DS.teal, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .stroke(DS.color(.working), style: StrokeStyle(lineWidth: 2, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .frame(width: 9, height: 9)
             }
@@ -633,9 +633,9 @@ enum TryItCopy {
 
     static func detail(_ openOn: AppearanceSettings.OpenTrigger) -> String {
         switch openOn {
-        case .hover: "The panel opens on Now with a sample at the top. Move away to close it."
-        case .click: "The panel opens on Now with a sample at the top. Click again to close it."
-        case .peekOnHover: "Hovering shows Now's top item; a click opens the whole panel."
+        case .hover: "The panel opens on Home with a sample chip at the top. Move away to close it."
+        case .click: "The panel opens on Home with a sample chip at the top. Click again to close it."
+        case .peekOnHover: "Hovering shows the top live item; a click opens the whole panel."
         }
     }
 }
@@ -659,7 +659,7 @@ private struct TryItPage: View {
                     VStack(spacing: 4) {
                         Image(systemName: "arrow.up")
                             .font(.system(size: 22, weight: .semibold))
-                            .foregroundStyle(DS.teal)
+                            .foregroundStyle(SettingsTint.accent)
                         Image(systemName: openOn == .hover ? "cursorarrow" : "cursorarrow.click")
                             .font(.system(size: 34, weight: .regular))
                             .foregroundStyle(.white)
@@ -672,8 +672,8 @@ private struct TryItPage: View {
             }
             .animation(.spring(response: 0.42, dampingFraction: 0.78), value: model.tryItDone)
             if model.tryItDone {
-                PageTitle(title: "That's Now",
-                          text: "What is live shows first, glances below, Agents and Library one click away. Platy is pleased.")
+                PageTitle(title: "That's Home",
+                          text: "Live things show as chips, music sits beside Up next, and the command line runs the rest. Agents is one click away. Platy is pleased.")
             } else {
                 PageTitle(title: TryItCopy.title(openOn), text: TryItCopy.detail(openOn))
             }

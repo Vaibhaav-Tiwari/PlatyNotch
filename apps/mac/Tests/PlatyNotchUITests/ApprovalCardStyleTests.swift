@@ -1,0 +1,60 @@
+import AppKit
+import PlatyNotchKit
+import SwiftUI
+import XCTest
+@testable import PlatyNotchUI
+
+/// The approval card in the v0.2 style (Quiet Notch spec 5.4): keycaps on Deny and Allow,
+/// the command in SF Mono 12 on one line. Layout and safety are `ApprovalSafetyTests` and
+/// `ApprovalArmingControllerTests`, unchanged.
+@MainActor
+final class ApprovalCardStyleTests: XCTestCase {
+    private func approval(_ summary: String) -> Approval {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        return Approval(id: "s", sessionKey: "s", agent: "claude-code", agentName: "Claude Code",
+                        project: "platynotch", tool: "Bash", summary: summary,
+                        createdAt: now, expiresAt: now.addingTimeInterval(300))
+    }
+
+    func testKeycapsShown() {
+        XCTAssertEqual(ApprovalCard.keycaps, ["\u{2318}\u{232B}", "\u{2318}\u{21A9}"])
+        XCTAssertEqual(ApprovalCard.keycaps, ["⌘⌫", "⌘↩"])
+    }
+
+    /// Final review Minor 7: only the card the keys answer (the oldest, `shortcuts`) shows
+    /// ⌘⌫ and ⌘↩; card 2 shows plain Deny and Allow.
+    func testOnlyTheShortcutCardShowsKeycaps() {
+        func card(_ shortcuts: Bool) -> ApprovalCard {
+            ApprovalCard(approval: approval("npm test"), session: nil, canAnswer: true, phase: nil,
+                         arming: ApprovalArming(), shortcuts: shortcuts, onDecide: { _ in }, onOpenTerminal: { _ in })
+        }
+        XCTAssertEqual(card(true).shownKeycaps, ["\u{2318}\u{232B}", "\u{2318}\u{21A9}"], "card 1")
+        XCTAssertEqual(card(false).shownKeycaps, [nil, nil], "card 2")
+    }
+
+    /// A one-line Bash command is one mono 12 line on the fill: the box is one line tall
+    /// plus its padding (a longer command wraps and scrolls instead, never truncated).
+    func testCommandIsOneMonoLine() {
+        XCTAssertEqual(TypeScale.mono.size, 12)
+        XCTAssertTrue(TypeScale.mono.mono)
+        func height(_ summary: String) -> CGFloat {
+            let view = SummaryView(summary: summary, maxLines: ApprovalFormat.maxSummaryLines).frame(width: 396)
+            return NSHostingView(rootView: view).fittingSize.height
+        }
+        let insets: CGFloat = SummaryView.insets.top + SummaryView.insets.bottom
+        let line: CGFloat = NSHostingView(rootView: Text(verbatim: "npm test").font(ApprovalCard.commandFont))
+            .fittingSize.height
+        XCTAssertEqual(height("npm test"), max(line, ApprovalCard.commandLineHeight) + insets, accuracy: 1)
+        XCTAssertGreaterThan(height("git status &&\nmake test"), height("npm test"), "two lines are both shown")
+    }
+
+    /// The card has no border: #111 behind it, radius 12, 12 pt at the sides and 10 above and
+    /// below; the command 6 × 9 (so one card with a full diff fits the 240 pt region).
+    func testCardTokens() {
+        XCTAssertEqual(ApprovalCard.padding, 12)
+        XCTAssertEqual(ApprovalCard.verticalPadding, 10)
+        XCTAssertEqual(SummaryView.insets, EdgeInsets(top: 6, leading: 9, bottom: 6, trailing: 9))
+        XCTAssertEqual(PanelPalette.approvalCard, RGB(hex: 0x111111))
+        XCTAssertEqual(Radius.card, 12)
+    }
+}

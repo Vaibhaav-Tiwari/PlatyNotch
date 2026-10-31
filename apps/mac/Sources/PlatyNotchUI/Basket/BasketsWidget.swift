@@ -109,7 +109,7 @@ final class BasketsWidget: NotchWidget {
 }
 
 /// Baskets as a Library tool: what it does in one line, its two controls on one card,
-/// and the rules a tooltip away. One teal accent; a taken shortcut is a plain note.
+/// and the rules a tooltip away. No accent colour; a taken shortcut is a plain note.
 struct BasketsToolPage: View {
     let widget: BasketsWidget
 

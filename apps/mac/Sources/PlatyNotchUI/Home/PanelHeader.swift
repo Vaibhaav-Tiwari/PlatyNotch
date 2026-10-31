@@ -1,16 +1,19 @@
 import PlatyNotchKit
 import SwiftUI
 
-/// The header row of both views (spec 2.1): Platy (20 pt), the view switcher, a flexible
-/// space, the view's status text, then the icon toggles.
+/// The header row of both views (spec 2.1): Platy (20 × 15 pt), the view switcher, a
+/// flexible space, the view's status text (12 pt secondary; mono for Agents' usage numbers),
+/// then the icon toggles, 14 pt apart.
 struct PanelHeader<Nav: View, Controls: View>: View {
-    let status: String?
+    let status: [String]
+    var mono = false
     let nav: Nav
     let controls: Controls
     @Environment(\.platyMood) private var mood
 
-    init(status: String?, @ViewBuilder nav: () -> Nav, @ViewBuilder controls: () -> Controls) {
+    init(status: [String], mono: Bool = false, @ViewBuilder nav: () -> Nav, @ViewBuilder controls: () -> Controls) {
         self.status = status
+        self.mono = mono
         self.nav = nav()
         self.controls = controls()
     }
@@ -22,21 +25,24 @@ struct PanelHeader<Nav: View, Controls: View>: View {
     }
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: Space.header) {
             if let mood {
                 PlatyView(mood: mood, size: 20)
                     .frame(width: 20, height: 20)
             }
             nav
+                .fixedSize()
             Spacer(minLength: 4)
-            if let status {
-                Text(verbatim: status)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+            ForEach(Array(status.enumerated()), id: \.offset) { _, part in
+                Text(verbatim: part)
+                    .font(DS.font(mono ? TypeScale.mono : TypeScale.secondary))
+                    .foregroundStyle(DS.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .layoutPriority(-1)
             }
             controls
+                .fixedSize()
         }
     }
 }

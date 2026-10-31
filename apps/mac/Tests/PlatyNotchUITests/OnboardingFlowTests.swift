@@ -118,7 +118,7 @@ final class OnboardingFlowTests: DefaultsTestCase {
 
     func testSampleIgnoredDuringApproval() {
         let sample = TryItSession.sample
-        XCTAssertEqual(sample.title, "This is Now")
+        XCTAssertEqual(sample.title, "This is Home")
         let session = TryItSession()
         var done = false
         session.arm { done = true }

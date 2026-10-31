@@ -8,9 +8,16 @@ final class MotionPresetTests: DefaultsTestCase {
         try JSONDecoder().decode(AppearanceSettings.self, from: Data(json.utf8))
     }
 
-    func testOpenUsesOpenSpring() {
-        XCTAssertEqual(MotionPreset.calm.spring(.open), SpringSpec(response: 0.38, damping: 0.86))
-        XCTAssertEqual(MotionPreset.lively.spring(.open), SpringSpec(response: 0.42, damping: 0.78))
+    /// One spring for open and close (Quiet Notch spec 5.3).
+    func testOneSpringForOpenAndClose() {
+        let one = SpringSpec(response: 0.35, damping: 1.0)
+        XCTAssertEqual(MotionPreset.calm.spring(.open), one)
+        XCTAssertEqual(MotionPreset.calm.spring(.close), one)
+        XCTAssertEqual(MotionPreset.allCases, [.calm, .reduced])
+    }
+
+    func testLivelyDecodesAsCalm() throws {
+        XCTAssertEqual(try decode(#"{"motion":"lively"}"#).motion, .calm)
     }
 
     func testCloseNeverOvershoots() {
@@ -45,11 +52,10 @@ final class MotionPresetTests: DefaultsTestCase {
         XCTAssertEqual(try decode(#"{"spring":{"response":0.3,"dampingFraction":0.95,"blur":8}}"#).motion, .calm)
     }
 
-    func testMigratesChangedSpringToLively() throws {
-        // Slower than Calm's open.
-        XCTAssertEqual(try decode(#"{"spring":{"response":0.6,"dampingFraction":0.9,"blur":8}}"#).motion, .lively)
-        // Bouncier than Calm's open.
-        XCTAssertEqual(try decode(#"{"spring":{"response":0.3,"dampingFraction":0.7,"blur":8}}"#).motion, .lively)
+    /// Old spring sliders that once meant Lively now read as Calm.
+    func testMigratesChangedSpringToCalm() throws {
+        XCTAssertEqual(try decode(#"{"spring":{"response":0.6,"dampingFraction":0.9,"blur":8}}"#).motion, .calm)
+        XCTAssertEqual(try decode(#"{"spring":{"response":0.3,"dampingFraction":0.7,"blur":8}}"#).motion, .calm)
     }
 
     func testSavedMotionWins() throws {
@@ -65,11 +71,6 @@ final class MotionPresetTests: DefaultsTestCase {
             AppearanceStore.save(s, to: d)
             XCTAssertEqual(AppearanceStore.load(from: d).motion, preset)
         }
-        // Untouched spring + Lively survives the round trip (the saved key wins over migration).
-        var lively = AppearanceSettings(motion: .lively)
-        lively.spring = .standard
-        AppearanceStore.save(lively, to: d)
-        XCTAssertEqual(AppearanceStore.load(from: d), lively)
     }
 
     func testReduceMotionOverrides() {

@@ -11,27 +11,34 @@ struct UpNextColumn: View {
     static let label = "Up next"
     static let empty = "Nothing up next"
 
+    /// The time column's width when any row has a time.
+    static let timeColumn: CGFloat = 58
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let showsTime: Bool = UpNext.showsTimeColumn(rows)
+        VStack(alignment: .leading, spacing: 0) {
             ColumnLabel(text: Self.label)
             if rows.isEmpty {
-                Text(verbatim: Self.empty).font(.system(size: 12)).foregroundStyle(.tertiary)
+                Text(verbatim: Self.empty).font(DS.font(TypeScale.secondary)).foregroundStyle(DS.tertiary)
             } else {
                 ForEach(rows, id: \.id) { row in
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(verbatim: row.time)
-                            .font(.system(size: 12).monospacedDigit())
-                            .foregroundStyle(row.overdue ? DS.dynamicColor(.error) : Color.secondary)
-                            .lineLimit(1)
-                            .frame(width: 58, alignment: .leading)
+                        if showsTime {
+                            Text(verbatim: row.time)
+                                .font(DS.font(TypeScale.secondary).monospacedDigit())
+                                .foregroundStyle(row.overdue ? DS.color(.error) : DS.secondary)
+                                .lineLimit(1)
+                                .frame(width: Self.timeColumn, alignment: .leading)
+                        }
                         Text(verbatim: row.title)
-                            .font(.system(size: 13))
+                            .font(DS.font(TypeScale.body))
+                            .foregroundStyle(DS.primary)
                             .lineLimit(1).truncationMode(.tail)
                         Spacer(minLength: 4)
                         if let note = row.note {
                             Text(verbatim: note)
-                                .font(.system(size: 11))
-                                .foregroundStyle(.tertiary)
+                                .font(DS.font(TypeScale.caption))
+                                .foregroundStyle(DS.tertiary)
                                 .lineLimit(1)
                                 .fixedSize()
                         }
@@ -51,9 +58,10 @@ struct ColumnLabel: View {
 
     var body: some View {
         Text(verbatim: text.uppercased())
-            .font(.system(size: 11, weight: .medium))
+            .font(DS.font(TypeScale.caption))
             .tracking(0.66)
-            .foregroundStyle(.tertiary)
+            .foregroundStyle(DS.tertiary)
+            .padding(.bottom, 3)
             .accessibilityHidden(true)
     }
 }
@@ -66,13 +74,13 @@ struct NotesColumn: View {
     static let empty = "No open tasks"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 0) {
             ColumnLabel(text: Self.label)
             if lines.isEmpty {
-                Text(verbatim: Self.empty).font(.system(size: 12)).foregroundStyle(.tertiary)
+                Text(verbatim: Self.empty).font(DS.font(TypeScale.secondary)).foregroundStyle(DS.tertiary)
             } else {
                 ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
-                    Text(verbatim: line).font(.system(size: 13)).lineLimit(1).truncationMode(.tail).padding(.vertical, 3)
+                    Text(verbatim: line).font(DS.font(TypeScale.body)).lineLimit(1).truncationMode(.tail).padding(.vertical, 3)
                 }
             }
         }
@@ -88,16 +96,16 @@ struct MailColumn: View {
     static let label = "Mail"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 0) {
             ColumnLabel(text: Self.label)
             if let unread {
                 Text(verbatim: unread == 0 ? "No unread mail" : "\(unread) unread")
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
+                    .font(DS.font(TypeScale.secondary)).foregroundStyle(DS.secondary)
                 ForEach(Array(subjects.enumerated()), id: \.offset) { _, line in
-                    Text(verbatim: line).font(.system(size: 13)).lineLimit(1).truncationMode(.tail).padding(.vertical, 3)
+                    Text(verbatim: line).font(DS.font(TypeScale.body)).lineLimit(1).truncationMode(.tail).padding(.vertical, 3)
                 }
             } else {
-                Text(verbatim: "Mail is not available").font(.system(size: 12)).foregroundStyle(.tertiary)
+                Text(verbatim: "Mail is not available").font(DS.font(TypeScale.secondary)).foregroundStyle(DS.tertiary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)

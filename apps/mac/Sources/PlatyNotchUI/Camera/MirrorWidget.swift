@@ -285,7 +285,7 @@ struct MirrorTileView: View {
             }
             HStack(spacing: 8) {
                 if state != .live {
-                    Image(systemName: "person.crop.square").font(.system(size: 18)).foregroundStyle(.secondary)
+                    Image(systemName: "person.crop.square").font(.system(size: IconSize.header)).foregroundStyle(.secondary)
                         .accessibilityHidden(true)
                 }
                 Text(verbatim: state.message)
@@ -297,7 +297,7 @@ struct MirrorTileView: View {
             }
         }
         .padding(6)
-        .dsCard()
+        .panelFill()
     }
 
     @ViewBuilder
@@ -318,7 +318,7 @@ struct MirrorTileView: View {
 struct MirrorSettingsView: View {
     var body: some View {
         SettingsNote("""
-        Click Show Mirror in the Today tab to see your camera. It turns off when you hide it, \
+        Click the video icon in the panel's header to see your camera. It turns off when you hide it, \
         close the panel, lock the screen or the display sleeps. macOS asks for the camera the \
         first time you click. Nothing is recorded, saved or sent.
         """)

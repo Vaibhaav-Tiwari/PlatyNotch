@@ -2,33 +2,38 @@ import AppKit
 import PlatyNotchKit
 import SwiftUI
 
-/// `--smoke` with `PLATYNOTCH_RENDER_DIR`: renders views that sit on the themed panel
-/// surface in both color schemes, the way `PanelRootView` draws them (the scheme in the
-/// environment, `Theme.surface(scheme)` behind), and writes `<name>-<scheme>.png`.
-/// Inert models only: nothing is read, played or saved.
+/// `--smoke` with `PLATYNOTCH_RENDER_DIR`: renders the panel's views the way `PanelRootView`
+/// draws them (always black, the dark scheme) as `<name>-dark.png`, and the Settings windows
+/// (which follow the system) in both schemes as `<name>-<scheme>.png`. Inert models only:
+/// nothing is read, played or saved.
 @MainActor
 enum ThemeRenders {
     /// Writes every render (or, with `only`, those whose name starts with one of its
     /// prefixes); returns the number written, or the first problem.
     static func write(to dir: URL, only: [String]? = nil) -> Result<Int, RenderError> {
+        AgentsRenders.withHostNames { writeAll(to: dir, only: only) }
+    }
+
+    private static func writeAll(to dir: URL, only: [String]?) -> Result<Int, RenderError> {
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         } catch {
             return .failure(RenderError(message: "cannot create \(dir.path): \(error.localizedDescription)"))
         }
         var count = 0
-        for scheme in [ColorScheme.dark, .light] {
-            for (name, view, hosted) in views() where only.map({ p in p.contains { name.hasPrefix($0) } }) ?? true {
-                let url = dir.appendingPathComponent("\(name)-\(scheme == .dark ? "dark" : "light").png")
-                let data = hosted ? renderHosted(view, scheme: scheme) : render(view, scheme: scheme)
-                guard let png = data else {
-                    return .failure(RenderError(message: "\(name) did not render"))
-                }
-                do { try png.write(to: url) } catch {
-                    return .failure(RenderError(message: "cannot write \(url.path)"))
-                }
-                count += 1
+        // The panel is always black: its views render once, dark.
+        for (name, view, hosted) in views() where only.map({ p in p.contains { name.hasPrefix($0) } }) ?? true {
+            let url = dir.appendingPathComponent("\(name)-dark.png")
+            let data = hosted ? renderHosted(view, scheme: .dark) : render(view, scheme: .dark)
+            guard let png = data else {
+                return .failure(RenderError(message: "\(name) did not render"))
             }
+            do { try png.write(to: url) } catch {
+                return .failure(RenderError(message: "cannot write \(url.path)"))
+            }
+            count += 1
+        }
+        for scheme in [ColorScheme.dark, .light] {
             for (name, view, size) in SettingsRenders.windows() where only.map({ p in p.contains { name.hasPrefix($0) } }) ?? true {
                 let url = dir.appendingPathComponent("\(name)-\(scheme == .dark ? "dark" : "light").png")
                 guard let png = SettingsRenders.render(view, size: size, scheme: scheme) else {
@@ -50,10 +55,10 @@ enum ThemeRenders {
     static func framed(_ view: AnyView, scheme: ColorScheme) -> some View {
         view
             .padding(12)
-            .background(Theme.surface(scheme))
+            .background(Theme.surface)
             .environment(\.colorScheme, scheme)
-            // Monograms, so renders look the same on every Mac (one render passes a fake app icon).
-            .environment(\.agentIcons, .monogramsOnly)
+            // Names, so renders look the same on every Mac (one render passes a stand-in app icon).
+            .environment(\.agentIcons, .namesOnly)
     }
 
     private static func render(_ view: AnyView, scheme: ColorScheme) -> Data? {
@@ -370,7 +375,7 @@ enum HomeRenders {
                       homeSettings: HomeSettings = HomeSettings(), dropping: Bool = false, command: String? = nil,
                       tourSample: LiveActivity? = nil, now: Date? = nil, header: HeaderServices? = nil,
                       full: Bool = false) -> AnyView {
-        let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelMargin
+        let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelSide
         rig.store.apply(.connected)   // a quiet header, as in the running app
         var current = route
         let commandModel = PanelViewModel()
@@ -380,46 +385,59 @@ enum HomeRenders {
         let commandLine = AnyView(CommandLineView(model: commandModel, logic: logic, memory: nil))
         let services: HeaderServices = header ?? headerServices()
         let at: Date = now ?? fixedNow
-        // Plain Home with no approval hugs its content, as the controller sizes the live
-        // panel; every other view takes the full height.
-        var height: CGFloat = available
-        if !full, route.destination == .home, route.tool == nil, rig.store.approvals.isEmpty {
-            let probe = HomeView(today: rig.today, widgets: rig.registry, settings: homeSettings, tourSample: tourSample,
-                                 fixedNow: at, dropping: dropping, commandLine: commandLine)
-            let host = NSHostingView(rootView: probe.frame(width: width).fixedSize(horizontal: false, vertical: true)
-                .environment(\.colorScheme, .dark).environment(\.panelTicking, false)
-                .environment(\.platyMood, rig.mood))
-            host.layoutSubtreeIfNeeded()
-            var l = layout
-            l.expandedContentHeight = l.expandedHeight(forBody: HomeMetrics.nav + HomeMetrics.gap + host.fittingSize.height)
-            height = l.contentRect(for: .expanded).height - l.contentInset(for: .expanded) - 10
+        func make(height: CGFloat, onBody: @escaping (CGFloat?) -> Void) -> some View {
+            ExpandedPanel(store: rig.store, responder: ApprovalResponder(client: rig.client), arming: ApprovalArming(),
+                          today: rig.today, widgets: rig.registry, memory: memory ?? MemoryServices(client: rig.client),
+                          extraTabs: extraTabs, route: Binding(get: { current }, set: { current = $0 }),
+                          onCollapse: {}, header: services, homeSettings: homeSettings, commandLine: commandLine,
+                          dropping: dropping, fixedNow: at, memoryMode: memoryMode, tourSample: tourSample,
+                          onBodyHeight: onBody, onDecide: { _, _ in }, onOpenTerminal: { _ in })
+                .frame(width: width, height: height, alignment: .top)
+                .clipped()
+                .environment(\.platyMood, rig.mood)
+                .environment(\.panelTicking, false)
+                .environment(\.agentIcons, .namesOnly)
         }
-        let view = ExpandedPanel(store: rig.store, responder: ApprovalResponder(client: rig.client), arming: ApprovalArming(),
-                                 today: rig.today, widgets: rig.registry, memory: memory ?? MemoryServices(client: rig.client),
-                                 extraTabs: extraTabs, route: Binding(get: { current }, set: { current = $0 }),
-                                 onCollapse: {}, header: services, homeSettings: homeSettings, commandLine: commandLine,
-                                 dropping: dropping, fixedNow: at, memoryMode: memoryMode, tourSample: tourSample,
-                                 onDecide: { _, _ in }, onOpenTerminal: { _ in })
-            .frame(width: width, height: height, alignment: .top)
-            .clipped()
-            .environment(\.platyMood, rig.mood)
-            .environment(\.panelTicking, false)
+        // The panel hugs what `ExpandedPanel` reports (`reportedBody`), as the controller sizes
+        // the live panel: laid out once at full height off screen to read it.
+        var height: CGFloat = available
+        if !full {
+            let box = BodyBox()
+            let probe = NSHostingView(rootView: make(height: available) { box.value = $0 }
+                .environment(\.colorScheme, .dark))
+            probe.frame = CGRect(x: 0, y: 0, width: width, height: available)
+            let window = NSWindow(contentRect: CGRect(x: -10_000, y: 10_000, width: width, height: available),
+                                  styleMask: .borderless, backing: .buffered, defer: false)
+            window.contentView = probe
+            probe.layoutSubtreeIfNeeded()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.03))
+            probe.layoutSubtreeIfNeeded()
+            if let body = box.value {
+                var l = layout
+                l.expandedContentHeight = l.expandedHeight(forBody: body)
+                height = l.contentRect(for: .expanded).height - l.contentInset(for: .expanded) - Space.panelBottom
+            }
+            window.contentView = nil
+        }
+        let view = make(height: height) { _ in }
         return AnyView(view)
     }
 
     /// Header toggles for a render: inert power (no assertion, no IOKit), optionally with
     /// keep awake running (`1:20`-style time) and a battery reading.
-    static func headerServices(keepAwake: Bool = false, battery: BatteryState? = nil) -> HeaderServices {
+    static func headerServices(keepAwake: Bool = false, battery: BatteryState? = nil,
+                               startedAt: Date? = nil) -> HeaderServices {
         let power = RenderPower(state: battery)
-        let services = HeaderServices(keepAwake: KeepAwake(asserter: RenderAsserter()), power: power,
+        let start: Date = startedAt ?? Date()
+        let services = HeaderServices(keepAwake: KeepAwake(asserter: RenderAsserter(), clock: { start }), power: power,
                                       defaults: UserDefaults(suiteName: "dev.platynotch.render-header") ?? .standard)
-        if keepAwake { services.startKeepAwake(.oneHour) }
+        if keepAwake { services.startKeepAwake(startedAt == nil ? .oneHour : .twoHours) }
         return services
     }
 
     /// The room below the camera housing in the open panel at full height.
     static var available: CGFloat {
-        layout.contentRect(for: .expanded).height - layout.contentInset(for: .expanded) - 10
+        layout.contentRect(for: .expanded).height - layout.contentInset(for: .expanded) - Space.panelBottom
     }
 
     /// The hover peek (Peek on hover, open on click) as `PanelRootView` lays it out beside
@@ -589,9 +607,10 @@ enum AgentsRenders {
 
     static func session(_ key: String, _ agent: String, _ name: String, project: String, _ state: SessionState,
                         title: String? = nil, tool: String? = nil, message: String? = nil,
-                        updated: TimeInterval = 0) -> Session {
+                        updated: TimeInterval = 0, host: String? = "com.anthropic.claudefordesktop") -> Session {
         Session(key: key, agent: agent, agentName: name, sessionID: key, project: project, state: state, title: title,
-                tool: tool, message: message, startedAt: start, updatedAt: Date().addingTimeInterval(-updated))
+                tool: tool, message: message, hostBundleID: host, startedAt: start,
+                updatedAt: Date().addingTimeInterval(-updated))
     }
 
     static func one() -> [Session] {
@@ -618,26 +637,46 @@ enum AgentsRenders {
         let ask = session("ask", "claude-code", "Claude Code", project: "platynotch", .waitingInput, tool: "AskUserQuestion",
                           message: "Which colour should the badge use?")
         let err = session("err", "codex", "Codex", project: "api", .idle, tool: "Bash", message: "go test ./... (exit 1)",
-                          updated: 30)
+                          updated: 30, host: "com.mitchellh.ghostty")
         let work = session("work", "cursor", "Cursor", project: "web", .active, title: "Fixing the login form",
-                           tool: "Edit", message: "Edit src/login.tsx", updated: 10)
-        var done = session("done", "opencode", "OpenCode", project: "docs", .active, tool: "Write", updated: 120)
+                           tool: "Edit", message: "Edit src/login.tsx", updated: 10, host: "com.todesktop.230313mzl4w4u92")
+        var done = session("done", "opencode", "OpenCode", project: "docs", .active, tool: "Write", updated: 120,
+                           host: "com.apple.Terminal")
         let r = rig([ask, err, work, done])
         r.today.agentActivity.sessionsChanged([ask, err, work, done], now: Date())
         done.state = .idle
         r.today.agentActivity.sessionsChanged([ask, err, work, done], now: Date())
         r.today.agentActivity.notice(Notice(kind: "session-failed", title: "Codex stopped", sessionKey: "err"), now: Date())
-        try? r.store.apply(Envelope.make(.snapshot, Snapshot(sessions: [ask, err, work, done], usage: r.store.usage)))
+        try? r.store.apply(Envelope.make(.snapshot, Snapshot(sessions: [ask, err, work, done], usage: r.store.usage,
+                                                             loops: r.store.loops)))
         return r
     }
 
     static func rig(_ sessions: [Session]) -> HomeRenders.Rig {
         var r = HomeRenders.Rig()
         r.mood = sessions.isEmpty ? .idle : .working
-        let json = #"{"claude":{"five_hour":{"used_percent":62},"weekly":{"used_percent":31},"updated_at":"2026-10-25T09:00:00Z"},"codex":{"weekly":{"used_percent":91},"updated_at":"2026-10-25T09:00:00Z"}}"#
+        let json = #"{"claude":{"five_hour":{"used_percent":62},"weekly":{"used_percent":31},"updated_at":"2026-10-25T09:00:00Z"},"codex":{"five_hour":{"used_percent":18},"updated_at":"2026-10-25T09:00:00Z"}}"#
         let usage: Usage = (try? JSONCoding.decoder.decode(Usage.self, from: Data(json.utf8))) ?? Usage()
-        try? r.store.apply(Envelope.make(.snapshot, Snapshot(sessions: sessions, usage: usage)))
+        let now = Date()
+        let loops = [Loop(id: "l1", title: "Send Priya the deck", kind: "promise", status: "open", detectedAt: now),
+                     Loop(id: "l2", title: "Review the PR", kind: "follow-up", status: "open", detectedAt: now)]
+        try? r.store.apply(Envelope.make(.snapshot, Snapshot(sessions: sessions, usage: usage, loops: loops)))
         return r
+    }
+
+    /// The host apps the renders' sessions name, the same on every Mac (the real lookup asks
+    /// Launch Services, which differs per Mac).
+    static let hostNames: [String: String] = [
+        "com.anthropic.claudefordesktop": "Claude", "com.mitchellh.ghostty": "Ghostty",
+        "com.todesktop.230313mzl4w4u92": "Cursor", "com.apple.Terminal": "Terminal",
+    ]
+
+    /// Runs `body` with `hostNames` as the host-app lookup, then restores the real one.
+    static func withHostNames<T>(_ body: () -> T) -> T {
+        let saved = HostAppName.lookup
+        HostAppName.lookup = { hostNames[$0] }
+        defer { HostAppName.lookup = saved }
+        return body()
     }
 
     /// A stand-in for an installed app's icon: a plain gradient tile with a symbol.
@@ -663,9 +702,9 @@ enum AgentsRenders {
         let icon = fakeAppIcon()
         let source = AgentIconSource { $0 == "com.anthropic.claudefordesktop" ? icon : nil }
         let r = rig(one() + [session("b", "codex", "Codex", project: "api", .idle, updated: 400)])
-        let view = AgentsView(sessions: r.store.sessions, usage: r.store.usage, log: AgentFinishLog(),
+        let view = AgentsView(sessions: r.store.sessions, log: AgentFinishLog(),
                               onOpenTerminal: { _ in }, onConnect: {})
-            .frame(width: PanelLayout.expandedSize.width - 2 * Space.panelMargin, height: 170, alignment: .top)
+            .frame(width: PanelLayout.expandedSize.width - 2 * Space.panelSide, height: 170, alignment: .top)
             .environment(\.agentIcons, source)
             .environment(\.panelTicking, false)
         return AnyView(view)
@@ -716,7 +755,7 @@ enum ToolRenders {
         let rig = HomeRenders.builtIns(meeting: false)
         let now = Date()
         let clips: [ClipItem] = [
-            ClipItem(kind: .text("Ship the Library grid today, then the settings pages."), copiedAt: now.addingTimeInterval(-40)),
+            ClipItem(kind: .text("Ship the Home column today, then the settings pages."), copiedAt: now.addingTimeInterval(-40)),
             ClipItem(kind: .url(URL(string: "https://example.com/design/library")!), copiedAt: now.addingTimeInterval(-300),
                      pinned: true),
             ClipItem(kind: .text("swift test --filter PanelRoutingTests"), copiedAt: now.addingTimeInterval(-900)),
@@ -730,7 +769,7 @@ enum ToolRenders {
             ShelfItem(kind: .url(URL(string: "https://example.com/report")!), addedAt: now, pinned: true),
             ShelfItem(kind: .text("Release checklist: notarise, tag, appcast"), addedAt: now),
             ShelfItem(kind: .url(URL(string: "https://example.com/specs/library")!), addedAt: now),
-            ShelfItem(kind: .text("Colours: teal 2FB8A6, cream F2E6C9"), addedAt: now),
+            ShelfItem(kind: .text("Colours: ink 92, 56 and 32 percent"), addedAt: now),
         ]
         (rig.registry.widget(ShelfWidget.widgetID) as? ShelfWidget)?.showForRendering(cards)
         return rig
@@ -740,13 +779,13 @@ enum ToolRenders {
         let now = Date()
         let hits: [MemoryHit] = [
             MemoryHit(threadID: "t1", title: "Panel layout notes", sourceApp: "Notes",
-                      snippet: "The Library is a four-column grid; tools open full-panel with a back chevron.",
+                      snippet: "Tools open full-panel with a back chevron; Esc goes back to Home.",
                       score: 0.92, at: now.addingTimeInterval(-600)),
-            MemoryHit(threadID: "t2", title: "Pull request: Library routes", sourceApp: "Safari",
+            MemoryHit(threadID: "t2", title: "Pull request: legacy routes", sourceApp: "Safari",
                       snippet: "Legacy tab ids map through PanelRoute.legacy so old links keep working.",
                       score: 0.81, at: now.addingTimeInterval(-3_600)),
             MemoryHit(threadID: "t3", title: "Standup", sourceApp: "Slack",
-                      snippet: "Ship the Library grid today, then the settings pages.",
+                      snippet: "Ship the Home column today, then the settings pages.",
                       score: 0.66, at: now.addingTimeInterval(-7_200)),
         ]
         let services = MemoryServices(search: MemorySearchModel(preset: hits),
@@ -758,7 +797,7 @@ enum ToolRenders {
     /// A plugin's panel tab: a tool tile of its own and its view full-panel.
     static let pluginTab = PanelTab(id: "sample.standup", title: "Standup", systemImage: "list.bullet.rectangle") {
         VStack(alignment: .leading, spacing: Space.s) {
-            ForEach(["Ship the Library grid", "Review the settings plan", "Pair on the pond scene"], id: \.self) { line in
+            ForEach(["Ship the Home column", "Review the settings plan", "Pair on the command line"], id: \.self) { line in
                 HStack(spacing: Space.s) {
                     Image(systemName: "circle").foregroundStyle(.secondary)
                     Text(verbatim: line).font(DS.font(TypeScale.body))
@@ -767,10 +806,16 @@ enum ToolRenders {
         }
         .padding(Space.m)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .dsCard()
+        .panelFill()
     }
 }
 
+
+/// What a render's probe panel reported as its body height.
+@MainActor
+private final class BodyBox {
+    var value: CGFloat?
+}
 
 /// A battery reading fixed for a render.
 @MainActor

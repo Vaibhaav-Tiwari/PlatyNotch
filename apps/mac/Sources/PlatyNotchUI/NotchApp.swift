@@ -596,7 +596,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var renders = ""
         if failure == nil, let dir = options.renderDir {
             switch ThemeRenders.write(to: URL(fileURLWithPath: dir, isDirectory: true)) {
-            case .success(let n): renders = " renders=\(n) theme=\(appearance.theme.rawValue)"
+            case .success(let n): renders = " renders=\(n)"
             case .failure(let e): failure = "renders: \(e.message)"
             }
         }

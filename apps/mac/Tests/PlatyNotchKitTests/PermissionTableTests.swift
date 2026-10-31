@@ -11,7 +11,7 @@ final class PermissionTableTests: XCTestCase {
             XCTAssertFalse(row.powers.hasSuffix("."), "one plain phrase, no full stop: \(row.id)")
         }
         XCTAssertEqual(PermissionTable.row(.calendars).powers, "Next meeting, Join buttons and meeting reminders")
-        XCTAssertEqual(PermissionTable.row(.calendars).withoutIt, "No meetings in Now or the pill")
+        XCTAssertEqual(PermissionTable.row(.calendars).withoutIt, "No meetings in Up next or the pill")
     }
 
     /// Camera and Bluetooth are asked only from their widget's own setting; Automation only

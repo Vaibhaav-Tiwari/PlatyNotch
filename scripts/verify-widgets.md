@@ -1377,44 +1377,47 @@ block containing `- [ ] in code`.
   a quick note at once: all three are `[x]` and the note line is there (every write runs
   one after another).
 
-## Showcase renders (spec 12)
+## Showcase renders (spec 12; Quiet Notch phase 3)
 
 The README header and the website hero come from these renders. They are the project's
-own renders, so nothing in them is someone else's artwork.
+own renders, so nothing in them is someone else's artwork: agents show their names (never
+an installed app's icon), and the album art is drawn in code.
 
 Regenerate them from `apps/mac` with:
 
 ```sh
-swift build && PLATYNOTCH_HOME=$(mktemp -d) .build/debug/PlatyNotch --render-showcase ../../docs/assets/showcase
+swift build --scratch-path /private/tmp/claude-501/pn-build-shared && PLATYNOTCH_HOME=$(mktemp -d) /private/tmp/claude-501/pn-build-shared/debug/PlatyNotch --render-showcase ../../docs/assets/showcase
 ```
 
-This prints `SHOWCASE OK renders=10`. It writes ten PNGs: five scenes, each in dark and light:
+This prints `SHOWCASE OK renders=10`. It writes ten PNGs: five scenes, each on a dark and a
+light desktop (the panel itself is black on both):
 
-- `now-music`
-- `now-agent`
-- `approval-diff`
-- `library`
-- `platy-idle`, which shows the evening pond
+- `home-music`: Home with a track playing and Up next (wireframe A)
+- `home-live`: Home with focus, a tea timer and the shelf as chips, charging and keep
+  awake in the header (wireframe B)
+- `agents`: three sessions in three apps, usage in the header, the open-loops line
+  (wireframe C)
+- `approval`: a Bash approval in the v0.2 card above the Agents rows (wireframe C)
+- `command-line`: `timer 10m tea` typed, its suggestion below (wireframe E)
 
-Each PNG is 16:9 (800 × 450 points at 2×). It shows the open panel, cropped to its
-content, hanging from a drawn menu bar and camera notch over a gradient wallpaper drawn in
-code, so it uses no photograph and no Apple wallpaper.
+Each PNG is 16:9 (800 × 450 points, forced to 2×: 1600 × 900 pixels). It shows the open
+panel, cropped to its content, hanging from a drawn menu bar and camera notch over a
+gradient wallpaper drawn in code, so it uses no photograph and no Apple wallpaper.
 
 The command uses inert models: it reads no player, calendar or agent and saves nothing. It
-draws in an off-screen window, so nothing appears on screen.
+opens its windows off screen.
 
-The README header is `docs/assets/showcase/now-agent-dark.png`.
+The README header is `docs/assets/showcase/agents-dark.png`.
 
 The 20-second screen recording is scripted in `docs/showcase/recording-script.md`.
 
 - [ ] **271. Showcase renders.** After regenerating, compare the ten PNGs in `docs/assets/showcase`
-  with the app. Check that:
-  - every scene shows "Now", "Agents" and "Library";
-  - nothing is clipped;
+  with the app and the wireframes. Check that:
+  - every scene shows "Home" and "Agents" as plain text, the selected one bold;
+  - nothing is clipped and nothing in the panel is larger than 15 pt;
   - the header is quiet: no "Connecting…";
-  - the light set uses the light surface under the black band;
-  - the same meeting name appears everywhere;
-  - the Library grid ends on a full row.
+  - the panel is black on the light desktop too;
+  - no teal, no tinted icon squares, no initials in place of an agent's icon.
 
 ## UI redesign (Now, Agents, Library)
 
@@ -1584,3 +1587,32 @@ working directory where a step says so.
   Settings › Widgets › Wellbeing).
 - [ ] **312. Settings › Home.** The right column can be Up next, Notes (while Notes is on) or
   Mail (while Mail is on); turning that widget off puts Up next back.
+
+## Quiet Notch phase 3
+
+- [ ] **313. Always black.** Set macOS to Light appearance and open the panel: it is black
+  (#000), with white text at three strengths, and meets the camera housing with no seam; its
+  bottom corners are rounder (22 pt) than the pill's. Settings still follows the system.
+  Settings › Notch has no Theme or Surface row, and Motion offers Calm and Reduced only; open
+  and close use one smooth spring with no bounce.
+- [ ] **314. Nothing above 15 pt.** No text in the panel looks larger than the play/pause
+  symbol: tab names and the header are 12 pt, rows 13 pt, captions 11 pt. Tool pages (Focus,
+  Time, Weather, Battery peek) show their numbers at 15 pt at most.
+- [ ] **315. Agents rows match wireframe C.** With three sessions in different apps: one line
+  each, the agent's app icon (or its name in grey when the app is not installed, never two
+  letters), the **project**, ` · status · age` (`· running tests · 12 m`), a 7 pt dot (green
+  running, amber waiting, red error, grey finished or idle) and a button naming the app it
+  opens; dots and buttons line up down the list, hairlines between rows. Usage is mono
+  numbers in the header (`Claude 5h 62% · 7d 31%`, `Codex 5h 18%`), and
+  `2 open loops · Search memory with ⌘K` closes the list ("open loops" opens them). The
+  "Agents" tab carries an amber dot while a session waits.
+- [ ] **316. Approval keycaps.** An approval shows on #111 with no border: the agent's icon,
+  "Claude Code" in bold, the project, a `Bash` chip and the countdown in mono; the command
+  in mono on a fill (a long command wraps, never cut off); then "Deny ⌘⌫" and a green
+  "Allow ⌘↩", each with its keycap. ⌘↩ and ⌘⌫ still answer only after the card has been
+  on screen long enough ("Look first…" before).
+- [ ] **317. No icon squares, no teal.** Open every tool from the menu bar's "Open" submenu:
+  no symbol sits on a coloured square, nothing is teal, links are grey, and controls are
+  white (never system blue).
+- [ ] **318. Idle CPU.** `scripts/perf-idle.sh` on a real notched Mac (the panel shows for a
+  minute): PASS under 1 %.

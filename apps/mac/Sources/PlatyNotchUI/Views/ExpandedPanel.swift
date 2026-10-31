@@ -55,6 +55,8 @@ struct ExpandedPanel: View {
     /// nil otherwise (the panel then takes its full height). The controller applies it.
     var onBodyHeight: (CGFloat?) -> Void = { _ in }
     @State private var homeBody: CGFloat?
+    /// The approvals region's height while approvals show (it is part of the body).
+    @State private var approvalsHeight: CGFloat?
     let onDecide: (Approval, ApprovalBehavior) -> Void
     let onOpenTerminal: (Session) -> Void
 
@@ -93,8 +95,8 @@ struct ExpandedPanel: View {
             }
             destination(shown, tool: open)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                // Home is left unclipped: it relies on the fit tests (`NowMetrics`,
-                // `NowViewTests`, `HeroViewsTests`) to stay inside, and must not clip Platy or
+                // Home is left unclipped: it relies on the fit tests (`HomeViewTests`) to stay
+                // inside, and must not clip Platy or
                 // the live glyph while they morph in from the pill. Other destinations stay clipped.
                 .clipped(unless: shown.destination == .home && open == nil)
                 .padding(.top, open == nil ? HomeMetrics.gap : ToolHost.gap)
@@ -103,16 +105,17 @@ struct ExpandedPanel: View {
         }
         .coordinateSpace(name: Self.space)
         .onPreferenceChange(HomeHeightKey.self) { homeBody = $0 }
+        .onPreferenceChange(ApprovalsRegionFrameKey.self) { approvalsHeight = $0?.height }
         .onChange(of: reportedBody, initial: true) { _, new in onBodyHeight(new) }
-        // One accent: prominent buttons and controls in brand teal, never system blue.
-        .tint(DS.dynamicColor(.working))
+        // No accent colour (Quiet Notch spec 5.3): controls tint white, never system blue.
+        .tint(.white)
     }
 
     @ViewBuilder private func header(tool: PanelTool?) -> some View {
         if let tool {
             ToolHeader(title: tool.title, onBack: goBack, trailing: AnyView(controls))
         } else {
-            PanelHeader(status: headerStatus, nav: { nav }, controls: { controls })
+            PanelHeader(status: headerStatus, mono: headerIsUsage, nav: { nav }, controls: { controls })
         }
     }
 
@@ -126,9 +129,19 @@ struct ExpandedPanel: View {
                 homeView
             }
         case .agents:
-            AgentsView(sessions: store.sessions, usage: store.usage, log: today.agentActivity.log,
-                       onOpenTerminal: onOpenTerminal, onConnect: onConnectAgent, fixedNow: fixedNow)
+            AgentsView(sessions: store.sessions, log: today.agentActivity.log,
+                       openLoops: openLoops,
+                       onOpenTerminal: onOpenTerminal, onConnect: onConnectAgent,
+                       onOpenLoops: loopsOn ? { openTool(LoopsWidget.widgetID) } : nil, fixedNow: fixedNow)
         }
+    }
+
+    /// The Loops widget is on: "open loops" opens it (otherwise the line is plain text).
+    private var loopsOn: Bool { widgets.isEnabled(LoopsWidget.widgetID) }
+
+    /// Open loops as the Loops tool counts them (less those just marked done or dismissed).
+    private var openLoops: Int {
+        (widgets.widget(LoopsWidget.widgetID) as? LoopsWidget)?.openCount ?? LoopsFormat.open(store.loops).count
     }
 
     /// Home: chips, the media block beside Up next, the command line.
@@ -137,11 +150,23 @@ struct ExpandedPanel: View {
                  dropping: dropping, dropHover: dropHover, onOpenTool: { openTool($0) }, commandLine: commandLine)
     }
 
-    /// What to tell the controller about the body's height.
-    private var reportedBody: CGFloat? {
-        let plainHome: Bool = open == nil && route.normalized(agentsVisible: agentsVisible).destination == .home
-        guard plainHome, store.approvals.isEmpty, let homeBody else { return nil }
-        return HomeMetrics.nav + HomeMetrics.gap + homeBody
+    /// What to tell the controller about the body's height (spec 2: the panel follows its
+    /// content, 160–380 pt; the controller clamps): the header, the approvals region when
+    /// approvals show, and Home's or Agents' natural height. An open tool takes the full height.
+    var reportedBody: CGFloat? {
+        Self.bodyHeight(toolOpen: open != nil, approvals: !store.approvals.isEmpty, approvalsHeight: approvalsHeight,
+                        content: homeBody)
+    }
+
+    /// `reportedBody`'s rule (tests): nil while a tool is open or a measurement is missing.
+    static func bodyHeight(toolOpen: Bool, approvals: Bool, approvalsHeight: CGFloat?, content: CGFloat?) -> CGFloat? {
+        guard !toolOpen, let content else { return nil }
+        var height: CGFloat = HomeMetrics.nav + HomeMetrics.gap + content
+        if approvals {
+            guard let approvalsHeight else { return nil }
+            height += approvalsHeight + HomeMetrics.gap
+        }
+        return height
     }
 
     private var open: PanelTool? {
@@ -149,10 +174,17 @@ struct ExpandedPanel: View {
         return normal.destination == .home ? normal.tool.flatMap { panelTool($0) } : nil
     }
 
-    /// The status text at the header's trailing side: Home's date and weather.
-    private var headerStatus: String? {
-        guard route.normalized(agentsVisible: agentsVisible).destination == .home else { return nil }
-        return PanelHeader<EmptyView, EmptyView>.homeStatus(now: fixedNow ?? Date(), weather: weatherText)
+    /// The status text at the header's trailing side: Home's date and weather, or Agents'
+    /// usage as small mono numbers (`UsageLine`). An open tool has its own header.
+    private var headerStatus: [String] {
+        switch route.normalized(agentsVisible: agentsVisible).destination {
+        case .home: [PanelHeader<EmptyView, EmptyView>.homeStatus(now: fixedNow ?? Date(), weather: weatherText)]
+        case .agents: UsageLine.parts(store.usage)
+        }
+    }
+
+    private var headerIsUsage: Bool {
+        route.normalized(agentsVisible: agentsVisible).destination == .agents
     }
 
     /// `14° Clear` while the Weather widget is on and has a reading.
@@ -209,8 +241,8 @@ struct ExpandedPanel: View {
         VStack(alignment: .leading, spacing: 4) {
             if count > 1 {
                 Text("\(count) approvals waiting · oldest first")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Theme.color(.attention))
+                    .font(DS.font(TypeScale.caption))
+                    .foregroundStyle(DS.color(.needsYou))
             }
             // At its own height when it fits (the destination gets the rest), else
             // scrolling inside the 240 pt region. Cards never move: they sit at the top.
@@ -221,25 +253,32 @@ struct ExpandedPanel: View {
         }
     }
 
-    /// Home and Agents (while shown).
+    /// Home and Agents (while shown), as plain text (spec 2.1): the selected one in primary
+    /// ink and semibold, the other secondary; no pill behind either. Agents carries an amber
+    /// dot while a session needs you.
     private var nav: some View {
         let current: PanelDestination = route.normalized(agentsVisible: agentsVisible).destination
-        return HStack(spacing: 2) {
+        let needsYou: Bool = store.sessions.contains { AgentAttention.of($0, log: today.agentActivity.log, now: fixedNow ?? Date()) == .needsYou }
+        return HStack(spacing: Space.header) {
             ForEach(destinations, id: \.self) { d in
                 let selected: Bool = d == current
                 Button { route = PanelRoute(destination: d) } label: {
-                    Text(verbatim: Self.title(d))
-                        .font(DS.font(TypeScale.headline).weight(selected ? .semibold : .regular))
-                        .foregroundStyle(selected ? .primary : .secondary)
-                        .lineLimit(1)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(selected ? Theme.card : .clear, in: Capsule())
-                        .contentShape(Capsule())
+                    HStack(spacing: 5) {
+                        Text(verbatim: Self.title(d))
+                            .font(DS.font(TypeScale.secondary).weight(selected ? .semibold : .regular))
+                            .foregroundStyle(selected ? DS.primary : DS.secondary)
+                            .lineLimit(1)
+                        if d == .agents, needsYou {
+                            Circle().fill(DS.color(.needsYou)).frame(width: 7, height: 7)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help("\(Self.title(d)) (\u{2318}\(Self.shortcutDigit(d)))")
-                .accessibilityLabel(Self.title(d))
+                .accessibilityLabel(d == .agents && needsYou ? "Agents, a session needs you" : Self.title(d))
                 .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
             }
         }
@@ -262,13 +301,13 @@ struct ExpandedPanel: View {
 
     /// The connection state, Settings and close: at the trailing edge of the nav or a tool's header.
     private var controls: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 6) {
             if store.connection != .connected {
                 // Core status is not "needs you": a quiet icon, the words for hover and VoiceOver.
                 let text: String = store.connection == .connecting ? "Connecting to the core…" : "Reconnecting to the core…"
                 Image(systemName: "bolt.horizontal.circle")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.tertiary)
+                    .font(.system(size: IconSize.symbol))
+                    .foregroundStyle(DS.tertiary)
                     .frame(width: 20, height: 20)
                     .help(text)
                     .accessibilityLabel(text)
@@ -279,8 +318,8 @@ struct ExpandedPanel: View {
             } else {
                 Button(action: onOpenSettings) {
                     Image(systemName: "gearshape")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: IconSize.header))
+                        .foregroundStyle(DS.secondary)
                         .frame(width: 20, height: 20)
                         .contentShape(Rectangle())
                 }
@@ -290,8 +329,8 @@ struct ExpandedPanel: View {
             }
             Button(action: onCollapse) {
                 Image(systemName: "chevron.up")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(DS.tertiary)
                     .frame(width: 20, height: 20)
                     .contentShape(Rectangle())
             }

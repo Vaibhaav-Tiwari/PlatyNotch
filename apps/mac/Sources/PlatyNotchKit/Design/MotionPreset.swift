@@ -31,18 +31,21 @@ public enum MotionDirection: Sendable {
     }
 }
 
-/// Settings › Appearance › Motion (spec 9): the open and close springs.
-/// No preset blurs; Reduced is a cross-fade only.
+/// Settings › Appearance › Motion: one spring for open and close (Quiet Notch spec 5.3),
+/// or Reduced, a cross-fade only. A saved "lively" (and any unknown value) reads as Calm.
 public enum MotionPreset: String, Codable, CaseIterable, Sendable {
-    case calm, lively, reduced
+    case calm, reduced
 
-    /// The spring for a mode change, or nil for Reduced (cross-fade `reducedFade`).
+    public init(from decoder: Decoder) throws {
+        let raw: String = try decoder.singleValueContainer().decode(String.self)
+        self = MotionPreset(rawValue: raw) ?? .calm
+    }
+
+    /// The one spring (never overshoots), or nil for Reduced (cross-fade `reducedFade`).
     public func spring(_ d: MotionDirection) -> SpringSpec? {
-        switch (self, d) {
-        case (.reduced, _): nil
-        case (_, .close): SpringSpec(response: 0.35, damping: 1.0)
-        case (.calm, .open): SpringSpec(response: 0.38, damping: 0.86)
-        case (.lively, .open): SpringSpec(response: 0.42, damping: 0.78)
+        switch self {
+        case .reduced: nil
+        case .calm: SpringSpec(response: 0.35, damping: 1.0)
         }
     }
 

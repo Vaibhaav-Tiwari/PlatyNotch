@@ -96,7 +96,7 @@ final class ApprovalPreviewCardTests: DefaultsTestCase {
         XCTAssertEqual(ApprovalDiffBox.sign(.hunk), "")
         XCTAssertEqual(ApprovalDiffBox.text(DiffLine(kind: .removed, text: "b")), "\u{2212}b")
         XCTAssertEqual(ApprovalDiffBox.text(DiffLine(kind: .added, text: "x\u{200B}")), "+x\u{200B}")
-        XCTAssertEqual(ApprovalDiffBox.tone(.added), .done)
+        XCTAssertEqual(ApprovalDiffBox.tone(.added), .working)
         XCTAssertEqual(ApprovalDiffBox.tone(.removed), .error)
         XCTAssertNil(ApprovalDiffBox.tone(.context))
     }

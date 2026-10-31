@@ -25,8 +25,8 @@ struct MediaBlock: View {
             HStack(spacing: 10) {
                 PlatyView(mood: .idle, size: HomeMetrics.artSize)
                 Text(verbatim: Self.nothingPlaying)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+                    .font(DS.font(TypeScale.body))
+                    .foregroundStyle(DS.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
@@ -36,23 +36,24 @@ struct MediaBlock: View {
     }
 
     private func playing(title: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center, spacing: 14) {
                 art
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: title)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(DS.font(TypeScale.title))
+                        .foregroundStyle(DS.primary)
                         .lineLimit(1).truncationMode(.tail)
                     if let artist = nowPlaying.artist, !artist.isEmpty {
                         Text(verbatim: artist)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
+                            .font(DS.font(TypeScale.secondary))
+                            .foregroundStyle(DS.secondary)
                             .lineLimit(1).truncationMode(.tail)
                     }
+                    progress.padding(.top, 6)
                 }
-                Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            progress
             controls
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -64,13 +65,15 @@ struct MediaBlock: View {
                 Image(nsImage: image).resizable().aspectRatio(contentMode: .fill)
             } else {
                 ZStack {
-                    Color.white.opacity(0.07)
-                    Image(systemName: "music.note").foregroundStyle(.secondary)
+                    DS.fill
+                    Image(systemName: "music.note")
+                        .font(.system(size: IconSize.header))
+                        .foregroundStyle(DS.tertiary)
                 }
             }
         }
         .frame(width: HomeMetrics.artSize, height: HomeMetrics.artSize)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))
         .accessibilityHidden(true)
     }
 
@@ -78,11 +81,11 @@ struct MediaBlock: View {
         TickingNow(fixed: fixedNow) { now in
             if let clock = nowPlaying.clock, clock.duration > 0 {
                 let fraction: Double = min(1, max(0, clock.progress(now: now)))
-                VStack(spacing: 2) {
+                VStack(spacing: 3) {
                     GeometryReader { g in
                         ZStack(alignment: .leading) {
-                            Capsule().fill(Color.white.opacity(0.14))
-                            Capsule().fill(Color.white.opacity(0.7)).frame(width: g.size.width * fraction)
+                            Capsule().fill(DS.hairline)
+                            Capsule().fill(DS.secondary).frame(width: g.size.width * fraction)
                         }
                     }
                     .frame(height: 3)
@@ -91,8 +94,8 @@ struct MediaBlock: View {
                         Spacer()
                         Text(verbatim: "-" + Self.clock(clock.remaining(now: now)))
                     }
-                    .font(.system(size: 11).monospacedDigit())
-                    .foregroundStyle(.tertiary)
+                    .font(DS.font(TypeScale.caption).monospacedDigit())
+                    .foregroundStyle(DS.tertiary)
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("\(Self.clock(clock.position(now: now))) of \(Self.clock(clock.duration))")
@@ -103,26 +106,28 @@ struct MediaBlock: View {
     }
 
     private var controls: some View {
-        HStack(spacing: 18) {
+        HStack(spacing: 16) {
             Spacer(minLength: 0)
-            button("backward.fill", "Previous") { nowPlaying.previous() }
-            button(nowPlaying.isPlaying ? "pause.fill" : "play.fill", nowPlaying.isPlaying ? "Pause" : "Play") {
+            button("backward.fill", "Previous", size: 12) { nowPlaying.previous() }
+            button(nowPlaying.isPlaying ? "pause.fill" : "play.fill", nowPlaying.isPlaying ? "Pause" : "Play",
+                   size: TypeScale.glyph.size) {
                 nowPlaying.playPause()
             }
-            button("forward.fill", "Next") { nowPlaying.next() }
+            button("forward.fill", "Next", size: 12) { nowPlaying.next() }
             Spacer(minLength: 0)
         }
     }
 
-    private func button(_ symbol: String, _ label: String, _ action: @escaping () -> Void) -> some View {
+    private func button(_ symbol: String, _ label: String, size: CGFloat,
+                        _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 14))
+                .font(.system(size: size))
                 .frame(width: 24, height: 22)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(.primary)
+        .foregroundStyle(DS.primary)
         .accessibilityLabel(label)
         .help(label)
     }

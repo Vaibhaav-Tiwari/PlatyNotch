@@ -126,7 +126,7 @@ struct MemoryGraphView: View {
             ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
         case .memoryOff:
             VStack(spacing: 6) {
-                Image(systemName: "brain").font(.system(size: 18)).foregroundStyle(.secondary)
+                Image(systemName: "brain").font(.system(size: IconSize.header)).foregroundStyle(.secondary)
                 Text("Memory is off").font(.system(size: 12, weight: .medium))
                 Button("Open Memory Settings") { onOpenSettings() }.controlSize(.small)
             }
@@ -139,7 +139,7 @@ struct MemoryGraphView: View {
             if graph.nodes.isEmpty {
                 VStack(spacing: 4) {
                     Image(systemName: "point.3.connected.trianglepath.dotted")
-                        .font(.system(size: 18)).foregroundStyle(.secondary).accessibilityHidden(true)
+                        .font(.system(size: IconSize.header)).foregroundStyle(.secondary).accessibilityHidden(true)
                     Text(verbatim: "Nothing captured in the \(model.range.spoken.lowercased()).")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                     Text("Apps, pages, documents and open loops show here as you work.")
@@ -175,7 +175,7 @@ private struct MemoryGraphBody: View {
             GeometryReader { geo in
                 canvas(size: geo.size)
             }
-            .dsCard()
+            .panelFill()
             .opacity(shown ? 1 : 0)
             .onAppear {
                 // One short fade when the graph arrives; nothing moves after that.
@@ -215,7 +215,7 @@ private struct MemoryGraphBody: View {
         let layout = model.layout(graph, aspect: width / height)
         let order = graph.nodes.map(\.id)
         let scene = GraphScene(graph: graph, layout: layout, width: width, height: height, focus: focus,
-                               labelBackground: Theme.surface(scheme).opacity(0.85))
+                               labelBackground: Theme.surface.opacity(0.85))
         return Canvas { ctx, _ in scene.draw(in: &ctx) }
             .contentShape(Rectangle())
             .onContinuousHover { phase in

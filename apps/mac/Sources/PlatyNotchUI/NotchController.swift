@@ -30,6 +30,8 @@ public final class NotchController {
     private var panel: NotchPanel?
     private var layout: PanelLayout?
     private var reportedBody: CGFloat?
+    /// A content shrink waiting for the pointer to leave the band it removes.
+    private(set) var shrinkPending = false
     /// The drop target while the Shelf is off: AirDrop only.
     private let airDropTarget = AirDropDropTarget()
 
@@ -182,23 +184,42 @@ public final class NotchController {
         apply()
     }
 
-    /// The open panel's body height as Home reports it (header, gap and Home's content), or
-    /// nil when Home is not alone (approvals, a tool, Agents): the panel is then full height.
+    /// The open panel's body height as `ExpandedPanel.reportedBody` reports it (header,
+    /// approvals region, Home or Agents), or nil while a tool is open: the panel is then full height.
     func bodyHeightReported(_ body: CGFloat?) {
         reportedBody = body
         applyBodyHeight()
     }
 
     /// Sizes the open panel to the reported body (clamped 160...380) and refreshes the
-    /// window's mouse region.
+    /// window's mouse region. A shrink caused by the panel's own content (suggestions
+    /// narrowing, a suggestion run, an approval answered) waits while the pointer rests in the
+    /// band it would remove: shrinking there would read as a hover exit, close the panel and
+    /// drop a half-typed command. It applies once the pointer is inside the smaller panel or
+    /// has left the panel (`sampleCursor`).
     private func applyBodyHeight() {
-        guard var l = layout else { return }
+        guard let current = layout else { return }
+        var l = current
         let target: CGFloat = reportedBody.map { l.expandedHeight(forBody: $0) } ?? PanelLayout.expandedHeights.upperBound
         l.expandedContentHeight = target
-        guard l != layout else { return }
+        guard l != current else { shrinkPending = false; return }
+        if Self.defersShrink(from: current, to: l, mode: machine.mode, cursor: cursorLocation()) {
+            shrinkPending = true
+            return
+        }
+        shrinkPending = false
         layout = l
         model.layout = l
         apply()
+    }
+
+    /// A content shrink waits while the open panel's pointer sits in the band it removes.
+    static func defersShrink(from old: PanelLayout, to new: PanelLayout, mode: PanelMode, cursor: CGPoint) -> Bool {
+        guard mode == .expanded else { return false }
+        let before: CGRect = old.hitRect(for: .expanded)
+        let after: CGRect = new.hitRect(for: .expanded)
+        guard after.height < before.height else { return false }
+        return PanelLayout.contains(before, cursor) && !PanelLayout.contains(after, cursor)
     }
 
     /// Full screen hides the panel only when Appearance says so (C32).
@@ -467,7 +488,8 @@ public final class NotchController {
     // MARK: - Hover
 
     /// Re-reads the cursor (in `apply`) and feeds the hover debouncer.
-    private func sampleCursor() {
+    func sampleCursor() {
+        if shrinkPending { applyBodyHeight() }
         apply()
         let p = cursor
         guard let layout else { return }

@@ -3,9 +3,10 @@ import PlatyNotchKit
 import XCTest
 @testable import PlatyNotchUI
 
-/// Scans `Sources/PlatyNotchUI` for styles the design system forbids (spec 7): text below
-/// 11 pt, and the 10 pt text styles (`.caption`, `.caption2`, `.footnote` on macOS).
-/// Comment lines are skipped; each failure lists file:line.
+/// Scans `Sources/PlatyNotchUI` for styles the design system forbids (spec 7, Quiet Notch
+/// spec 5): text below 11 pt or above 15 pt in the panel, the 10 pt text styles, teal, tinted
+/// icon squares, a light panel, monograms and bordered cards. Comment lines are skipped;
+/// each failure lists file:line.
 final class DesignLintTests: DefaultsTestCase {
 
     /// Files (relative to `Sources/PlatyNotchUI`) exempt from the text-size lints, each
@@ -18,17 +19,20 @@ final class DesignLintTests: DefaultsTestCase {
         let text: String
     }
 
-    static var uiSources: URL {
+    static var uiSources: URL { sources.appendingPathComponent("PlatyNotchUI") }
+
+    /// `apps/mac/Sources`.
+    static var sources: URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()      // PlatyNotchUITests
             .deletingLastPathComponent()      // Tests
             .deletingLastPathComponent()      // apps/mac
-            .appendingPathComponent("Sources/PlatyNotchUI")
+            .appendingPathComponent("Sources")
     }
 
-    /// Every non-comment line of every Swift file under `Sources/PlatyNotchUI`.
-    static func sourceLines() throws -> [SourceLine] {
-        let root = uiSources.standardizedFileURL
+    /// Every non-comment line of every Swift file under `root` (default `Sources/PlatyNotchUI`).
+    static func sourceLines(in rootURL: URL = uiSources) throws -> [SourceLine] {
+        let root = rootURL.standardizedFileURL
         guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil) else {
             return []
         }
@@ -94,6 +98,207 @@ final class DesignLintTests: DefaultsTestCase {
     /// containers (progress tracks, bars). Starts empty; an entry needs a reason.
     static let radiusAllowlist: [String: String] = [:]
 
+    // MARK: - Quiet Notch (spec 5)
+
+    /// Panel views live outside these (relative to `Sources/PlatyNotchUI`): Settings and
+    /// Onboarding are windows that follow the system, and the game boards draw their own.
+    static let nonPanelDirectories = ["Settings/", "Onboarding/", "Games/Views/"]
+
+    static func isPanel(_ path: String) -> Bool {
+        !nonPanelDirectories.contains { path.hasPrefix($0) }
+    }
+
+    /// Files where the word teal may stay, each with its reason.
+    static let tealAllowlist: [String: String] = [
+        "Basket/BasketWindow.swift": "a basket colour the user picks and has saved (BasketColor.teal), not the panel's accent",
+    ]
+
+    /// No teal anywhere in the UI: colour is for state only (green, amber, red).
+    func testNoTeal() throws {
+        let found = try Self.offenders(#"(?i)\bteal\b"#, allowlist: Self.tealAllowlist)
+        for (path, reason) in Self.tealAllowlist {
+            XCTAssertFalse(reason.trimmingCharacters(in: .whitespaces).isEmpty, "\(path) needs a reason")
+        }
+        XCTAssertTrue(found.isEmpty, "teal (use white ink or a state colour):\n" + found.joined(separator: "\n"))
+    }
+
+    /// Nothing in the panel above 15 pt (`TypeScale.maximum`): literal sizes in panel views.
+    func testNoFontAboveFifteen() throws {
+        let regex = try NSRegularExpression(pattern: #"\.system\(size:\s*([0-9]+(?:\.[0-9]+)?)"#)
+        var found: [String] = []
+        for line in try Self.sourceLines() where Self.isPanel(line.path) {
+            let ns = line.text as NSString
+            for m in regex.matches(in: line.text, range: NSRange(location: 0, length: ns.length)) {
+                let value = Double(ns.substring(with: m.range(at: 1))) ?? 0
+                if value > Double(TypeScale.maximum) {
+                    found.append("\(line.path):\(line.number): \(line.text.trimmingCharacters(in: .whitespaces))")
+                }
+            }
+        }
+        XCTAssertTrue(found.isEmpty, "type above 15 pt in the panel (use TypeScale or IconSize):\n"
+                      + found.joined(separator: "\n"))
+    }
+
+    /// SF Symbols never sit on a tinted well (spec 5.3): no rounded rectangle, circle or
+    /// capsule filled with a colour at an opacity (`DS`/`Theme` state colours with `.opacity`
+    /// or `alpha:`, any named `Color.x.opacity`, the accent colour) within six lines, before
+    /// or after, of an `Image(systemName:` in a panel view.
+    func testNoTintedIconSquares() throws {
+        let tint = #"((DS|Theme)\.(dynamicColor|color|tint)\([^)]*(alpha:[^)]*\)|\)\.opacity\()"#
+            + #"|Color\.(?!white\b|black\b|clear\b|primary\b|secondary\b)[a-zA-Z]+\.opacity\(|Color\.accentColor)"#
+        let shape = #"(RoundedRectangle|Circle|Capsule)"#
+        let tinted = try NSRegularExpression(pattern: shape + #"[^\n]*\.fill\("# + tint
+                                             + #"|\.background\("# + tint + #"[^\n]*in:\s*"# + shape)
+        let lines = try Self.sourceLines()
+        var found: [String] = []
+        for (i, line) in lines.enumerated() where Self.isPanel(line.path) {
+            let ns = line.text as NSString
+            guard tinted.firstMatch(in: line.text, range: NSRange(location: 0, length: ns.length)) != nil else { continue }
+            let window = lines[max(0, i - 6)...min(lines.count - 1, i + 6)].filter { $0.path == line.path }
+            if window.contains(where: { $0.text.contains("Image(systemName:") }) {
+                found.append("\(line.path):\(line.number): \(line.text.trimmingCharacters(in: .whitespaces))")
+            }
+        }
+        XCTAssertTrue(found.isEmpty, "a symbol on a tinted well:\n" + found.joined(separator: "\n"))
+    }
+
+    /// Files in panel directories that may use colours other than the state palette, each
+    /// with its reason.
+    static let colourAllowlist: [String: String] = [
+        "Basket/BasketWindow.swift": "the basket colours the user picks and saves (BasketColor)",
+        "Basket/BasketSwitcher.swift": "each basket drawn in the colour the user picked for it",
+        "Mascot/PlatyArt.swift": "Platy's own colours (the mascot)",
+        "Mascot/PlatyView.swift": "Platy's own colours (the mascot)",
+        "Mascot/PlatyPup.swift": "the pups' agent bandanas (the mascot gallery)",
+        "Mascot/PlatyRenders.swift": "the mascot gallery's backdrop",
+        "Smoke/ShowcaseRenders.swift": "the drawn desktop wallpaper and album art behind the panel",
+        "Smoke/PillRenders.swift": "the render gallery's backdrop",
+        "Smoke/ThemeRenders.swift": "render-only stand-in artwork",
+        "NowPlaying.swift": "the playing track's artwork tint",
+        "Music/MusicVisualiser.swift": "the artwork's own colours in the visualiser",
+        "Games/GameRenders.swift": "the game boards' own colours",
+    ]
+
+    /// Colour only for state (spec 5.3): in panel views, no named system colours, no
+    /// `Color(red:)` or `Color(hue:)`, and `.tint` only white or a `DS`/`Theme` colour.
+    func testColourOnlyForState() throws {
+        let named = #"(blue|indigo|purple|pink|mint|cyan|teal|yellow|orange|red|green|brown)"#
+        let regex = try NSRegularExpression(pattern:
+            #"Color\."# + named + #"\b|[\s(:?,]\."# + named + #"\b(?!\s*[:(=])|(?<![A-Za-z])Color\((red|hue):"#
+            + #"|(?<![A-Za-z])\.tint\((?!\.white\)|DS\.|Theme\.|SettingsTint\.|nil\))"#)
+        var found: [String] = []
+        for line in try Self.sourceLines() where Self.isPanel(line.path) && Self.colourAllowlist[line.path] == nil {
+            let ns = line.text as NSString
+            if regex.firstMatch(in: line.text, range: NSRange(location: 0, length: ns.length)) != nil {
+                found.append("\(line.path):\(line.number): \(line.text.trimmingCharacters(in: .whitespaces))")
+            }
+        }
+        for (path, reason) in Self.colourAllowlist {
+            XCTAssertFalse(reason.trimmingCharacters(in: .whitespaces).isEmpty, "\(path) needs a reason")
+        }
+        XCTAssertTrue(found.isEmpty, "colour that is not a state (use white ink or DS.color(tone)):\n"
+                      + found.joined(separator: "\n"))
+    }
+
+    /// Text styles and font sizes above 15 pt that a literal `.system(size:)` scan misses.
+    func testNoLargeTextStyles() throws {
+        let big = #"(1[6-9]|[2-9][0-9]|[1-9][0-9]{2})(\.[0-9]+)?\b"#
+        let regex = try NSRegularExpression(pattern:
+            #"\.font\(\.(largeTitle|title|title2|title3)\b|\.system\(\.(largeTitle|title)"#
+            + #"|[sS]ystemFont\(ofSize:\s*"# + big + #"|TypeStyle\(size:\s*"# + big)
+        var found: [String] = []
+        for line in try Self.sourceLines() where Self.isPanel(line.path) {
+            let ns = line.text as NSString
+            if regex.firstMatch(in: line.text, range: NSRange(location: 0, length: ns.length)) != nil {
+                found.append("\(line.path):\(line.number): \(line.text.trimmingCharacters(in: .whitespaces))")
+            }
+        }
+        XCTAssertTrue(found.isEmpty, "type above 15 pt in the panel:\n" + found.joined(separator: "\n"))
+    }
+
+    /// The panel is always black: no light scheme or Aqua appearance outside Settings,
+    /// Onboarding and the renders, and `PanelRootView` keeps forcing the dark scheme.
+    func testNoLightPanelScheme() throws {
+        var found = try Self.offenders(#"colorScheme, \.light|ColorScheme\.light|preferredColorScheme\(\.light\)|NSAppearance\(named: \.aqua\)"#)
+        found = found.filter { entry in
+            !(entry.hasPrefix("Settings/") || entry.hasPrefix("Onboarding/") || entry.hasPrefix("Smoke/"))
+        }
+        XCTAssertTrue(found.isEmpty, "a light panel:\n" + found.joined(separator: "\n"))
+        let root = try String(contentsOf: Self.uiSources.appendingPathComponent("PanelRootView.swift"), encoding: .utf8)
+        XCTAssertTrue(root.contains(".environment(\\.colorScheme, .dark)"), "PanelRootView forces the dark scheme")
+    }
+
+    /// First-run and Settings copy names what exists (final review I2): Home, Agents, chips,
+    /// the command line. No string literal in the UI, or the Kit's permission table, speaks
+    /// of Now, glances, the Library, the Today tab or the pond.
+    func testNoRemovedFeaturesInCopy() throws {
+        let regex = try NSRegularExpression(pattern:
+            #"\b(on|in|of) Now\b|\bNow's\b|This is Now|That's Now|(?i:glance)|\bLibrary\b|Today tab|(?i:\bpond\b)"#)
+        let roots: [URL] = [Self.uiSources, Self.sources.appendingPathComponent("PlatyNotchKit/Setup")]
+        var found: [String] = []
+        for root in roots {
+            let walker = try XCTUnwrap(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
+            for case let url as URL in walker where url.pathExtension == "swift" {
+                let text = try String(contentsOf: url, encoding: .utf8)
+                for literal in Self.stringLiterals(in: text) {
+                    let string = String(String.UnicodeScalarView(literal.scalars))
+                    // ~/Library paths are folders, not the removed Library view.
+                    let checked = string.replacingOccurrences(of: "/Library", with: "")
+                    let ns = checked as NSString
+                    if regex.firstMatch(in: checked, range: NSRange(location: 0, length: ns.length)) != nil {
+                        found.append("\(url.lastPathComponent):\(literal.line): \(string)")
+                    }
+                }
+            }
+        }
+        XCTAssertTrue(found.isEmpty, "copy naming removed features:\n" + found.joined(separator: "\n"))
+    }
+
+    /// Never initials: no monogram anywhere in the app's sources (Kit and UI).
+    func testNoMonogram() throws {
+        let regex = try NSRegularExpression(pattern: #"(?i)monogram"#)
+        var found: [String] = []
+        let lines = try Self.sourceLines(in: Self.sources)
+        XCTAssertGreaterThan(lines.count, 10_000, "the lint must find Sources")
+        for line in lines {
+            let ns = line.text as NSString
+            if regex.firstMatch(in: line.text, range: NSRange(location: 0, length: ns.length)) != nil {
+                found.append("\(line.path):\(line.number): \(line.text.trimmingCharacters(in: .whitespaces))")
+            }
+        }
+        XCTAssertTrue(found.isEmpty, "monograms (show the app icon or the agent's name):\n" + found.joined(separator: "\n"))
+    }
+
+    /// Strokes allowed in Home, Agents and Views, each with its reason (`path` or `path:line`).
+    static let strokeAllowlist: [String: String] = [
+        "Home/DropTargetsView.swift": "the drop box's dashed outline (spec 2.2)",
+        "Views/SurfaceViews.swift": "the drop peek's dashed outline, the same box as Home's",
+        "Views/Theme.swift": "the keycap's 1 px hairline (spec 5.1)",
+        "Views/CompactPill.swift": "the pill's progress ring, a track and its arc",
+        "Views/MemoryGraphView.swift": "the memory graph's edges",
+    ]
+
+    /// No bordered cards in the panel (spec 5.3): grouping is spacing, fills and hairlines.
+    func testNoBorderedCardsInPanel() throws {
+        let regex = try NSRegularExpression(pattern: #"\.stroke\(|\.strokeBorder\("#)
+        var found: [String] = []
+        for line in try Self.sourceLines()
+        where ["Home/", "Agents/", "Views/"].contains(where: { line.path.hasPrefix($0) }) {
+            guard Self.strokeAllowlist[line.path] == nil, Self.strokeAllowlist["\(line.path):\(line.number)"] == nil else {
+                continue
+            }
+            let ns = line.text as NSString
+            if regex.firstMatch(in: line.text, range: NSRange(location: 0, length: ns.length)) != nil {
+                found.append("\(line.path):\(line.number): \(line.text.trimmingCharacters(in: .whitespaces))")
+            }
+        }
+        for (key, reason) in Self.strokeAllowlist {
+            XCTAssertFalse(reason.trimmingCharacters(in: .whitespaces).isEmpty, "\(key) needs a reason")
+        }
+        XCTAssertTrue(found.isEmpty, "a bordered card in the panel (use a fill or a hairline):\n"
+                      + found.joined(separator: "\n"))
+    }
+
     func testTileContainersUseRadiusScale() throws {
         let scale = Set(Radius.scale.map { Double($0) })
         let regex = try NSRegularExpression(
@@ -118,7 +323,8 @@ final class DesignLintTests: DefaultsTestCase {
         for (key, reason) in Self.radiusAllowlist {
             XCTAssertFalse(reason.trimmingCharacters(in: .whitespaces).isEmpty, "\(key) needs a reason")
         }
-        XCTAssertTrue(found.isEmpty, "radii outside 6 / 12 / 20 (use dsCard or a Radius token):\n"
+        XCTAssertEqual(Radius.scale, [4, 6, 8, 12, 22])
+        XCTAssertTrue(found.isEmpty, "radii outside 4 / 6 / 8 / 12 / 22 (use a Radius token):\n"
                       + found.joined(separator: "\n"))
     }
 

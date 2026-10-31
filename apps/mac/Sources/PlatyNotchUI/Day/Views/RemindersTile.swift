@@ -86,7 +86,7 @@ struct RemindersTile: View {
                 }
             }
             .padding(6)
-            .dsCard(radius: Radius.chip)
+            .panelFill(radius: Radius.small)
             if let preview = widget.draft.isEmpty ? nil : widget.preview(at: now) {
                 Text(verbatim: preview).font(DS.font(TypeScale.caption)).foregroundStyle(.secondary).padding(.leading, 6)
             } else if let status = widget.status {
@@ -135,7 +135,7 @@ struct RemindersSettings: View {
                 Text("Reminders access")
                 Spacer()
                 switch service.access {
-                case .granted: Label("Allowed", systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(DS.font(TypeScale.caption))
+                case .granted: Label("Allowed", systemImage: "checkmark.circle.fill").foregroundStyle(DS.secondary).font(DS.font(TypeScale.caption))
                 case .notAsked: Button("Allow Reminders Access") { Task { await widget.allow() } }
                 case .denied: Button("Open System Settings") { service.openSettings() }
                 case .unavailable: Text("Needs the installed app.").foregroundStyle(.secondary).font(DS.font(TypeScale.caption))
