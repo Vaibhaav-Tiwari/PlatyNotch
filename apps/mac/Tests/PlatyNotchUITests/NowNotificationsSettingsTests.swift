@@ -63,23 +63,6 @@ final class NowNotificationsSettingsTests: DefaultsTestCase {
                         "Meeting starting", "Reminders you asked for", "Everything else", "Plug-ins without a kind"])
     }
 
-    func testCyclingOffHidesArrows() {
-        XCTAssertTrue(NowView.showsSteps(count: 3, cycling: true))
-        XCTAssertFalse(NowView.showsSteps(count: 3, cycling: false), "no ‹ › with cycling off")
-        XCTAssertFalse(NowView.showsSteps(count: 1, cycling: true))
-        var deck = HeroDeck()
-        let t = Date()
-        let items: [LiveItem] = HeroDeck.items(PriorityModel.rank([
-            LiveActivity(id: "a", widgetID: "music", priority: LivePriority.musicPlaying, glyph: .musicBars,
-                         tint: .accent, accessibilityLabel: "Music", title: "Music"),
-            LiveActivity(id: "b", widgetID: "time", priority: LivePriority.timerRunning, glyph: .symbol("timer"),
-                         tint: .accent, accessibilityLabel: "Timer", title: "Timer"),
-        ], agents: nil, now: t))
-        XCTAssertEqual(items.count, 2)
-        deck.step(1, in: items)
-        XCTAssertEqual(NowView.heroIndex(deck: deck, items: items, cycling: true), 1)
-        XCTAssertEqual(NowView.heroIndex(deck: deck, items: items, cycling: false), 0, "only the top item")
-    }
 }
 
 private extension NotificationKind {

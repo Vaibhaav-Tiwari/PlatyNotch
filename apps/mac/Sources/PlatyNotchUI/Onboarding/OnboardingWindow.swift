@@ -74,7 +74,6 @@ final class TourCoordinator {
     /// Platy celebrates when "Try it" is done.
     var onCelebrate: () -> Void = {}
     var controllers: [NotchController] = [] { didSet { apply() } }
-    var tourOffer: TourOffer? { didSet { apply() } }
     private var limitTask: Task<Void, Never>?
 
     func arm(onDone: @escaping () -> Void) {
@@ -103,7 +102,6 @@ final class TourCoordinator {
     func apply() {
         let sample: LiveActivity? = session.showsSample ? TryItSession.sample : nil
         for c in controllers {
-            c.panelModel.tourOffer = tourOffer
             c.panelModel.tourSample = sample
             c.onExpanded = { [weak self] in
                 guard let self else { return }

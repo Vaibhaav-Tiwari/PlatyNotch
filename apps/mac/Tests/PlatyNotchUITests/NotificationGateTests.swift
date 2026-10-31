@@ -184,14 +184,12 @@ final class NotificationGateTests: DefaultsTestCase {
         XCTAssertEqual(r.controller.panelModel.hiddenKinds, [])
     }
 
-    /// Settings › Now's hero cycling reaches the panel's view model (Now and the hover peek read it).
-    func testHeroCyclingReachesThePanel() {
+    /// Settings › Home's right column reaches the panel's view model.
+    func testHomeSettingsReachThePanel() {
         let r = rig()
-        XCTAssertTrue(r.controller.panelModel.nowSettings.heroCycling)
-        r.controller.nowSettingsChanged(NowSettings(heroCycling: false))
-        XCTAssertFalse(r.controller.panelModel.nowSettings.heroCycling)
-        XCTAssertFalse(PanelRootView.heroCycling(r.controller.panelModel), "what the open panel and hover peek get")
-        XCTAssertFalse(NowView.showsSteps(count: 3, cycling: PanelRootView.heroCycling(r.controller.panelModel)))
+        XCTAssertEqual(r.controller.panelModel.homeSettings.rightColumn, .upNext)
+        r.controller.homeSettingsChanged(HomeSettings(rightColumn: .notes))
+        XCTAssertEqual(r.controller.panelModel.homeSettings.rightColumn, .notes)
     }
 
     /// Two notices at once: the toast is the newest one that may open, not merely the newest.

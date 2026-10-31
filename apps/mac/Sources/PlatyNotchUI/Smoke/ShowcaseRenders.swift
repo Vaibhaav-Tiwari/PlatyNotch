@@ -55,21 +55,21 @@ enum ShowcaseRenders {
         let time: Date
     }
 
-    /// A scene's content (what `NowRenders.panel` lays out below the housing), connected
+    /// A scene's content (what `HomeRenders.panel` lays out below the housing), connected
     /// to the core so the header is quiet.
     static func scene(_ name: String) -> Scene {
         let now = clock
-        var rig: NowRenders.Rig
+        var rig: HomeRenders.Rig
         var route = PanelRoute(destination: .home)
         var time: Date = now
         var height: CGFloat = 352
         switch name {
         case "now-music":
-            rig = NowRenders.musicHero(at: now)
+            rig = HomeRenders.musicHero(at: now)
             rig.mood = PlatyMoodResolver.mood(sessions: [], approvalsPending: 0, musicPlaying: true, focusActive: false,
                                               justFinished: false, hour: 14)
         case "now-agent":
-            rig = NowRenders.agentsHero(at: now)
+            rig = HomeRenders.agentsHero(at: now)
         case "approval-diff":
             // The card's countdown and the rows' times run on the real clock (as in the app),
             // so the approval is 20 s old in real time; its "4:40" never changes.
@@ -81,14 +81,14 @@ enum ShowcaseRenders {
             route = PanelRoute(destination: .agents)
             height = 360
         default:
-            time = NowRenders.at(hour: 19)
-            rig = NowRenders.pond(hour: 19)
+            time = HomeRenders.at(hour: 19)
+            rig = HomeRenders.builtIns(meeting: false, at: time)
         }
         rig.store.apply(.connected)
         // The approval's rows count from the real clock, like its card; the others use the
         // fixed one.
         let panelNow: Date? = name == "approval-diff" ? nil : time
-        return Scene(content: NowRenders.panel(rig, route: route, now: panelNow), height: height, time: time)
+        return Scene(content: HomeRenders.panel(rig, route: route, now: panelNow), height: height, time: time)
     }
 
     /// A believable Edit: eight lines of Swift with a small, readable change.
@@ -123,7 +123,7 @@ enum ShowcaseRenders {
 
     /// The open panel around `content`, as `PanelRootView` draws it, `height` tall.
     static func panel(_ content: AnyView, height: CGFloat, scheme: ColorScheme) -> some View {
-        let layout = NowRenders.layout
+        let layout = HomeRenders.layout
         let width: CGFloat = PanelLayout.expandedSize.width
         let top: CGFloat = layout.contentInset(for: .expanded)
         let band: CGFloat = layout.anchor.height
@@ -175,7 +175,7 @@ private struct ShowcaseDesktop<Panel: View>: View {
     @ViewBuilder let panel: () -> Panel
 
     /// The 14-inch MacBook Pro's menu bar is as tall as the camera housing.
-    private var barHeight: CGFloat { NowRenders.layout.anchor.height }
+    private var barHeight: CGFloat { HomeRenders.layout.anchor.height }
     private let notchWidth: CGFloat = 186
 
     var body: some View {

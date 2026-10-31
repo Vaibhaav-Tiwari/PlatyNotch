@@ -132,32 +132,6 @@ public final class WidgetRegistry {
         visibleWidgets.filter { $0.kind.contains(.tool) }
     }
 
-    /// Glances that can show now: enabled, running, glance widgets with content.
-    public var glanceWidgets: [any NotchWidget] {
-        visibleWidgets.filter { running.contains($0.id) && $0.kind.contains(.glance) && $0.hasContent }
-    }
-
-    /// Every registered glance widget, on or off, in the user's order: Now's default
-    /// glance slots (saved once, so turning a widget off never backfills its slot).
-    public var registeredGlanceIDs: [String] {
-        orderedWidgets.filter { $0.kind.contains(.glance) }.map(\.id)
-    }
-
-    /// The order Now's default glance slots are taken from (the first four, saved once):
-    /// glance widgets that are on by default (`defaultEnabled`), in registry order, then the
-    /// app's usage glance, then every other registered glance widget.
-    public var defaultGlanceOrder: [String] {
-        let glances = orderedWidgets.filter { $0.kind.contains(.glance) }
-        let preferred = glances.filter(\.defaultEnabled).map(\.id)
-        let others = glances.filter { !$0.defaultEnabled }.map(\.id)
-        return preferred + [GlanceSlots.usageID] + others
-    }
-
-    /// Every enabled glance widget, in the user's order.
-    public var glanceCapableIDs: [String] {
-        visibleWidgets.filter { $0.kind.contains(.glance) }.map(\.id)
-    }
-
     /// Running widgets' live activities and the agents item through the one priority model.
     public func rankedLive(agents: AgentsLive?, now: Date) -> [LiveItem] {
         PriorityModel.rank(liveActivities, agents: agents, now: now)

@@ -176,11 +176,6 @@ final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost, FileAct
         return out
     }
 
-    /// A file action in progress: its ring and title, no primary control.
-    func heroView() -> AnyView? {
-        AnyView(TopActivityHero(activities: { [weak self] in self?.liveActivities ?? [] }, action: { _ in nil }))
-    }
-
     func tileView() -> AnyView { AnyView(ShelfTile(host: self)) }
     func dropZoneView() -> AnyView? { isRunning ? AnyView(ShelfDropZone(shelf: self)) : nil }
     func dropTarget() -> PanelDropTarget? { isRunning ? drop : nil }
@@ -202,6 +197,14 @@ final class ShelfWidget: NotchWidget, DragMonitorListener, ItemListHost, FileAct
 
     func setDropTargeted(_ on: Bool) {
         if dropTargeted != on { dropTargeted = on }
+        if !on, dropZone != nil { dropZone = nil }
+    }
+
+    /// Which Home drop target the drag is over (Shelf or AirDrop); nil when none.
+    private(set) var dropZone: DropTargetsView.Zone?
+
+    func setDropZone(_ zone: DropTargetsView.Zone?) {
+        if dropZone != zone { dropZone = zone }
     }
 
     // MARK: - Receiving drops

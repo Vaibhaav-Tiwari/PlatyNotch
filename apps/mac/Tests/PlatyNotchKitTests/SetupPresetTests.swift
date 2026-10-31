@@ -9,21 +9,20 @@ final class SetupPresetTests: DefaultsTestCase {
                                "notes", "mirror", "snap"]
 
     func testPresetGoldenTable() {
-        struct Row { let p: SetupPreset; let on: [String]; let off: [String]; let glances: [String]
+        struct Row { let p: SetupPreset; let on: [String]; let off: [String]
             let mode: AppearanceSettings.Mode; let agents: Bool }
         let rows: [Row] = [
             Row(p: .everyday, on: everydayOn, off: ["fileActions", "snap"],
-                glances: ["meeting", "weather", "system", "loops"], mode: .alwaysOn, agents: false),
+                mode: .alwaysOn, agents: false),
             Row(p: .developer, on: everydayOn + ["fileActions", "snap"], off: [],
-                glances: ["meeting", "agents.usage", "weather", "system"], mode: .alwaysOn, agents: true),
+                mode: .alwaysOn, agents: true),
             Row(p: .minimal, on: ["music"], off: allBuiltIns.filter { $0 != "music" },
-                glances: ["agents.usage"], mode: .minimal, agents: true),
+                mode: .minimal, agents: true),
         ]
         XCTAssertEqual(SetupPreset.allCases, rows.map(\.p))
         for r in rows {
             XCTAssertEqual(r.p.turnsOn, r.on, "\(r.p)")
             XCTAssertEqual(r.p.turnsOff, r.off, "\(r.p)")
-            XCTAssertEqual(r.p.glances, r.glances, "\(r.p)")
             XCTAssertEqual(r.p.mode, r.mode, "\(r.p)")
             XCTAssertEqual(r.p.showsAgents, r.agents, "\(r.p)")
         }
@@ -85,7 +84,6 @@ final class SetupPresetTests: DefaultsTestCase {
         d.set(layout, forKey: WidgetLayout.key)
         UpgradeMigration.run(defaults: d, existingUser: true)
         XCTAssertEqual(d.data(forKey: WidgetLayout.key), layout, "byte-identical")
-        XCTAssertNil(d.object(forKey: GlanceSlots.key), "glances are no longer chosen for them")
     }
 
     func testExistingUserKeepsAgents() {
@@ -93,13 +91,11 @@ final class SetupPresetTests: DefaultsTestCase {
         UpgradeMigration.run(defaults: d, existingUser: true)
         XCTAssertTrue(AgentsVisibility.load(from: d).everConnected, "Agents stays where it was")
         XCTAssertFalse(AgentsVisibility.load(from: d).forcedOn)
-        // Chosen glances and appearance are kept.
+        // The appearance is kept.
         let other = defaults()
         other.removeObject(forKey: UpgradeMigration.key)
-        GlanceSlots(ids: ["music"]).save(to: other)
         AppearanceStore.save(AppearanceSettings(mode: .minimal), to: other)
         UpgradeMigration.run(defaults: other, existingUser: true)
-        XCTAssertEqual(GlanceSlots.decode(other.data(forKey: GlanceSlots.key))?.ids, ["music"])
         XCTAssertEqual(AppearanceStore.load(from: other).mode, .minimal)
     }
 
@@ -107,12 +103,10 @@ final class SetupPresetTests: DefaultsTestCase {
         let d = defaults()
         UpgradeMigration.run(defaults: d, existingUser: true)
         XCTAssertTrue(d.bool(forKey: UpgradeMigration.key))
-        // The user later hides Agents and changes glances: a second run changes nothing.
+        // The user later hides Agents: a second run changes nothing.
         AgentsVisibility(everConnected: false).save(to: d)
-        GlanceSlots(ids: ["music"]).save(to: d)
         UpgradeMigration.run(defaults: d, existingUser: true)
         XCTAssertFalse(AgentsVisibility.load(from: d).everConnected)
-        XCTAssertEqual(GlanceSlots.decode(d.data(forKey: GlanceSlots.key))?.ids, ["music"])
     }
 
     func testNewUserWritesNothing() {
@@ -137,7 +131,6 @@ final class SetupPresetTests: DefaultsTestCase {
         FirstRunState.finish(defaults: d)
         XCTAssertEqual(FirstRunState.prepare(defaults: d, onboardingDone: true, layoutSaved: true), .settled)
         XCTAssertFalse(AgentsVisibility.load(from: d).everConnected)
-        XCTAssertNil(d.object(forKey: GlanceSlots.key), "the first run chose (or left) the glances")
     }
 
     /// Someone updating: the tour card, the upgrade once, and finishing settles it.
@@ -152,18 +145,16 @@ final class SetupPresetTests: DefaultsTestCase {
     }
 
     func testPresetPlanAsksOutsideTheFirstRun() {
-        let plan = PresetPlan.plan(.everyday, enabled: ["music"], glances: ["music"], mode: .minimal)
+        let plan = PresetPlan.plan(.everyday, enabled: ["music"], mode: .minimal)
         XCTAssertEqual(plan.turnOn, ["meeting", "time", "weather", "shelf", "clipboard"])
-        XCTAssertEqual(plan.glances, ["meeting", "weather", "system", "loops"])
         XCTAssertEqual(plan.mode, .alwaysOn)
         XCTAssertFalse(plan.asks(firstRun: true), "a new install's first run applies directly")
         XCTAssertTrue(plan.asks(firstRun: false), "Settings always asks, even with nothing turned off")
         XCTAssertEqual(plan.summary(title: { $0.capitalized }), [
             "Turns on Meeting, Time, Weather, Shelf, Clipboard.",
-            "Glances become Meeting, Weather, System, Loops.",
             "The notch stays on.",
         ])
-        let current = PresetPlan.plan(.minimal, enabled: ["music"], glances: [GlanceSlots.usageID], mode: .minimal)
+        let current = PresetPlan.plan(.minimal, enabled: ["music"], mode: .minimal)
         XCTAssertTrue(current.isCurrent)
         XCTAssertFalse(current.asks(firstRun: false), "nothing to change: nothing to ask")
     }

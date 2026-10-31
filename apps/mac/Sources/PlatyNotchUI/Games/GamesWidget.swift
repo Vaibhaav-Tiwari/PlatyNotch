@@ -72,11 +72,6 @@ public final class GamesWidget: NotchWidget {
                              subtitle: "Score \(session.score)")]
     }
 
-    /// Platy Chase in play and its score: no primary control.
-    public func heroView() -> AnyView? {
-        AnyView(TopActivityHero(activities: { [weak self] in self?.liveActivities ?? [] }, action: { _ in nil }))
-    }
-
     public func tileView() -> AnyView {
         AnyView(GamesTile(host: host, open: { [weak self] in self?.openTab() }))
     }

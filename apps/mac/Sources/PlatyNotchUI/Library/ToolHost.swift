@@ -8,7 +8,7 @@ struct ToolHost: View {
     static let backLabel = "Back to Home"
     /// Between the header and the tool: the nav's gap, so content starts where it does
     /// under the nav.
-    static let gap: CGFloat = NowMetrics.gap
+    static let gap: CGFloat = HomeMetrics.gap
 
     let title: String
     let onBack: () -> Void
@@ -26,13 +26,13 @@ struct ToolHost: View {
     /// The room a tool has below its header in `available` (the open panel's content
     /// height less the top inset and bottom padding).
     static func contentHeight(available: CGFloat) -> CGFloat {
-        available - NowMetrics.nav - gap
+        available - HomeMetrics.nav - gap
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Self.gap) {
             ToolHeader(title: title, onBack: onBack, trailing: trailing)
-                .frame(height: NowMetrics.nav)
+                .frame(height: HomeMetrics.nav)
             ToolBody(content: content)
         }
     }

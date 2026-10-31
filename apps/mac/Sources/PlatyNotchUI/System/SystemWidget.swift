@@ -629,14 +629,6 @@ final class SystemWidget: NotchWidget {
     /// This Mac has a battery (desktops have none).
     var hasContent: Bool { battery != nil }
 
-    /// "Battery 82%".
-    func glanceView() -> AnyView? { AnyView(SystemGlance(widget: self)) }
-
-    /// Keep-awake, a download or low battery: no primary control (spec 6.4).
-    func heroView() -> AnyView? {
-        AnyView(TopActivityHero(activities: { [weak self] in self?.liveActivities ?? [] }, action: { _ in nil }))
-    }
-
     func tileView() -> AnyView { AnyView(SystemTile(widget: self)) }
 
     /// The Library tool: the battery large (a laptop), then keep-awake and the rest,
@@ -655,16 +647,5 @@ final class SystemWidget: NotchWidget {
         case Self.downloadPeekID: finishedDownload.map { AnyView(DownloadPeekView(widget: self, url: $0)) }
         default: nil
         }
-    }
-}
-
-/// The battery glance.
-private struct SystemGlance: View {
-    let widget: SystemWidget
-
-    var body: some View {
-        let b = widget.battery
-        GlanceChip(systemImage: b?.symbolName ?? "battery.100", value: b.map { "\($0.percent)%" } ?? "—",
-                   label: "Battery", tint: (b?.isLow ?? false) ? DS.dynamicColor(.error) : nil)
     }
 }

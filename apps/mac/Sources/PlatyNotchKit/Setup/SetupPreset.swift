@@ -1,7 +1,7 @@
 import Foundation
 
 /// The three setups the first run offers (spec 10), also in Settings. A preset only
-/// chooses which built-in widgets are on, the four glances, Minimal or Always on, and
+/// chooses which built-in widgets are on, Minimal or Always on, and
 /// whether Agents shows; plug-in widgets are never touched.
 public enum SetupPreset: String, CaseIterable, Codable, Sendable {
     case everyday, developer, minimal
@@ -47,14 +47,6 @@ public enum SetupPreset: String, CaseIterable, Codable, Sendable {
         }
     }
 
-    public var glances: [String] {
-        switch self {
-        case .everyday: ["meeting", "weather", "system", "loops"]
-        case .developer: ["meeting", GlanceSlots.usageID, "weather", "system"]
-        case .minimal: [GlanceSlots.usageID]
-        }
-    }
-
     public var mode: AppearanceSettings.Mode { self == .minimal ? .minimal : .alwaysOn }
 
     /// Whether the preset turns Agents on before an agent connects.
@@ -80,46 +72,41 @@ public struct PresetChange: Equatable, Sendable {
     }
 }
 
-/// Everything applying a preset would change now: widgets on and off, the four glances
-/// and the notch mode. Applying from Settings (or the first run replayed from there)
+/// Everything applying a preset would change now: widgets on and off and the notch mode. Applying from Settings (or the first run replayed from there)
 /// always asks with this summary; only a new install's first run applies directly.
 public struct PresetPlan: Equatable, Sendable {
     public let preset: SetupPreset
     public let turnOn: [String]
     public let turnOff: [String]
-    /// The new glances, or nil when they are already the preset's.
-    public let glances: [String]?
     /// The new mode, or nil when it is already the preset's.
     public let mode: AppearanceSettings.Mode?
 
-    public init(preset: SetupPreset, turnOn: [String], turnOff: [String], glances: [String]?,
+    public init(preset: SetupPreset, turnOn: [String], turnOff: [String],
                 mode: AppearanceSettings.Mode?) {
         self.preset = preset
         self.turnOn = turnOn
         self.turnOff = turnOff
-        self.glances = glances
         self.mode = mode
     }
 
-    public static func plan(_ p: SetupPreset, enabled: Set<String>, glances: [String],
+    public static func plan(_ p: SetupPreset, enabled: Set<String>,
                             mode: AppearanceSettings.Mode) -> PresetPlan {
         let change = PresetChange.plan(p, enabled: enabled)
         return PresetPlan(preset: p, turnOn: change.turnOn, turnOff: change.turnOff,
-                          glances: glances == p.glances ? nil : p.glances, mode: mode == p.mode ? nil : p.mode)
+                          mode: mode == p.mode ? nil : p.mode)
     }
 
     /// Nothing would change: this preset is the current setup.
-    public var isCurrent: Bool { turnOn.isEmpty && turnOff.isEmpty && glances == nil && mode == nil }
+    public var isCurrent: Bool { turnOn.isEmpty && turnOff.isEmpty && mode == nil }
 
     /// Whether to ask first: always, except in a new install's first run or when nothing changes.
     public func asks(firstRun: Bool) -> Bool { !firstRun && !isCurrent }
 
-    /// One line per kind of change, in plain words; `title` names a widget or glance id.
+    /// One line per kind of change, in plain words; `title` names a widget id.
     public func summary(title: (String) -> String) -> [String] {
         var lines: [String] = []
         if !turnOn.isEmpty { lines.append("Turns on " + turnOn.map(title).joined(separator: ", ") + ".") }
         if !turnOff.isEmpty { lines.append("Turns off " + turnOff.map(title).joined(separator: ", ") + ".") }
-        if let glances { lines.append("Glances become " + glances.map(title).joined(separator: ", ") + ".") }
         if let mode {
             lines.append(mode == .minimal ? "The notch hides until something is live." : "The notch stays on.")
         }

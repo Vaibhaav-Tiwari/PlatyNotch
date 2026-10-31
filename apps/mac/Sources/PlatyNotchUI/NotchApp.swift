@@ -466,8 +466,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// pill width rebuild the panels; everything else is applied to them live.
     private func appearanceMayHaveChanged() {
         today.agentActivity.reloadVisibility()   // Settings › Agents: "Show Agents before an agent connects"
-        let nowSettings = NowSettings.load(from: .standard)
-        for c in controllers { c.nowSettingsChanged(nowSettings) }
+        let home = HomeSettings.load(from: .standard)
+        for c in controllers { c.homeSettingsChanged(home) }
         let policy = NotificationPolicy.load(from: .standard)
         if policy != surfaces.notificationPolicy { surfaces.notificationPolicy = policy }
         let now = AppearanceStore.load(from: .standard)
@@ -526,7 +526,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             c.header = headerServices
             c.onOpenSettings = { [weak self] in self?.openSettings(section: nil) }
             c.onOpenAgentSettings = { [weak self] in self?.openSettings(section: "agents") }
-            c.nowSettingsChanged(NowSettings.load(from: .standard))
+            c.homeSettingsChanged(HomeSettings.load(from: .standard))
             c.attach(to: screen)
             return c
         }
@@ -535,26 +535,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - First run, the tour card and "Try it"
 
-    /// Each panel's tour card (existing users, until taken or dismissed); the "Try it"
-    /// sample and its hooks live in `tour`.
+    /// The "Try it" sample and its hooks live in `tour`; the tour itself is offered in
+    /// Settings › General (no card in the panel).
     private func applyTourState() {
-        let d = UserDefaults.standard
-        tour.tourOffer = OnboardingLaunch.offersTourCard(firstRun, tourOffered: d.bool(forKey: FirstRunState.tourOfferedKey))
-            ? TourOffer(onTake: { [weak self] in self?.takeTour() }, onDismiss: { [weak self] in self?.dismissTour() })
-            : nil
         tour.controllers = controllers
-    }
-
-    private func takeTour() {
-        UserDefaults.standard.set(true, forKey: FirstRunState.tourOfferedKey)
-        applyTourState()
-        for c in controllers { c.collapse() }
-        onboarding.show(flow: .tour)
-    }
-
-    private func dismissTour() {
-        UserDefaults.standard.set(true, forKey: FirstRunState.tourOfferedKey)
-        applyTourState()
     }
 
     /// "Meet Platy": the notch on the main display opens and closes once.

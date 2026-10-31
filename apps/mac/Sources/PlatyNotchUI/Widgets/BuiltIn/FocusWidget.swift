@@ -29,16 +29,6 @@ final class FocusWidget: NotchWidget {
                              subtitle: "Notices held until it ends")]
     }
 
-    /// The session's countdown and Pause.
-    func heroView() -> AnyView? {
-        let focus = self.focus
-        return AnyView(TopActivityHero(activities: { [weak self] in self?.liveActivities ?? [] }, action: { activity in
-            let rank: LiveRank = LiveRank(activity: activity, now: Date())
-            guard let title = HeroPrimary.title(rank: rank, playing: false, hasLink: false) else { return nil }
-            return HeroAction(title: title, systemImage: "pause.fill", run: { focus.pause() })
-        }))
-    }
-
     func tileView() -> AnyView { AnyView(FocusTile(focus: focus)) }
 
     /// The Library tool: presets, or the running session's countdown (today's Focus tab).

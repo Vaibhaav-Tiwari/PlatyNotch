@@ -124,9 +124,6 @@ final class OnboardingFlowTests: DefaultsTestCase {
     func testSampleIgnoredDuringApproval() {
         let sample = TryItSession.sample
         XCTAssertEqual(sample.title, "This is Now")
-        XCTAssertEqual(NowView.withTourSample([], sample: sample, approvals: 0).map(\.id), [sample.id])
-        XCTAssertEqual(NowView.withTourSample([], sample: sample, approvals: 1), [], "an approval holds Now")
-        XCTAssertEqual(NowView.withTourSample([], sample: nil, approvals: 0), [])
         let session = TryItSession()
         var done = false
         session.arm { done = true }
@@ -149,8 +146,6 @@ final class OnboardingFlowTests: DefaultsTestCase {
         s.applyPreset(.developer, defaults: d)
         XCTAssertTrue(s.widgets.isEnabled("snap"))
         XCTAssertTrue(s.widgets.isEnabled("fileActions"))
-        XCTAssertEqual(GlanceSlots.decode(d.data(forKey: GlanceSlots.key))?.ids,
-                       ["meeting", GlanceSlots.usageID, "weather", "system"])
         XCTAssertTrue(AgentsVisibility.load(from: d).forcedOn)
         XCTAssertEqual(AppearanceStore.load(from: d).mode, .alwaysOn)
         s.applyPreset(.minimal, defaults: d)
@@ -169,7 +164,7 @@ final class OnboardingFlowTests: DefaultsTestCase {
         XCTAssertEqual(OnboardingView.continueStep(page: .meetPlaty, confirmsPresets: true, plan: plan), .nextPage)
         let summary = s.presetSummary(plan)
         XCTAssertTrue(summary.contains("Turns off"), summary)
-        XCTAssertTrue(summary.contains("Claude/Codex usage"), "glances are named, not ids: \(summary)")
+        XCTAssertTrue(summary.contains("Meetings"), "widgets are named, not ids: \(summary)")
         XCTAssertTrue(summary.contains("The notch hides until something is live."))
     }
 
@@ -177,12 +172,11 @@ final class OnboardingFlowTests: DefaultsTestCase {
     func testSettingsAlwaysAsks() {
         for p in SetupPreset.allCases {
             for enabled in [Set<String>(), Set(["music"]), Set(SetupPreset.builtIns)] {
-                let plan = PresetPlan.plan(p, enabled: enabled, glances: [], mode: .alwaysOn)
+                let plan = PresetPlan.plan(p, enabled: enabled, mode: .alwaysOn)
                 XCTAssertEqual(GeneralSection.action(for: plan), plan.isCurrent ? .alreadyCurrent : .ask, "\(p)")
-                XCTAssertEqual(GeneralSection.action(for: plan), .ask, "\(p): glances always differ here")
             }
         }
-        let current = PresetPlan.plan(.minimal, enabled: ["music"], glances: [GlanceSlots.usageID], mode: .minimal)
+        let current = PresetPlan.plan(.minimal, enabled: ["music"], mode: .minimal)
         XCTAssertEqual(GeneralSection.action(for: current), .alreadyCurrent)
     }
 }

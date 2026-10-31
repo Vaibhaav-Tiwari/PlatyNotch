@@ -13,8 +13,6 @@ final class PanelViewModel {
     /// Where the open panel is: Home by default, or Agents or a feature open inside Home
     /// (`NotchController.expand(tab:)` maps today's tab ids through `PanelRoute.legacy`).
     var route = PanelRoute(destination: .home)
-    /// Which live item Now's hero shows; back to the top one on every open.
-    var heroDeck = HeroDeck()
     /// Which approval cards have been on screen long enough to be answered (this window).
     var arming = ApprovalArming()
     /// Toggles expanded / collapsed (the state machine's `.click`).
@@ -35,23 +33,21 @@ final class PanelViewModel {
     var appearance: AppearanceSettings = AppearanceSettings()
     /// Settings › Notifications: kinds the pill leaves out (never approvals).
     var hiddenKinds: Set<NotificationKind> = []
-    /// Existing users' one-time tour card at the top of Now (spec 14).
-    var tourOffer: TourOffer?
     /// The first run's "Try it" sample ("This is Now") in Now's deck.
     var tourSample: LiveActivity?
     /// The notice the toast shows (the one that opened it, not merely the newest).
     var toastNotice: Notice?
-    /// Settings › Now (hero cycling), refreshed when the saved settings change.
-    var nowSettings = NowSettings()
+    /// Settings › Home (the right column), refreshed when the saved settings change.
+    var homeSettings = HomeSettings()
+    /// Home's natural body height while plain Home shows (the controller sizes the panel to it);
+    /// nil: the panel takes its full height.
+    var onBodyHeight: (CGFloat?) -> Void = { _ in }
     /// The header toggles' services (the app's one; nil in renders and tests).
     var header: HeaderServices?
 }
 
 /// Places the mode's content inside the fixed-size panel window.
 struct PanelRootView: View {
-    /// Settings › Now › hero cycling, as both the open panel's Now and the hover peek get it.
-    static func heroCycling(_ model: PanelViewModel) -> Bool { model.nowSettings.heroCycling }
-
     let model: PanelViewModel
     let store: AppStore
     let responder: ApprovalResponder
@@ -103,9 +99,8 @@ struct PanelRootView: View {
                                                  fullScreen: model.fullScreen))
         .animation(modeAnimation, value: model.mode)
         .animation(.easeOut(duration: 0.15), value: model.visible)
-        .onChange(of: model.mode) { old, new in
+        .onChange(of: model.mode) { _, new in
             previousMode = new
-            if new == .expanded, old != .expanded { model.heroDeck.panelOpened() }
         }
     }
 
@@ -142,21 +137,11 @@ struct PanelRootView: View {
         return Morph.morphsPlaty(motion: preset) ? "panel" : model.mode.description
     }
 
-    /// The morph (spec 9): Platy always, and the pill's trailing glyph when Now's hero shows
-    /// the same live item; nil under reduced motion (cross-fades only, no morph).
+    /// The morph (spec 9): Platy always; nil under reduced motion (cross-fades only, no morph).
     private var morphContext: MorphContext? {
         let preset: MotionPreset = model.appearance.effectiveMotion(reduceMotion: reduceMotion)
         guard Morph.morphsPlaty(motion: preset) else { return nil }
-        let now: Date = Date()
-        let activities: [LiveActivity] = widgets.liveActivities
-        let pill = PillContent(activities: activities, sessions: store.sessions, approvals: store.approvals.count,
-                               hiddenKinds: model.hiddenKinds, now: now)
-        guard let trailing: String = pill.trailing?.id else { return MorphContext(namespace: morphSpace, liveID: nil) }
-        let agents: AgentsLive? = AgentsLive.make(sessions: store.sessions, log: today.agentActivity.log, now: now)
-        let items: [LiveItem] = HeroDeck.items(widgets.rankedLive(agents: agents, now: now))
-        let hero: String? = items.isEmpty ? nil : items[model.heroDeck.current(in: items) ?? 0].id
-        let live: String? = Morph.matches(pillTrailingID: trailing, heroTopID: hero, motion: preset) ? trailing : nil
-        return MorphContext(namespace: morphSpace, liveID: live)
+        return MorphContext(namespace: morphSpace, liveID: nil)
     }
 
     /// Appearance › Motion: the open or close spring of the preset (no blur in any preset);
@@ -208,11 +193,11 @@ struct PanelRootView: View {
                           route: Binding(get: { model.route }, set: { model.route = $0 }),
                           onCollapse: model.onClick, onOpenSettings: model.onOpenSettings,
                           header: model.header,
-                          deck: Binding(get: { model.heroDeck }, set: { model.heroDeck = $0 }),
+                          homeSettings: model.homeSettings,
                           agentsVisible: today.agentActivity.agentsVisibility.isVisible,
                           onConnectAgent: model.onConnectAgent,
-                          tourOffer: model.tourOffer, tourSample: model.tourSample,
-                          heroCycling: Self.heroCycling(model),
+                          tourSample: model.tourSample,
+                          onBodyHeight: model.onBodyHeight,
                           onDecide: decide, onOpenTerminal: onOpenTerminal)
             }
             .transition(ChromeSettle<EmptyView>.transition)
@@ -235,14 +220,10 @@ struct PanelRootView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .allowsHitTesting(false)
         case .peek(.hover):
-            // Peek on hover, open on click: Now's hero alone; a click anywhere else opens
+            // Peek on hover, open on click: the top live item alone; a click anywhere opens
             // the panel. No approval card is ever drawn here (an approval replaces it).
             ChromeSettle {
-            NowView(store: store, widgets: widgets, today: today,
-                    deck: Binding(get: { model.heroDeck }, set: { model.heroDeck = $0 }),
-                    onOpenTool: { _ in model.onClick() }, onOpenAgents: model.onClick,
-                    onOpenTerminal: onOpenTerminal, heroOnly: true,
-                    cycling: Self.heroCycling(model), tourSample: model.tourSample)
+                HoverPeekView(widgets: widgets)
             }
             .transition(ChromeSettle<EmptyView>.transition)
                 // 6 at the bottom: the 160 pt hero fits the 176 pt peek without a notch too.
@@ -251,8 +232,11 @@ struct PanelRootView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { model.onClick() }
         case .peek(.drop):
-            (widgets.dropZoneView() ?? AnyView(DropZonePlaceholder()))
-                .padding(EdgeInsets(top: top, leading: 12, bottom: 10, trailing: 12))
+            // The Home body becomes drop targets: Shelf and AirDrop in one dashed box.
+            HomeView(today: today, widgets: widgets, settings: model.homeSettings, dropping: true,
+                     dropHover: (widgets.widget(ShelfWidget.widgetID) as? ShelfWidget)?.dropZone)
+                .padding(EdgeInsets(top: top, leading: Space.panelMargin, bottom: 10, trailing: Space.panelMargin))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
     }
 

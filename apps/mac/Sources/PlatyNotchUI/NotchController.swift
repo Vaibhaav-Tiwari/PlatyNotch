@@ -29,6 +29,9 @@ public final class NotchController {
     private var debouncer = HoverDebouncer()
     private var panel: NotchPanel?
     private var layout: PanelLayout?
+    private var reportedBody: CGFloat?
+    /// The drop target while the Shelf is off: AirDrop only.
+    private let airDropTarget = AirDropDropTarget()
 
     private var cursor = NSEvent.mouseLocation
     /// A full-screen app covers this display (games pause, nudges wait, HUDs drop).
@@ -138,6 +141,7 @@ public final class NotchController {
         // An open panel must still close when the cursor is away after a rebuild.
         debouncer.reset(hovering: machine.mode == .expanded)
         model.onClick = { [weak self] in self?.handle(.click) }
+        model.onBodyHeight = { [weak self] in self?.bodyHeightReported($0) }
         model.onStopRinging = { [weak self] id in self?.surfaces.stopRinging(id: id) }
         model.onOpenSettings = { [weak self] in self?.onOpenSettings() }
         model.onConnectAgent = { [weak self] in self?.onOpenAgentSettings() }
@@ -178,6 +182,25 @@ public final class NotchController {
         apply()
     }
 
+    /// The open panel's body height as Home reports it (header, gap and Home's content), or
+    /// nil when Home is not alone (approvals, a tool, Agents): the panel is then full height.
+    func bodyHeightReported(_ body: CGFloat?) {
+        reportedBody = body
+        applyBodyHeight()
+    }
+
+    /// Sizes the open panel to the reported body (clamped 160...380) and refreshes the
+    /// window's mouse region.
+    private func applyBodyHeight() {
+        guard var l = layout else { return }
+        let target: CGFloat = reportedBody.map { l.expandedHeight(forBody: $0) } ?? PanelLayout.expandedHeights.upperBound
+        l.expandedContentHeight = target
+        guard l != layout else { return }
+        layout = l
+        model.layout = l
+        apply()
+    }
+
     /// Full screen hides the panel only when Appearance says so (C32).
     private var hidesForFullScreen: Bool { fullScreen && appearance.hideInFullScreen }
 
@@ -190,6 +213,7 @@ public final class NotchController {
         displayID = screen.displayID
         topInset = screen.safeAreaInsets.top
         model.layout = l
+        applyBodyHeight()
 
         let first = panel == nil
         let panel = self.panel ?? makePanel(frame: l.windowFrame)
@@ -220,9 +244,9 @@ public final class NotchController {
         handle(.click)
     }
 
-    /// Settings › Now changed (or the panel was built): hero cycling and the like.
-    public func nowSettingsChanged(_ settings: NowSettings) {
-        if model.nowSettings != settings { model.nowSettings = settings }
+    /// Settings › Home changed (or the panel was built): the right column.
+    public func homeSettingsChanged(_ settings: HomeSettings) {
+        if model.homeSettings != settings { model.homeSettings = settings }
     }
 
     /// Closes the open panel (the first run's "Meet Platy" demo).
@@ -731,6 +755,11 @@ extension NotchController: PanelSurfaceSink {
 // MARK: - Drops (the hosting view's drag destination)
 
 extension NotchController: PanelDropRouting {
+    /// The shelf's target (Shelf and AirDrop), else AirDrop alone while AirDrop exists.
+    func dropTarget() -> PanelDropTarget? {
+        widgets.dropTarget() ?? (ShelfActions.canAirDrop ? airDropTarget : nil)
+    }
+
     /// Drags reach the window only where it takes mouse events: the drop zone (whole
     /// window), or the pill / open panel / approval peek under the cursor. A drag the
     /// shelf's detector missed starts the session here, so the drop zone still opens;
@@ -740,7 +769,7 @@ extension NotchController: PanelDropRouting {
         // zone over the panel they come from, and are never dropped back.
         guard info.draggingSource == nil else { return [] }
         // No running widget takes drops (the shelf is off): no session, no placeholder.
-        guard let target = widgets.dropTarget() else { return [] }
+        guard let target = dropTarget() else { return [] }
         if !dragSession, !surfaces.dragActive {
             windowStartedSession = true
             surfaces.setDragSession(active: true)
@@ -750,18 +779,18 @@ extension NotchController: PanelDropRouting {
     }
 
     func panelDragExited() {
-        widgets.dropTarget()?.dragExited()
+        dropTarget()?.dragExited()
     }
 
     func panelPerformDrop(_ info: NSDraggingInfo) -> Bool {
-        guard machine.mode.acceptsDrops, let target = widgets.dropTarget() else { return false }
+        guard machine.mode.acceptsDrops, let target = dropTarget() else { return false }
         return target.performDrop(info)
     }
 
     /// After `performDragOperation` (or a cancelled drag over the window): the drop zone
     /// waiting after a release closes now.
     func panelDragEnded() {
-        widgets.dropTarget()?.dragEnded()
+        dropTarget()?.dragEnded()
         if awaitingDrop {
             finishDrop()
         } else if machine.isDragging {

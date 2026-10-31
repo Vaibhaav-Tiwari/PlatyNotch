@@ -113,7 +113,7 @@ final class HeaderTogglesTests: DefaultsTestCase {
             .environment(\.panelTicking, false)
         let host = NSHostingView(rootView: view)
         let size = host.fittingSize
-        XCTAssertLessThanOrEqual(size.height, NowMetrics.nav)
+        XCTAssertLessThanOrEqual(size.height, HomeMetrics.nav)
         XCTAssertLessThan(size.width, 260)
         s.stop()
     }

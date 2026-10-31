@@ -417,31 +417,6 @@ final class TimeWidget: NotchWidget, TimerStarter {
 
     var kind: WidgetKind { [.live, .tool] }
 
-    /// The top timer, stopwatch or ring with Stop or Pause (a finished timer's notice has none).
-    func heroView() -> AnyView? {
-        AnyView(TopActivityHero(activities: { [weak self] in self?.liveActivities ?? [] }, action: { [weak self] activity in
-            self?.heroAction(activity)
-        }))
-    }
-
-    /// Stop for a ringing alarm or timer, Pause for a running timer or the stopwatch.
-    func heroAction(_ activity: LiveActivity) -> HeroAction? {
-        let rank: LiveRank = LiveRank(activity: activity, now: now)
-        guard let title = HeroPrimary.title(rank: rank, playing: false, hasLink: false) else { return nil }
-        let id: String = activity.id
-        if id.hasPrefix("time:ring:") {
-            let ring = String(id.dropFirst("time:ring:".count))
-            return HeroAction(title: title, systemImage: "stop.fill", run: { [weak self] in self?.stopRing(ring) })
-        }
-        if id.hasPrefix("time:timer:"), let uuid = UUID(uuidString: String(id.dropFirst("time:timer:".count))) {
-            return HeroAction(title: title, systemImage: "pause.fill", run: { [weak self] in self?.toggleTimer(uuid) })
-        }
-        if id == "time:stopwatch" {
-            return HeroAction(title: title, systemImage: "pause.fill", run: { [weak self] in self?.toggleStopwatch() })
-        }
-        return nil
-    }
-
     func tileView() -> AnyView { AnyView(TimeTile(widget: self)) }
 
     func peekView(id: String) -> AnyView? {

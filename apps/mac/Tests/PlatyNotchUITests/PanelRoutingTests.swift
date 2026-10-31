@@ -68,7 +68,7 @@ final class PanelRoutingTests: DefaultsTestCase {
         return ExpandedPanel(store: r.store, responder: ApprovalResponder(client: r.client), arming: ApprovalArming(),
                              today: r.today, widgets: r.registry, memory: MemoryServices(client: r.client),
                              extraTabs: tabs, route: Binding(get: { current }, set: { current = $0 }),
-                             onCollapse: {}, glanceDefaults: defaults(), agentsVisible: agentsVisible,
+                             onCollapse: {}, agentsVisible: agentsVisible,
                              onDecide: { _, _ in }, onOpenTerminal: { _ in })
     }
 
@@ -134,18 +134,18 @@ final class PanelRoutingTests: DefaultsTestCase {
         XCTAssertTrue(ids.contains(PanelTools.memory))
     }
 
-    /// Glances and the quiet line open their tool directly (through Now's `onOpenTool`).
-    func testGlanceLinksOpenTheirTool() {
+    /// Chips open their tool directly (through Home's `onOpenTool`).
+    func testChipLinksOpenTheirTool() {
         XCTAssertEqual(ExpandedPanel.route(forTool: "loops"), PanelRoute(destination: .home, tool: "loops"))
         let r = rig()
         var route = PanelRoute(destination: .home)
         let p = ExpandedPanel(store: r.store, responder: ApprovalResponder(client: r.client), arming: ApprovalArming(),
                               today: r.today, widgets: r.registry, memory: MemoryServices(client: r.client),
                               extraTabs: [], route: Binding(get: { route }, set: { route = $0 }),
-                              onCollapse: {}, glanceDefaults: defaults(), onDecide: { _, _ in }, onOpenTerminal: { _ in })
-        p.nowView.onOpenTool(LoopsWidget.widgetID)
+                              onCollapse: {}, onDecide: { _, _ in }, onOpenTerminal: { _ in })
+        p.homeView.onOpenTool(LoopsWidget.widgetID)
         XCTAssertEqual(route, PanelRoute(destination: .home, tool: LoopsWidget.widgetID))
-        p.nowView.onOpenTool(FocusWidget.widgetID)
+        p.homeView.onOpenTool(FocusWidget.widgetID)
         XCTAssertEqual(route, PanelRoute(destination: .home, tool: FocusWidget.widgetID))
     }
 

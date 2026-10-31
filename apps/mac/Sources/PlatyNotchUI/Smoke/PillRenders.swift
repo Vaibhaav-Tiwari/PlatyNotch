@@ -242,11 +242,11 @@ enum MorphRenders {
         return .success(count)
     }
 
-    private static func rig(_ scene: Scene) -> NowRenders.Rig {
+    private static func rig(_ scene: Scene) -> HomeRenders.Rig {
         switch scene {
-        case .agents, .reduced: NowRenders.agentsHero()
+        case .agents, .reduced: HomeRenders.agentsHero()
         case .timer:
-            NowRenders.timerHero()
+            HomeRenders.timerHero()
         }
     }
 
@@ -255,7 +255,7 @@ enum MorphRenders {
         let rig = rig(scene)
         rig.store.apply(.connected)   // the live ear shows the item, not the reconnecting glyph
         let model = PanelViewModel()
-        let layout: PanelLayout = NowRenders.layout
+        let layout: PanelLayout = HomeRenders.layout
         model.layout = layout
         model.visible = true
         model.mode = open ? .compact : .expanded

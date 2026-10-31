@@ -33,12 +33,15 @@ struct ExpandedPanel: View {
     var onOpenSettings: () -> Void = {}
     /// Keep awake, Mirror and the battery badge in the header; nil leaves just the gear.
     var header: HeaderServices?
-    /// Home's hero selection (the panel model's; reset on each open).
-    var deck: Binding<HeroDeck> = .constant(HeroDeck())
+    /// Settings › Home: the right column.
+    var homeSettings = HomeSettings()
+    /// The command line under Home's hairline.
+    var commandLine: AnyView = AnyView(EmptyView())
+    /// A file drag is near: Home becomes drop targets.
+    var dropping = false
+    var dropHover: DropTargetsView.Zone?
     /// Renders only: Now at a fixed time.
     var fixedNow: Date?
-    /// Where Now's chosen glances are saved (renders and tests pass their own).
-    var glanceDefaults: UserDefaults = .standard
     /// The Agents destination shows (`AgentsVisibility.isVisible`, via
     /// `PanelDestination.shown`); hidden until an agent first connects.
     var agentsVisible: Bool = true
@@ -46,12 +49,12 @@ struct ExpandedPanel: View {
     var onConnectAgent: () -> Void = {}
     /// Renders only: the Memory tool's first view.
     var memoryMode: MemoryTab.Mode = .search
-    /// Existing users' tour card at the top of Now (spec 14).
-    var tourOffer: TourOffer?
     /// The first run's "Try it" sample in Now.
     var tourSample: LiveActivity?
-    /// Settings › Now › hero cycling (`PanelViewModel.nowSettings`).
-    var heroCycling: Bool = true
+    /// The body's natural height (header, gap, Home) while plain Home shows with no approval;
+    /// nil otherwise (the panel then takes its full height). The controller applies it.
+    var onBodyHeight: (CGFloat?) -> Void = { _ in }
+    @State private var homeBody: CGFloat?
     let onDecide: (Approval, ApprovalBehavior) -> Void
     let onOpenTerminal: (Session) -> Void
 
@@ -75,7 +78,7 @@ struct ExpandedPanel: View {
         let shown: PanelRoute = open == nil ? PanelRoute(destination: normal.destination) : normal
         VStack(alignment: .leading, spacing: 0) {
             header(tool: open)
-                .frame(height: NowMetrics.nav)
+                .frame(height: HomeMetrics.nav)
                 .panelChrome()
             if !store.approvals.isEmpty {
                 approvals
@@ -86,7 +89,7 @@ struct ExpandedPanel: View {
                         Color.clear.preference(key: ApprovalsRegionFrameKey.self, value: g.frame(in: .named(Self.space)))
                     })
                     .layoutPriority(1)
-                    .padding(.top, NowMetrics.gap)
+                    .padding(.top, HomeMetrics.gap)
             }
             destination(shown, tool: open)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -94,11 +97,13 @@ struct ExpandedPanel: View {
                 // `NowViewTests`, `HeroViewsTests`) to stay inside, and must not clip Platy or
                 // the live glyph while they morph in from the pill. Other destinations stay clipped.
                 .clipped(unless: shown.destination == .home && open == nil)
-                .padding(.top, open == nil ? NowMetrics.gap : ToolHost.gap)
+                .padding(.top, open == nil ? HomeMetrics.gap : ToolHost.gap)
                 .environment(\.openPanelRoute, { route = $0 })   // the games tile opens its tool
                 .environment(\.openMemorySettings, { [memory] in memory.onOpenSettings() })   // empty states' one button
         }
         .coordinateSpace(name: Self.space)
+        .onPreferenceChange(HomeHeightKey.self) { homeBody = $0 }
+        .onChange(of: reportedBody, initial: true) { _, new in onBodyHeight(new) }
         // One accent: prominent buttons and controls in brand teal, never system blue.
         .tint(DS.dynamicColor(.working))
     }
@@ -107,11 +112,7 @@ struct ExpandedPanel: View {
         if let tool {
             ToolHeader(title: tool.title, onBack: goBack, trailing: AnyView(controls))
         } else {
-            HStack(spacing: 2) {
-                nav
-                Spacer(minLength: 4)
-                controls
-            }
+            PanelHeader(status: headerStatus, nav: { nav }, controls: { controls })
         }
     }
 
@@ -122,7 +123,7 @@ struct ExpandedPanel: View {
                 ToolBody(content: tool.view())
                     .id(tool.id)
             } else {
-                nowView
+                homeView
             }
         case .agents:
             AgentsView(sessions: store.sessions, usage: store.usage, log: today.agentActivity.log,
@@ -130,13 +131,37 @@ struct ExpandedPanel: View {
         }
     }
 
-    /// Home's body until the Home view lands; its glances and quiet line open their tool directly.
-    var nowView: NowView {
-        NowView(store: store, widgets: widgets, today: today, deck: deck, glanceDefaults: glanceDefaults,
-                onOpenTool: { openTool($0) },
-                onOpenAgents: { route = PanelRoute(destination: .agents) }, onOpenTerminal: onOpenTerminal,
-                fixedNow: fixedNow, cycling: heroCycling,
-                tourOffer: tourOffer, tourSample: tourSample)
+    /// Home: chips, the media block beside Up next, the command line.
+    var homeView: HomeView {
+        HomeView(today: today, widgets: widgets, settings: homeSettings, tourSample: store.approvals.isEmpty ? tourSample : nil, fixedNow: fixedNow,
+                 dropping: dropping, dropHover: dropHover, onOpenTool: { openTool($0) }, commandLine: commandLine)
+    }
+
+    /// What to tell the controller about the body's height.
+    private var reportedBody: CGFloat? {
+        let plainHome: Bool = open == nil && route.normalized(agentsVisible: agentsVisible).destination == .home
+        guard plainHome, store.approvals.isEmpty, !dropping, let homeBody else { return nil }
+        return HomeMetrics.nav + HomeMetrics.gap + homeBody
+    }
+
+    private var open: PanelTool? {
+        let normal: PanelRoute = route.normalized(agentsVisible: agentsVisible)
+        return normal.destination == .home ? normal.tool.flatMap { panelTool($0) } : nil
+    }
+
+    /// The status text at the header's trailing side: Home's date and weather.
+    private var headerStatus: String? {
+        guard route.normalized(agentsVisible: agentsVisible).destination == .home else { return nil }
+        return PanelHeader<EmptyView, EmptyView>.homeStatus(now: fixedNow ?? Date(), weather: weatherText)
+    }
+
+    /// `14° Clear` while the Weather widget is on and has a reading.
+    private var weatherText: String? {
+        guard widgets.isEnabled(WeatherWidget.widgetID),
+              let w = widgets.widget(WeatherWidget.widgetID) as? WeatherWidget, w.place != nil,
+              let now = w.weather else { return nil }
+        let d = WeatherCode.describe(now.code, isDay: now.isDay)
+        return "\(WeatherFormat.temperature(now.temperatureC, unit: w.unit)) \(d.text)"
     }
 
     // MARK: - Features inside the panel

@@ -224,11 +224,4 @@ final class AgentsViewTests: DefaultsTestCase {
         XCTAssertEqual(asked, 2, "a hit is kept")
     }
 
-    /// Fix round 1, M1: the usage glance's value warns from 70 % (amber) and 90 % (coral).
-    func testUsageGlanceWarns() {
-        XCTAssertNil(UsageGlance.warning(69))
-        XCTAssertEqual(UsageGlance.warning(70), .needsYou)
-        XCTAssertEqual(UsageGlance.warning(89), .needsYou)
-        XCTAssertEqual(UsageGlance.warning(90), .error)
-    }
 }

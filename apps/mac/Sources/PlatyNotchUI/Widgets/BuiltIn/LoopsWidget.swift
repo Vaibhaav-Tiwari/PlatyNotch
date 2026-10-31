@@ -25,10 +25,6 @@ final class LoopsWidget: NotchWidget {
 
     var hasContent: Bool { openCount > 0 }
 
-    func glanceView() -> AnyView? {
-        AnyView(GlanceChip(systemImage: systemImage, value: "\(openCount)", label: "Open loops"))
-    }
-
     func tileView() -> AnyView {
         AnyView(LoopsTile(store: store, actions: actions))
     }
