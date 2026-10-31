@@ -182,8 +182,8 @@ public final class NotchController {
         apply()
     }
 
-    /// The open panel's body height as Home reports it (header, gap and Home's content), or
-    /// nil when Home is not alone (approvals, a tool, Agents): the panel is then full height.
+    /// The open panel's body height as `ExpandedPanel.reportedBody` reports it (header,
+    /// approvals region, Home or Agents), or nil while a tool is open: the panel is then full height.
     func bodyHeightReported(_ body: CGFloat?) {
         reportedBody = body
         applyBodyHeight()

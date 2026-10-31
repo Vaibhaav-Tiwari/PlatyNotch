@@ -11,8 +11,6 @@ public enum HomeMetrics {
     public static let artSize: CGFloat = 54
     /// Left : right column widths, 1.15 : 1.
     public static let columnRatio: CGFloat = 1.15
-    /// One Agents row: 7 pt above and below a 16 pt line, plus its hairline.
-    public static let agentRow: CGFloat = 32
     /// The drop box's height.
     public static let dropBoxHeight: CGFloat = 74
 }

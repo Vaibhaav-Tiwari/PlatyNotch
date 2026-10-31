@@ -385,44 +385,41 @@ enum HomeRenders {
         let commandLine = AnyView(CommandLineView(model: commandModel, logic: logic, memory: nil))
         let services: HeaderServices = header ?? headerServices()
         let at: Date = now ?? fixedNow
-        // Plain Home with no approval hugs its content, as the controller sizes the live
-        // panel; every other view takes the full height.
+        func make(height: CGFloat, onBody: @escaping (CGFloat?) -> Void) -> some View {
+            ExpandedPanel(store: rig.store, responder: ApprovalResponder(client: rig.client), arming: ApprovalArming(),
+                          today: rig.today, widgets: rig.registry, memory: memory ?? MemoryServices(client: rig.client),
+                          extraTabs: extraTabs, route: Binding(get: { current }, set: { current = $0 }),
+                          onCollapse: {}, header: services, homeSettings: homeSettings, commandLine: commandLine,
+                          dropping: dropping, fixedNow: at, memoryMode: memoryMode, tourSample: tourSample,
+                          onBodyHeight: onBody, onDecide: { _, _ in }, onOpenTerminal: { _ in })
+                .frame(width: width, height: height, alignment: .top)
+                .clipped()
+                .environment(\.platyMood, rig.mood)
+                .environment(\.panelTicking, false)
+                .environment(\.agentIcons, .namesOnly)
+        }
+        // The panel hugs what `ExpandedPanel` reports (`reportedBody`), as the controller sizes
+        // the live panel: laid out once at full height off screen to read it.
         var height: CGFloat = available
-        if !full, route.tool == nil, rig.store.approvals.isEmpty {
-            // Plain Home and a short Agents list hug their content, as the controller sizes the
-            // live panel (`ExpandedPanel.reportedBody`).
-            let probe: AnyView? = switch route.destination {
-            case .home:
-                AnyView(HomeView(today: rig.today, widgets: rig.registry, settings: homeSettings, tourSample: tourSample,
-                                 fixedNow: at, dropping: dropping, commandLine: commandLine))
-            case .agents:
-                CGFloat(rig.store.sessions.count) * HomeMetrics.agentRow <= PanelLayout.expandedHeights.upperBound - 160
-                    ? AnyView(AgentsView(sessions: rig.store.sessions, log: rig.today.agentActivity.log,
-                                         openLoops: LoopsFormat.open(rig.store.loops).count,
-                                         onOpenTerminal: { _ in }, onConnect: {}, fixedNow: at))
-                    : nil
-            }
-            if let probe {
-                let host = NSHostingView(rootView: probe.frame(width: width).fixedSize(horizontal: false, vertical: true)
-                    .environment(\.colorScheme, .dark).environment(\.panelTicking, false)
-                    .environment(\.agentIcons, .namesOnly)
-                    .environment(\.platyMood, rig.mood))
-                host.layoutSubtreeIfNeeded()
+        if !full {
+            let box = BodyBox()
+            let probe = NSHostingView(rootView: make(height: available) { box.value = $0 }
+                .environment(\.colorScheme, .dark))
+            probe.frame = CGRect(x: 0, y: 0, width: width, height: available)
+            let window = NSWindow(contentRect: CGRect(x: -10_000, y: 10_000, width: width, height: available),
+                                  styleMask: .borderless, backing: .buffered, defer: false)
+            window.contentView = probe
+            probe.layoutSubtreeIfNeeded()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.03))
+            probe.layoutSubtreeIfNeeded()
+            if let body = box.value {
                 var l = layout
-                l.expandedContentHeight = l.expandedHeight(forBody: HomeMetrics.nav + HomeMetrics.gap + host.fittingSize.height)
+                l.expandedContentHeight = l.expandedHeight(forBody: body)
                 height = l.contentRect(for: .expanded).height - l.contentInset(for: .expanded) - Space.panelBottom
             }
+            window.contentView = nil
         }
-        let view = ExpandedPanel(store: rig.store, responder: ApprovalResponder(client: rig.client), arming: ApprovalArming(),
-                                 today: rig.today, widgets: rig.registry, memory: memory ?? MemoryServices(client: rig.client),
-                                 extraTabs: extraTabs, route: Binding(get: { current }, set: { current = $0 }),
-                                 onCollapse: {}, header: services, homeSettings: homeSettings, commandLine: commandLine,
-                                 dropping: dropping, fixedNow: at, memoryMode: memoryMode, tourSample: tourSample,
-                                 onDecide: { _, _ in }, onOpenTerminal: { _ in })
-            .frame(width: width, height: height, alignment: .top)
-            .clipped()
-            .environment(\.platyMood, rig.mood)
-            .environment(\.panelTicking, false)
+        let view = make(height: height) { _ in }
         return AnyView(view)
     }
 
@@ -813,6 +810,12 @@ enum ToolRenders {
     }
 }
 
+
+/// What a render's probe panel reported as its body height.
+@MainActor
+private final class BodyBox {
+    var value: CGFloat?
+}
 
 /// A battery reading fixed for a render.
 @MainActor

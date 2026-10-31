@@ -39,6 +39,7 @@ struct AgentsView: View {
     var body: some View {
         if sessions.isEmpty {
             AgentsEmptyState(onConnect: onConnect)
+                .background(Self.naturalHeight)
         } else if let fixedNow {
             content(now: fixedNow)
         } else if ticking {
@@ -75,22 +76,40 @@ struct AgentsView: View {
         return parts.joined(separator: " · ")
     }
 
+    /// Reports the content's natural height (`HomeHeightKey`), whatever room it was given, so
+    /// the panel can hug it (spec 2).
+    private static var naturalHeight: some View {
+        GeometryReader { g in Color.clear.preference(key: HomeHeightKey.self, value: g.size.height) }
+    }
+
+    /// The rows and the open-loops line hug their height while they fit the room the panel
+    /// leaves (an approval above can take most of it), and scroll together inside it when
+    /// they do not.
     private func content(now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // The list hugs its rows and scrolls once the panel runs out of room.
-            ViewThatFits(in: .vertical) {
-                list(now: now)
-                ScrollView(.vertical) { list(now: now) }
-                    .scrollIndicators(.automatic)
+        ViewThatFits(in: .vertical) {
+            stack(now: now)
+                .background(Self.naturalHeight)
+            ScrollView(.vertical) {
+                stack(now: now)
+                    .background(Self.naturalHeight)
+                    .preference(key: AgentsScrollsKey.self, value: true)
             }
+            .scrollIndicators(.automatic)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(countsLine(now: now))
+    }
+
+    private func stack(now: Date) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            list(now: now)
             if let footer = AgentsFooter.text(openLoops: openLoops) {
                 Hairline().padding(.vertical, 8)
                 footerLine(footer)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(countsLine(now: now))
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func list(now: Date) -> some View {
@@ -156,4 +175,10 @@ struct AgentsEmptyState: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
     }
+}
+
+/// True while the Agents list scrolls inside the room it was given (layout tests).
+struct AgentsScrollsKey: PreferenceKey {
+    static let defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = value || nextValue() }
 }

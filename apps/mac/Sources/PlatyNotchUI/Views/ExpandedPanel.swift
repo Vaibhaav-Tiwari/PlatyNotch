@@ -55,6 +55,8 @@ struct ExpandedPanel: View {
     /// nil otherwise (the panel then takes its full height). The controller applies it.
     var onBodyHeight: (CGFloat?) -> Void = { _ in }
     @State private var homeBody: CGFloat?
+    /// The approvals region's height while approvals show (it is part of the body).
+    @State private var approvalsHeight: CGFloat?
     let onDecide: (Approval, ApprovalBehavior) -> Void
     let onOpenTerminal: (Session) -> Void
 
@@ -103,6 +105,7 @@ struct ExpandedPanel: View {
         }
         .coordinateSpace(name: Self.space)
         .onPreferenceChange(HomeHeightKey.self) { homeBody = $0 }
+        .onPreferenceChange(ApprovalsRegionFrameKey.self) { approvalsHeight = $0?.height }
         .onChange(of: reportedBody, initial: true) { _, new in onBodyHeight(new) }
         // No accent colour (Quiet Notch spec 5.3): controls tint white, never system blue.
         .tint(.white)
@@ -130,10 +133,6 @@ struct ExpandedPanel: View {
                        openLoops: LoopsFormat.open(store.loops).count,
                        onOpenTerminal: onOpenTerminal, onConnect: onConnectAgent,
                        onOpenLoops: { openTool(LoopsWidget.widgetID) }, fixedNow: fixedNow)
-                .fixedSize(horizontal: false, vertical: !store.sessions.isEmpty && fitsAgents)
-                .background(GeometryReader { g in
-                    Color.clear.preference(key: HomeHeightKey.self, value: g.size.height)
-                })
         }
     }
 
@@ -143,20 +142,23 @@ struct ExpandedPanel: View {
                  dropping: dropping, dropHover: dropHover, onOpenTool: { openTool($0) }, commandLine: commandLine)
     }
 
-    /// What to tell the controller about the body's height: plain Home and Agents hug their
-    /// content (spec 2: 160–380 pt) while no approval shows; anything else takes the full height.
-    private var reportedBody: CGFloat? {
-        let destination: PanelDestination = route.normalized(agentsVisible: agentsVisible).destination
-        guard open == nil, store.approvals.isEmpty, let homeBody else { return nil }
-        guard destination == .home || fitsAgents else { return nil }
-        return HomeMetrics.nav + HomeMetrics.gap + homeBody
+    /// What to tell the controller about the body's height (spec 2: the panel follows its
+    /// content, 160–380 pt; the controller clamps): the header, the approvals region when
+    /// approvals show, and Home's or Agents' natural height. An open tool takes the full height.
+    var reportedBody: CGFloat? {
+        Self.bodyHeight(toolOpen: open != nil, approvals: !store.approvals.isEmpty, approvalsHeight: approvalsHeight,
+                        content: homeBody)
     }
 
-    /// The Agents list fits the tallest panel without scrolling: it then hugs its rows.
-    private var fitsAgents: Bool {
-        let rows: CGFloat = CGFloat(store.sessions.count) * HomeMetrics.agentRow
-        let room: CGFloat = PanelLayout.expandedHeights.upperBound - 160
-        return rows <= room
+    /// `reportedBody`'s rule (tests): nil while a tool is open or a measurement is missing.
+    static func bodyHeight(toolOpen: Bool, approvals: Bool, approvalsHeight: CGFloat?, content: CGFloat?) -> CGFloat? {
+        guard !toolOpen, let content else { return nil }
+        var height: CGFloat = HomeMetrics.nav + HomeMetrics.gap + content
+        if approvals {
+            guard let approvalsHeight else { return nil }
+            height += approvalsHeight + HomeMetrics.gap
+        }
+        return height
     }
 
     private var open: PanelTool? {
