@@ -155,7 +155,7 @@ struct ExpandedPanel: View {
             ToolHeader(title: tool.title, onBack: goBack, accessory: tool.accessory?(),
                        trailing: tool.hidesPanelControls ? nil : AnyView(controls))
         } else {
-            PanelHeader(status: headerStatus, mono: headerIsUsage, nav: { nav }, controls: { controls })
+            PanelHeader(status: headerStatus, rings: headerRings, nav: { nav }, controls: { controls })
         }
     }
 
@@ -242,22 +242,26 @@ struct ExpandedPanel: View {
         return normal.destination == .home ? normal.tool.flatMap { panelTool($0) } : nil
     }
 
-    /// The status text at the header's trailing side: Agents' usage as small mono numbers
-    /// (`UsageLine`); none on Home (Island spec 2: the weather is the Today card). An open
-    /// tool has its own header.
+    /// The status text at the header's trailing side: none (Island spec 2: the weather is
+    /// the Today card; spec 8: Agents' usage is rings). An open tool has its own header.
     private var headerStatus: [String] {
         Self.headerStatus(for: route.normalized(agentsVisible: agentsVisible).destination, usage: store.usage)
     }
 
     static func headerStatus(for destination: PanelDestination, usage: Usage) -> [String] {
-        switch destination {
-        case .home: []
-        case .agents: UsageLine.parts(usage)
-        }
+        []
     }
 
-    private var headerIsUsage: Bool {
-        route.normalized(agentsVisible: agentsVisible).destination == .agents
+    /// Agents' usage rings (Island spec 8): one per agent, its five-hour window.
+    private var headerRings: [UsageRing] {
+        Self.headerRings(for: route.normalized(agentsVisible: agentsVisible).destination, usage: store.usage)
+    }
+
+    static func headerRings(for destination: PanelDestination, usage: Usage) -> [UsageRing] {
+        switch destination {
+        case .home: []
+        case .agents: UsageLine.rings(usage)
+        }
     }
 
     // MARK: - Features inside the panel

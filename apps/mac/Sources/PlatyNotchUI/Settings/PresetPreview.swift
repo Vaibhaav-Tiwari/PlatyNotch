@@ -76,12 +76,26 @@ struct PresetPillPreview: View {
         return p.layout.prefs.pillOrder == .agentsFirst ? "The pill shows agents first" : "The pill shows music first"
     }
 
+    /// What the pill leads with for the preset when music plays and agents work.
+    static func lead(_ p: SetupPreset) -> PillLead? {
+        if p.mode == .minimal { return nil }
+        return p.layout.prefs.pillOrder == .agentsFirst ? .agents : .music
+    }
+
     var body: some View {
         HStack(spacing: 8) {
-            Capsule()
-                .fill(preset.mode == .minimal ? Color.clear : Color.black)
-                .overlay(Capsule().strokeBorder(.secondary.opacity(preset.mode == .minimal ? 0.5 : 0), lineWidth: 1))
-                .frame(width: 120, height: 22)
+            if let lead = Self.lead(preset) {
+                let layout = PillRenders.notchLayout(.standard)
+                let size = layout.contentRect(for: .compact).size
+                PillRenders.lead(lead, greyNotch: false)
+                    .scaleEffect(PresetPreview.scale, anchor: .topLeading)
+                    .frame(width: size.width * PresetPreview.scale, height: size.height * PresetPreview.scale,
+                           alignment: .topLeading)
+            } else {
+                Capsule()
+                    .strokeBorder(.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    .frame(width: 120, height: 20)
+            }
             Text(verbatim: Self.caption(preset))
                 .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)

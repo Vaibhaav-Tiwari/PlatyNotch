@@ -7,13 +7,17 @@ import SwiftUI
 struct PanelHeader<Nav: View, Controls: View>: View {
     let status: [String]
     var mono = false
+    /// Agents' usage rings (Island spec 8), before the controls.
+    var rings: [UsageRing] = []
     let nav: Nav
     let controls: Controls
     @Environment(\.platyMood) private var mood
 
-    init(status: [String], mono: Bool = false, @ViewBuilder nav: () -> Nav, @ViewBuilder controls: () -> Controls) {
+    init(status: [String], mono: Bool = false, rings: [UsageRing] = [], @ViewBuilder nav: () -> Nav,
+         @ViewBuilder controls: () -> Controls) {
         self.status = status
         self.mono = mono
+        self.rings = rings
         self.nav = nav()
         self.controls = controls()
     }
@@ -33,6 +37,10 @@ struct PanelHeader<Nav: View, Controls: View>: View {
                     .foregroundStyle(DS.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
+                    .layoutPriority(-1)
+            }
+            if !rings.isEmpty {
+                UsageRingsView(rings: rings)
                     .layoutPriority(-1)
             }
             controls

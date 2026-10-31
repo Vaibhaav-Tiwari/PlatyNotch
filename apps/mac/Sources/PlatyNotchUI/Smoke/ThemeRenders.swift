@@ -126,6 +126,9 @@ enum ThemeRenders {
         out.append(("pill-platy-idle", PillRenders.pill(.idle, width: .standard, notch: true), true))
         out.append(("pill-agents-music", PillRenders.pill(.music, width: .standard, notch: true), true))
         out.append(("pill-indicators", PillRenders.pill(.timer, width: .wide, notch: true), true))
+        out.append(("pill-lead-music", PillRenders.lead(.music), true))
+        out.append(("pill-lead-timer", PillRenders.lead(.timer(remaining: "18:42")), true))
+        out.append(("pill-lead-needs-you", PillRenders.lead(.needsYou(sessionID: "s1")), true))
         out.append(("settings-notch-preview", AnyView(NotchPreview(appearance: AppearanceSettings()).frame(width: 540)), true))
         for p in SetupPreset.allCases {
             out.append(("preset-preview-\(p.rawValue)", AnyView(PresetPreview(preset: p).frame(width: 380, alignment: .leading)), true))
@@ -694,6 +697,7 @@ enum AgentsRenders {
             ("agents-twelve", HomeRenders.panel(rig(twelve()), route: PanelRoute(destination: .agents)), true),
             ("agents-empty", HomeRenders.panel(rig([]), route: PanelRoute(destination: .agents)), true),
             ("agents-app-icon", appIcon(), true),
+            ("agents-usage-rings", usageRings(), true),
             ("approval-card-command", HomeRenders.panel(approvals([bashApproval()]), route: PanelRoute(destination: .agents)), true),
             ("approval-card-diff", HomeRenders.panel(approvals([editApproval("e1")]), route: PanelRoute(destination: .agents)), true),
             ("approval-cards-diff-3", HomeRenders.panel(approvals([editApproval("e1"), writeApproval(),
@@ -853,6 +857,22 @@ enum AgentsRenders {
             }
             return true
         }
+    }
+
+    /// Agents' header with its usage rings (wireframe E): Claude 62 % and Codex 18 % (green),
+    /// and Claude at 86 % (amber) and 97 % (red) below, so every tone shows.
+    static func usageRings() -> AnyView {
+        let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelSide
+        let panel = HomeRenders.panel(rig(one()), route: PanelRoute(destination: .agents))
+        func ring(_ p: Double) -> UsageRing {
+            UsageLine.rings(Usage(claude: try? JSONCoding.decoder.decode(Limits.self, from: Data(
+                #"{"five_hour":{"used_percent":\#(p)},"updated_at":"2026-10-25T09:00:00Z"}"#.utf8)))).first!
+        }
+        let tones = UsageRingsView(rings: [ring(86), ring(97)])
+            .frame(width: width, alignment: .trailing)
+            .padding(.vertical, 8)
+            .background(Color.black)
+        return AnyView(VStack(spacing: 0) { panel; tones })
     }
 
     static func appIcon() -> AnyView {

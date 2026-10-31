@@ -187,6 +187,7 @@ final class DesignLintTests: DefaultsTestCase {
         "Games/GameRenders.swift": "the game boards' own colours",
         "Home/NowPlayingCard.swift": "the art glow: the album's own colour (Island spec 3.1)",
         "Home/WeatherSkyView.swift": "the sky: weather colour (Island spec 5)",
+        "Views/PillLeadView.swift": "the music lead's bars in the album's colour (Island spec 7)",
     ]
 
     /// Colour only for state (spec 5.3): in panel views, no named system colours, no
@@ -286,6 +287,7 @@ final class DesignLintTests: DefaultsTestCase {
         "Views/Theme.swift": "the keycap's 1 px hairline (spec 5.1)",
         "Views/CompactPill.swift": "the pill's progress ring, a track and its arc",
         "Views/MemoryGraphView.swift": "the memory graph's edges",
+        "Agents/UsageRings.swift": "the usage ring's track and arc",
     ]
 
     /// No bordered cards in the panel (spec 5.3): grouping is spacing, fills and hairlines.

@@ -21,6 +21,25 @@ struct CompactPill: View {
     /// Platy's mood, drawn first in the agents ear with the dots that fit beside it
     /// (`PlatyEarFit`); nil = the plain look (Appearance › Show Platy off).
     var platy: PlatyMood?
+    /// What the pill leads with (Island spec 7): music, a timer or a session needing you
+    /// take both ears (`PillLeadView`); approvals, working agents and nothing live keep them.
+    var lead: PillLead = .none
+    /// The playing track's art and its colour (the music lead).
+    var leadArt: NSImage?
+    var leadTint: RGB?
+    /// The waiting session's installed app icon, else its name (the needs-you lead).
+    var leadAppIcon: NSImage?
+    var leadAgentName: String = ""
+
+    /// The lead draws: connected, no approval waiting, and a lead that takes the ears.
+    private var leading: Bool {
+        connection == .connected && content.approvalCount == 0 && PillLeadView.draws(lead)
+    }
+
+    private func leadView(_ side: PillLeadView.Side) -> PillLeadView {
+        PillLeadView(lead: lead, art: leadArt, tint: leadTint, appIcon: leadAppIcon, agentName: leadAgentName,
+                     platy: platy, side: side)
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -50,11 +69,25 @@ struct CompactPill: View {
         }
     }
 
-    private var liveEar: some View {
-        LiveEarView(content: content, connection: connection, earWidth: earWidth)
+    @ViewBuilder private var liveEar: some View {
+        if leading {
+            leadView(.trailing)
+        } else {
+            LiveEarView(content: content, connection: connection, earWidth: earWidth)
+        }
     }
 
-    private var agentsEar: some View {
+    @ViewBuilder private var agentsEar: some View {
+        if leading {
+            let parts = PillLeadView.parts(lead, hasArt: leadArt != nil, hasAppIcon: leadAppIcon != nil,
+                                           agentName: leadAgentName)
+            if parts.count > 1 { leadView(.leading) } else { platyGlyph }
+        } else {
+            dotsEar
+        }
+    }
+
+    private var dotsEar: some View {
         let dots: PillDots = content.dots
         let fit: PlatyEarFit? = platy.map { _ in
             PlatyEarFit(earWidth: earWidth, dots: dots.dots.count, overflow: dots.overflow,
@@ -251,5 +284,34 @@ private struct LiveTrailing: View {
             .monospacedDigit()
             .truncationMode(.tail)
             .foregroundStyle(.secondary)
+    }
+}
+
+/// The pill lead's words (`PillLeadView`): amber 12 pt rounded semibold for the time left
+/// and "Needs you", secondary for an agent's name shown in place of its app icon.
+struct PillLeadText: View {
+    let text: String
+    let amber: Bool
+
+    var body: some View {
+        Text(verbatim: text)
+            .font(DS.font(PillLeadView.timeStyle))
+            .monospacedDigit()
+            .foregroundStyle(amber ? DS.color(.needsYou) : DS.secondary)
+            .lineLimit(1)
+            // A narrow ear (the standard pill width) shrinks the words a little, never cuts them.
+            .minimumScaleFactor(0.75)
+            .truncationMode(.tail)
+    }
+}
+
+extension PillLeadView {
+    /// The lead's state colour: amber for the timer and a session needing you; none for music
+    /// (its colour is the art's).
+    static func tone(_ lead: PillLead) -> StateTone? {
+        switch lead {
+        case .timer, .needsYou, .approval: .needsYou
+        case .music, .agents, .none: nil
+        }
     }
 }

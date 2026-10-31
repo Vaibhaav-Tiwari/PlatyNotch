@@ -169,6 +169,39 @@ struct PanelRootView: View {
         return .spring(response: spring.response, dampingFraction: spring.damping)
     }
 
+    /// The resting pill with its lead (Island spec 7).
+    private func compactPill(_ pill: PillContent, layout: PanelLayout, order: PillOrder, now: Date) -> CompactPill {
+        let np = today.nowPlaying
+        let lead: PillLead = PillLeads.lead(approvals: store.approvals.count, sessions: store.sessions,
+                                            log: today.agentActivity.log, timerRemaining: timerRemaining(at: now),
+                                            musicPlaying: np.isPlaying, order: order, now: now)
+        var icon: NSImage?
+        var name = ""
+        if case .needsYou(let id) = lead, let s = store.sessions.first(where: { $0.sessionID == id }) {
+            let brand = AgentBrand(agent: s.agent, agentName: s.agentName)
+            icon = AgentIconSource.installed.icon(for: brand)
+            name = brand.displayName
+        }
+        return CompactPill(content: pill, connection: store.connection, hasNotch: layout.hasNotch,
+                           notchWidth: layout.hasNotch ? layout.anchor.width : 0,
+                           liveSide: model.appearance.liveSide, earWidth: layout.liveEarWidth,
+                           platy: model.appearance.showPlaty ? platyMood : nil, lead: lead,
+                           leadArt: np.artwork, leadTint: np.artworkRGB, leadAppIcon: icon, leadAgentName: name)
+    }
+
+    /// The time left on Focus or the soonest countdown; nil when none runs (a stopwatch counts
+    /// up, so it is not a lead).
+    private func timerRemaining(at now: Date) -> TimeInterval? {
+        var left: [TimeInterval] = []
+        if widgets.isEnabled(FocusWidget.widgetID), let f = today.focus.timer, f.isRunning(at: now) {
+            left.append(f.remaining(at: now))
+        }
+        if widgets.isEnabled(TimeWidget.widgetID), let time = widgets.widget(TimeWidget.widgetID) as? TimeWidget {
+            left += time.state.timers.filter { $0.isRunning(at: now) }.map { $0.remaining(at: now) }
+        }
+        return left.min()
+    }
+
     @ViewBuilder private func content(_ layout: PanelLayout) -> some View {
         // Open content starts below the camera housing on a notch.
         // (below the header strip for the approval peek and open panel without a notch).
@@ -180,12 +213,19 @@ struct PanelRootView: View {
             let pill = PillContent(activities: widgets.liveActivities, sessions: store.sessions,
                                    approvals: store.approvals.count, hiddenKinds: model.hiddenKinds,
                                    log: today.agentActivity.log, now: Date())
-            CompactPill(content: pill, connection: store.connection, hasNotch: layout.hasNotch,
-                        notchWidth: layout.hasNotch ? layout.anchor.width : 0,
-                        liveSide: model.appearance.liveSide, earWidth: layout.liveEarWidth,
-                        platy: model.appearance.showPlaty ? platyMood : nil)
-                .contentShape(Rectangle())
-                .onTapGesture { model.onClick() }
+            let order: PillOrder = IslandPrefs.load(from: .standard).pillOrder
+            // A running timer's time left changes each second: tick only while the pill is shown.
+            Group {
+                if model.visible, timerRemaining(at: Date()) != nil {
+                    TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                        compactPill(pill, layout: layout, order: order, now: ctx.date)
+                    }
+                } else {
+                    compactPill(pill, layout: layout, order: order, now: Date())
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { model.onClick() }
         case .peek(.approval):
             ApprovalPeek(store: store, responder: responder, arming: model.arming, onExpand: model.onClick,
                          onDecide: decide, onOpenTerminal: onOpenTerminal)
