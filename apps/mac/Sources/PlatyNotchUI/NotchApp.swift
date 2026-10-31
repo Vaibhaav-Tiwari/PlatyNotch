@@ -465,6 +465,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     NSLog("PERF-SKY reopened (was \(String(describing: c.panelModel.mode)))")
                     c.expand(tab: nil)
                 }
+                // Stray keys from the person at the Mac can open the search or a game: back to Home.
+                if let c = self?.primaryController, c.panelModel.route != PanelRoute(destination: .home) {
+                    NSLog("PERF-SKY route reset (was \(c.panelModel.route.tool ?? "agents"))")
+                    c.panelModel.route = PanelRoute(destination: .home)
+                }
             }
             self?.primaryController?.collapse()
             NSLog("PERF-SKY closed")

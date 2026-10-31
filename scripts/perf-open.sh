@@ -10,6 +10,8 @@
 #   closed each second after the close; the app must be under 1 % by the 2nd second, and
 #          the mean of seconds 3–10 is reported.
 # The panel is on screen at the notch while this runs. Needs a real Mac session; not CI.
+# Keep hands off the keyboard and mouse: a click elsewhere closes the panel and keys typed
+# while it has the keyboard can open the search or a game (both are put back and noted).
 #
 # Environment: PN_SKIES ("clear rain snow"), PN_OPEN_LIMIT (5.0), PN_CLOSED_LIMIT (1.0),
 # PN_WARMUP (8), PN_OPEN_SAMPLES (30), PN_SCRATCH (a --scratch-path for swift build),
@@ -80,6 +82,8 @@ for SKY in $SKIES; do
     | awk -v app="$APP_PID" '$1 == app { print $2 }' | tail -n +2)"
   REOPENED="$(grep -c "PERF-SKY reopened" "$WORK/app-$SKY.log" || true)"
   [[ "$REOPENED" != 0 ]] && log "note: $SKY: the panel was closed from outside and reopened $REOPENED time(s)"
+  RESET="$(grep -c "PERF-SKY route reset" "$WORK/app-$SKY.log" || true)"
+  [[ "$RESET" != 0 ]] && log "note: $SKY: stray input left Home $RESET time(s) (put back)"
   grep -q "PERF-SKY open" "$WORK/app-$SKY.log" || log "warning: the app did not log PERF-SKY open"
   grep -q "PERF-SKY closed" "$WORK/app-$SKY.log" || log "warning: the app did not log PERF-SKY closed"
   APP_OPEN="$(printf '%s\n' "$OPEN_VALUES" | awk -v p="$APP_PID" '$1 == p { n++; if (n > 1) { s += $2; c++ } } END { printf "%.2f", c ? s / c : 0 }')"
