@@ -25,16 +25,18 @@ public enum SetupPreset: String, CaseIterable, Codable, Sendable {
     /// One line under the card's title.
     public var summary: String {
         switch self {
-        case .everyday: "Music, meetings, timers, weather, shelf and clipboard."
+        case .everyday: "Music, meetings, timers, weather, notes, reminders, shelf, clipboard and games."
         case .developer: "Everyday plus agents, usage limits, file actions and snapping."
         case .minimal: "Music and weather; the notch stays hidden until something is live."
         }
     }
 
+    /// The widgets on, including every one its dock's tools need (Island: a fresh setup
+    /// never shows a dimmed "Turn on" slot; access such as Reminders' is asked in the tool).
     public var turnsOn: [String] {
         switch self {
-        case .everyday: Self.everydayOn
-        case .developer: Self.everydayOn + ["fileActions", "snap"]
+        case .everyday: Self.everydayOn + ["notes", "reminders", "games"]
+        case .developer: Self.everydayOn + ["notes", "reminders", "fileActions", "snap"]
         case .minimal: ["music", "weather"]
         }
     }

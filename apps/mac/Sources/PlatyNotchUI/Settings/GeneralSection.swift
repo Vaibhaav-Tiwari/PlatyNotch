@@ -40,10 +40,10 @@ struct GeneralSection: View {
                     if let p = previewed {
                         PresetPreview(preset: p)
                             .padding(.vertical, 4)
-                        HStack {
-                            Text(verbatim: services.presetPlan(p).isCurrent ? "\(p.title) is your setup now."
-                                                                             : "Nothing changes until you apply.")
+                        HStack(alignment: .bottom) {
+                            Text(verbatim: Self.changeList(services.presetPlan(p), title: services.presetTitle))
                                 .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
                             Spacer()
                             Button("Apply \(p.title)\u{2026}") { choose(p) }
                                 .disabled(services.presetPlan(p).isCurrent)
@@ -100,6 +100,13 @@ struct GeneralSection: View {
     /// Asks first, with every change listed (spec 14); a setup that is already current
     /// changes nothing.
     enum SetupAction: Equatable { case ask, alreadyCurrent }
+
+    /// Under the preview: every change Apply would make (widgets turned on for the dock's
+    /// tools included), or that the setup is current.
+    static func changeList(_ plan: PresetPlan, title: (String) -> String) -> String {
+        if plan.isCurrent { return "\(plan.preset.title) is your setup now." }
+        return (plan.summary(title: title) + ["Nothing changes until you apply."]).joined(separator: "\n")
+    }
 
     /// Settings never applies a setup straight away: it asks, or there is nothing to change.
     static func action(for plan: PresetPlan) -> SetupAction {

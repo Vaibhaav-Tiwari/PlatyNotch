@@ -69,4 +69,15 @@ final class PresetPreviewTests: DefaultsTestCase {
         XCTAssertTrue(panel(SetupPreset.minimal.layout.prefs).homeView.foldedDock)
         XCTAssertFalse(panel(SetupPreset.everyday.layout.prefs).homeView.foldedDock)
     }
+
+    /// The preview's change list names the widgets the dock needs.
+    func testChangeListNamesDockWidgets() {
+        let plan = PresetPlan.plan(.everyday, enabled: ["music"], mode: .alwaysOn, dock: .standard, prefs: IslandPrefs())
+        let text = GeneralSection.changeList(plan, title: { $0.capitalized })
+        XCTAssertTrue(text.contains("Notes, Reminders, Games"), text)
+        XCTAssertTrue(text.hasSuffix("Nothing changes until you apply."), text)
+        let current = PresetPlan.plan(.minimal, enabled: Set(SetupPreset.minimal.turnsOn), mode: .minimal,
+                                      dock: SetupPreset.minimal.layout.dock, prefs: SetupPreset.minimal.layout.prefs)
+        XCTAssertEqual(GeneralSection.changeList(current, title: { $0 }), "Minimal is your setup now.")
+    }
 }
