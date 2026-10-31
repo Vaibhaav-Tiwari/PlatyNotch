@@ -84,8 +84,7 @@ struct AgentRow: View {
     }
 
     static func project(_ s: Session) -> String {
-        if let p = s.project, !p.isEmpty { return p }
-        return s.title ?? s.agentName
+        SessionName.display(s)
     }
 
     /// The row's visible text in order (tests): project, status, then the button.

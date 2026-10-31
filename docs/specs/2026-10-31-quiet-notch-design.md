@@ -88,10 +88,20 @@ Memory search and graph, Notes, Mail, Mirror, Games and plugin tabs reachable.
 
 ## 3. Command line
 
-Focus it with ⌘K, or start typing anywhere in the open panel when no text field has focus
-(the typed character becomes the first character). Placeholder: "Add a reminder, start a timer,
-search memory…" with a ⌘K keycap. Suggestions list under it (top one selected); ↑/↓ move, ↩ runs,
-Esc clears then leaves. Nothing runs without ↩ or a click.
+From anywhere, the global shortcut ⌥⌘K (Settings › Home: ⌥⌘K, ⌃⌥⌘K, ⌃⇧K or Off) opens Home
+with the line focused and the panel holding the keyboard; again while focused, it closes the
+panel. In the open panel ⌘K focuses it, as does a click in the field (first click) or typing
+with no field focused. Hover never takes the keyboard. Placeholder: "Type a command, or ⌥⌘K
+from anywhere", with the global shortcut's keycap (⌘K while it is off).
+
+Asked for and empty, it lists everything it can do (`CommandCatalog`), grouped Do (Timer, Focus,
+Remind, Note: they fill the field), Open (Clipboard, Shelf, Baskets, Mirror, Memory, Sites &
+Shortcuts, Games, while available) and Toggle (Keep awake); Home's columns step aside and the
+list scrolls inside the 380 pt panel. Typing shows the parsed suggestions, then the matching
+Open and Toggle rows (never a Do row under a typed command). ↑/↓ move, ↩ runs, Esc clears then
+leaves. Nothing runs without ↩ or a click. While a text field has focus ⌘⌫ and ⌘↩ edit its text
+and never answer an approval. The first three opens show "Everything Platy can do is here.
+Press ⌥⌘K anytime." under the line; the menu bar has "What Platy can do…".
 
 | Input | Does |
 |---|---|

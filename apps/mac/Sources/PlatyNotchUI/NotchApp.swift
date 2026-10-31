@@ -160,6 +160,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var appearance = AppearanceStore.load(from: .standard)
     /// The one runtime shortcut catalog every widget claims global shortcuts in (M1).
     private let hotKeys = SharedHotKeyCatalog()
+    /// ⌥⌘K from anywhere: Home with the command line focused.
+    private lazy var commandHotKey = CommandHotKeyController(catalog: hotKeys)
     private var signalSources: [DispatchSourceSignal] = []
     /// What launch did to `<home>/bin/notch` (reported by smoke runs).
     private var hookLink: HookBinaryLink.Outcome?
@@ -262,6 +264,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !options.smoke, !options.smokeSettings { NSApp.servicesProvider = finderService }
         startPlugins()
         startWidgets()
+        // After the widgets claimed theirs, so a clash with them is named. Smoke runs never
+        // grab a real shortcut.
+        commandHotKey.onPress = { [weak self] in self?.primaryController?.commandHotKey() }
+        if !options.smoke, !options.smokeSettings {
+            commandHotKey.apply(CommandHotKey.combo(.standard))
+        }
+        settingsServices.commandHotKey = commandHotKey
 
         rebuildControllers()
         screenObserver = NotificationCenter.default.addObserver(
@@ -284,6 +293,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                     openTools: { [weak self] in self?.menuTools() ?? [] },
                                     onOpenTool: { [weak self] id in self?.openPanel(tab: id) },
                                     onOpen: { [weak self] in self?.openPanel(tab: nil) },
+                                    onShowCommands: { [weak self] in self?.primaryController?.openCommandLine() },
                                     onSettings: { [weak self] in self?.openSettings(section: nil) })
 
         if options.smokeSettings {
@@ -434,8 +444,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func openPanel(tab: String?) {
+        primaryController?.expand(tab: tab)
+    }
+
+    /// The panel on the display with the menu bar.
+    private var primaryController: NotchController? {
         let primary = NSScreen.screens.first?.displayID
-        (controllers.first { $0.displayID == primary } ?? controllers.first)?.expand(tab: tab)
+        return controllers.first { $0.displayID == primary } ?? controllers.first
     }
 
     private func startPlugins() {
@@ -477,6 +492,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         today.agentActivity.reloadVisibility()   // Settings › Agents: "Show Agents before an agent connects"
         let home = HomeSettings.load(from: .standard)
         for c in controllers { c.homeSettingsChanged(home) }
+        if !options.smoke, !options.smokeSettings {
+            commandHotKey.apply(CommandHotKey.combo(.standard))
+        }
+        let hint: String = CommandHotKey.hint(.standard)
+        for c in controllers { c.commandHintChanged(hint) }
         let policy = NotificationPolicy.load(from: .standard)
         if policy != surfaces.notificationPolicy { surfaces.notificationPolicy = policy }
         let now = AppearanceStore.load(from: .standard)
@@ -536,6 +556,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             c.onOpenSettings = { [weak self] in self?.openSettings(section: nil) }
             c.onOpenAgentSettings = { [weak self] in self?.openSettings(section: "agents") }
             c.homeSettingsChanged(HomeSettings.load(from: .standard))
+            c.commandHintChanged(CommandHotKey.hint(.standard))
+            if !options.smoke, !options.smokeSettings, !options.perfRun { c.hintDefaults = .standard }
             c.attach(to: screen)
             return c
         }

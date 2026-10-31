@@ -187,13 +187,19 @@ final class AgentsViewTests: DefaultsTestCase {
     /// One dense line: project, " · status · age", the button; the mono last-action line is gone.
     func testRowIsOneLine() {
         stubHostNames()
-        var s = session("p", .active)
+        var s = session("web", .active)
         s.tool = "Edit"
         s.message = "Edit\u{200B} a.swift"
-        XCTAssertEqual(AgentRow.texts(s, attention: .working, now: t0), ["p", "edit · just now", "Open Claude"])
-        var ask = session("q", .waitingInput)
+        XCTAssertEqual(AgentRow.texts(s, attention: .working, now: t0), ["web", "edit · just now", "Open Claude"])
+        var ask = session("api", .waitingInput)
         ask.tool = "AskUserQuestion"
-        XCTAssertEqual(AgentRow.texts(ask, attention: .needsYou, now: t0), ["q", "waiting for you · just now", "Open Claude"])
+        XCTAssertEqual(AgentRow.texts(ask, attention: .needsYou, now: t0), ["api", "waiting for you · just now", "Open Claude"])
+        // User feedback: a session in a temporary folder with a short title shows the title,
+        // never "T".
+        var orchestrated = session("orch", .exited, cwd: "/var/folders/xy/abc/T")
+        orchestrated.project = "T"
+        orchestrated.title = "Fix CI"
+        XCTAssertEqual(AgentRow.texts(orchestrated, attention: .exited, now: t0).first, "Fix CI")
     }
 
     /// Needs you and errors are counted apart; an errored row offers Open terminal.

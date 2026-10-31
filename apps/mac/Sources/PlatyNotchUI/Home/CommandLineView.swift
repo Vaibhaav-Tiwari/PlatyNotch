@@ -2,10 +2,30 @@ import AppKit
 import PlatyNotchKit
 import SwiftUI
 
+/// One row under the command line: a parsed suggestion, or an entry from the list of
+/// everything the command line can do (`CommandCatalog`).
+enum CommandRow: Equatable {
+    case suggestion(CommandSuggestion)
+    case entry(CommandCatalog.Entry)
+
+    var entry: CommandCatalog.Entry? {
+        if case .entry(let e) = self { return e }
+        return nil
+    }
+
+    var title: String {
+        switch self {
+        case .suggestion(let s): s.title
+        case .entry(let e): e.title
+        }
+    }
+}
+
 /// The command line's behaviour apart from drawing it: what the text suggests, which row is
 /// chosen, and what Return does. Return runs the chosen row and never anything else:
 /// nothing runs while typing, and nothing runs while an approval waits (the approval's own
-/// keys, ⌘↩ and ⌘⌫, answer it; Return never does).
+/// keys, ⌘↩ and ⌘⌫, answer it; Return never does). Focused and empty, it lists everything it
+/// can do; typing filters that list under the parsed suggestions.
 @MainActor
 final class CommandLineLogic {
     static let approvalMessage = "Answer the approval first"
@@ -13,33 +33,68 @@ final class CommandLineLogic {
     private let model: PanelViewModel
     private let runner: CommandRunner
     private let tools: () -> [CommandTool]
+    private let catalog: () -> [CommandCatalog.Entry]
     private let approvalsPending: () -> Bool
     private let clock: () -> Date
     private let calendar: Calendar
 
     init(model: PanelViewModel, runner: CommandRunner, tools: @escaping () -> [CommandTool] = { [] },
+         catalog: @escaping () -> [CommandCatalog.Entry] = { [] },
          approvalsPending: @escaping () -> Bool = { false }, clock: @escaping () -> Date = Date.init,
          calendar: Calendar = .current) {
         self.model = model
         self.runner = runner
         self.tools = tools
+        self.catalog = catalog
         self.approvalsPending = approvalsPending
         self.clock = clock
         self.calendar = calendar
     }
 
+    /// An approval waits above Home (the list then keeps to the short height).
+    var approvalsWaiting: Bool { approvalsPending() }
+
     var suggestions: [CommandSuggestion] {
         CommandParser.suggestions(for: model.commandText, tools: tools(), now: clock(), calendar: calendar)
     }
 
+    /// The list shows (focused, nothing typed).
+    var listsEverything: Bool {
+        model.commandActive && model.commandText.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// The rows in order: the whole list while asked for and empty; else the parsed
+    /// suggestions, then the list's Open and Toggle matches that no suggestion already
+    /// offers. A Do row never shows under typed text: the parsed suggestion is that command,
+    /// and choosing the Do row would replace what was typed with its bare keyword.
+    var rows: [CommandRow] {
+        let text: String = model.commandText
+        if text.trimmingCharacters(in: .whitespaces).isEmpty {
+            return model.commandActive ? catalog().map { .entry($0) } : []
+        }
+        let parsed: [CommandSuggestion] = suggestions
+        let opened: Set<String> = Set(parsed.compactMap { s -> String? in
+            if case .open(let tool)? = s.command { return tool }
+            return nil
+        })
+        let matches = CommandCatalog.filter(catalog(), query: text).filter { e in
+            switch e.action {
+            case .fill: return false
+            case .open(let tool): return !opened.contains(tool)
+            case .toggleKeepAwake: return true
+            }
+        }
+        return parsed.map { .suggestion($0) } + matches.map { .entry($0) }
+    }
+
     /// The chosen row, kept inside the list.
     var selectedIndex: Int {
-        let count = suggestions.count
+        let count = rows.count
         return count == 0 ? 0 : min(max(model.commandSelection, 0), count - 1)
     }
 
     func move(by delta: Int) {
-        let count = suggestions.count
+        let count = rows.count
         guard count > 0 else { return }
         model.commandSelection = (selectedIndex + delta + count) % count
     }
@@ -47,9 +102,15 @@ final class CommandLineLogic {
     /// Return (or a click on row `index`): runs it. The message to show, if any.
     @discardableResult
     func submit(index: Int? = nil) -> String? {
-        let rows = suggestions
-        guard !rows.isEmpty else { return nil }
-        let row = rows[min(max(index ?? selectedIndex, 0), rows.count - 1)]
+        let all = rows
+        guard !all.isEmpty else { return nil }
+        switch all[min(max(index ?? selectedIndex, 0), all.count - 1)] {
+        case .suggestion(let row): return run(row)
+        case .entry(let entry): return run(entry)
+        }
+    }
+
+    private func run(_ row: CommandSuggestion) -> String? {
         guard row.command != nil else {
             model.commandMessage = row.detail   // an explanation says why; it never runs
             return row.detail
@@ -65,8 +126,26 @@ final class CommandLineLogic {
             model.commandMessage = Self.confirmation(row.command)
             model.commandText = ""
             model.commandSelection = 0
+            model.commandActive = false   // done: Home comes back, the confirmation under the line
         }
         return message
+    }
+
+    private func run(_ entry: CommandCatalog.Entry) -> String? {
+        if case .fill(let start) = entry.action {
+            model.commandText = start
+            model.commandSelection = 0
+            return nil
+        }
+        if approvalsPending() {
+            model.commandMessage = Self.approvalMessage
+            return Self.approvalMessage
+        }
+        runner.perform(entry.action)
+        model.commandText = ""
+        model.commandSelection = 0
+        model.commandActive = false
+        return nil
     }
 
     /// A line for a command that ran quietly (a reminder, a note).
@@ -81,25 +160,51 @@ final class CommandLineLogic {
     }
 }
 
-/// The command line under Home's hairline (spec 3): a field with a ⌘K keycap and the
-/// suggestions under it (top one chosen). ↑/↓ move, Return runs, a click runs. Esc is handled by
-/// the controller (clear, then leave).
+/// The command line under Home's hairline (spec 3): a field with the global shortcut's
+/// keycap and the rows under it (top one chosen). Focused and empty, the rows are everything
+/// it can do, grouped Do / Open / Toggle. ↑/↓ move, Return runs, a click runs. Esc is
+/// handled by the controller (clear, then leave). A click in the field gives the panel the
+/// keyboard and focuses it on the first click.
 struct CommandLineView: View {
     let model: PanelViewModel
     let logic: CommandLineLogic
     let memory: MemoryServices?
     @FocusState private var focused: Bool
     @State private var windowBox = WindowBox()
+    /// The scrolling list is at its end (no fade then).
+    @State private var listAtEnd = false
 
-    static let placeholder = "Add a reminder, start a timer, search memory…"
+    /// The list's names column, so the hints line up ("Sites & Shortcuts" fits).
+    static let nameColumn: CGFloat = 124
+
+    /// "Type a command, or ⌥⌘K from anywhere" (just "Type a command" without a global shortcut).
+    static func placeholder(hint: String) -> String {
+        hint == "\u{2318}K" ? "Type a command" : "Type a command, or \(hint) from anywhere"
+    }
+
+    /// Shown under the line on the first three opens after the upgrade.
+    static func upgradeHint(_ hint: String) -> String {
+        "Everything Platy can do is here. Press \(hint) anytime."
+    }
+
     /// Memory hits listed under a `search` row.
     static let hitLimit = 5
-    /// The most height the suggestions take before they scroll: Home with everything live
-    /// (chips, music, three Up next rows) still fits the 380 pt panel with this under it.
+    /// The most height the suggestions take beside Home's columns before they scroll: Home
+    /// with everything live (chips, music, three Up next rows) still fits the 380 pt panel.
     static let listMaxHeight: CGFloat = 76
+    /// With the line focused Home's columns step aside and the rows get this much, inside the
+    /// 380 pt panel with the chips above.
+    static let focusedListMaxHeight: CGFloat = 196
+
+    /// A click anywhere in the field: the panel takes the keyboard and the field focus.
+    static func fieldClicked(_ model: PanelViewModel) {
+        model.requestKey()
+        model.commandFocused = true
+        model.commandActive = true
+    }
 
     var body: some View {
-        let rows = logic.suggestions
+        let rows = logic.rows
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
@@ -107,7 +212,7 @@ struct CommandLineView: View {
                     .foregroundStyle(DS.tertiary)
                     .accessibilityHidden(true)
                 TextField("", text: Binding(get: { model.commandText }, set: { model.commandText = $0 }),
-                          prompt: Text(verbatim: Self.placeholder).foregroundStyle(DS.tertiary))
+                          prompt: Text(verbatim: Self.placeholder(hint: model.commandHint)).foregroundStyle(DS.tertiary))
                     .textFieldStyle(.plain)
                     .font(DS.font(TypeScale.body))
                     .focused($focused)
@@ -116,25 +221,47 @@ struct CommandLineView: View {
                     .onKeyPress(.downArrow) { logic.move(by: 1); return .handled }
                     .accessibilityLabel("Command line")
                     .background(CaretWindowReader(box: windowBox))
-                Keycap(text: model.commandText.isEmpty ? "\u{2318}K" : "\u{21A9}")
+                Keycap(text: model.commandText.isEmpty ? model.commandHint : "\u{21A9}")
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(DS.fill, in: RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))
+            .contentShape(Rectangle())
+            .simultaneousGesture(TapGesture().onEnded { Self.fieldClicked(model) })
             if !rows.isEmpty {
                 // Results take the room Home has left, then scroll inside it (spec 2).
+                let selected: Int = logic.selectedIndex
                 ViewThatFits(in: .vertical) {
-                    suggestionList(rows, selected: logic.selectedIndex)
-                    ScrollView(.vertical) { suggestionList(rows, selected: logic.selectedIndex) }
+                    rowList(rows, selected: selected)
+                    ScrollViewReader { proxy in
+                        ScrollView(.vertical) { rowList(rows, selected: selected) }
+                            .onChange(of: selected) { _, new in proxy.scrollTo(new) }
+                            .onScrollGeometryChange(for: Bool.self) { g in
+                                g.contentOffset.y + g.containerSize.height >= g.contentSize.height - 2
+                            } action: { _, atEnd in listAtEnd = atEnd }
+                            // The last rows fade while more lies below; none at the end.
+                            .mask(LinearGradient(stops: [.init(color: .black, location: 0),
+                                                         .init(color: .black, location: 0.86),
+                                                         .init(color: .black.opacity(listAtEnd ? 1 : 0.15),
+                                                               location: 1)],
+                                                 startPoint: .top, endPoint: .bottom))
+                    }
                 }
-                .frame(maxHeight: Self.listMaxHeight)
+                .frame(maxHeight: model.commandActive && !logic.approvalsWaiting
+                       ? Self.focusedListMaxHeight : Self.listMaxHeight)
             } else if let message = model.commandMessage {
                 Text(verbatim: message).font(DS.font(TypeScale.secondary)).foregroundStyle(DS.secondary)
+            } else if model.showCommandHint, !model.commandActive {
+                Text(verbatim: Self.upgradeHint(model.commandHint))
+                    .font(DS.font(TypeScale.caption))
+                    .foregroundStyle(DS.tertiary)
+                    .lineLimit(1)
             }
         }
         .onChange(of: model.commandFocused) { _, new in if focused != new { focused = new } }
         .onChange(of: focused) { _, new in
             if model.commandFocused != new { model.commandFocused = new }
+            if !new, model.commandActive, model.commandText.isEmpty { model.commandActive = false }
             if new { Self.caretToEnd(in: windowBox) }
         }
         .onChange(of: model.commandText) { _, new in
@@ -156,31 +283,21 @@ struct CommandLineView: View {
         }
     }
 
-    private func suggestionList(_ rows: [CommandSuggestion], selected: Int) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+    private func rowList(_ rows: [CommandRow], selected: Int) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
             ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                if let header = groupHeader(rows, at: index) {
+                    ColumnLabel(text: header)
+                        .padding(.horizontal, 10)
+                        .padding(.top, index == 0 ? 2 : 6)
+                }
                 Button { logic.submit(index: index) } label: {
-                    HStack(spacing: 8) {
-                        Text(verbatim: row.title)
-                            .font(DS.font(TypeScale.body))
-                            .foregroundStyle(DS.primary)
-                            .lineLimit(1).truncationMode(.tail)
-                        if let detail = row.detail {
-                            Text(verbatim: detail)
-                                .font(DS.font(TypeScale.secondary)).foregroundStyle(DS.secondary)
-                                .lineLimit(1).truncationMode(.tail)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 3)
-                    .background(index == selected ? DS.fill : .clear,
-                                in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
-                    .contentShape(Rectangle())
+                    rowLabel(row, selected: index == selected)
                 }
                 .buttonStyle(.plain)
+                .id(index)
                 .accessibilityAddTraits(index == selected ? .isSelected : [])
-                if case .search = row.command, let hits = memoryHits {
+                if case .suggestion(let s) = row, case .search = s.command, let hits = memoryHits {
                     ForEach(hits, id: \.threadID) { hit in
                         Text(verbatim: hit.title)
                             .font(DS.font(TypeScale.secondary)).foregroundStyle(DS.secondary)
@@ -193,6 +310,59 @@ struct CommandLineView: View {
                 Text(verbatim: message).font(DS.font(TypeScale.secondary)).foregroundStyle(DS.secondary).padding(.horizontal, 10)
             }
         }
+    }
+
+    /// The group label before a list row that starts a group, while the whole list shows.
+    private func groupHeader(_ rows: [CommandRow], at index: Int) -> String? {
+        guard logic.listsEverything, let entry = rows[index].entry else { return nil }
+        if index > 0, rows[index - 1].entry?.group == entry.group { return nil }
+        return entry.group.title
+    }
+
+    @ViewBuilder private func rowLabel(_ row: CommandRow, selected: Bool) -> some View {
+        HStack(spacing: 10) {
+            switch row {
+            case .suggestion(let s):
+                Text(verbatim: s.title)
+                    .font(DS.font(TypeScale.body))
+                    .foregroundStyle(DS.primary)
+                    .lineLimit(1).truncationMode(.tail)
+                if let detail = s.detail {
+                    Text(verbatim: detail)
+                        .font(DS.font(TypeScale.secondary)).foregroundStyle(DS.secondary)
+                        .lineLimit(1).truncationMode(.tail)
+                }
+                Spacer(minLength: 0)
+            case .entry(let e):
+                Image(systemName: e.symbol)
+                    .symbolRenderingMode(.monochrome)
+                    .font(.system(size: IconSize.symbol))
+                    .foregroundStyle(DS.secondary)
+                    .frame(width: 18)
+                    .accessibilityHidden(true)
+                Text(verbatim: e.title)
+                    .font(DS.font(TypeScale.body))
+                    .foregroundStyle(DS.primary)
+                    .lineLimit(1)
+                    // One column for the names, so the hints line up.
+                    .frame(width: Self.nameColumn, alignment: .leading)
+                Text(verbatim: e.hint)
+                    .font(DS.font(TypeScale.secondary))
+                    .foregroundStyle(DS.tertiary)
+                    .lineLimit(1).truncationMode(.tail)
+                Spacer(minLength: 0)
+                if let shortcut = e.shortcut {
+                    Text(verbatim: shortcut)
+                        .font(DS.font(TypeScale.caption, design: .monospaced))
+                        .foregroundStyle(DS.tertiary)
+                        .fixedSize()
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 3)
+        .background(selected ? DS.fill : .clear, in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
+        .contentShape(Rectangle())
     }
 
     /// Up to five memory hits for a `search` row (read-only; Return opens Memory with them).

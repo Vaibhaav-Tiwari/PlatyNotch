@@ -76,6 +76,12 @@ final class NotchPanel: NSPanel {
         if allowsKey { clickedIn = true }
     }
 
+    /// An explicit request for the keyboard (the global command shortcut, a click in the
+    /// command line): as a click would. Only while the mode may take the keyboard.
+    func grantKey() {
+        if allowsKey { clickedIn = true }
+    }
+
     override func resignKey() {
         super.resignKey()
         clickedIn = false
@@ -114,7 +120,27 @@ final class NotchPanel: NSPanel {
         return chars
     }
 
+    /// ⌘⌫ and ⌘↩ with no other modifier: an approval's Deny and Allow, and also text
+    /// editing (delete to the line's start, Return) in a focused field.
+    static func isApprovalKey(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown,
+              event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting([.numericPad, .function]) == .command
+        else { return false }
+        return event.keyCode == 51 || event.keyCode == 36 || event.keyCode == 76   // ⌫, ↩, ⌤
+    }
+
+    /// While a text field has the keyboard, ⌘⌫ and ⌘↩ edit its text and never answer an
+    /// approval: the approval shortcuts apply only with no field focused.
+    static func keyBelongsToText(_ event: NSEvent, textFocused: Bool) -> Bool {
+        textFocused && isApprovalKey(event)
+    }
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // A focused field takes ⌘⌫ / ⌘↩ before any approval shortcut can see them.
+        if Self.keyBelongsToText(event, textFocused: firstResponder is NSText), let text = firstResponder {
+            text.keyDown(with: event)
+            return true
+        }
         // Only while this panel has the keyboard (never a shortcut another window was sent).
         if isKeyWindow, Self.isCommandK(event), onCommandK?() == true { return true }
         if isKeyWindow, let digit = Self.commandDigit(event), onCommandDigit?(digit) == true { return true }

@@ -98,6 +98,9 @@ struct HomeView: View {
     var onOpenTool: (String) -> Void = { _ in }
     /// The command line below the hairline.
     var commandLine: AnyView = AnyView(EmptyView())
+    /// The command line has focus: the columns step aside so its rows (everything it can do,
+    /// or what the text suggests) have the room, like Spotlight. Esc brings them back.
+    var commandFocused = false
 
     /// Everything Home prints, in reading order (tests).
     static func texts(_ data: HomeData, nowPlaying: NowPlaying) -> [String] {
@@ -149,6 +152,8 @@ struct HomeView: View {
             }
             if let drop = data.drop {
                 DropTargetsView(shelfOn: drop.shelfOn, airDrop: drop.airDrop, hovered: dropHover)
+            } else if commandFocused {
+                commandLine
             } else {
                 TwoColumns(ratio: HomeMetrics.columnRatio, gap: HomeMetrics.columnGap) {
                     MediaBlock(nowPlaying: today.nowPlaying, fixedNow: fixedNow)

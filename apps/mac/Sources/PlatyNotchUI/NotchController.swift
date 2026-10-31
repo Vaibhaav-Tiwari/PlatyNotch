@@ -32,6 +32,11 @@ public final class NotchController {
     private var reportedBody: CGFloat?
     /// A content shrink waiting for the pointer to leave the band it removes.
     private(set) var shrinkPending = false
+    /// Where the upgrade hint's open count lives (the app's defaults); nil in tests and
+    /// renders: no hint, nothing counted.
+    var hintDefaults: UserDefaults?
+    /// The panel was open at the last `apply` (the hint counts opens, not redraws).
+    private var wasExpanded = false
     /// The drop target while the Shelf is off: AirDrop only.
     private let airDropTarget = AirDropDropTarget()
 
@@ -288,6 +293,7 @@ public final class NotchController {
                 model.commandMessage = nil
             } else {
                 model.commandFocused = false
+                model.commandActive = false
             }
             return
         }
@@ -326,6 +332,7 @@ public final class NotchController {
         guard machine.mode == .expanded, panelIsKey() else { return false }
         if model.route != PanelRoute(destination: .home) { model.route = PanelRoute(destination: .home) }
         model.commandFocused = true
+        model.commandActive = true
         return true
     }
 
@@ -339,8 +346,52 @@ public final class NotchController {
         if model.route.destination != .home { model.route = PanelRoute(destination: .home) }
         model.commandText += s
         model.commandFocused = true
+        model.commandActive = true
         return true
     }
+
+    /// The global command shortcut (⌥⌘K): from anywhere, opens Home with the command line
+    /// focused and gives the panel the keyboard; pressed again while the command line has
+    /// focus, closes the panel. Returns whether the panel is now open.
+    @discardableResult
+    func commandHotKey() -> Bool {
+        if machine.mode == .expanded, model.commandFocused, panelIsKey() {
+            collapse()
+            return false
+        }
+        return openCommandLine()
+    }
+
+    /// Opens Home with the command line focused and the keyboard given: its list of
+    /// everything it can do shows (the global shortcut, the menu's "What Platy can do…").
+    @discardableResult
+    func openCommandLine() -> Bool {
+        if machine.mode != .expanded { handle(.click) }
+        guard machine.mode == .expanded else { return false }
+        if model.route != PanelRoute(destination: .home) { model.route = PanelRoute(destination: .home) }
+        makePanelKey()
+        model.commandFocused = true
+        model.commandActive = true
+        return true
+    }
+
+    /// The global shortcut changed: the command line's keycap and placeholder follow it.
+    func commandHintChanged(_ hint: String) {
+        if model.commandHint != hint { model.commandHint = hint }
+    }
+
+    /// Gives the open panel the keyboard on purpose (the global shortcut, a click in the
+    /// command line). Hover never does: only these explicit gestures.
+    func makePanelKey() {
+        guard machine.mode == .expanded else { return }
+        keyRequests += 1
+        guard let panel else { return }
+        panel.grantKey()
+        panel.makeKey()
+    }
+
+    /// How often the panel was given the keyboard on purpose (tests: there is no window).
+    private(set) var keyRequests = 0
 
     /// Removes the panel and stops all monitoring.
     public func detach() {
@@ -372,6 +423,7 @@ public final class NotchController {
         host.dropRouter = self
         p.contentView = host
         p.onEscape = { [weak self] in self?.escapePressed() }
+        model.requestKey = { [weak self] in self?.makePanelKey() }
         p.onCommandDigit = { [weak self] in self?.commandDigit($0) ?? false }
         p.onCommandK = { [weak self] in self?.commandK() ?? false }
         p.onTyped = { [weak self] in self?.typed($0) ?? false }
@@ -389,9 +441,18 @@ public final class NotchController {
             surfaces.sinkStateChanged()   // the media-key tap's view of where a HUD would show
             if showsHome, !shownBefore { onExpanded() } else if !showsHome, shownBefore { onCollapsed() }
         }
-        if machine.mode != .expanded, model.commandFocused || !model.commandText.isEmpty || model.commandMessage != nil {
+        let expanded: Bool = machine.mode == .expanded
+        if expanded, !wasExpanded, let d = hintDefaults {
+            // The one-line hint under the command line, on the first three opens.
+            model.showCommandHint = CommandCatalog.showsHint(d)
+            CommandCatalog.notePanelOpened(d)
+        }
+        wasExpanded = expanded
+        if machine.mode != .expanded,
+           model.commandFocused || model.commandActive || !model.commandText.isEmpty || model.commandMessage != nil {
             model.commandText = ""   // a closed panel keeps no half-typed command
             model.commandFocused = false
+            model.commandActive = false
             model.commandMessage = nil
         }
         guard let layout else { return }

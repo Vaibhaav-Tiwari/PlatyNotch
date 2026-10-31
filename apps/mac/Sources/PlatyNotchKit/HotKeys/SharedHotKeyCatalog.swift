@@ -27,6 +27,7 @@ public final class SharedHotKeyCatalog {
         case "snap": "Window snapping"
         case "baskets": "Baskets"
         case "clipboard": "Clipboard"
+        case "command": "Command line"
         default: id
         }
     }
