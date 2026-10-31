@@ -149,30 +149,41 @@ final class HomeViewTests: DefaultsTestCase {
     }
 
     /// 200-character track, artist, album and event titles stay on one line: each card is
-    /// exactly as tall as with short ones (measured alone, so the taller card cannot hide it).
+    /// exactly as tall as the same card with short names, measured at runtime (no fixed
+    /// heights: they differ between macOS versions). The reference differs only in the
+    /// names (same clock, same event time), so the Today card shows the same state both times.
     func testLongTitlesTruncate() {
         let long = String(String(repeating: "Very long title ", count: 13).prefix(200))
         let r = HomeRenders.homeRest()
+        let now = Date()
+        let soon = now.addingTimeInterval(600)
         let todayWidth: CGFloat = width - HomeMetrics.cardGap - NowPlayingCard.idealWidth
+        var info = r.today.nowPlaying.info!   // the same track and times; only the names change
+        func set(_ name: String, event: String) {
+            info.title = name
+            info.artist = name
+            info.album = name
+            r.today.nowPlaying.debugApply(info, now: now)
+            r.today.calendar.setForTesting(access: .granted, meetings: [
+                CalendarMeeting(id: "m", title: event, start: soon, end: soon.addingTimeInterval(1200))])
+        }
         func heights() -> (CGFloat, CGFloat) {
-            let music = NowPlayingCard(nowPlaying: r.today.nowPlaying, fixedNow: Date())
+            let music = NowPlayingCard(nowPlaying: r.today.nowPlaying, fixedNow: now)
             let data = HomeData.make(today: r.today, widgets: r.registry, settings: HomeSettings(), tourSample: nil,
-                                     now: Date(), dropping: false)
-            let today = TodayCard(weather: HomeView.weather(r.registry), next: data.next, fixedNow: Date())
+                                     now: now, dropping: false)
+            guard case .event = data.next else {
+                XCTFail("the Today card shows the event: \(data.next)")
+                return (0, 0)
+            }
+            let today = TodayCard(weather: HomeView.weather(r.registry), next: data.next, fixedNow: now)
             return (cardHeight(music, width: NowPlayingCard.idealWidth), cardHeight(today, width: todayWidth))
         }
-        let before = heights()
-        var info = r.today.nowPlaying.info!   // the same track and times, long names
-        info.title = long
-        info.artist = long
-        info.album = long
-        r.today.nowPlaying.debugApply(info)
-        let soon = Date().addingTimeInterval(600)
-        r.today.calendar.setForTesting(access: .granted, meetings: [
-            CalendarMeeting(id: "m", title: long, start: soon, end: soon.addingTimeInterval(1200))])
-        let after = heights()
-        XCTAssertEqual(after.0, before.0, accuracy: 0.5, "Now Playing")
-        XCTAssertEqual(after.1, before.1, accuracy: 0.5, "Today")
+        set("Green Light", event: "Design review")
+        let short = heights()
+        set(long, event: long)
+        let longer = heights()
+        XCTAssertEqual(longer.0, short.0, accuracy: 0.5, "Now Playing")
+        XCTAssertEqual(longer.1, short.1, accuracy: 0.5, "Today")
         XCTAssertLessThanOrEqual(size(view(r)).height, room)
         r.registry.stopAll()
     }

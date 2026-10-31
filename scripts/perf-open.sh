@@ -29,9 +29,11 @@ log() { printf '%s\n' "$*" >&2; }
 
 WORK="$(mktemp -d /tmp/pnopen.XXXX)"
 SERVE_PID=""; APP_PID=""
+# cleanup runs only through `trap cleanup EXIT`, which shellcheck does not follow.
+# shellcheck disable=SC2317
 cleanup() {
-  [[ -n "$APP_PID" ]] && kill "$APP_PID" 2>/dev/null || true
-  [[ -n "$SERVE_PID" ]] && kill "$SERVE_PID" 2>/dev/null || true
+  if [[ -n "$APP_PID" ]]; then kill "$APP_PID" 2>/dev/null || true; fi
+  if [[ -n "$SERVE_PID" ]]; then kill "$SERVE_PID" 2>/dev/null || true; fi
   sleep 0.5
   rm -rf "$WORK"
 }
@@ -44,8 +46,8 @@ else
   SCRATCH=()
   [[ -n "${PN_SCRATCH:-}" ]] && SCRATCH=(--scratch-path "$PN_SCRATCH")
   log "swift build (release)"
-  (cd "$ROOT/apps/mac" && swift build -c release "${SCRATCH[@]}" --product PlatyNotch >&2)
-  APP_BIN="$(cd "$ROOT/apps/mac" && swift build -c release "${SCRATCH[@]}" --show-bin-path)/PlatyNotch"
+  (cd "$ROOT/apps/mac" && swift build -c release ${SCRATCH[@]+"${SCRATCH[@]}"} --product PlatyNotch >&2)
+  APP_BIN="$(cd "$ROOT/apps/mac" && swift build -c release ${SCRATCH[@]+"${SCRATCH[@]}"} --show-bin-path)/PlatyNotch"
 fi
 WS_PID="$(pgrep -x WindowServer | head -1)"
 # WindowServer before any test app: what the rest of the Mac costs it.
