@@ -19,12 +19,13 @@ public struct TypeStyle: Equatable, Sendable {
     }
 }
 
-/// The type scale (Quiet Notch spec 5.2): SF Pro 13 body, 12 secondary, 11 captions, one
-/// 13 pt semibold title per block, SF Mono 12. Nothing in the panel goes above `maximum` or
-/// below `minimum`.
+/// The type scale (Island spec 9): SF Pro 13 body, 14 semibold titles, 12 secondary,
+/// 11 captions, 10.5 dock labels, 10 semibold badges, SF Mono 12; SF Pro Rounded semibold
+/// for the pill time and the two display numbers. Text styles stay in `minimum`…`maximum`;
+/// only `display` goes above.
 public enum TypeScale {
     /// The one title per block (a project, a track).
-    public static let title = TypeStyle(size: 13, weight: .semibold)
+    public static let title = TypeStyle(size: 14, weight: .semibold)
     /// Default text.
     public static let body = TypeStyle(size: 13, weight: .regular)
     /// Secondary lines, the header, chips and buttons.
@@ -36,9 +37,25 @@ public enum TypeScale {
     /// The play / pause symbol: the largest thing in the panel.
     public static let glyph = TypeStyle(size: 15, weight: .semibold)
 
-    public static let all: [TypeStyle] = [title, body, secondary, caption, mono, glyph]
+    /// The dock's labels under each circle.
+    public static let dockLabel = TypeStyle(size: 10.5, weight: .regular)
+    /// The white digits on a count badge.
+    public static let badge = TypeStyle(size: 10, weight: .semibold)
+    /// The closed pill's time left.
+    public static let pillTime = TypeStyle(size: 12, weight: .semibold, rounded: true)
+    /// The Today card's temperature.
+    public static let temperature = TypeStyle(size: 34, weight: .semibold, rounded: true)
+    /// The Timer tool's value.
+    public static let timer = TypeStyle(size: 54, weight: .semibold, rounded: true)
+
+    public static let all: [TypeStyle] = [title, body, secondary, caption, mono, glyph, dockLabel, badge, pillTime]
+    /// The big, friendly numbers: the only text above `maximum` (not in `all`).
+    public static let display: [TypeStyle] = [temperature, timer]
     public static let maximum: CGFloat = 15
-    public static let minimum: CGFloat = 11
+    public static let minimum: CGFloat = 10
+    /// The smallest literal `.system(size:)` a view may write (dock labels and badges use
+    /// their tokens).
+    public static let literalMinimum: CGFloat = 11
 }
 
 /// The spacing scale and the panel's fixed gaps (spec 5.1).
@@ -52,23 +69,25 @@ public enum Space {
     public static let scale: [CGFloat] = [xs, s, m, l, xl, xxl]
     /// The open panel's padding: below the notch, the sides, the bottom.
     public static let panelTop: CGFloat = 30
-    public static let panelSide: CGFloat = 18
-    public static let panelBottom: CGFloat = 16
+    public static let panelSide: CGFloat = 16
+    public static let panelBottom: CGFloat = 14
     /// Between the header's items, and below the header.
     public static let header: CGFloat = 14
     /// Between Home's two columns.
     public static let columnGap: CGFloat = 22
 }
 
-/// The radius scale (spec 5.1): keycaps, buttons and code, the command line and media art,
-/// the approval card and drop box, the panel's bottom corners. Chips are capsules.
+/// The radius scale (Island spec 9): keycaps, buttons and code, wells, art and the approval
+/// card, Island's cards, the panel's bottom corners. Chips and badges are capsules.
 public enum Radius {
     public static let keycap: CGFloat = 4
     public static let small: CGFloat = 6
     public static let medium: CGFloat = 8
     public static let card: CGFloat = 12
+    /// Island's cards (Now Playing, Today, tool bodies).
+    public static let island: CGFloat = 16
     public static let panelBottom: CGFloat = 22
-    public static let scale: [CGFloat] = [keycap, small, medium, card, panelBottom]
+    public static let scale: [CGFloat] = [keycap, small, medium, card, island, panelBottom]
 
     /// A concentric inner radius: `outer − padding`, never negative.
     public static func inner(outer: CGFloat, padding: CGFloat) -> CGFloat {
@@ -84,14 +103,29 @@ public enum IconSize {
     public static let header: CGFloat = 16
 }
 
-/// White ink at fixed opacities over the black panel (spec 5.1): text, hairlines, fills.
+/// White ink at fixed opacities over the black panel (Island spec 9): text, hairlines, fills.
 public enum Ink {
-    public static let primary: Double = 0.92
-    public static let secondary: Double = 0.56
-    public static let tertiary: Double = 0.32
-    public static let hairline: Double = 0.10
-    /// Chips, the command line, buttons and code.
+    public static let primary: Double = 0.94
+    public static let secondary: Double = 0.60
+    public static let tertiary: Double = 0.36
+    public static let hairline: Double = 0.06
+    /// Between list rows.
+    public static let rowHairline: Double = 0.05
+    /// Settings and the legacy chips, the command line, buttons and code.
     public static let fill: Double = 0.07
+}
+
+/// Island's opaque surfaces on the black panel (spec 9): cards, raised controls, outlines,
+/// and the one blue for counts.
+public enum Surface {
+    /// Cards (radius 16, padding 12).
+    public static let card = RGB(hex: 0x121214)
+    /// Circles, chips, wells, buttons and fields.
+    public static let raised = RGB(hex: 0x1C1C1F)
+    /// The search ring, keycaps and hover.
+    public static let stroke = RGB(hex: 0x2A2A2E)
+    /// Badges, the week strip's marked day, the caret.
+    public static let countBlue = RGB(hex: 0x4C8DFF)
 }
 
 /// Brand colours. Only Platy's bill cream is left; the panel has no accent colour.

@@ -23,14 +23,14 @@ struct MediaBlock: View {
             playing(title: title)
         } else {
             HStack(spacing: 10) {
-                PlatyView(mood: .idle, size: HomeMetrics.artSize)
+                PlatyView(mood: .idle, size: HomeMetrics.legacyArtSize)
                 Text(verbatim: Self.nothingPlaying)
                     .font(DS.font(TypeScale.body))
                     .foregroundStyle(DS.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity, minHeight: HomeMetrics.artSize, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: HomeMetrics.legacyArtSize, alignment: .leading)
             .accessibilityElement(children: .combine)
         }
     }
@@ -72,7 +72,7 @@ struct MediaBlock: View {
                 }
             }
         }
-        .frame(width: HomeMetrics.artSize, height: HomeMetrics.artSize)
+        .frame(width: HomeMetrics.legacyArtSize, height: HomeMetrics.legacyArtSize)
         .clipShape(RoundedRectangle(cornerRadius: Radius.medium, style: .continuous))
         .accessibilityHidden(true)
     }
