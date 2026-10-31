@@ -90,8 +90,17 @@ public enum CommandCatalog {
         return scored.sorted { ($0.0, $0.1) < ($1.0, $1.1) }.map(\.2)
     }
 
-    /// 0 for a prefix match, 1 for a fuzzy one, nil for none.
+    /// Lower is better: -3 the title is exactly the text, -2 an alias is, -1 either is once a
+    /// plural "s" is dropped from the text; 0 a prefix match, 1 a fuzzy one, nil none.
     private static func score(_ e: Entry, _ q: String) -> Int? {
+        let title: String = e.title.lowercased()
+        let aliases: [String] = e.aliases.map { $0.lowercased() }
+        if title == q { return -3 }
+        if aliases.contains(q) { return -2 }
+        if q.count > 1, q.hasSuffix("s") {
+            let singular: String = String(q.dropLast())
+            if title == singular || aliases.contains(singular) { return -1 }
+        }
         let names: [String] = [e.title] + e.aliases
         let words: [String] = names.flatMap { name in
             [name.lowercased()] + name.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)

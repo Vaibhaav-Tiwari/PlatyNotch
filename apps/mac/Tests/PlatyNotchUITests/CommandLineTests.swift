@@ -16,6 +16,7 @@ final class CommandLineTests: DefaultsTestCase {
         var searches: [String] = []
         var routes: [PanelRoute] = []
         var games: [GameKind] = []
+        var openedTools: [String] = []
         var remindReply: String?
         var noteReply: String?
 
@@ -28,6 +29,7 @@ final class CommandLineTests: DefaultsTestCase {
             a.search = { [self] in searches.append($0) }
             a.open = { [self] in routes.append($0) }
             a.selectGame = { [self] in games.append($0) }
+            a.openTool = { [self] in openedTools.append($0) }
             return a
         }
     }
@@ -61,16 +63,31 @@ final class CommandLineTests: DefaultsTestCase {
         XCTAssertEqual(rowTitles("games"), ["Games", search("games")])
         XCTAssertEqual(rowTitles("game"), ["Games", search("game")])
         XCTAssertEqual(rowTitles("play"), ["Games"], "play is a command and a feature: one row")
-        XCTAssertEqual(rowTitles("notes"), ["Note", "Notes", search("notes")])
+        XCTAssertEqual(rowTitles("notes"), ["Notes", "Note", search("notes")])
         XCTAssertEqual(rowTitles("note"), ["Note", "Notes"])
         XCTAssertEqual(rowTitles("clip"), ["Clipboard", search("clip")])
         XCTAssertEqual(rowTitles("mem"), ["Memory", search("mem")])
         XCTAssertEqual(rowTitles("timer"), ["Timer"])
-        XCTAssertEqual(rowTitles("time"), ["Timer", "Time", search("time")])
+        XCTAssertEqual(rowTitles("time"), ["Time", "Timer", search("time")])
         XCTAssertEqual(rowTitles("timer 10m"), ["Timer"])
         XCTAssertEqual(rowTitles("remind call mom at 5pm"), ["Remind"])
         XCTAssertEqual(rowTitles("call mom 5pm"), ["Remind me: call mom 5pm", search("call mom 5pm")])
         XCTAssertEqual(rowTitles("xyzzy"), [search("xyzzy")])
+    }
+
+    /// An exact name ranks first, so Return on "notes" opens the Notes tool.
+    func testReturnOnNotesOpensTheNotesTool() {
+        let spy = Spy()
+        let ids = ["notes", "time"]
+        let model = PanelViewModel()
+        model.commandActive = true
+        model.commandText = "notes"
+        let l = CommandLineLogic(model: model, runner: CommandRunner(actions: spy.actions),
+                                 tools: { ids.map { CommandTool(id: $0, title: $0.capitalized) } },
+                                 catalog: { CommandCatalog.entries(tools: Set(ids), shortcuts: [:]) })
+        l.submit()
+        XCTAssertEqual(spy.openedTools, ["notes"])
+        XCTAssertEqual(rowTitles("time").first, "Time")
     }
 
     private func controller() -> (NotchController, WidgetRegistry, HomeRenders.Rig) {
@@ -183,6 +200,11 @@ final class CommandLineTests: DefaultsTestCase {
         XCTAssertEqual(l.selectedIndex, 1)
         l.move(by: 1)
         XCTAssertEqual(l.selectedIndex, 0, "wraps")
+        l.move(by: -2)
+        XCTAssertEqual(l.selectedIndex, 0, "two back wraps round a two-row list")
+        l.move(by: -1)
+        XCTAssertEqual(l.selectedIndex, 1, "wraps backward")
+        l.move(by: 1)
         l.submit()
         XCTAssertEqual(spy.routes, [PanelRoute(destination: .home, tool: "clipboard")])
     }
