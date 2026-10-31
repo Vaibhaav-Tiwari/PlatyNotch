@@ -85,7 +85,7 @@ public struct AgentsLive: Equatable, Sendable {
 
     /// "Claude Code · platynotch", or the agent's name alone without a project.
     public static func title(of s: Session) -> String {
-        guard let project = s.project, !project.isEmpty else { return s.agentName }
+        guard let project = SessionName.project(s) else { return s.agentName }
         return "\(s.agentName) · \(project)"
     }
 
