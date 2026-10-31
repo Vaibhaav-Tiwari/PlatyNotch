@@ -287,3 +287,13 @@ func TestHostBundleIDKeptAcrossEvents(t *testing.T) {
 		t.Fatalf("not replaced: %+v", sess)
 	}
 }
+
+func TestInvalidHostBundleIDNotStored(t *testing.T) {
+	s, _ := newTestStore(func(int) bool { return true })
+	e := ev("user-prompt-submit", 100, `{"sid":"s1"}`)
+	e.HostBundleID = "../x"
+	sess, _ := s.Apply(e, fakeAdapter{})
+	if sess.HostBundleID != "" {
+		t.Fatalf("%+v", sess)
+	}
+}

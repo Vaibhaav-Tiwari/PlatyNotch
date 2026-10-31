@@ -66,7 +66,7 @@ func Run(agent, event string, stdin io.Reader, stdout io.Writer, env func(string
 		Event:        event,
 		PPID:         os.Getppid(),
 		TermProgram:  env("TERM_PROGRAM"),
-		HostBundleID: env("__CFBundleIdentifier"),
+		HostBundleID: hostBundleID(env("__CFBundleIdentifier")),
 		WantDecision: want,
 		At:           time.Now().UTC(),
 	}
@@ -173,4 +173,12 @@ func isShell(comm string) bool {
 		return true
 	}
 	return false
+}
+
+// hostBundleID passes a valid bundle id through and treats anything else as absent.
+func hostBundleID(s string) string {
+	if protocol.ValidBundleID(s) {
+		return s
+	}
+	return ""
 }

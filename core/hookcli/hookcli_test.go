@@ -309,3 +309,12 @@ func TestHostBundleIDOmittedWhenUnset(t *testing.T) {
 		t.Fatalf("key present: %s", env.Data)
 	}
 }
+
+func TestInvalidHostBundleIDTreatedAsAbsent(t *testing.T) {
+	for _, bad := range []string{"a b", "../x", "nodots", strings.Repeat("a", 300) + ".com"} {
+		env := captureEvent(t, bad)
+		if strings.Contains(string(env.Data), "host_bundle_id") {
+			t.Fatalf("%q forwarded: %s", bad, env.Data)
+		}
+	}
+}

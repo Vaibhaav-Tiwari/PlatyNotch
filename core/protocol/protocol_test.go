@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -143,5 +144,31 @@ func TestGoldenFixtures(t *testing.T) {
 				t.Fatalf("%s mismatch\n got: %s\nwant: %s", path, got, want)
 			}
 		})
+	}
+}
+
+func TestValidBundleID(t *testing.T) {
+	good := []string{"com.apple.Terminal", "com.anthropic.claudefordesktop", "dev.warp.Warp-Stable", "a.b"}
+	bad := []string{"", "a b", "../x", "nodots", ".lead.ing", "trail.", "a..b", "com.apple.Term\ninal", "é.com", strings.Repeat("a", 254) + ".b"}
+	for _, g := range good {
+		if !ValidBundleID(g) {
+			t.Errorf("%q should be valid", g)
+		}
+	}
+	for _, b := range bad {
+		if ValidBundleID(b) {
+			t.Errorf("%q should be invalid", b)
+		}
+	}
+	if !ValidBundleID(strings.Repeat("a", 253) + ".b") {
+		t.Error("255 bytes should be valid")
+	}
+}
+
+// A session written before host_bundle_id existed still decodes, with the field empty.
+func TestSessionWithoutHostBundleID(t *testing.T) {
+	var s Session
+	if err := json.Unmarshal([]byte(`{"key":"k","agent":"a","agent_name":"A","session_id":"s","state":"idle","started_at":"2026-10-23T10:00:00Z","updated_at":"2026-10-23T10:00:00Z"}`), &s); err != nil || s.HostBundleID != "" {
+		t.Fatalf("%v %+v", err, s)
 	}
 }

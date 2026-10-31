@@ -6,6 +6,7 @@ package protocol
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -18,6 +19,26 @@ type Envelope struct {
 	Type string          `json:"type"`
 	ID   string          `json:"id,omitempty"` // correlates a request with its reply
 	Data json.RawMessage `json:"data,omitempty"`
+}
+
+// ValidBundleID reports whether s looks like a reverse-DNS bundle identifier: letters, digits,
+// dots and hyphens, at least one dot, no leading or trailing dot, no empty label, at most 255 bytes.
+func ValidBundleID(s string) bool {
+	if len(s) == 0 || len(s) > 255 || !strings.Contains(s, ".") {
+		return false
+	}
+	for _, label := range strings.Split(s, ".") {
+		if label == "" {
+			return false
+		}
+		for i := 0; i < len(label); i++ {
+			c := label[i]
+			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-') {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // Message types.

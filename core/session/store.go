@@ -126,7 +126,7 @@ func (s *Store) Apply(ev protocol.HookEvent, a agents.Adapter) (protocol.Session
 	if ev.TermProgram != "" {
 		sess.TermProgram = ev.TermProgram
 	}
-	if ev.HostBundleID != "" {
+	if protocol.ValidBundleID(ev.HostBundleID) {
 		sess.HostBundleID = ev.HostBundleID
 	}
 	if ev.Event == "user-prompt-submit" {
