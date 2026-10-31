@@ -208,6 +208,42 @@ final class HomeViewTests: DefaultsTestCase {
         r.registry.stopAll()
     }
 
+    /// Final review I1: a content shrink with the pointer in the band it removes (the third
+    /// suggestion, the last Agents row) waits, so the hover panel stays open and keeps the
+    /// typed command; it applies once the pointer is inside the smaller panel.
+    func testShrinkWaitsForThePointer() {
+        let r = rig()
+        let c = NotchController(store: r.store, client: r.client, plugins: [], today: r.today, widgets: r.registry)
+        c.debugHandle(.layout(HomeRenders.layout))
+        c.debugHandle(.event(.click))
+        XCTAssertEqual(c.panelModel.mode, .expanded)
+        c.bodyHeightReported(300)
+        let tall = HomeRenders.layout.expandedHeight(forBody: 300)
+        XCTAssertEqual(c.panelModel.layout?.expandedContentHeight, tall)
+        let big: CGRect = try! XCTUnwrap(c.panelModel.layout).hitRect(for: .expanded)
+        // The pointer rests near the bottom edge; typing narrows the list.
+        var pointer = CGPoint(x: big.midX, y: big.minY + 6)
+        c.cursorLocation = { pointer }
+        c.panelModel.commandText = "rem"
+        c.bodyHeightReported(150)
+        XCTAssertEqual(c.panelModel.layout?.expandedContentHeight, tall, "no shrink under the pointer")
+        XCTAssertTrue(c.shrinkPending)
+        for t in stride(from: 0.0, through: 1.0, by: 0.1) {
+            c.sampleCursor()
+            c.hoverSample(inside: PanelLayout.contains(try! XCTUnwrap(c.panelModel.layout).hitRect(for: .expanded), pointer),
+                          at: 1_000 + t)
+        }
+        XCTAssertEqual(c.panelModel.mode, .expanded, "the panel stays open")
+        XCTAssertEqual(c.panelModel.commandText, "rem", "the typed command is kept")
+        // The pointer moves up into what stays: the shrink applies, still open.
+        pointer = CGPoint(x: big.midX, y: big.maxY - 60)
+        c.sampleCursor()
+        XCTAssertFalse(c.shrinkPending)
+        XCTAssertEqual(c.panelModel.layout?.expandedContentHeight, HomeRenders.layout.expandedHeight(forBody: 150))
+        XCTAssertEqual(c.panelModel.mode, .expanded)
+        r.registry.stopAll()
+    }
+
     func testHeaderStatusIsDateAndWeather() {
         let fixed = Date(timeIntervalSince1970: 1_793_448_000)
         var cal = Calendar(identifier: .gregorian)
