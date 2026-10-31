@@ -21,6 +21,17 @@ final class ApprovalCardStyleTests: XCTestCase {
         XCTAssertEqual(ApprovalCard.keycaps, ["⌘⌫", "⌘↩"])
     }
 
+    /// Final review Minor 7: only the card the keys answer (the oldest, `shortcuts`) shows
+    /// ⌘⌫ and ⌘↩; card 2 shows plain Deny and Allow.
+    func testOnlyTheShortcutCardShowsKeycaps() {
+        func card(_ shortcuts: Bool) -> ApprovalCard {
+            ApprovalCard(approval: approval("npm test"), session: nil, canAnswer: true, phase: nil,
+                         arming: ApprovalArming(), shortcuts: shortcuts, onDecide: { _ in }, onOpenTerminal: { _ in })
+        }
+        XCTAssertEqual(card(true).shownKeycaps, ["\u{2318}\u{232B}", "\u{2318}\u{21A9}"], "card 1")
+        XCTAssertEqual(card(false).shownKeycaps, [nil, nil], "card 2")
+    }
+
     /// A one-line Bash command is one mono 12 line on the fill: the box is one line tall
     /// plus its padding (a longer command wraps and scrolls instead, never truncated).
     func testCommandIsOneMonoLine() {

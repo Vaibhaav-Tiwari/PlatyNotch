@@ -38,6 +38,12 @@ struct ApprovalCard: View {
 
     /// Deny's and Allow's shortcuts, shown in keycaps.
     static let keycaps = ["\u{2318}\u{232B}", "\u{2318}\u{21A9}"]
+
+    /// The keycaps this card shows: only the card the keys answer (`shortcuts`, the oldest)
+    /// shows them; the others say plain "Deny" and "Allow". Display only.
+    var shownKeycaps: [String?] {
+        shortcuts ? Self.keycaps.map { Optional($0) } : [nil, nil]
+    }
     /// The command's font: SF Mono 12.
     static let commandFont: Font = DS.font(TypeScale.mono)
     /// One line of `commandFont`, used to size the command box.
@@ -175,13 +181,13 @@ struct ApprovalCard: View {
     private func decisionButtons(enabled: Bool) -> some View {
         HStack(spacing: 8) {
             Button { onDecide(.deny) } label: {
-                PanelButtonLabel(title: "Deny", keycap: Self.keycaps[0])
+                PanelButtonLabel(title: "Deny", keycap: shownKeycaps[0])
             }
             .keyboardShortcut(shortcuts ? KeyboardShortcut(.delete, modifiers: .command) : nil)
             .accessibilityLabel("Deny")
             .accessibilityHint(shortcuts ? "Command-Delete" : "")
             Button { onDecide(.allow) } label: {
-                PanelButtonLabel(title: "Allow", keycap: Self.keycaps[1], tone: .working)
+                PanelButtonLabel(title: "Allow", keycap: shownKeycaps[1], tone: .working)
             }
             .focusable(false)
             .keyboardShortcut(shortcuts ? KeyboardShortcut(.return, modifiers: .command) : nil)
