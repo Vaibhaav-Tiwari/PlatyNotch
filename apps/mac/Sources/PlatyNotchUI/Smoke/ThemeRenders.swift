@@ -676,7 +676,7 @@ enum ToolRenders {
             ClipItem(kind: .text("Ship the Library grid today, then the settings pages."), copiedAt: now.addingTimeInterval(-40)),
             ClipItem(kind: .url(URL(string: "https://example.com/design/library")!), copiedAt: now.addingTimeInterval(-300),
                      pinned: true),
-            ClipItem(kind: .text("swift test --filter LibraryViewTests"), copiedAt: now.addingTimeInterval(-900)),
+            ClipItem(kind: .text("swift test --filter PanelRoutingTests"), copiedAt: now.addingTimeInterval(-900)),
             ClipItem(kind: .text("Priya's deck: slides 4 to 9 need the new colours"), copiedAt: now.addingTimeInterval(-3_600)),
             ClipItem(kind: .files([URL(fileURLWithPath: "/Users/sample/Documents/Quarterly report.pdf")]),
                      copiedAt: now.addingTimeInterval(-7_200)),
