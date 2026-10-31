@@ -369,7 +369,6 @@ public final class NotchController {
         if machine.mode != .expanded { handle(.click) }
         guard machine.mode == .expanded else { return false }
         if model.route != PanelRoute(destination: .home) { model.route = PanelRoute(destination: .home) }
-        model.commandText = ""
         makePanelKey()
         model.commandFocused = true
         model.commandActive = true

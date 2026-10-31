@@ -26,9 +26,10 @@ final class CommandHotKeyController {
 
     var holds: Bool { registration != nil }
 
-    /// Registers `combo` (or nothing), replacing the current one. Unchanged: nothing happens.
+    /// Registers `combo` (or nothing), replacing the current one. Unchanged and held:
+    /// nothing happens; a taken shortcut is tried again (its holder may have let it go).
     func apply(_ next: KeyCombo?) {
-        if next == combo, (registration != nil || taken || next == nil) { return }
+        if next == combo, registration != nil || next == nil { return }
         registration?.unregister()
         registration = nil
         catalog.release(CommandHotKey.feature)

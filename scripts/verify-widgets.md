@@ -1616,3 +1616,9 @@ working directory where a step says so.
   white (never system blue).
 - [ ] **318. Idle CPU.** `scripts/perf-idle.sh` on a real notched Mac (the panel shows for a
   minute): PASS under 1 %.
+- [ ] **319. ⌥⌘K from another app.** With Finder frontmost and the panel closed, press ⌥⌘K:
+  Home opens with the command line focused and the list showing; type `timer 1m` and press ↩:
+  a `Timer 1:00` chip appears. Press ⌥⌘K again with the line focused: the panel closes and
+  Finder keeps the keyboard. Hover-open the panel, click once in the field and type: the
+  letters go into the field. With an approval waiting and text in the field, ⌘⌫ deletes the
+  text and never denies the approval.

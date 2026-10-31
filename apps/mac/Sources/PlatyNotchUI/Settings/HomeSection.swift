@@ -89,7 +89,7 @@ struct HomeSection: View {
                         }
                         Text("Off").tag(KeyCombo?.none)
                     } label: {
-                        SettingLabel("Command line", info: "Opens Home with the command line ready, from any app. Type a command, or pick from the list of everything Platy can do. Inside the open panel ⌘K does the same.")
+                        SettingLabel("Command line", info: "Opens Home with the command line ready, from any app. Type a command, or pick from the list of everything Platy can do. Inside the open panel ⌘K does the same. macOS cannot tell when another app uses the same combo in its menus: that app then loses it while PlatyNotch holds it.")
                     }
                     if let note = hotKey?.takenNote {
                         Label { Text(verbatim: note) } icon: { Image(systemName: "exclamationmark.triangle") }

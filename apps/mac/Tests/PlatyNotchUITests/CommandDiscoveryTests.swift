@@ -30,6 +30,16 @@ final class CommandDiscoveryTests: DefaultsTestCase {
         r.registry.stopAll()
     }
 
+    /// Review M4: a line typed before the shortcut is kept.
+    func testHotKeyKeepsTypedText() {
+        let (c, r) = controller()
+        c.debugHandle(.event(.click))
+        c.panelModel.commandText = "timer 5"
+        c.commandHotKey()
+        XCTAssertEqual(c.panelModel.commandText, "timer 5")
+        r.registry.stopAll()
+    }
+
     func testHotKeyAgainWhileFocusedCloses() {
         let (c, r) = controller()
         c.panelIsKey = { true }
@@ -68,6 +78,52 @@ final class CommandDiscoveryTests: DefaultsTestCase {
         XCTAssertEqual(asked, 1)
         XCTAssertTrue(model.commandFocused)
         XCTAssertTrue(model.commandActive)
+    }
+
+    // MARK: - Approval keys and text fields
+
+    private func key(_ code: UInt16, _ chars: String, _ flags: NSEvent.ModifierFlags = .command) throws -> NSEvent {
+        try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0,
+                                       windowNumber: 0, context: nil, characters: chars,
+                                       charactersIgnoringModifiers: chars, isARepeat: false, keyCode: code))
+    }
+
+    /// Review I3 (safety): ⌘⌫ typed in the command field edits the text; it never reaches an
+    /// approval's Deny (nor ⌘↩ its Allow). With no field focused the keys go on as before.
+    func testApprovalKeysEditAFocusedField() throws {
+        let deleteLine = try key(51, "\u{8}")
+        let commandReturn = try key(36, "\r")
+        XCTAssertTrue(NotchPanel.keyBelongsToText(deleteLine, textFocused: true))
+        XCTAssertTrue(NotchPanel.keyBelongsToText(commandReturn, textFocused: true))
+        XCTAssertFalse(NotchPanel.keyBelongsToText(deleteLine, textFocused: false), "no field: the approval's key")
+        XCTAssertFalse(NotchPanel.keyBelongsToText(try key(51, "\u{8}", []), textFocused: true), "plain ⌫ is ordinary typing")
+
+        // A real panel with a focused field and an approval-style ⌘⌫ button.
+        let panel = NotchPanel(frame: CGRect(x: -10_000, y: 10_000, width: 300, height: 80))
+        var denied = 0
+        let button = NSButton(title: "Deny", target: nil, action: nil)
+        button.keyEquivalent = "\u{8}"
+        button.keyEquivalentModifierMask = .command
+        let probe = ActionProbe { denied += 1 }
+        button.target = probe
+        button.action = #selector(ActionProbe.fire)
+        let field = RecordingTextView(frame: CGRect(x: 0, y: 40, width: 300, height: 24))
+        field.string = "timer 10m"
+        button.frame = CGRect(x: 0, y: 0, width: 80, height: 24)
+        let content = NSView(frame: CGRect(x: 0, y: 0, width: 300, height: 80))
+        content.addSubview(field)
+        content.addSubview(button)
+        panel.contentView = content
+        XCTAssertTrue(panel.makeFirstResponder(field))
+        XCTAssertTrue(panel.firstResponder is NSText, "a text field has the keyboard")
+        XCTAssertTrue(panel.performKeyEquivalent(with: deleteLine), "taken before any shortcut")
+        XCTAssertEqual(denied, 0, "the approval was not answered")
+        XCTAssertEqual(field.received.map(\.keyCode), [51], "⌘⌫ went to the text, to edit it")
+        XCTAssertTrue(panel.performKeyEquivalent(with: commandReturn))
+        XCTAssertEqual(field.received.map(\.keyCode), [51, 36], "⌘↩ too")
+        panel.makeFirstResponder(nil)
+        XCTAssertFalse(NotchPanel.keyBelongsToText(deleteLine, textFocused: panel.firstResponder is NSText),
+                       "with no field focused, ⌘⌫ goes on to the approval's Deny")
     }
 
     // MARK: - The list
@@ -114,6 +170,25 @@ final class CommandDiscoveryTests: DefaultsTestCase {
         model.commandSelection = 4   // Clipboard
         l.submit()
         XCTAssertEqual(opened, ["clipboard"])
+    }
+
+    /// Review I1: no Do row under a parsed command, so nothing can replace typed arguments.
+    func testDoRowsNeverDuplicateTypedCommands() {
+        let model = PanelViewModel()
+        let l = logic(model)
+        model.commandActive = true
+        for text in ["timer ", "timer 10m", "timer 10m tea", "focus 25", "note buy milk", "remind call Priya at 5pm"] {
+            model.commandText = text
+            XCTAssertTrue(l.rows.allSatisfy { $0.entry == nil || $0.entry?.group != .do }, "\(text): \(l.rows.map(\.title))")
+            for i in l.rows.indices {
+                model.commandText = text
+                model.commandSelection = i
+                if case .suggestion = l.rows[i] { continue }
+                l.submit()
+                XCTAssertFalse(model.commandText == text.split(separator: " ").first.map { $0 + " " } && text.count > 6,
+                               "choosing a row never cuts \(text) back to its keyword")
+            }
+        }
     }
 
     func testTypingFiltersAndNeverDuplicates() {
@@ -187,5 +262,24 @@ final class CommandHotKeyControllerTests: XCTestCase {
         XCTAssertNil(c.usedBy)
         XCTAssertEqual(c.takenNote, "⌥⌘K is taken by another app. Pick another.")
         XCTAssertNil(catalog.catalog.combo(for: CommandHotKey.feature), "a refused shortcut is not kept in the catalog")
+        // Review M1: a taken shortcut is tried again once its holder lets it go.
+        maker.refuse = false
+        c.apply(CommandHotKey.presets[0])
+        XCTAssertTrue(c.holds)
+        XCTAssertFalse(c.taken)
+    }
+}
+
+private final class ActionProbe: NSObject {
+    let action: () -> Void
+    init(_ action: @escaping () -> Void) { self.action = action }
+    @objc func fire() { action() }
+}
+
+private final class RecordingTextView: NSTextView {
+    var received: [NSEvent] = []
+    override func keyDown(with event: NSEvent) {
+        received.append(event)
+        super.keyDown(with: event)
     }
 }

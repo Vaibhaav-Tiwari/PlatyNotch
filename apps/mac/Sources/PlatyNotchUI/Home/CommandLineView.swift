@@ -51,6 +51,9 @@ final class CommandLineLogic {
         self.calendar = calendar
     }
 
+    /// An approval waits above Home (the list then keeps to the short height).
+    var approvalsWaiting: Bool { approvalsPending() }
+
     var suggestions: [CommandSuggestion] {
         CommandParser.suggestions(for: model.commandText, tools: tools(), now: clock(), calendar: calendar)
     }
@@ -60,8 +63,10 @@ final class CommandLineLogic {
         model.commandActive && model.commandText.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
-    /// The rows in order: the whole list while focused and empty; else the parsed
-    /// suggestions, then the list's matches that no suggestion already offers.
+    /// The rows in order: the whole list while asked for and empty; else the parsed
+    /// suggestions, then the list's Open and Toggle matches that no suggestion already
+    /// offers. A Do row never shows under typed text: the parsed suggestion is that command,
+    /// and choosing the Do row would replace what was typed with its bare keyword.
     var rows: [CommandRow] {
         let text: String = model.commandText
         if text.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -73,8 +78,11 @@ final class CommandLineLogic {
             return nil
         })
         let matches = CommandCatalog.filter(catalog(), query: text).filter { e in
-            if case .open(let tool) = e.action { return !opened.contains(tool) }
-            return true
+            switch e.action {
+            case .fill: return false
+            case .open(let tool): return !opened.contains(tool)
+            case .toggleKeepAwake: return true
+            }
         }
         return parsed.map { .suggestion($0) } + matches.map { .entry($0) }
     }
@@ -163,6 +171,11 @@ struct CommandLineView: View {
     let memory: MemoryServices?
     @FocusState private var focused: Bool
     @State private var windowBox = WindowBox()
+    /// The scrolling list is at its end (no fade then).
+    @State private var listAtEnd = false
+
+    /// The list's names column, so the hints line up ("Sites & Shortcuts" fits).
+    static let nameColumn: CGFloat = 124
 
     /// "Type a command, or ⌥⌘K from anywhere" (just "Type a command" without a global shortcut).
     static func placeholder(hint: String) -> String {
@@ -223,14 +236,19 @@ struct CommandLineView: View {
                     ScrollViewReader { proxy in
                         ScrollView(.vertical) { rowList(rows, selected: selected) }
                             .onChange(of: selected) { _, new in proxy.scrollTo(new) }
-                            // The last rows fade out: more is below, scroll for it.
+                            .onScrollGeometryChange(for: Bool.self) { g in
+                                g.contentOffset.y + g.containerSize.height >= g.contentSize.height - 2
+                            } action: { _, atEnd in listAtEnd = atEnd }
+                            // The last rows fade while more lies below; none at the end.
                             .mask(LinearGradient(stops: [.init(color: .black, location: 0),
                                                          .init(color: .black, location: 0.86),
-                                                         .init(color: .black.opacity(0.15), location: 1)],
+                                                         .init(color: .black.opacity(listAtEnd ? 1 : 0.15),
+                                                               location: 1)],
                                                  startPoint: .top, endPoint: .bottom))
                     }
                 }
-                .frame(maxHeight: model.commandActive ? Self.focusedListMaxHeight : Self.listMaxHeight)
+                .frame(maxHeight: model.commandActive && !logic.approvalsWaiting
+                       ? Self.focusedListMaxHeight : Self.listMaxHeight)
             } else if let message = model.commandMessage {
                 Text(verbatim: message).font(DS.font(TypeScale.secondary)).foregroundStyle(DS.secondary)
             } else if model.showCommandHint, !model.commandActive {
@@ -318,16 +336,16 @@ struct CommandLineView: View {
             case .entry(let e):
                 Image(systemName: e.symbol)
                     .symbolRenderingMode(.monochrome)
-                    .font(.system(size: 12))
+                    .font(.system(size: IconSize.symbol))
                     .foregroundStyle(DS.secondary)
-                    .frame(width: 16)
+                    .frame(width: 18)
                     .accessibilityHidden(true)
                 Text(verbatim: e.title)
                     .font(DS.font(TypeScale.body))
                     .foregroundStyle(DS.primary)
                     .lineLimit(1)
                     // One column for the names, so the hints line up.
-                    .frame(width: 124, alignment: .leading)
+                    .frame(width: Self.nameColumn, alignment: .leading)
                 Text(verbatim: e.hint)
                     .font(DS.font(TypeScale.secondary))
                     .foregroundStyle(DS.tertiary)

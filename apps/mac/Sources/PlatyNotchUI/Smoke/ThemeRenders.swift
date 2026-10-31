@@ -233,6 +233,7 @@ enum HomeRenders {
         out.append(("home-command", panel(homeRest(), command: "timer 10m tea"), true))
         out.append(("home-command-list", panel(homeRest(), command: "", commandFocused: true), true))
         out.append(("home-command-hint", panel(homeRest(), commandHint: true), true))
+        out.append(("home-command-list-approval", panel(approvalPending(), command: "", commandFocused: true), true))
         out.append(("peek-hover", hoverPeek(agentsHero()), true))
         out += AgentsRenders.views()
         out += ToolRenders.views()
@@ -388,8 +389,11 @@ enum HomeRenders {
         commandModel.commandHint = CommandHotKey.presets[0].display
         let catalog = CommandCatalog.entries(tools: ["clipboard", "shelf", "baskets", "mirror", "memory", "launch", "games"],
                                              shortcuts: ["clipboard": "\u{2325}\u{21E7}V", "baskets": "\u{2303}\u{2325}B"])
+        let store = rig.store
         let logic = CommandLineLogic(model: commandModel, runner: CommandRunner(actions: CommandActions()),
-                                     tools: { [] }, catalog: { catalog }, clock: { fixedNow }, calendar: .current)
+                                     tools: { [] }, catalog: { catalog },
+                                     approvalsPending: { !store.approvals.isEmpty }, clock: { fixedNow },
+                                     calendar: .current)
         let commandLine = AnyView(CommandLineView(model: commandModel, logic: logic, memory: nil))
         let services: HeaderServices = header ?? headerServices()
         let at: Date = now ?? fixedNow
