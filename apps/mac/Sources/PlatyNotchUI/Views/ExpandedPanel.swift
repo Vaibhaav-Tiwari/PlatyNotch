@@ -85,6 +85,17 @@ struct ExpandedPanel: View {
         PanelRoute(destination: .home, tool: slot.toolID)
     }
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Island spec 4: one spring (response 0.35, damping 1.0) for a tool opening in place and
+    /// going back; Reduce Motion keeps the short ease.
+    static func routeAnimation(reduceMotion: Bool) -> Animation {
+        reduceMotion ? .easeOut(duration: MotionPreset.reducedFade) : .spring(response: 0.35, dampingFraction: 1.0)
+    }
+
+    /// A tool grows out of Home (and Home back out of it).
+    static let morph: AnyTransition = .opacity.combined(with: .scale(scale: 0.97, anchor: .top))
+
     /// The search shows (the panel's whole body, no header).
     private var searching: Bool {
         let normal = route.normalized(agentsVisible: agentsVisible)
@@ -102,6 +113,9 @@ struct ExpandedPanel: View {
                 header(tool: open)
                     .frame(height: HomeMetrics.nav)
                     .panelChrome()
+                    // The tabs morph into ‹ and the tool's name (and back) in place.
+                    .id(open?.id ?? "nav")
+                    .transition(.opacity)
             }
             if !store.approvals.isEmpty {
                 approvals
@@ -125,6 +139,7 @@ struct ExpandedPanel: View {
                 .environment(\.openMemorySettings, { [memory] in memory.onOpenSettings() })   // empty states' one button
         }
         .coordinateSpace(name: Self.space)
+        .animation(Self.routeAnimation(reduceMotion: reduceMotion), value: shown)
         .onPreferenceChange(HomeHeightKey.self) { homeBody = $0 }
         .onPreferenceChange(ApprovalsRegionFrameKey.self) { approvalsHeight = $0?.height }
         .onChange(of: reportedBody, initial: true) { _, new in onBodyHeight(new) }
@@ -151,12 +166,15 @@ struct ExpandedPanel: View {
                 if tool.fitsContent {
                     ToolCard(content: tool.view())
                         .id(tool.id)
+                        .transition(Self.morph)
                 } else {
                     ToolBody(content: tool.view(), card: !tool.bare)
                         .id(tool.id)
+                        .transition(Self.morph)
                 }
             } else {
                 homeView
+                    .transition(Self.morph)
             }
         case .agents:
             AgentsView(sessions: store.sessions, log: today.agentActivity.log,

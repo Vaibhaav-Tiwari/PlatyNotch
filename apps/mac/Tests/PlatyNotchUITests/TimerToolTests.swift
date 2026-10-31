@@ -113,3 +113,12 @@ final class TimerToolTests: DefaultsTestCase {
         r.registry.stopAll()
     }
 }
+
+/// Island spec 4: tools open in place with one spring; Reduce Motion keeps the short ease.
+@MainActor
+final class ToolMorphTests: XCTestCase {
+    func testOneSpringForToolMorphs() {
+        XCTAssertEqual(ExpandedPanel.routeAnimation(reduceMotion: false), .spring(response: 0.35, dampingFraction: 1.0))
+        XCTAssertEqual(ExpandedPanel.routeAnimation(reduceMotion: true), .easeOut(duration: MotionPreset.reducedFade))
+    }
+}
