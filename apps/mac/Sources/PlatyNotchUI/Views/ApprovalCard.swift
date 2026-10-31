@@ -126,11 +126,11 @@ struct ApprovalCard: View {
                     .lineLimit(2)
             }
             HStack(spacing: 8) {
-                if let session {
-                    Button("Open terminal") { onOpenTerminal(session) }
+                if let session, let openTitle = TerminalFocus.title(for: session) {
+                    Button(openTitle) { onOpenTerminal(session) }
                         .buttonStyle(.panelLink)
                         .font(.system(size: 11))
-                        .accessibilityHint("Shows the terminal running this session")
+                        .accessibilityHint("Shows the app running this session")
                 }
                 // "Show changes" takes "More"'s place (both open the panel), so the
                 // peek's footer keeps its width.

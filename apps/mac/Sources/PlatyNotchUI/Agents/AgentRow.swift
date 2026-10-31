@@ -3,7 +3,7 @@ import SwiftUI
 
 /// One session in the Agents list (spec 6.5): the agent's icon with its state badge, the
 /// project, the status line, the last action in monospaced caption, and one action from
-/// `AgentRowAction` (Answer / Open terminal). Both answer in the session's terminal.
+/// `TerminalFocus.title(for:)` ("Open Claude" / "Show folder"). Both answer in the session's host app.
 struct AgentRow: View {
     static let height: CGFloat = 52
     let session: Session
@@ -15,6 +15,7 @@ struct AgentRow: View {
 
     var body: some View {
         let action = AgentRowAction(attention)
+        let openTitle: String? = TerminalFocus.title(for: session)
         let tone: StateTone = attention.tone
         Button { onOpenTerminal(session) } label: {
             HStack(spacing: Space.m) {
@@ -40,14 +41,16 @@ struct AgentRow: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                Text(verbatim: action.title)
-                    .font(DS.font(TypeScale.body).weight(.semibold))
-                    .foregroundStyle(action == .answer ? AnyShapeStyle(DS.dynamicColor(.needsYou)) : AnyShapeStyle(.primary))
-                    .lineLimit(1)
-                    .fixedSize()
-                    .padding(.horizontal, Space.s)
-                    .padding(.vertical, 3)
-                    .background(Theme.card, in: Capsule())
+                if let openTitle {
+                    Text(verbatim: openTitle)
+                        .font(DS.font(TypeScale.body).weight(.semibold))
+                        .foregroundStyle(action == .answer ? AnyShapeStyle(DS.dynamicColor(.needsYou)) : AnyShapeStyle(.primary))
+                        .lineLimit(1)
+                        .fixedSize()
+                        .padding(.horizontal, Space.s)
+                        .padding(.vertical, 3)
+                        .background(Theme.card, in: Capsule())
+                }
             }
             .padding(.vertical, Space.xs)
             .padding(.leading, Space.xs)
@@ -58,9 +61,9 @@ struct AgentRow: View {
         .buttonStyle(RowButtonStyle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
-        .accessibilityHint(action == .answer ? "Answers in this session's terminal" : "Shows the terminal running this session")
+        .accessibilityHint(action == .answer ? "Answers in the app running this session" : "Shows the app running this session")
         .accessibilityAddTraits(.isButton)
-        .accessibilityAction(named: Text(action.title)) { onOpenTerminal(session) }
+        .accessibilityAction(named: Text(openTitle ?? action.title)) { onOpenTerminal(session) }
     }
 
     private var project: String { Self.project(session) }
@@ -81,17 +84,17 @@ struct AgentRow: View {
     }
 
     /// The row's visible text, top to bottom then the action (tests).
-    static func texts(_ s: Session, attention: AgentAttention, now: Date, finishedAt: Date? = nil) -> [String] {
+    @MainActor static func texts(_ s: Session, attention: AgentAttention, now: Date, finishedAt: Date? = nil) -> [String] {
         var out: [String] = [project(s), SessionStatusLine.text(s, attention: attention, now: now, finishedAt: finishedAt)]
         if let last = lastLine(s, attention: attention) { out.append(last) }
-        out.append(AgentRowAction(attention).title)
+        if let title = TerminalFocus.title(for: s) { out.append(title) }
         return out
     }
 
     private var accessibilityText: String {
         var parts: [String] = [session.agentName, project, status]
         if let last = Self.lastLine(session, attention: attention) { parts.append(last) }
-        parts.append(AgentRowAction(attention).title)
+        parts.append(TerminalFocus.title(for: session) ?? AgentRowAction(attention).title)
         return parts.joined(separator: ", ")
     }
 }

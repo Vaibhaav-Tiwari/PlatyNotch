@@ -2,13 +2,43 @@ import AppKit
 import PlatyNotchKit
 import os
 
-/// Brings a session's terminal tab to the front. Needs the Automation permission for Terminal /
-/// iTerm2 (Info.plist NSAppleEventsUsageDescription is added in Task 11); without it we only
-/// activate the app.
+/// What a side effect of "Open" does, behind closures so tests can spy on the order.
+struct OpenEffects {
+    /// Selects the terminal tab / session / tmux pane; reports whether it was found.
+    var selectTab: @MainActor (OpenTarget, @escaping @MainActor (Bool) -> Void) -> Void
+    var isRunning: @MainActor (String) -> Bool
+    var activate: @MainActor (String) -> Void
+    var launch: @MainActor (String) -> Void
+    var folderExists: @MainActor (String) -> Bool
+    var reveal: @MainActor (String) -> Void
+    var notice: @MainActor (String) -> Void
+
+    @MainActor static var live: OpenEffects {
+        OpenEffects(
+            selectTab: { target, done in TerminalFocus.liveSelectTab(target, done: done) },
+            isRunning: { !NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty },
+            activate: { id in NSRunningApplication.runningApplications(withBundleIdentifier: id).first?.activate() },
+            launch: { id in
+                guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) else { return }
+                NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration(),
+                                                   completionHandler: nil)
+            },
+            folderExists: { var isDir: ObjCBool = false
+                return FileManager.default.fileExists(atPath: $0, isDirectory: &isDir) && isDir.boolValue },
+            reveal: { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: $0)]) },
+            notice: { TerminalFocus.noticeSink?($0) })
+    }
+}
+
+/// Opens the app that hosts a session (spec 4): a Terminal / iTerm2 tab, a tmux pane, the Claude
+/// app or another host, else the folder in Finder. Never "the most recent terminal". Terminal /
+/// iTerm2 tab selection needs the Automation permission; without it the app is only activated.
 @MainActor
 enum TerminalFocus {
     private static let log = Logger(subsystem: "dev.platynotch.app", category: "TerminalFocus")
     private static var loggedAutomationDenied = false
+    /// Shows a short notice under the notch; set by the app.
+    static var noticeSink: ((String) -> Void)?
 
     // The tty is never spliced into script source: it is passed as `argv` to `on run`.
     private static let terminalScript = """
@@ -56,43 +86,64 @@ enum TerminalFocus {
     end run
     """
 
-    static func focus(session: Session) {
-        let target = TerminalApps.target(termProgram: session.termProgram, isRunning: isRunning)
-        switch target {
-        case .appleTerminal:
-            scriptedFocus(script: terminalScript, bundleID: TerminalApps.appleTerminalID, session: session)
-        case .iTerm:
-            scriptedFocus(script: iTermScript, bundleID: TerminalApps.iTermID, session: session)
+    // MARK: open
+
+    /// The button title for `session` ("Open Claude", "Show folder"); nil when there is nothing to open.
+    static func title(for session: Session) -> String? {
+        OpenResolver.resolve(session, appName: HostAppName.lookup)?.title
+    }
+
+    static func open(_ session: Session) {
+        guard let action = OpenResolver.resolve(session, appName: HostAppName.lookup) else { return }
+        perform(action, effects: .live)
+    }
+
+    static func perform(_ action: OpenAction, effects: OpenEffects) {
+        switch action.target {
+        case .terminalTab, .iTermSession, .tmuxPane:
+            // A tab that cannot be found (or Automation denied) activates the host app, once.
+            let host = action.target.appBundleID
+            // The scripts bring Terminal / iTerm2 forward themselves; tmux needs its host activated.
+            var isTmux = false
+            if case .tmuxPane = action.target { isTmux = true }
+            effects.selectTab(action.target) { found in
+                if let host, isTmux || !found { effects.activate(host) }
+            }
         case .activate(let id):
-            if !activate(bundleID: id) { activateByAncestry(session) }
-        case .pidAncestry:
-            activateByAncestry(session)
+            if effects.isRunning(id) { effects.activate(id) } else { effects.launch(id) }
+        case .showFolder(let path):
+            if effects.folderExists(path) { effects.reveal(path) } else { effects.notice("Folder no longer exists") }
         }
     }
 
-    private static func isRunning(_ bundleID: String) -> Bool {
-        !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty
+    // MARK: live tab selection
+
+    fileprivate static func liveSelectTab(_ target: OpenTarget, done: @escaping @MainActor (Bool) -> Void) {
+        switch target {
+        case .terminalTab(let tty):
+            scripted(terminalScript, bundleID: TerminalApps.appleTerminalID, tty: tty, done: done)
+        case .iTermSession(let tty):
+            scripted(iTermScript, bundleID: TerminalApps.iTermID, tty: tty, done: done)
+        case .tmuxPane(let tty, _):
+            Task { @MainActor in done(await selectTmuxPane(tty: tty)) }
+        default:
+            done(false)
+        }
     }
 
-    @discardableResult
-    private static func activate(bundleID: String) -> Bool {
-        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first
-        else { return false }
-        return app.activate()
-    }
-
-    private static func scriptedFocus(script: String, bundleID: String, session: Session) {
-        // Never launch a terminal that is not running, and never run with an unvalidated tty.
-        guard isRunning(bundleID) else { activateByAncestry(session); return }
-        guard let tty = session.tty.flatMap(TTY.normalize) else { activate(bundleID: bundleID); return }
+    private static func scripted(_ script: String, bundleID: String, tty: String,
+                                 done: @escaping @MainActor (Bool) -> Void) {
+        // Never launch a terminal that is not running.
+        guard !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).isEmpty else {
+            done(false); return
+        }
         // AppleEvents can block (first-run consent prompt, hung terminal): never on the main actor.
         scriptQueue.async {
             let result = run(script: script, argument: tty)
             Task { @MainActor in
                 switch result {
-                case .found: break
-                case .miss:   // no tab with that tty: at least bring the app forward
-                    activate(bundleID: bundleID)
+                case .found: done(true)
+                case .miss: done(false)
                 case .failure(let code):
                     if code == -1743 {
                         if !loggedAutomationDenied {
@@ -102,10 +153,31 @@ enum TerminalFocus {
                     } else {
                         log.error("AppleScript failed (\(code)) for \(bundleID, privacy: .public)")   // incl. -1712 timeout
                     }
-                    activate(bundleID: bundleID)   // single fallback, no retry
+                    done(false)
                 }
             }
         }
+    }
+
+    /// Finds the tmux pane whose pane_tty matches and selects its window and pane.
+    private static func selectTmuxPane(tty: String) async -> Bool {
+        guard let tmux = tmuxExecutable() else { return false }
+        let runner = ProcessRunner(executableURL: tmux, stopsOnCancel: true)
+        let list = await runner.run(["list-panes", "-a", "-F", "#{pane_tty} #{session_name}:#{window_index}.#{pane_index}"],
+                                    timeout: .seconds(3))
+        guard list.status == 0, let pane = TmuxPanes.target(forTTY: tty, listing: list.stdout) else { return false }
+        let window = String(pane.split(separator: ".").dropLast().joined(separator: "."))
+        let w = await runner.run(["select-window", "-t", window], timeout: .seconds(3))
+        let p = await runner.run(["select-pane", "-t", pane], timeout: .seconds(3))
+        return w.status == 0 && p.status == 0
+    }
+
+    private static func tmuxExecutable() -> URL? {
+        for path in ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"]
+        where FileManager.default.isExecutableFile(atPath: path) {
+            return URL(fileURLWithPath: path)
+        }
+        return nil
     }
 
     private static let scriptQueue = DispatchQueue(label: "dev.platynotch.terminal-focus", qos: .userInitiated)
@@ -126,64 +198,5 @@ enum TerminalFocus {
         let out = script.executeAppleEvent(event, error: &error)
         if let error { return .failure((error[NSAppleScript.errorNumber] as? Int) ?? -1) }
         return out.stringValue == "ok" ? .found : .miss
-    }
-
-    // MARK: tracking
-
-    nonisolated(unsafe) private static var lastActive: [String: Date] = [:]
-    nonisolated(unsafe) private static var tracker: NSObjectProtocol?
-
-    /// Records when known terminals were last frontmost, for the tmux fallback. Call once at launch.
-    static func startTracking() {
-        guard tracker == nil else { return }
-        tracker = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
-        ) { note in
-            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
-            guard let id = app?.bundleIdentifier, TerminalApps.knownTerminalIDs.contains(id) else { return }
-            MainActor.assumeIsolated { lastActive[id] = Date() }
-        }
-    }
-
-    // MARK: pid ancestry
-
-    private static func activateByAncestry(_ session: Session) {
-        guard let pid = session.pid.flatMap({ pid_t(exactly: $0) }), pid > 1 else {
-            activateMostRecentTerminal(); return
-        }
-        var current = pid
-        for _ in 0..<64 {   // bounded walk
-            if let app = NSRunningApplication(processIdentifier: current), app.bundleIdentifier != nil,
-               app.activationPolicy == .regular {
-                app.activate()
-                return
-            }
-            guard let parent = parentPID(of: current), parent > 1, parent != current else { break }
-            current = parent
-        }
-        activateMostRecentTerminal()
-    }
-
-    /// Ancestry dead-ends at launchd (typical under tmux, whose server is detached from the terminal):
-    /// activate the most recently active running terminal we have seen (tracked via `startTracking`),
-    /// else the most recently launched one.
-    private static func activateMostRecentTerminal() {
-        let running = TerminalApps.knownTerminalIDs.compactMap {
-            id in NSRunningApplication.runningApplications(withBundleIdentifier: id).first.map { (id, $0) }
-        }
-        let best = running.max { a, b in
-            let da = lastActive[a.0] ?? .distantPast, db = lastActive[b.0] ?? .distantPast
-            if da != db { return da < db }
-            return (a.1.launchDate ?? .distantPast) < (b.1.launchDate ?? .distantPast)
-        }
-        best?.1.activate()
-    }
-
-    private static func parentPID(of pid: pid_t) -> pid_t? {
-        var info = kinfo_proc()
-        var size = MemoryLayout<kinfo_proc>.stride
-        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
-        guard sysctl(&mib, UInt32(mib.count), &info, &size, nil, 0) == 0, size > 0 else { return nil }
-        return info.kp_eproc.e_ppid
     }
 }

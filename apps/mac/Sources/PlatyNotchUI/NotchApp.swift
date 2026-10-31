@@ -188,7 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // `.noindex` names (Spotlight). Smoke runs read and write nothing.
         if !options.smoke, !options.smokeSettings { PrivateFolder.migrateToNoIndex(home: CorePaths.home()) }
         handleTerminationSignals()
-        TerminalFocus.startTracking()
+        TerminalFocus.noticeSink = { [weak self] in self?.router.showNotice($0) }
         repointHookBinary()
         if !options.externalCore {
             // Each launch gets the Keychain secrets config.json refers to, so the core
@@ -511,7 +511,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let c = NotchController(store: store, client: client, plugins: plugins, responder: responder,
                                     today: today, widgets: widgets, surfaces: surfaces, memory: memory,
                                     extraTabs: pluginTabs,
-                                    onOpenTerminal: { TerminalFocus.focus(session: $0) },
+                                    onOpenTerminal: { TerminalFocus.open($0) },
                                     appearance: appearance,
                                     carryOver: state)
             c.onOpenSettings = { [weak self] in self?.openSettings(section: nil) }
