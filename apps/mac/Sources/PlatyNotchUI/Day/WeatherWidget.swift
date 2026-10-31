@@ -4,14 +4,16 @@ import Observation
 import PlatyNotchKit
 import SwiftUI
 
-/// The weather for a city typed in Settings, from Open-Meteo: temperature, conditions and
-/// when rain is next likely (≥ 50%), in °C or °F.
+/// The weather where you are (macOS Location, after "Use my location") or for a city typed
+/// in Settings, from Open-Meteo: temperature, conditions, today's high and low and when
+/// rain is next likely (≥ 50%), in °C or °F.
 ///
-/// Privacy: off by default and does nothing until enabled. It talks only to
-/// `geocoding-api.open-meteo.com` (the typed city name, from Settings' Search button) and
-/// `api.open-meteo.com` (the chosen place's coordinates, rounded to ~1 km), over https,
-/// through `OpenMeteoFetcher` (ephemeral session, no cookies or cache, redirects to other
-/// hosts refused). No location access: only a typed city is supported.
+/// Privacy: does nothing until enabled. It talks only to `geocoding-api.open-meteo.com`
+/// (the typed city name, from Settings' Search button) and `api.open-meteo.com` (the
+/// place's coordinates, rounded to ~1 km), over https, through `OpenMeteoFetcher`
+/// (ephemeral session, no cookies or cache, redirects to other hosts refused). Location is
+/// asked only from `useMyLocation()` (a click); starting or opening never prompts. One fix
+/// per refresh; denied or revoked falls back to the saved city (`WeatherPlace.source`).
 ///
 /// Refresh: every 30 minutes while enabled; paused while the Mac sleeps or is offline
 /// (then the tile shows the last data with its age); failures back off 1, 2, 4… minutes
@@ -53,6 +55,17 @@ final class WeatherWidget: NotchWidget {
         guard !persist else { return }
         self.place = place
         self.weather = weather
+        renderLocation = .city(place)
+        locationRevision += 1
+    }
+
+    /// Renders only: the sky's empty and loading states.
+    func showEmptyForRendering() {
+        guard !persist else { return }
+        place = nil
+        weather = nil
+        renderLocation = nil
+        locationRevision += 1
     }
 
     @ObservationIgnored private let defaults: UserDefaults
@@ -60,6 +73,11 @@ final class WeatherWidget: NotchWidget {
     @ObservationIgnored private let makeFetcher: () -> WeatherFetching
     @ObservationIgnored private let clock: () -> Date
     @ObservationIgnored private let watchSystem: Bool
+    @ObservationIgnored private let location: LocationProviding
+    /// The last Location fix (automatic only); the place name it came with.
+    private(set) var fix: LocationFix?
+    /// Bumped when the chosen location changes, so `source` is re-read.
+    private var locationRevision = 0
     /// Created when the widget first starts (no session exists while it was never on).
     @ObservationIgnored private var client: WeatherClient?
     @ObservationIgnored private(set) var running = false
@@ -71,25 +89,97 @@ final class WeatherWidget: NotchWidget {
 
     /// `watchSystem: false` (tests) skips the sleep/wake observers and the network monitor.
     init(defaults: UserDefaults = .standard, persist: Bool = true, fetcher: @escaping () -> WeatherFetching = { OpenMeteoFetcher() },
-         clock: @escaping () -> Date = Date.init, watchSystem: Bool = true) {
+         clock: @escaping () -> Date = Date.init, watchSystem: Bool = true, location: LocationProviding? = nil) {
         self.defaults = defaults
         self.persist = persist
         makeFetcher = fetcher
         self.clock = clock
         self.watchSystem = watchSystem
+        self.location = location ?? (persist ? SystemLocation() : NoLocation())
         place = defaults.data(forKey: Self.placeKey).flatMap { try? JSONDecoder().decode(GeoPlace.self, from: $0) }
         unit = defaults.string(forKey: Self.unitKey).flatMap(TemperatureUnit.init(rawValue:)) ?? .forLocale(.current)
     }
 
-    /// A copy that never touches the network or saves anything (smoke runs).
+    /// A copy that never touches the network or Location, or saves anything (smoke runs).
     static func inert() -> WeatherWidget {
-        WeatherWidget(persist: false, fetcher: { RefusingFetcher() }, watchSystem: false)
+        WeatherWidget(persist: false, fetcher: { RefusingFetcher() }, watchSystem: false, location: NoLocation())
+    }
+
+    // MARK: - Location
+
+    /// The saved choice (nil: never chosen).
+    var chosenLocation: WeatherLocation? {
+        _ = locationRevision
+        return persist ? WeatherLocation.load(from: defaults) : renderLocation
+    }
+
+    @ObservationIgnored private var renderLocation: WeatherLocation?
+
+    /// Where the forecast comes from, or which empty state the sky shows. Reads Location's
+    /// state only while the choice is automatic, and never asks.
+    var source: WeatherSource {
+        let chosen = chosenLocation
+        let auth: LocationAuth = chosen == .automatic ? location.auth : .notDetermined
+        return WeatherPlace.source(location: chosen, auth: auth, fix: fix, savedCity: place)
+    }
+
+    /// The place's name for the sky ("Bengaluru"), when known.
+    var placeName: String? {
+        if case .place(_, _, let name) = source { return name }
+        return nil
+    }
+
+    /// Whether "Use my location" is the choice (Settings' switch).
+    var usesMyLocation: Bool { chosenLocation == .automatic }
+
+    /// "Use my location" (Settings or the sky's empty state): the only path that may show
+    /// the macOS prompt. Denied: the saved city stays, and nothing asks again.
+    func useMyLocation() async {
+        setChosen(.automatic)
+        var auth = location.auth
+        if auth == .notDetermined { auth = await location.requestAccess() }
+        locationRevision += 1
+        guard auth == .granted else { return }
+        lastAttempt = nil
+        failures = 0
+        await refreshNow()
+    }
+
+    /// Settings' switch turned off: back to the saved city (or "Add a city").
+    func useCity() {
+        if let place { setChosen(.city(place)) } else { setChosen(nil) }
+        fix = nil
+        weather = nil
+        fetchedAt = nil
+        schedule()
+    }
+
+    private func setChosen(_ l: WeatherLocation?) {
+        if persist {
+            if let l { l.save(to: defaults) } else { defaults.removeObject(forKey: WeatherLocation.key) }
+        } else {
+            renderLocation = l
+        }
+        locationRevision += 1
+    }
+
+    /// Fetch now (after the location changed), then keep the usual schedule.
+    private func refreshNow() async {
+        task?.cancel()
+        task = nil
+        await fetch()
+    }
+
+    /// Whether a fetch can run: a place, or Location granted and automatic (a fix comes first).
+    private var canFetch: Bool {
+        if case .place = source { return true }
+        return chosenLocation == .automatic && location.auth == .granted
     }
 
     var paused: Bool { asleep || offline }
 
     var liveActivities: [LiveActivity] {
-        guard place != nil, let weather else { return [] }
+        guard hasContent, let weather else { return [] }
         let d = WeatherCode.describe(weather.code, isDay: weather.isDay)
         let temp = WeatherFormat.temperature(weather.temperatureC, unit: unit)
         return [LiveActivity(id: "weather", widgetID: id, priority: Self.livePriority, glyph: .symbol(d.symbol),
@@ -98,8 +188,11 @@ final class WeatherWidget: NotchWidget {
 
     var kind: WidgetKind { [.glance, .tool] }
 
-    /// A forecast is loaded for a chosen place.
-    var hasContent: Bool { place != nil && weather != nil }
+    /// A forecast is loaded for a place.
+    var hasContent: Bool {
+        guard weather != nil, case .place = source else { return false }
+        return true
+    }
 
     // MARK: - Lifecycle
 
@@ -145,7 +238,7 @@ final class WeatherWidget: NotchWidget {
     private func schedule(resuming: Bool = false) {
         task?.cancel()
         task = nil
-        guard running, !paused, place != nil else { return }
+        guard running, !paused, canFetch else { return }
         var delay = WeatherRefresh.delay(lastSuccess: fetchedAt, lastAttempt: lastAttempt, failures: failures, now: clock())
         if resuming { delay = max(delay, WeatherRefresh.resumeDelay) }
         task = Task { @MainActor [weak self] in
@@ -157,13 +250,19 @@ final class WeatherWidget: NotchWidget {
 
     /// One forecast request, then the next one is scheduled (backing off after failures).
     func fetch() async {
-        guard running, !paused, let place, let client else { return }
+        guard running, !paused, canFetch, let client else { return }
         lastAttempt = clock()
         loading = true
+        // Automatic and allowed: one fix per refresh (a failed fix keeps the last one).
+        if chosenLocation == .automatic, location.auth == .granted, let f = try? await location.fix() {
+            fix = f
+        }
+        guard case .place(let lat, let lon, _) = source else { loading = false; return }
+        let key = source
         let result: Result<WeatherNow, Error>
-        do { result = .success(try await client.forecast(for: place)) } catch { result = .failure(error) }
+        do { result = .success(try await client.forecast(latitude: lat, longitude: lon)) } catch { result = .failure(error) }
         loading = false
-        guard running, self.place == place else { return }
+        guard running, source == key else { return }
         switch result {
         case .success(let w):
             weather = w
@@ -262,6 +361,8 @@ final class WeatherWidget: NotchWidget {
     func choose(_ p: GeoPlace) {
         place = p
         if persist, let data = try? JSONEncoder().encode(p) { defaults.set(data, forKey: Self.placeKey) }
+        setChosen(.city(p))
+        fix = nil
         weather = nil
         fetchedAt = nil
         failures = 0
@@ -276,6 +377,7 @@ final class WeatherWidget: NotchWidget {
     func clearPlace() {
         place = nil
         if persist { defaults.removeObject(forKey: Self.placeKey) }
+        if case .city = chosenLocation { setChosen(nil) }
         disabled()
         task?.cancel()
         task = nil

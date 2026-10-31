@@ -64,6 +64,10 @@
 	<string>PlatyNotch opens files in Documents only when you ask: files you put on the shelf or in a basket, file actions you run on them, and your notes vault after you choose it in Settings. In the vault, ticking a task changes only its checkbox, and a quick note you add goes at the end of today's daily note.</string>
 	<key>NSFileProviderDomainUsageDescription</key>
 	<string>PlatyNotch opens files in iCloud Drive and other cloud folders only when you ask: files you put on the shelf or in a basket, file actions you run on them, and your notes vault after you choose it in Settings. In the vault, ticking a task changes only its checkbox, and a quick note you add goes at the end of today's daily note.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>PlatyNotch uses your location only to show the weather where you are. It is rounded to about 1 km before it is sent to Open-Meteo.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>PlatyNotch uses your location only to show the weather where you are. It is rounded to about 1 km before it is sent to Open-Meteo.</string>
 	<key>NSNetworkVolumesUsageDescription</key>
 	<string>PlatyNotch opens files on network volumes only when you ask: files you put on the shelf or in a basket, file actions you run on them, and your notes vault after you choose it in Settings. In the vault, ticking a task changes only its checkbox, and a quick note you add goes at the end of today's daily note.</string>
 	<key>NSRemovableVolumesUsageDescription</key>

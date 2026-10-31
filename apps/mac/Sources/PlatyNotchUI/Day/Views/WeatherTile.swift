@@ -112,9 +112,9 @@ struct WeatherSettings: View {
             .pickerStyle(.segmented)
             .frame(maxWidth: 200)
             SettingsNote("Weather data by Open-Meteo.com. Search sends the city name you type to Open-Meteo's geocoding service; "
-                 + "the forecast request carries only the chosen place's coordinates, rounded to about a kilometre. "
-                 + "No location access, account, cookies or tracking. Refreshes every 30 minutes while this widget is on, "
-                 + "never while the Mac sleeps or is offline.")
+                 + "the forecast request carries only the place's coordinates, rounded to about a kilometre. "
+                 + "Your location is used only after you turn on Use my location. No account, cookies or tracking. "
+                 + "Refreshes every 30 minutes while this widget is on, never while the Mac sleeps or is offline.")
                 .font(DS.font(TypeScale.caption))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

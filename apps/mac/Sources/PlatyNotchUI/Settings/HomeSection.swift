@@ -23,6 +23,16 @@ final class HomeSettingsModel {
         commandCombo = CommandHotKey.combo(defaults)
     }
 
+    /// The weather widget (Settings › Home › Weather), when registered.
+    var weather: WeatherWidget? { widgets.widget(WeatherWidget.widgetID) as? WeatherWidget }
+    var weatherOn: Bool { widgets.isEnabled(WeatherWidget.widgetID) }
+
+    /// "Use my location": on asks macOS (this click only); off goes back to the city.
+    func setUseMyLocation(_ on: Bool) {
+        guard let weather else { return }
+        if on { Task { await weather.useMyLocation() } } else { weather.useCity() }
+    }
+
     var notesOn: Bool { widgets.isEnabled(NotesWidget.widgetID) }
     var mailOn: Bool { widgets.isEnabled(MailWidget.widgetID) }
 
@@ -81,6 +91,22 @@ struct HomeSection: View {
                     }
                 } header: {
                     SettingLabel("Right column", info: "Beside the music: calendar events and reminders (Up next), or your notes, or unread mail. Notes and Mail are offered while their widget is on; turn it off and Home goes back to Up next.")
+                }
+                if let weather = model.weather {
+                    Section {
+                        Toggle(isOn: Binding(get: { weather.usesMyLocation }, set: { model.setUseMyLocation($0) })) {
+                            SettingLabel("Use my location", info: "Shows the weather where your Mac is. macOS asks once, when you turn this on; the position is rounded to about 1 km before it is sent to Open-Meteo. Denied or off: the city below.")
+                        }
+                        .disabled(!model.weatherOn)
+                        WeatherSettings(widget: weather)
+                            .disabled(!model.weatherOn)
+                        if !model.weatherOn {
+                            Text("Turn on Weather in Widgets to see the sky on Home.")
+                                .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
+                        }
+                    } header: {
+                        SettingLabel("Weather", info: "The Today card's sky: the conditions where you are, or in a city you pick.")
+                    }
                 }
                 Section {
                     Picker(selection: Binding(get: { model.commandCombo }, set: { model.setCommandCombo($0) })) {

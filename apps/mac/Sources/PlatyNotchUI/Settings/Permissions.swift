@@ -60,6 +60,20 @@ final class Permissions {
     let calendar: CalendarService
     let reminders: RemindersService
 
+    /// Location for the weather (Island spec 5), made on the first Allow click.
+    @ObservationIgnored private var systemLocation: SystemLocation?
+    private(set) var locationAsked = 0
+
+    /// The Location row's Allow: the weather switches to "Use my location" and macOS asks
+    /// (this click is the only other place the prompt can come from).
+    func requestLocation(defaults: UserDefaults = .standard) async {
+        WeatherLocation.automatic.save(to: defaults)
+        let l = systemLocation ?? SystemLocation()
+        systemLocation = l
+        _ = await l.requestAccess()
+        locationAsked += 1
+    }
+
     // The camera is not here: the Mirror tile owns its state, reads it only while it is
     // on, and stamps the grant (`MirrorWidget.cameraGrantKey`) (final review M2).
 
@@ -229,6 +243,7 @@ final class Permissions {
         case bluetooth = "Privacy_Bluetooth"
         /// Files and Folders (the downloads sub-feature), for the same reason.
         case filesAndFolders = "Privacy_FilesAndFolders"
+        case location = "Privacy_LocationServices"
     }
 
     static func open(_ pane: Pane) {

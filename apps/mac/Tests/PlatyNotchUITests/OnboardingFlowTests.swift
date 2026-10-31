@@ -171,7 +171,7 @@ final class OnboardingFlowTests: DefaultsTestCase {
                 XCTAssertEqual(GeneralSection.action(for: plan), plan.isCurrent ? .alreadyCurrent : .ask, "\(p)")
             }
         }
-        let current = PresetPlan.plan(.minimal, enabled: ["music"], mode: .minimal)
+        let current = PresetPlan.plan(.minimal, enabled: ["music", "weather"], mode: .minimal)
         XCTAssertEqual(GeneralSection.action(for: current), .alreadyCurrent)
     }
 }

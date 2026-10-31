@@ -19,6 +19,31 @@ private final class FakeFetcher: WeatherFetching, @unchecked Sendable {
     }
 }
 
+/// macOS Location stand-in: counts permission requests, answers with a fixed place.
+@MainActor
+private final class FakeLocation: LocationProviding {
+    var auth: LocationAuth
+    private let grant: LocationAuth
+    private(set) var requests = 0
+    private(set) var fixes = 0
+
+    init(auth: LocationAuth, grant: LocationAuth = .granted) {
+        self.auth = auth
+        self.grant = grant
+    }
+
+    func requestAccess() async -> LocationAuth {
+        requests += 1
+        auth = grant
+        return auth
+    }
+
+    func fix() async throws -> LocationFix {
+        fixes += 1
+        return LocationFix(latitude: 12.97, longitude: 77.59, name: "Bengaluru")
+    }
+}
+
 @MainActor
 final class DayWidgetsTests: DefaultsTestCase {
 
@@ -170,6 +195,53 @@ final class DayWidgetsTests: DefaultsTestCase {
         let places = try? await WeatherClient(fetcher: fetcher).places(named: "x")
         XCTAssertEqual(places, [], "too short: nothing sent")
         XCTAssertEqual(fetcher.urls, [])
+    }
+
+    // MARK: - Weather location (Island spec 5)
+
+    /// Opening (starting) the widget never asks for Location; it waits for a click.
+    func testOpeningNeverRequestsLocation() async {
+        let fetcher = okFetcher()
+        let fake = FakeLocation(auth: .notDetermined)
+        let weather = WeatherWidget(defaults: defaults(), fetcher: { fetcher }, watchSystem: false, location: fake)
+        weather.start(context: context())
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(fake.requests, 0)
+        XCTAssertEqual(fake.fixes, 0)
+        XCTAssertEqual(weather.source, .needsPermission)
+        XCTAssertEqual(fetcher.urls, [])
+        weather.stop()
+    }
+
+    /// "Use my location" asks once, then fetches the forecast at the fix.
+    func testUseMyLocationAsksOnceThenFetches() async {
+        let fetcher = okFetcher()
+        let fake = FakeLocation(auth: .notDetermined)
+        let weather = WeatherWidget(defaults: defaults(), fetcher: { fetcher }, watchSystem: false, location: fake)
+        weather.start(context: context())
+        await weather.useMyLocation()
+        await waitUntil { weather.weather != nil }
+        XCTAssertEqual(fake.requests, 1)
+        XCTAssertEqual(fetcher.urls, [OpenMeteo.forecastURL(latitude: 12.97, longitude: 77.59)])
+        XCTAssertEqual(weather.placeName, "Bengaluru")
+        XCTAssertEqual(WeatherLocation.load(from: defaults()), .automatic)
+        // Already granted: a second click asks nothing.
+        await weather.useMyLocation()
+        XCTAssertEqual(fake.requests, 1)
+        weather.stop()
+    }
+
+    /// Denied: the saved city, and no second prompt.
+    func testDeniedUsesTheSavedCity() async {
+        let fetcher = okFetcher()
+        let fake = FakeLocation(auth: .denied, grant: .denied)
+        let weather = WeatherWidget(defaults: defaults(), fetcher: { fetcher }, watchSystem: false, location: fake)
+        weather.start(context: context())
+        weather.choose(Self.lisbon)
+        WeatherLocation.automatic.save(to: defaults())
+        XCTAssertEqual(weather.source, .place(latitude: Self.lisbon.latitude, longitude: Self.lisbon.longitude, name: "Lisbon"))
+        XCTAssertEqual(fake.requests, 0)
+        weather.stop()
     }
 
     // MARK: - Meetings
