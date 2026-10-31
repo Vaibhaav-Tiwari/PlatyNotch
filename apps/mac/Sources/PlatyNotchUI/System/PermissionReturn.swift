@@ -6,8 +6,9 @@ enum AppWindowID {
     static let settings = NSUserInterfaceItemIdentifier("dev.platynotch.settings")
     static let onboarding = NSUserInterfaceItemIdentifier("dev.platynotch.onboarding")
 
-    /// The Settings or onboarding window (not a panel, picker or alert).
-    static func isSettingsLike(_ window: NSWindow?) -> Bool {
+    /// The Settings or onboarding window (not a panel, picker or alert). Main actor: a
+    /// window's identifier is read there.
+    @MainActor static func isSettingsLike(_ window: NSWindow?) -> Bool {
         guard let id = window?.identifier else { return false }
         return id == settings || id == onboarding
     }

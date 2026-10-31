@@ -108,7 +108,9 @@ final class AppleScriptTabReader: BrowserTabReading {
     }
 
     private static func execute(_ source: String) async -> ScriptOutcome {
-        await withCheckedContinuation { (cont: CheckedContinuation<ScriptOutcome, Never>) in
+        // Captured before the hop to `queue`: the gate is Sendable, the static is main-actor.
+        let gate: ScriptGate = Self.gate
+        return await withCheckedContinuation { (cont: CheckedContinuation<ScriptOutcome, Never>) in
             let once = ResumeOnce(cont)
             queue.async {
                 let outcome = runScript(source)
