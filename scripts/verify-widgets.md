@@ -1669,3 +1669,39 @@ the renders `home-rest`, `home-resume`, `home-never-played`, `home-sky-*`, `home
   location": the sky says "Can't find your location" with "Try again" and "Add a city". With a
   city and Wi-Fi off before the first load: "Offline"; with an earlier reading: the reading
   and "updated 12 min ago".
+
+## Island phase B
+
+The dock, the full-panel search and the in-panel tools (Island spec 3.3, 3.4, 4). The smoke
+runs print `SMOKE OK … renders=129`, `SMOKE SETTINGS OK sections=9 …` and
+`SMOKE-POWER OK widgets=6`; the renders `home-dock-*`, `search-*` and `tool-timer*`,
+`tool-stopwatch`, `tool-turn-on`, `tool-notes`, `tool-remind*`, `tool-clipboard`, `tool-shelf*`,
+`tool-memory-search`, `tool-games` show every state below.
+
+- [ ] **327. Every slot opens its tool in place.** Open the panel: under the two cards, eight
+  round buttons (Timer, Note, Remind, Clipboard, Shelf, Memory, Games and the search shortcut).
+  Click each: the Home and Agents tabs give way to ‹ and the tool's name with a short spring
+  (no jump), the tool sits on one dark card, and ‹, Esc or ⌘[ goes back to Home. With Reduce
+  Motion on, it fades instead.
+- [ ] **328. A running timer turns the slot amber.** Open Timer, pick 1 min, Start: the
+  number counts down, Start becomes Pause and Stop, and the timer shows in the right column
+  with an amber dot. Go back: the Timer slot is amber with the time left under it. Close the
+  panel and wait past the end: on opening again the slot reads "Timer" (no tick happened
+  while closed). Focus and Stopwatch do the same from their chips in the header.
+- [ ] **329. Remind and Shelf badges.** With reminders due today (or overdue) the Remind slot
+  wears a blue count; with files on the shelf, Shelf does. Completing a reminder in the Remind
+  tool lowers the count. Over 99 reads "99+".
+- [ ] **330. ⌥⌘K opens the search.** From another app press ⌥⌘K: the panel opens on the
+  search, field focused with an `esc` keycap. Type `games`: Games first under Tools, then
+  "Search memory" under Also. `notes` finds Note; `timer 10m` offers the timer under
+  Commands, ↩ starts it and Home shows the amber slot. Esc clears, Esc again goes back to
+  Home, Esc again closes. Typing on Home with no field focused opens the search too.
+- [ ] **331. No chips anywhere.** Home has no row of chips under the cards in any state
+  (music, timers, focus, shelf items, the first run's Try it); the Try it sample shows in the
+  Today card instead.
+- [ ] **332. Off tools.** Turn Reminders off in Settings › Widgets: the Remind slot dims and
+  opens "Remind is off" with "Turn on Remind", which turns it back on.
+- [ ] **333. Typing never answers an approval.** With an approval waiting, type into the
+  Note pad or the search and press ⌘↩ and ⌘⌫: they edit the text; the approval waits.
+- [ ] **334. CPU.** `scripts/perf-idle.sh`, `scripts/perf-idle.sh --state music` and
+  `scripts/perf-open.sh`: PASS (under 1 % closed, under 5 % open).
