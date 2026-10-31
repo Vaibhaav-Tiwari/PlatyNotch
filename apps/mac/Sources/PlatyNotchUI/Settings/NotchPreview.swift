@@ -105,7 +105,7 @@ struct NotchPreview: View {
     private var openPanel: some View {
         let design: CGFloat = MiniPanel.designScale
         let width: CGFloat = PanelLayout.expandedSize.width * design
-        let height: CGFloat = PanelLayout.expandedSize.height * design
+        let height: CGFloat = MiniPanel.restHeight * design
         let zoom: CGFloat = Self.scale / design
         return MiniPanel(showPlaty: appearance.showPlaty)
             .frame(width: width, height: height)
@@ -144,49 +144,58 @@ private struct Wallpaper: View {
     }
 }
 
-/// The open panel's content in miniature, in shapes only.
+/// The open panel's content in miniature, in shapes only: Home as in wireframe A (the
+/// header, the media block beside Up next, a hairline, the command line), white ink on black.
 private struct MiniPanel: View {
     let showPlaty: Bool
     /// The scale the miniature is drawn at (then zoomed to the preview's).
     static let designScale: CGFloat = 0.38
     static var bandHeight: CGFloat { 38 * designScale }
-    @Environment(\.colorScheme) private var scheme
+    /// Home at rest is about this tall (spec 2).
+    static let restHeight: CGFloat = 230
 
     var body: some View {
-        let ink: Color = scheme == .light ? .black : .white
-        VStack(spacing: 5) {
-            HStack(spacing: 4) {
-                Capsule().fill(ink.opacity(0.16)).frame(width: 26, height: 8)
-                Capsule().fill(ink.opacity(0.07)).frame(width: 26, height: 8)
-                Capsule().fill(ink.opacity(0.07)).frame(width: 26, height: 8)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                if showPlaty {
+                    PlatyView(mood: .idle, size: 9)
+                }
+                Capsule().fill(DS.primary).frame(width: 14, height: 4)
+                Capsule().fill(DS.secondary).frame(width: 16, height: 4)
                 Spacer()
+                Capsule().fill(DS.secondary).frame(width: 30, height: 4)
+                ForEach(0..<3, id: \.self) { _ in Circle().fill(DS.secondary).frame(width: 5, height: 5) }
             }
             .padding(.top, MiniPanel.bandHeight + 4)
-            // The hero: artwork, a title and a scrubber.
-            HStack(spacing: 7) {
-                RoundedRectangle(cornerRadius: Radius.small, style: .continuous)
-                    .fill(LinearGradient(colors: [DS.dynamicColor(.working), Color(red: 0.11, green: 0.23, blue: 0.29)],
-                                         startPoint: .topLeading, endPoint: .bottomTrailing))
-                    .frame(width: 34, height: 34)
+            HStack(alignment: .top, spacing: 8) {
+                HStack(alignment: .top, spacing: 5) {
+                    RoundedRectangle(cornerRadius: Radius.medium * MiniPanel.designScale, style: .continuous)
+                        .fill(LinearGradient(colors: [Color(red: 0.23, green: 0.29, blue: 0.39),
+                                                      Color(red: 0.64, green: 0.44, blue: 0.48)],
+                                             startPoint: .topLeading, endPoint: .bottomTrailing))
+                        .frame(width: 20, height: 20)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Capsule().fill(DS.primary).frame(width: 40, height: 4)
+                        Capsule().fill(DS.secondary).frame(width: 30, height: 3)
+                        Capsule().fill(DS.hairline).frame(height: 1.5)
+                            .overlay(alignment: .leading) { Capsule().fill(DS.secondary).frame(width: 22, height: 1.5) }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Rectangle().fill(DS.hairline).frame(width: 0.5, height: 26)
                 VStack(alignment: .leading, spacing: 4) {
-                    Capsule().fill(ink.opacity(0.55)).frame(width: 74, height: 5)
-                    Capsule().fill(ink.opacity(0.25)).frame(width: 50, height: 4)
-                    Capsule().fill(DS.dynamicColor(.working)).frame(width: 96, height: 2)
+                    Capsule().fill(DS.tertiary).frame(width: 18, height: 2.5)
+                    ForEach(0..<3, id: \.self) { i in
+                        HStack(spacing: 4) {
+                            Capsule().fill(i == 0 ? DS.color(.error) : DS.secondary).frame(width: 14, height: 3)
+                            Capsule().fill(DS.primary).frame(width: 26, height: 3)
+                        }
+                    }
                 }
-                Spacer(minLength: 0)
-                if showPlaty {
-                    PlatyView(mood: .workingToMusic, size: 22)
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(7)
-            .background(ink.opacity(0.06), in: RoundedRectangle(cornerRadius: Radius.small, style: .continuous))
-            HStack(spacing: 4) {
-                ForEach(0..<4, id: \.self) { _ in
-                    RoundedRectangle(cornerRadius: Radius.small, style: .continuous)
-                        .fill(ink.opacity(0.06))
-                        .frame(height: 22)
-                }
-            }
+            Rectangle().fill(DS.hairline).frame(height: 0.5)
+            RoundedRectangle(cornerRadius: Radius.medium * MiniPanel.designScale, style: .continuous).fill(DS.fill).frame(height: 10)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 7)

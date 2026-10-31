@@ -547,18 +547,18 @@ private struct PresetSketch: View {
             HStack(spacing: 0) {
                 Image(systemName: "calendar").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.8))
                 Spacer()
-                Image(systemName: "waveform").font(.system(size: 11, weight: .semibold)).foregroundStyle(DS.color(.working))
+                Image(systemName: "waveform").font(.system(size: 11, weight: .semibold)).foregroundStyle(SettingsTint.accent)
             }
             .padding(.horizontal, 8)
             .frame(width: 128, height: 20)
             .background(Color.black, in: shape)
         case .developer:
             HStack(spacing: 3) {
-                ForEach([Color(red: 0.85, green: 0.47, blue: 0.34), DS.color(.working), Color(red: 0.55, green: 0.6, blue: 0.95)],
+                ForEach([Color(red: 0.85, green: 0.47, blue: 0.34), SettingsTint.accent, Color(red: 0.55, green: 0.6, blue: 0.95)],
                         id: \.self) { c in Circle().fill(c).frame(width: 5, height: 5) }
                 Spacer()
                 Circle().trim(from: 0, to: 0.7)
-                    .stroke(DS.color(.working), style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .stroke(SettingsTint.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .frame(width: 9, height: 9)
             }
@@ -659,7 +659,7 @@ private struct TryItPage: View {
                     VStack(spacing: 4) {
                         Image(systemName: "arrow.up")
                             .font(.system(size: 22, weight: .semibold))
-                            .foregroundStyle(DS.color(.working))
+                            .foregroundStyle(SettingsTint.accent)
                         Image(systemName: openOn == .hover ? "cursorarrow" : "cursorarrow.click")
                             .font(.system(size: 34, weight: .regular))
                             .foregroundStyle(.white)
