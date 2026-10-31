@@ -51,6 +51,48 @@ final class CommandDiscoveryTests: DefaultsTestCase {
         r.registry.stopAll()
     }
 
+    /// The toggle as a pure function: closed opens, open-but-not-key (or line unfocused)
+    /// focuses, and only key plus focused closes.
+    func testHotKeyActionForEveryState() {
+        for key in [false, true] {
+            for focused in [false, true] {
+                XCTAssertEqual(CommandHotKeyAction.of(open: false, panelIsKey: key, commandFocused: focused), .open)
+            }
+        }
+        XCTAssertEqual(CommandHotKeyAction.of(open: true, panelIsKey: false, commandFocused: false), .focus)
+        XCTAssertEqual(CommandHotKeyAction.of(open: true, panelIsKey: false, commandFocused: true), .focus,
+                       "another app has the keyboard: the line only looks focused")
+        XCTAssertEqual(CommandHotKeyAction.of(open: true, panelIsKey: true, commandFocused: false), .focus)
+        XCTAssertEqual(CommandHotKeyAction.of(open: true, panelIsKey: true, commandFocused: true), .close)
+    }
+
+    /// Bug: the panel open but not key (the user clicked into the browser) and ⌥⌘K closed it.
+    func testHotKeyWhenOpenButNotKeyTakesTheKeyboardInstead() {
+        let (c, r) = controller()
+        c.debugHandle(.event(.click))
+        c.panelModel.route = PanelRoute(destination: .agents)
+        c.panelModel.commandFocused = true   // it was focused before the user left
+        c.panelIsKey = { false }
+        XCTAssertTrue(c.commandHotKey())
+        XCTAssertEqual(c.panelModel.mode, .expanded, "still open")
+        XCTAssertEqual(c.panelModel.route, PanelRoute(destination: .home))
+        XCTAssertTrue(c.panelModel.commandFocused)
+        XCTAssertEqual(c.keyRequests, 1)
+        r.registry.stopAll()
+    }
+
+    func testHotKeyWhenKeyButLineNotFocusedFocusesIt() {
+        let (c, r) = controller()
+        c.debugHandle(.event(.click))
+        c.panelIsKey = { true }
+        c.panelModel.commandFocused = false
+        XCTAssertTrue(c.commandHotKey())
+        XCTAssertEqual(c.panelModel.mode, .expanded)
+        XCTAssertTrue(c.panelModel.commandFocused)
+        XCTAssertEqual(c.keyRequests, 1)
+        r.registry.stopAll()
+    }
+
     /// Hover never takes the keyboard: only the shortcut and a click do.
     func testHoverOpenNeverTakesTheKeyboard() {
         let (c, r) = controller()

@@ -351,15 +351,19 @@ public final class NotchController {
     }
 
     /// The global command shortcut (⌥⌘K): from anywhere, opens Home with the command line
-    /// focused and gives the panel the keyboard; pressed again while the command line has
-    /// focus, closes the panel. Returns whether the panel is now open.
+    /// focused and gives the panel the keyboard. It closes the panel only when the panel
+    /// already has the keyboard and the command line has focus (`CommandHotKeyAction`).
+    /// Returns whether the panel is now open.
     @discardableResult
     func commandHotKey() -> Bool {
-        if machine.mode == .expanded, model.commandFocused, panelIsKey() {
+        switch CommandHotKeyAction.of(open: machine.mode == .expanded, panelIsKey: panelIsKey(),
+                                      commandFocused: model.commandFocused) {
+        case .close:
             collapse()
             return false
+        case .open, .focus:
+            return openCommandLine()
         }
-        return openCommandLine()
     }
 
     /// Opens Home with the command line focused and the keyboard given: its list of
@@ -942,5 +946,21 @@ extension NSScreen {
     var hasNotch: Bool {
         NotchGeometry.notchRect(screenFrame: frame, auxLeft: auxiliaryTopLeftArea,
                                 auxRight: auxiliaryTopRightArea) != nil
+    }
+}
+
+/// What ⌥⌘K does, from the panel's state. Pure, so every state is tested without a window.
+enum CommandHotKeyAction: Equatable {
+    /// The panel is closed: open it and focus the command line.
+    case open
+    /// Open but without the keyboard (the user is in another app), or the line is not
+    /// focused: make the panel key, show Home and focus the line.
+    case focus
+    /// The panel has the keyboard and the line has focus: close.
+    case close
+
+    static func of(open: Bool, panelIsKey: Bool, commandFocused: Bool) -> CommandHotKeyAction {
+        guard open else { return .open }
+        return panelIsKey && commandFocused ? .close : .focus
     }
 }
