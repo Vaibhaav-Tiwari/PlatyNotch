@@ -62,7 +62,12 @@ struct GeneralSection: View {
             }
             .settingsForm()
         }
-        .onAppear(perform: readLogin)
+        .onAppear {
+            readLogin()
+            // The setup in force shows its preview at once.
+            if previewed == nil { previewed = SetupPreset.allCases.first { services.presetPlan($0).isCurrent } }
+        }
+        .onDisappear { PresetPreview.releaseCache() }
         .confirmationDialog("Apply \(pending?.title ?? "")?",
                             isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
                             titleVisibility: .visible) {

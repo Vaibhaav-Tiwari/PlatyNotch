@@ -31,8 +31,9 @@ struct CompactPill: View {
     var leadAppIcon: NSImage?
     var leadAgentName: String = ""
 
-    /// The lead draws: connected, no approval waiting, and a lead that takes the ears.
-    private var leading: Bool {
+    /// The lead draws: connected, no approval waiting, and a lead that takes the ears (an
+    /// urgent live activity makes the lead `.none`: `PillLeads.isUrgent`).
+    var showsLead: Bool {
         connection == .connected && content.approvalCount == 0 && PillLeadView.draws(lead)
     }
 
@@ -70,7 +71,7 @@ struct CompactPill: View {
     }
 
     @ViewBuilder private var liveEar: some View {
-        if leading {
+        if showsLead {
             leadView(.trailing)
         } else {
             LiveEarView(content: content, connection: connection, earWidth: earWidth)
@@ -78,7 +79,7 @@ struct CompactPill: View {
     }
 
     @ViewBuilder private var agentsEar: some View {
-        if leading {
+        if showsLead {
             let parts = PillLeadView.parts(lead, hasArt: leadArt != nil, hasAppIcon: leadAppIcon != nil,
                                            agentName: leadAgentName)
             if parts.count > 1 { leadView(.leading) } else { platyGlyph }

@@ -522,11 +522,12 @@ struct PresetCard: View {
     }
 }
 
-/// The notch each preset gives, drawn small: Everyday's music and meeting, Developer's
-/// agents and usage, Minimal's notch with nothing until something is live.
+/// The closed pill each preset gives, drawn small with the real pill (Island spec 7):
+/// Everyday's music lead, Developer's agent dots, Minimal's notch hidden until something is live.
 private struct PresetSketch: View {
     let preset: SetupPreset
     var height: CGFloat = 64
+    static let pillWidth: CGFloat = 128
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -541,31 +542,14 @@ private struct PresetSketch: View {
     }
 
     @ViewBuilder private var pill: some View {
-        let shape = UnevenRoundedRectangle(bottomLeadingRadius: 8, bottomTrailingRadius: 8, style: .continuous)
-        switch preset {
-        case .everyday:
-            HStack(spacing: 0) {
-                Image(systemName: "calendar").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.8))
-                Spacer()
-                Image(systemName: "waveform").font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.8))
-            }
-            .padding(.horizontal, 8)
-            .frame(width: 128, height: 20)
-            .background(Color.black, in: shape)
-        case .developer:
-            HStack(spacing: 3) {
-                ForEach([Color(AgentIdentity.claude.rgb), Color(AgentIdentity.codex.rgb), Color(AgentIdentity.cursor.rgb)],
-                        id: \.self) { c in Circle().fill(c).frame(width: 5, height: 5) }
-                Spacer()
-                Circle().trim(from: 0, to: 0.7)
-                    .stroke(DS.color(.working), style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                    .frame(width: 9, height: 9)
-            }
-            .padding(.horizontal, 8)
-            .frame(width: 128, height: 20)
-            .background(Color.black, in: shape)
-        case .minimal:
+        if let lead = PresetPillPreview.lead(preset) {
+            let size = PillRenders.notchLayout(.standard).contentRect(for: .compact).size
+            let scale: CGFloat = Self.pillWidth / size.width
+            PillRenders.lead(lead, greyNotch: false)
+                .scaleEffect(scale, anchor: .topLeading)
+                .frame(width: size.width * scale, height: size.height * scale, alignment: .topLeading)
+        } else {
+            let shape = UnevenRoundedRectangle(bottomLeadingRadius: 8, bottomTrailingRadius: 8, style: .continuous)
             VStack(spacing: 5) {
                 shape.fill(Color.black).frame(width: 70, height: 16)
                 Text("Hidden until live")
@@ -576,7 +560,7 @@ private struct PresetSketch: View {
     }
 }
 
-/// Developer and Minimal show Agents: install the hooks for the agents found here.
+/// Developer shows Agents: install the hooks for the agents found here.
 private struct AgentHooksRow: View {
     let services: SettingsServices
 

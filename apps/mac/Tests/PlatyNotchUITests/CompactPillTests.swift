@@ -139,4 +139,20 @@ final class CompactPillTests: DefaultsTestCase {
         XCTAssertTrue(PillLeadView.draws(.timer(remaining: "1:00")))
         XCTAssertTrue(PillLeadView.draws(.needsYou(sessionID: "a")))
     }
+
+    /// Review I1: music plus a ringing alarm shows the alarm in the live ear, not the music lead.
+    func testMusicLeadYieldsToARingingAlarm() {
+        let now = Date()
+        let alarm = LiveActivity(id: "time:alarm", widgetID: "time", priority: LivePriority.alarmRinging,
+                                 glyph: .symbol("alarm"), title: "Alarm")
+        let content = PillContent(activities: [alarm, PillRenders.music], sessions: [], approvals: 0, hiddenKinds: [],
+                                  now: now)
+        let lead = PillLeads.lead(approvals: 0, sessions: [], log: AgentFinishLog(), timerRemaining: nil,
+                                  musicPlaying: true, order: .musicFirst, now: now, activities: [alarm, PillRenders.music])
+        let pill = CompactPill(content: content, connection: .connected, hasNotch: true, notchWidth: 180, lead: lead)
+        XCTAssertFalse(pill.showsLead)
+        XCTAssertEqual(content.trailing?.id, "time:alarm", "the live ear shows the alarm")
+        let calm = CompactPill(content: content, connection: .connected, hasNotch: true, notchWidth: 180, lead: .music)
+        XCTAssertTrue(calm.showsLead)
+    }
 }

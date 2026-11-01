@@ -48,8 +48,8 @@ final class PanelViewModel {
     var tourSample: LiveActivity?
     /// The notice the toast shows (the one that opened it, not merely the newest).
     var toastNotice: Notice?
-    /// Settings › Home (the right column), refreshed when the saved settings change.
-    var homeSettings = HomeSettings()
+    /// The preset's Island choices (dock fold, pill order), refreshed when the saved ones change.
+    var islandPrefs = IslandPrefs()
     /// Home's natural body height while plain Home shows (the controller sizes the panel to it);
     /// nil: the panel takes its full height.
     var onBodyHeight: (CGFloat?) -> Void = { _ in }
@@ -169,12 +169,16 @@ struct PanelRootView: View {
         return .spring(response: spring.response, dampingFraction: spring.damping)
     }
 
-    /// The resting pill with its lead (Island spec 7).
-    private func compactPill(_ pill: PillContent, layout: PanelLayout, order: PillOrder, now: Date) -> CompactPill {
+    /// The pill's lead now (Island spec 7); urgent live activities keep the pill's own ears.
+    private func pillLead(activities: [LiveActivity], now: Date) -> PillLead {
+        PillLeads.lead(approvals: store.approvals.count, sessions: store.sessions, log: today.agentActivity.log,
+                       timerRemaining: timerRemaining(at: now), musicPlaying: today.nowPlaying.isPlaying,
+                       order: model.islandPrefs.pillOrder, now: now, activities: activities)
+    }
+
+    /// The resting pill with its lead.
+    private func compactPill(_ pill: PillContent, lead: PillLead, layout: PanelLayout) -> CompactPill {
         let np = today.nowPlaying
-        let lead: PillLead = PillLeads.lead(approvals: store.approvals.count, sessions: store.sessions,
-                                            log: today.agentActivity.log, timerRemaining: timerRemaining(at: now),
-                                            musicPlaying: np.isPlaying, order: order, now: now)
         var icon: NSImage?
         var name = ""
         if case .needsYou(let id) = lead, let s = store.sessions.first(where: { $0.sessionID == id }) {
@@ -210,18 +214,19 @@ struct PanelRootView: View {
         case .hidden:
             Color.clear
         case .compact:
-            let pill = PillContent(activities: widgets.liveActivities, sessions: store.sessions,
+            let activities: [LiveActivity] = widgets.liveActivities
+            let pill = PillContent(activities: activities, sessions: store.sessions,
                                    approvals: store.approvals.count, hiddenKinds: model.hiddenKinds,
                                    log: today.agentActivity.log, now: Date())
-            let order: PillOrder = IslandPrefs.load(from: .standard).pillOrder
-            // A running timer's time left changes each second: tick only while the pill is shown.
+            let lead: PillLead = pillLead(activities: activities, now: Date())
+            // The timer lead's time changes each second: tick only while it shows.
             Group {
-                if model.visible, timerRemaining(at: Date()) != nil {
+                if model.visible, case .timer = lead {
                     TimelineView(.periodic(from: .now, by: 1)) { ctx in
-                        compactPill(pill, layout: layout, order: order, now: ctx.date)
+                        compactPill(pill, lead: pillLead(activities: activities, now: ctx.date), layout: layout)
                     }
                 } else {
-                    compactPill(pill, layout: layout, order: order, now: Date())
+                    compactPill(pill, lead: lead, layout: layout)
                 }
             }
             .contentShape(Rectangle())
@@ -250,10 +255,10 @@ struct PanelRootView: View {
                           widgets: widgets, memory: memory, extraTabs: extraTabs,
                           route: dropping ? .constant(PanelRoute(destination: .home))
                                           : Binding(get: { model.route }, set: { model.route = $0 }),
-                          onCollapse: model.onClick, islandPrefs: IslandPrefs.load(from: .standard),
+                          onCollapse: model.onClick, islandPrefs: model.islandPrefs,
                           onOpenSettings: model.onOpenSettings,
                           header: model.header,
-                          homeSettings: model.homeSettings, commandLine: commandLineView,
+                          commandLine: commandLineView,
                           dockLayout: DockLayout.load(from: .standard),
                           searchKey: model.commandHint == "\u{2318}K" ? nil : model.commandHint,   // ⌘K: the global shortcut is off
                           onSearch: { [model] in

@@ -517,7 +517,7 @@ enum HomeRenders {
     /// camera housing, 10 pt at the bottom; clipped, so anything too tall shows.
     static func panel(_ rig: Rig, route: PanelRoute = PanelRoute(destination: .home), extraTabs: [PanelTab] = [],
                       memory: MemoryServices? = nil, memoryMode: MemoryTab.Mode = .search,
-                      homeSettings: HomeSettings = HomeSettings(), dropping: Bool = false, command: String? = nil,
+                      dropping: Bool = false, command: String? = nil,
                       tourSample: LiveActivity? = nil, now: Date? = nil, header: HeaderServices? = nil,
                       full: Bool = false, commandFocused: Bool = false, commandHint: Bool = false,
                       dock: DockLayout = .standard, prefs: IslandPrefs = IslandPrefs(),
@@ -547,7 +547,7 @@ enum HomeRenders {
             ExpandedPanel(store: rig.store, responder: ApprovalResponder(client: rig.client), arming: ApprovalArming(),
                           today: rig.today, widgets: rig.registry, memory: memory ?? MemoryServices(client: rig.client),
                           extraTabs: extraTabs, route: Binding(get: { current }, set: { current = $0 }),
-                          onCollapse: {}, islandPrefs: prefs, header: services, homeSettings: homeSettings,
+                          onCollapse: {}, islandPrefs: prefs, header: services,
                           commandLine: commandLine, dockLayout: dock,
                           dropping: dropping, fixedNow: at, agentsVisible: agentsVisible, memoryMode: memoryMode,
                           tourSample: tourSample,

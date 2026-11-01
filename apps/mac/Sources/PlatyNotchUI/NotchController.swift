@@ -272,9 +272,9 @@ public final class NotchController {
         handle(.click)
     }
 
-    /// Settings › Home changed (or the panel was built): the right column.
-    public func homeSettingsChanged(_ settings: HomeSettings) {
-        if model.homeSettings != settings { model.homeSettings = settings }
+    /// A preset or Settings › Dock changed the Island choices (or the panel was built).
+    public func islandPrefsChanged(_ prefs: IslandPrefs) {
+        if model.islandPrefs != prefs { model.islandPrefs = prefs }
     }
 
     /// Closes the open panel (the first run's "Meet Platy" demo).

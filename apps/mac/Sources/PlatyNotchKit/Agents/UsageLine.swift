@@ -1,23 +1,7 @@
 import Foundation
 
-/// Agents' header status text (Quiet Notch spec 2.1): usage as small mono numbers, one part
-/// per agent, `Claude 5h 62% · 7d 31%` and `Codex 5h 18%`. Percents are rounded; a missing
-/// window or an agent without any is left out. Island draws `rings` in the header instead.
-public enum UsageLine {
-    public static func parts(_ u: Usage) -> [String] {
-        let agents: [(String, Limits?)] = [("Claude", u.claude), ("Codex", u.codex)]
-        var out: [String] = []
-        for (name, limits) in agents {
-            guard let limits else { continue }
-            var windows: [String] = []
-            if let w = limits.fiveHour { windows.append("5h \(PanelFormat.usagePercent(w.usedPercent))") }
-            if let w = limits.weekly { windows.append("7d \(PanelFormat.usagePercent(w.usedPercent))") }
-            guard !windows.isEmpty else { continue }
-            out.append("\(name) " + windows.joined(separator: " · "))
-        }
-        return out
-    }
-}
+/// Agents' header usage (Island spec 8): `rings`, one per agent with a five-hour window.
+public enum UsageLine {}
 
 /// One usage ring in Agents' header (Island spec 8): an agent's five-hour window.
 public struct UsageRing: Equatable, Sendable {

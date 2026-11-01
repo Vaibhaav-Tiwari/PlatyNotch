@@ -49,4 +49,39 @@ final class PillLeadTests: XCTestCase {
         XCTAssertEqual(lead(sessions: [session("i", .idle)], timer: 0, order: .agentsFirst), PillLead.none,
                        "an idle session and an ended timer are not live")
     }
+
+    // Review I1: the lead never hides an urgent live activity.
+    private func activity(_ id: String, _ widget: String, _ priority: Int, countdownTo: Date? = nil) -> LiveActivity {
+        LiveActivity(id: id, widgetID: widget, priority: priority, glyph: .symbol("bell"), countdownTo: countdownTo)
+    }
+
+    func testUrgentActivitiesKeepThePill() {
+        let urgent: [LiveActivity] = [
+            activity("time:alarm", "time", LivePriority.alarmRinging),
+            activity("time:done", "time", LivePriority.timerFinished),
+            activity("meeting:next", "meeting", LivePriority.meetingSoon, countdownTo: now.addingTimeInterval(4 * 60)),
+            activity("system:battery-low", "system", LivePriority.batteryLow),
+            activity("mirror:on", "mirror", LivePriority.panelActivity),
+        ]
+        for a in urgent {
+            XCTAssertTrue(PillLeads.isUrgent(a, now: now), a.id)
+            for order in [PillOrder.musicFirst, .agentsFirst] {
+                XCTAssertEqual(PillLeads.lead(approvals: 0, sessions: [session("n", .waitingInput)], log: AgentFinishLog(),
+                                              timerRemaining: 600, musicPlaying: true, order: order, now: now,
+                                              activities: [a]), PillLead.none, "\(a.id) takes the pill as before")
+            }
+        }
+    }
+
+    func testCalmActivitiesLetTheLeadDraw() {
+        let calm: [LiveActivity] = [
+            activity("meeting:next", "meeting", LivePriority.meetingSoon, countdownTo: now.addingTimeInterval(8 * 60)),
+            activity("time:timer:1", "time", LivePriority.timerRunning),
+            activity("music:playing", "music", LivePriority.musicPlaying),
+            activity("system:charging", "system", LivePriority.batteryCharging),
+        ]
+        for a in calm { XCTAssertFalse(PillLeads.isUrgent(a, now: now), a.id) }
+        XCTAssertEqual(PillLeads.lead(approvals: 0, sessions: [], log: AgentFinishLog(), timerRemaining: nil,
+                                      musicPlaying: true, order: .musicFirst, now: now, activities: calm), .music)
+    }
 }

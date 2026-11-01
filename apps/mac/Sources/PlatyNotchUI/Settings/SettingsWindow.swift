@@ -53,7 +53,15 @@ final class SettingsServices {
     func presetPlan(_ p: SetupPreset, defaults: UserDefaults = .standard) -> PresetPlan {
         let on: Set<String> = Set(widgets.orderedWidgets.map(\.id).filter { widgets.isEnabled($0) })
         return PresetPlan.plan(p, enabled: on, mode: AppearanceStore.load(from: defaults).mode,
-                               dock: DockLayout.load(from: defaults), prefs: IslandPrefs.load(from: defaults))
+                               dock: DockLayout.load(from: defaults), prefs: Self.currentPrefs(defaults: defaults))
+    }
+
+    /// The Island choices in force: the saved ones, with the Agents rule read from the live
+    /// switch (Settings › Agents can change it without a preset).
+    static func currentPrefs(defaults: UserDefaults) -> IslandPrefs {
+        var prefs = IslandPrefs.load(from: defaults)
+        prefs.agentsTab = AgentsVisibility.load(from: defaults).forcedOn ? .always : .whenHooksSetUp
+        return prefs
     }
 
     /// A widget's name for a preset summary.

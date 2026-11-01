@@ -80,4 +80,29 @@ final class PresetPreviewTests: DefaultsTestCase {
                                       dock: SetupPreset.minimal.layout.dock, prefs: SetupPreset.minimal.layout.prefs)
         XCTAssertEqual(GeneralSection.changeList(current, title: { $0 }), "Minimal is your setup now.")
     }
+
+    /// Review I2: "Current" follows the live Agents switch (Settings › Agents), not only the saved rule.
+    func testCurrentFollowsTheAgentsSwitch() {
+        let d = defaults()
+        let p = SetupPreset.developer
+        SettingsServices.applyLayout(p, defaults: d)
+        func plan() -> PresetPlan {
+            PresetPlan.plan(p, enabled: Set(p.turnsOn), mode: p.mode, dock: DockLayout.load(from: d),
+                            prefs: SettingsServices.currentPrefs(defaults: d))
+        }
+        XCTAssertTrue(plan().isCurrent)
+        var v = AgentsVisibility.load(from: d)
+        v.forcedOn = false
+        v.save(to: d)
+        XCTAssertFalse(plan().isCurrent, "Agents was turned off in Settings: applying Developer changes something")
+        XCTAssertEqual(plan().prefs?.agentsTab, .always)
+    }
+
+    /// Review M6: closing Settings › General lets the sample rig and previews go.
+    func testPreviewCacheIsReleased() {
+        _ = PresetPreview.panel(.everyday)
+        XCTAssertTrue(PresetPreview.isCached)
+        PresetPreview.releaseCache()
+        XCTAssertFalse(PresetPreview.isCached)
+    }
 }

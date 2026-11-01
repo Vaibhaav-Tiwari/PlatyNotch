@@ -15,14 +15,14 @@ final class HomeViewTests: DefaultsTestCase {
         HomeRenders.builtIns(meeting: false, at: now ?? Date())
     }
 
-    private func data(_ r: HomeRenders.Rig, settings: HomeSettings = HomeSettings(), dropping: Bool = false,
+    private func data(_ r: HomeRenders.Rig, dropping: Bool = false,
                       airDrop: Bool = true, now: Date = Date()) -> HomeData {
-        HomeData.make(today: r.today, widgets: r.registry, settings: settings, tourSample: nil, now: now,
+        HomeData.make(today: r.today, widgets: r.registry, tourSample: nil, now: now,
                       dropping: dropping, airDrop: airDrop)
     }
 
-    private func view(_ r: HomeRenders.Rig, settings: HomeSettings = HomeSettings()) -> HomeView {
-        HomeView(today: r.today, widgets: r.registry, settings: settings, fixedNow: Date())
+    private func view(_ r: HomeRenders.Rig) -> HomeView {
+        HomeView(today: r.today, widgets: r.registry, fixedNow: Date())
     }
 
     private func size<V: View>(_ v: V) -> CGSize {
@@ -165,7 +165,7 @@ final class HomeViewTests: DefaultsTestCase {
         }
         func heights() -> (CGFloat, CGFloat) {
             let music = NowPlayingCard(nowPlaying: r.today.nowPlaying, fixedNow: now)
-            let data = HomeData.make(today: r.today, widgets: r.registry, settings: HomeSettings(), tourSample: nil,
+            let data = HomeData.make(today: r.today, widgets: r.registry, tourSample: nil,
                                      now: now, dropping: false)
             guard case .event = data.next else {
                 XCTFail("the Today card shows the event: \(data.next)")
@@ -192,13 +192,13 @@ final class HomeViewTests: DefaultsTestCase {
     }
 
     func testHeaderHasNoDateText() {
-        XCTAssertEqual(ExpandedPanel.headerStatus(for: .home, usage: Usage()), [])
+        XCTAssertEqual(ExpandedPanel.headerRings(for: .home, usage: Usage()), [])
     }
 
     /// The first run's "Try it" shows in the Today card (it was a chip).
     func testTourSampleInTodayCard() {
         let r = rig()
-        let d = HomeData.make(today: r.today, widgets: r.registry, settings: HomeSettings(), tourSample: TryItSession.sample,
+        let d = HomeData.make(today: r.today, widgets: r.registry, tourSample: TryItSession.sample,
                               now: Date(), dropping: false)
         XCTAssertEqual(d.next, .sample(title: "This is Home", subtitle: "Every tool is one click away in the dock"))
         XCTAssertEqual(d.next, HomeData.sample)

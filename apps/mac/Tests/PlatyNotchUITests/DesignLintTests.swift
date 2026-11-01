@@ -198,6 +198,12 @@ final class DesignLintTests: DefaultsTestCase {
         "Views/PillLeadView.swift": "the music lead's bars in the album's colour (Island spec 7)",
     ]
 
+    /// Named system colours, `Color(red:)` and `Color(hue:)`.
+    static let namedColourPattern: String = {
+        let named = #"(blue|indigo|purple|pink|mint|cyan|teal|yellow|orange|red|green|brown)"#
+        return #"Color\."# + named + #"\b|[\s(:?,]\."# + named + #"\b(?!\s*[:(=])|(?<![A-Za-z])Color\((red|hue):"#
+    }()
+
     /// Island (spec 10): the files whose colour comes from content (the album art, the sky).
     static let contentColourFiles = ["Home/NowPlayingCard.swift", "Home/WeatherSkyView.swift", "Views/PillLeadView.swift"]
 
@@ -209,9 +215,7 @@ final class DesignLintTests: DefaultsTestCase {
             XCTAssertFalse((Self.colourAllowlist[path] ?? "").trimmingCharacters(in: .whitespaces).isEmpty,
                            "\(path): a content colour file needs its allowlist reason")
         }
-        let named = #"(blue|indigo|purple|pink|mint|cyan|teal|yellow|orange|red|green|brown)"#
-        let regex = try NSRegularExpression(pattern:
-            #"Color\."# + named + #"\b|[\s(:?,]\."# + named + #"\b(?!\s*[:(=])|(?<![A-Za-z])Color\((red|hue):"#
+        let regex = try NSRegularExpression(pattern: Self.namedColourPattern
             + #"|(?<![A-Za-z])\.tint\((?!\.white\)|DS\.|Theme\.|SettingsTint\.|nil\))"#)
         var found: [String] = []
         for line in try Self.sourceLines() where Self.isPanel(line.path) && Self.colourAllowlist[line.path] == nil {
@@ -229,9 +233,13 @@ final class DesignLintTests: DefaultsTestCase {
 
     /// Content colour stays content: the art and sky files never use a state colour.
     func testContentFilesUseNoStateColour() throws {
+        // Nor a named system colour (an amber look-alike `.orange`, a `Color.red`).
+        let named = try NSRegularExpression(pattern: Self.namedColourPattern)
         var found: [String] = []
         for line in try Self.sourceLines() where Self.contentColourFiles.contains(line.path) {
-            if ["DS.color(", "DS.dynamicColor(", "StateTone"].contains(where: { line.text.contains($0) }) {
+            let ns = line.text as NSString
+            if ["DS.color(", "DS.dynamicColor(", "StateTone"].contains(where: { line.text.contains($0) })
+                || named.firstMatch(in: line.text, range: NSRange(location: 0, length: ns.length)) != nil {
                 found.append("\(line.path):\(line.number): \(line.text.trimmingCharacters(in: .whitespaces))")
             }
         }

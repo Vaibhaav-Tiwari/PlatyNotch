@@ -41,6 +41,14 @@ struct PresetPreview: View {
     @MainActor private static var panels: [SetupPreset: AnyView] = [:]
     @MainActor private static var rig: HomeRenders.Rig?
 
+    /// Lets the sample rig and the built previews go (Settings › General closed).
+    @MainActor static func releaseCache() {
+        panels = [:]
+        rig = nil
+    }
+
+    @MainActor static var isCached: Bool { rig != nil || !panels.isEmpty }
+
     @MainActor static func panel(_ p: SetupPreset) -> AnyView {
         if let cached = panels[p] { return cached }
         let sample: HomeRenders.Rig = rig ?? HomeRenders.previewRig()

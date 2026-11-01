@@ -75,4 +75,15 @@ final class IslandMigrationTests: DefaultsTestCase {
         XCTAssertEqual(d.data(forKey: AppearanceStore.key), appearance)
         XCTAssertEqual(d.string(forKey: KeepAwakeDuration.preferenceKey), "oneHour")
     }
+
+    /// Review M5: the Mail swap runs once; a dock cleared later never brings Mail back.
+    func testMailSwapRunsOnce() {
+        HomeSettings(rightColumn: .mail).save(to: defaults())
+        IslandMigration.run(defaults: defaults(), existingUser: true)
+        XCTAssertTrue(defaults().bool(forKey: IslandMigration.mailDockKey))
+        defaults().removeObject(forKey: DockLayout.key)
+        IslandMigration.run(defaults: defaults(), existingUser: true)
+        XCTAssertNil(defaults().data(forKey: DockLayout.key))
+        XCTAssertEqual(IslandMigration.mailDockKey, "ui.island.mailDock")
+    }
 }

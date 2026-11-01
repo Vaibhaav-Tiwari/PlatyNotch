@@ -172,6 +172,7 @@ extension FirstRunState {
             defaults.set(true, forKey: UpgradeMigration.key)
             defaults.set(true, forKey: QuietNotchMigration.key)
             defaults.set(true, forKey: IslandMigration.key)
+            defaults.set(true, forKey: IslandMigration.mailDockKey)
         }
         UpgradeMigration.run(defaults: defaults, existingUser: state != .firstRun)
         QuietNotchMigration.run(defaults: defaults, existingUser: state != .firstRun)

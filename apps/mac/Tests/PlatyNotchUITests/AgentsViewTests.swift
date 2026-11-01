@@ -251,7 +251,8 @@ final class AgentsViewTests: DefaultsTestCase {
         let usage = try JSONCoding.decoder.decode(Usage.self, from: Data(json.utf8))
         XCTAssertEqual(ExpandedPanel.headerRings(for: .agents, usage: usage).map(\.text), ["Claude 62%"])
         XCTAssertEqual(UsageRingsView.texts(ExpandedPanel.headerRings(for: .agents, usage: usage)), ["Claude 62%"])
-        XCTAssertEqual(ExpandedPanel.headerStatus(for: .agents, usage: usage), [], "no mono 5h 62% text")
+        XCTAssertFalse(UsageRingsView.texts(ExpandedPanel.headerRings(for: .agents, usage: usage))
+            .contains { $0.contains("5h") || $0.contains("7d") }, "no mono 5h 62% text")
         XCTAssertEqual(ExpandedPanel.headerRings(for: .home, usage: usage), [])
         XCTAssertEqual(UsageRingsView.diameter, 14)
     }

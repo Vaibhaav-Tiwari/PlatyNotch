@@ -17,7 +17,7 @@ struct HomeData {
     /// already granted (no prompts, ever). `tourSample` is the first run's "Try it": the
     /// Today card shows it.
     @MainActor
-    static func make(today: TodayServices, widgets: WidgetRegistry, settings: HomeSettings,
+    static func make(today: TodayServices, widgets: WidgetRegistry,
                      tourSample: LiveActivity?, now: Date, dropping: Bool, airDrop: Bool = ShelfActions.canAirDrop,
                      calendar: Calendar = .current, locale: Locale = .current, dock: DockLayout = .standard,
                      toolTitles: [String: String] = [:], searchKey: String? = CommandHotKey.presets.first?.display)
@@ -64,7 +64,6 @@ struct HomeHeightKey: PreferenceKey {
 struct HomeView: View {
     let today: TodayServices
     let widgets: WidgetRegistry
-    let settings: HomeSettings
     var tourSample: LiveActivity?
     var fixedNow: Date?
     /// The drag is near: show the drop targets (`.peek(.drop)`).
@@ -110,7 +109,7 @@ struct HomeView: View {
 
     var body: some View {
         TickingNow(fixed: fixedNow) { now in
-            let data = HomeData.make(today: today, widgets: widgets, settings: settings, tourSample: tourSample,
+            let data = HomeData.make(today: today, widgets: widgets, tourSample: tourSample,
                                      now: now, dropping: dropping, dock: dockLayout, toolTitles: toolTitles,
                                      searchKey: searchKey)
             content(data, now: now)
