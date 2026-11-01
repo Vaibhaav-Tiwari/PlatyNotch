@@ -1377,7 +1377,7 @@ block containing `- [ ] in code`.
   a quick note at once: all three are `[x]` and the note line is there (every write runs
   one after another).
 
-## Showcase renders (spec 12; Quiet Notch phase 3)
+## Showcase renders (spec 12; Island phase C)
 
 The README header and the website hero come from these renders. They are the project's
 own renders, so nothing in them is someone else's artwork: agents show their names (never
@@ -1389,16 +1389,19 @@ Regenerate them from `apps/mac` with:
 swift build --scratch-path /private/tmp/claude-501/pn-build-shared && PLATYNOTCH_HOME=$(mktemp -d) /private/tmp/claude-501/pn-build-shared/debug/PlatyNotch --render-showcase ../../docs/assets/showcase
 ```
 
-This prints `SHOWCASE OK renders=10`. It writes ten PNGs: five scenes, each on a dark and a
-light desktop (the panel itself is black on both):
+This prints `SHOWCASE OK renders=12`. It writes twelve PNGs: six scenes (Island wireframes
+A–F), each on a dark and a light desktop (the panel itself is black on both):
 
-- `home-music`: Home with a track playing and Up next (wireframe A)
-- `home-live`: Home with focus, a tea timer and the shelf as chips, charging and keep
-  awake in the header (wireframe B)
-- `agents`: three sessions in three apps, usage in the header, the open-loops line
-  (wireframe C)
-- `approval`: a Bash approval in the v0.2 card above the Agents rows (wireframe C)
-- `command-line`: `timer 10m tea` typed, its suggestion below (wireframe E)
+- `home-sunny`: Home on a sunny afternoon: Green Light playing with its art glow, the
+  Today card's sky over Bengaluru and a meeting in 45 minutes, the dock (wireframe A)
+- `home-rain-night`: Home on a rainy night: Resume and suggestions, rain over the sky,
+  the week strip (wireframe B)
+- `tool-timer`: the Timer tool with a tea and a laundry timer running (wireframe C)
+- `search`: the full-panel search with nothing typed: commands and tools (wireframe D)
+- `agents`: three sessions in three apps, the usage rings in the header, the open-loops
+  line (wireframe E)
+- `pill`: the closed pill's three leads: music, a timer, a session needing you
+  (wireframe F)
 
 Each PNG is 16:9 (800 × 450 points, forced to 2×: 1600 × 900 pixels). It shows the open
 panel, cropped to its content, hanging from a drawn menu bar and camera notch over a
@@ -1407,7 +1410,7 @@ gradient wallpaper drawn in code, so it uses no photograph and no Apple wallpape
 The command uses inert models: it reads no player, calendar or agent and saves nothing. It
 opens its windows off screen.
 
-The README header is `docs/assets/showcase/agents-dark.png`.
+The README header is `docs/assets/showcase/home-sunny-dark.png`.
 
 The 20-second screen recording is scripted in `docs/showcase/recording-script.md`.
 
@@ -1705,3 +1708,45 @@ runs print `SMOKE OK … renders=129`, `SMOKE SETTINGS OK sections=9 …` and
   Note pad or the search and press ⌘↩ and ⌘⌫: they edit the text; the approval waits.
 - [ ] **334. CPU.** `scripts/perf-idle.sh`, `scripts/perf-idle.sh --state music` and
   `scripts/perf-open.sh`: PASS (under 1 % closed, under 5 % open).
+
+## Island phase C
+
+Presets that change what you see, Settings › Dock, the pill's leads and Agents polish
+(Island spec 6, 7, 8). The smoke runs print `SMOKE OK … renders=138`,
+`SMOKE SETTINGS OK sections=10 …` and `SMOKE-POWER OK widgets=6`; the renders
+`preset-preview-*`, `settings-dock-*`, `pill-lead-*` and `agents-usage-rings` show every
+state below.
+
+- [ ] **335. Each preset looks different.** Settings › General › Setup: click Everyday,
+  Developer and Minimal in turn. Under the cards a preview shows the pill and Home at 0.6:
+  Everyday's dock ends Games then the search key and the pill leads with music; Developer
+  swaps Games for Memory, shows an Agents tab and its pill leads with agents; Minimal folds
+  the dock into one Search button, "All tools", and says the pill is hidden until something is
+  live. Nothing changes until "Apply…".
+- [ ] **336. Apply changes the real panel.** Apply Developer and confirm (the dialog lists
+  "Dock: Timer, Note, Remind, Clipboard, Shelf, Memory.", "The pill shows agents first." and
+  "Agents shows in the panel."). Open the panel: Memory sits where Games was and the Agents tab
+  shows with no agent connected. Apply Minimal: the dock is one "All tools" button and the
+  notch hides until something is live. Apply Everyday: Games is back, the Agents tab goes
+  until an agent's hooks are set up, and the pill leads with music.
+- [ ] **337. Settings › Dock.** Below Home in the sidebar. Drag Games to the top: the panel's
+  dock starts with Games. "8 of 8"; tick Baskets: "The dock holds 8." and nothing changes;
+  untick Games, then tick Baskets: Baskets sits before Search. Search's box cannot be
+  unticked. Turn Notes off in Widgets, untick and tick Note here: Notes turns on. "Fold the
+  dock into Search" folds it.
+- [ ] **338. The pill's three leads.** With music playing and nothing else, the closed pill
+  shows the mini art (rounded) beside the notch and five bars in the art's colour on the
+  other side. Start a 20 min timer and pause the music: Platy and the time left in amber,
+  ticking each second. Leave an agent waiting for input: its app icon (or its name, never
+  initials) and amber "Needs you", whatever else is live. An approval still shows the amber
+  count. On Developer, a working agent's dots come before the timer and music.
+- [ ] **339. Agents polish.** Agents' rows and the approval card show each agent's app icon at
+  24 pt (rounded corners); the card keeps its height. The header shows a ring and
+  "Claude 62%" per agent with a five-hour window: green, amber from 80 %, red from 95 %, and
+  no "5h 62%" text.
+- [ ] **340. Upgrading keeps settings.** On a Mac that ran Quiet Notch with Settings › Home's
+  right column on Mail, install this build: the dock has Mail in Games' place, and the widget
+  switches, Notch mode and keep-awake length are as before. A dock you already saved is never
+  changed.
+- [ ] **341. CPU.** `scripts/perf-idle.sh` (also `--state music`): PASS under 1 % with the
+  music lead's bars showing.

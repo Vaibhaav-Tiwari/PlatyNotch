@@ -64,8 +64,8 @@ extension EnvironmentValues {
     @Entry var agentIcons: AgentIconSource = .installed
 }
 
-/// An agent's identity (Quiet Notch spec 5.3): its installed app's icon at 16 pt with no
-/// background, else its name as plain text. Never initials, never a tinted square. The row or
+/// An agent's identity (Quiet Notch spec 5.3, Island spec 8): its installed app's icon at
+/// 24 pt (radius 6) with no background, else its name as plain text. Never initials, never a tinted square. The row or
 /// card beside it says the state with a dot and words.
 struct AgentBadge: View {
     enum Face: Equatable {
@@ -73,7 +73,8 @@ struct AgentBadge: View {
         case name(String)
     }
 
-    static let size: CGFloat = IconSize.header
+    static let size: CGFloat = HomeMetrics.agentIcon
+    static let radius: CGFloat = Radius.small
     let brand: AgentBrand
     /// Without an icon, show nothing (the approval card, which names the agent itself).
     var nameFallback: Bool = true
@@ -83,7 +84,7 @@ struct AgentBadge: View {
         source.icon(for: brand) == nil ? .name(brand.displayName) : .app
     }
 
-    /// The Agents list's first column: 18 pt while every agent has its app icon, else as wide
+    /// The Agents list's first column: 24 pt while every agent has its app icon, else as wide
     /// as the longest name shown (at most 84 pt), so the projects line up.
     static func column(for brands: [AgentBrand], source: AgentIconSource) -> CGFloat {
         let font = NSFont.systemFont(ofSize: TypeScale.secondary.size)
@@ -102,6 +103,7 @@ struct AgentBadge: View {
                 .interpolation(.high)
                 .aspectRatio(contentMode: .fit)
                 .frame(width: Self.size, height: Self.size)
+                .clipShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
                 .accessibilityHidden(true)
         } else if nameFallback {
             Text(verbatim: brand.displayName)

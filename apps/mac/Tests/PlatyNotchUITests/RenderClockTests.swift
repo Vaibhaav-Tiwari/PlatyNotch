@@ -10,7 +10,7 @@ final class RenderClockTests: XCTestCase {
         let rig = HomeRenders.builtIns(meeting: false, at: at)
         let meeting = try XCTUnwrap(rig.registry.widget(MeetingWidget.widgetID) as? MeetingWidget)
         XCTAssertEqual(meeting.now, at)
-        let data = HomeData.make(today: rig.today, widgets: rig.registry, settings: HomeSettings(), tourSample: nil,
+        let data = HomeData.make(today: rig.today, widgets: rig.registry, tourSample: nil,
                                  now: at, dropping: false)
         // The seeded meeting is 45 minutes after the pinned 19:12.
         guard case .event(let label, let title, _) = data.next else { return XCTFail("\(data.next)") }

@@ -2,17 +2,17 @@ import AppKit
 import PlatyNotchKit
 import SwiftUI
 
-/// `--render-showcase <dir>`: the five Quiet Notch scenes (wireframes A–C, E), each the open
-/// panel as it really looks on a 14-inch MacBook Pro (600 pt wide, always black, the band
-/// level with the camera housing), hanging from a drawn menu bar and notch over a calm
-/// gradient wallpaper drawn here in code (no third-party image, no Apple wallpaper), 16:9 at
-/// 2x, on a dark and a light desktop: Home with music, Home with live chips, Agents, an
-/// approval above the Agents rows, and the command line. Agents show their names (renders
-/// never carry an app's icon). The same inert models as the theme renders: nothing is
-/// read, played or saved.
+/// `--render-showcase <dir>`: the six Island scenes (wireframes A–F), each the open panel as
+/// it really looks on a 14-inch MacBook Pro (always black, the band level with the camera
+/// housing), hanging from a drawn menu bar and notch over a calm gradient wallpaper drawn
+/// here in code (no third-party image, no Apple wallpaper), 16:9, forced to 2x, on a dark
+/// and a light desktop: Home on a sunny afternoon, Home on a rainy night, the Timer tool,
+/// the search, Agents with its usage rings, and the closed pill's three leads. Agents show
+/// their names (renders never carry an app's icon). The same inert models as the theme
+/// renders: nothing is read, played or saved.
 @MainActor
 enum ShowcaseRenders {
-    static let scenes = ["home-music", "home-live", "agents", "approval", "command-line"]
+    static let scenes = ["home-sunny", "home-rain-night", "tool-timer", "search", "agents", "pill"]
     /// The scenes' clock: today at 14:59, so a regeneration shows the same times.
     static var clock: Date {
         Calendar.current.date(bySettingHour: 14, minute: 59, second: 0, of: Date()) ?? Date()
@@ -35,11 +35,15 @@ enum ShowcaseRenders {
         for scheme in [ColorScheme.dark, .light] {
             for name in scenes {
                 let file = dir.appendingPathComponent("\(name)-\(scheme == .dark ? "dark" : "light").png")
-                let s = scene(name)
-                let picture = ShowcaseDesktop(scheme: scheme, time: s.time) {
-                    panel(s.content, height: s.height)
+                let data: Data?
+                if name == "pill" {
+                    data = render(ShowcaseDesktop(scheme: scheme, time: clock) { pills() }, scheme: scheme)
+                } else {
+                    let s = scene(name)
+                    data = render(ShowcaseDesktop(scheme: scheme, time: s.time) { panel(s.content, height: s.height) },
+                                  scheme: scheme)
                 }
-                guard let png = render(picture, scheme: scheme) else {
+                guard let png = data else {
                     return .failure(ThemeRenders.RenderError(message: "\(name) did not render"))
                 }
                 do { try png.write(to: file) } catch {
@@ -65,76 +69,57 @@ enum ShowcaseRenders {
         let now = clock
         var rig: HomeRenders.Rig
         var route = PanelRoute(destination: .home)
-        var header: HeaderServices?
         var command: String?
+        var time: Date = now
         var panelNow: Date? = now
         switch name {
-        case "home-music":
-            rig = homeRig(at: now, live: false)
-        case "home-live":
-            rig = homeRig(at: now, live: true)
-            // Two hours of keep awake started 40 minutes ago: "1:20" left (wireframe B).
-            header = HomeRenders.headerServices(keepAwake: true,
-                                                battery: BatteryState(percent: 64, charging: true, pluggedIn: true,
-                                                                      minutesRemaining: nil),
-                                                startedAt: now.addingTimeInterval(-40 * 60))
+        case "home-rain-night":
+            // Wireframe B: nothing playing (Resume), a rainy night, a free evening.
+            time = Calendar.current.date(bySettingHour: 21, minute: 12, second: 0, of: now) ?? now
+            rig = HomeRenders.island(playing: false, sky: HomeRenders.reading(61, day: false, 17, at: time, rainy: true),
+                                     now: time, next: [])
+        case "tool-timer":
+            // Wireframe C: the Timer tool with a tea and a laundry timer running (real clock).
+            rig = ToolRenders.runningTimers()
+            route = PanelRoute(destination: .home, tool: PanelTools.timer)
+            panelNow = nil   // the timers run on the real clock
+        case "search":
+            // Wireframe D: the full-panel search, nothing typed yet: every tool and command.
+            rig = HomeRenders.homeRest(at: now)
+            command = ""
         case "agents":
+            // Wireframe E: three sessions in three apps, the usage rings, two open loops.
             rig = agentsRig(at: now)
             route = PanelRoute(destination: .agents)
-        case "approval":
-            // The card's countdown runs on the real clock (as in the app), so the approval is
-            // 20 s old in real time; the rows' ages count from the real clock too.
-            rig = agentsRig(at: Date())
-            try? rig.store.apply(Envelope.make(.approvalAdded, bashApproval()))
-            route = PanelRoute(destination: .agents)
-            panelNow = nil
         default:
-            rig = homeRig(at: now, live: false)
-            command = "timer 10m tea"
+            // Wireframe A: Green Light playing, sunny in Bengaluru, a meeting in 45 minutes.
+            rig = HomeRenders.homeRest(at: now)
         }
-        rig.store.apply(.connected)
-        let content = HomeRenders.panel(rig, route: route, command: command, now: panelNow, header: header)
-        let measured: CGFloat = NSHostingView(rootView: content).fittingSize.height
-        return Scene(content: content, height: measured, time: now)
-    }
-
-    /// Home at `now`: Weightless playing with drawn artwork, the weather in the header, and Up
-    /// next as in wireframe A (a meeting in 45 minutes, a timed reminder, one overdue). `live`
-    /// adds wireframe B's chips: focus, a tea timer and the shelf.
-    static func homeRig(at now: Date, live: Bool) -> HomeRenders.Rig {
-        var rig = HomeRenders.builtIns(meeting: false, at: now)
         rig.mood = .idle
-        rig.today.nowPlaying.debugApply(NowPlayingInfo(bundleIdentifier: "com.apple.Music", title: "Weightless",
-                                                       artist: "Marconi Union", isPlaying: true, artwork: artwork(),
-                                                       elapsed: 161, duration: 473, rate: 0, timestamp: now), now: now)
-        let meeting = CalendarMeeting(id: "design", title: "Design review", start: now.addingTimeInterval(45 * 60),
-                                      end: now.addingTimeInterval(75 * 60))
-        rig.today.calendar.setForTesting(access: .granted, meetings: [meeting])
-        let cal = Calendar.current
-        let five = cal.date(bySettingHour: 17, minute: 0, second: 0, of: now) ?? now
-        let yesterday = cal.date(byAdding: .day, value: -1, to: now) ?? now
-        let reminders = [ReminderItem(id: "priya", title: "Call Priya", due: five, hasTime: true),
-                         ReminderItem(id: "invoice", title: "Send invoice", due: yesterday, hasTime: true)]
-        (rig.registry.widget(RemindersWidget.widgetID) as? RemindersWidget)?.reminders
-            .setForTesting(access: .granted, items: reminders)
-        (rig.registry.widget(WeatherWidget.widgetID) as? WeatherWidget)?.showForRendering(
-            place: GeoPlace(id: 1, name: "Lisbon", latitude: 38.72, longitude: -9.14),
-            weather: WeatherNow(temperatureC: 14, code: 0, isDay: true, time: now, hourly: []))
-        if live {
-            rig.today.focus.start(minutes: 25, now: now.addingTimeInterval(-(6 * 60 + 18)))
-            if let time = rig.registry.widget(TimeWidget.widgetID) as? TimeWidget {
-                _ = time.startTimer(duration: 190, label: "Tea")
-            }
-            (rig.registry.widget(ShelfWidget.widgetID) as? ShelfWidget)?.showForRendering([
-                ShelfItem(kind: .text("Release checklist"), addedAt: now),
-                ShelfItem(kind: .text("Meeting notes"), addedAt: now),
-                ShelfItem(kind: .url(URL(string: "https://example.com/report")!), addedAt: now),
-            ])
-        }
-        return rig
+        rig.store.apply(.connected)
+        let content = HomeRenders.panel(rig, route: route, command: command, now: panelNow ?? Date(),
+                                        full: command != nil)
+        let measured: CGFloat = NSHostingView(rootView: content).fittingSize.height
+        return Scene(content: content, height: measured, time: time)
     }
 
-    /// Wireframe C: three sessions in three apps, usage in the header, two open loops.
+    /// Wireframe F: the closed pill's three leads, music at the notch and the timer and
+    /// needs-you leads below it, each as it sits under the camera housing.
+    static func pills() -> some View {
+        let leads: [PillLead] = [.music, .timer(remaining: "18:42"), .needsYou(sessionID: "s1")]
+        // Below the menu bar, each pill drawn as it sits beside a 14-inch MacBook Pro's housing.
+        return VStack(spacing: 32) {
+            ForEach(Array(leads.enumerated()), id: \.offset) { _, lead in
+                PillRenders.lead(lead, width: .standard, greyNotch: false)
+                    .clipShape(Theme.panelShape(hasNotch: false))
+                    .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
+            }
+        }
+        .padding(.top, HomeRenders.layout.anchor.height + 56)
+        .environment(\.agentIcons, .namesOnly)
+    }
+
+    /// Wireframe E: three sessions in three apps, usage rings in the header, two open loops.
     static func agentsRig(at now: Date) -> HomeRenders.Rig {
         let s = AgentsRenders.session
         let start = now.addingTimeInterval(-12 * 60)
@@ -149,31 +134,6 @@ enum ShowcaseRenders {
         done.updatedAt = now.addingTimeInterval(-62 * 60)
         let rig = AgentsRenders.rig([tests, ask, done])
         return rig
-    }
-
-    /// A short Bash command (wireframe C's card).
-    static func bashApproval() -> Approval {
-        let created = Date().addingTimeInterval(-20)
-        let command = "rm -rf ./build && npm test -- --grep \"panel\""
-        return Approval(id: "showcase-bash", sessionKey: "tests", agent: "claude-code", agentName: "Claude Code",
-                        project: "platynotch", tool: "Bash", summary: command,
-                        input: RawJSON(.object(["command": .string(command)])), createdAt: created,
-                        expiresAt: created.addingTimeInterval(300))
-    }
-
-    /// Original artwork drawn in code: two soft fields, nothing from a real cover.
-    static func artwork() -> Data? {
-        let size = NSSize(width: 108, height: 108)
-        let image = NSImage(size: size, flipped: false) { rect in
-            NSGradient(colors: [NSColor(srgbRed: 0.23, green: 0.29, blue: 0.39, alpha: 1),
-                                NSColor(srgbRed: 0.64, green: 0.44, blue: 0.48, alpha: 1)])?
-                .draw(in: rect, angle: -45)
-            NSColor(white: 1, alpha: 0.12).setFill()
-            NSBezierPath(ovalIn: CGRect(x: 52, y: 14, width: 64, height: 64)).fill()
-            return true
-        }
-        guard let tiff = image.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff) else { return nil }
-        return rep.representation(using: .png, properties: [:])
     }
 
     /// The open panel around `content` (`height` tall), as `PanelRootView` draws it: always

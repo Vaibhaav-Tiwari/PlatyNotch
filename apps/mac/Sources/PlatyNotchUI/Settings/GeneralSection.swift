@@ -9,6 +9,8 @@ struct GeneralSection: View {
     @State private var loginNote: String?
     /// A setup waiting for a yes.
     @State private var pending: SetupPreset?
+    /// The card shown in the preview (nothing is applied until Apply).
+    @State private var previewed: SetupPreset?
     /// Bumped after applying, so the "Current" badges are read again.
     @State private var revision = 0
 
@@ -28,13 +30,26 @@ struct GeneralSection: View {
                 Section {
                     HStack(spacing: 10) {
                         ForEach(SetupPreset.allCases, id: \.self) { p in
-                            PresetCard(preset: p, selected: false, compact: true,
-                                       current: services.presetPlan(p).isCurrent) { choose(p) }
+                            PresetCard(preset: p, selected: previewed == p, compact: true,
+                                       current: services.presetPlan(p).isCurrent) { previewed = p }
                         }
                         Spacer(minLength: 0)
                     }
                     .padding(.vertical, 4)
                     .id(revision)
+                    if let p = previewed {
+                        PresetPreview(preset: p)
+                            .padding(.vertical, 4)
+                        HStack(alignment: .bottom) {
+                            Text(verbatim: Self.changeList(services.presetPlan(p), title: services.presetTitle))
+                                .font(DS.font(TypeScale.caption)).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Spacer()
+                            Button("Apply \(p.title)\u{2026}") { choose(p) }
+                                .disabled(services.presetPlan(p).isCurrent)
+                        }
+                        .id(revision)
+                    }
                     LabeledContent {
                         Button("Start") { services.showOnboarding() }
                     } label: {
@@ -42,12 +57,17 @@ struct GeneralSection: View {
                                      info: "Replays the first run: meet Platy, pick a setup, permissions, then try the notch. Nothing changes until you confirm.")
                     }
                 } header: {
-                    SettingLabel("Setup", info: "Everyday, Developer or Minimal choose which widgets are on and whether the notch hides. You see every change and confirm first.")
+                    SettingLabel("Setup", info: "Everyday, Developer or Minimal set the dock, what the pill shows first, the Agents tab, which widgets are on and whether the notch hides. Pick one to preview it; you see every change and confirm before it applies.")
                 }
             }
             .settingsForm()
         }
-        .onAppear(perform: readLogin)
+        .onAppear {
+            readLogin()
+            // The setup in force shows its preview at once.
+            if previewed == nil { previewed = SetupPreset.allCases.first { services.presetPlan($0).isCurrent } }
+        }
+        .onDisappear { PresetPreview.releaseCache() }
         .confirmationDialog("Apply \(pending?.title ?? "")?",
                             isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
                             titleVisibility: .visible) {
@@ -85,6 +105,13 @@ struct GeneralSection: View {
     /// Asks first, with every change listed (spec 14); a setup that is already current
     /// changes nothing.
     enum SetupAction: Equatable { case ask, alreadyCurrent }
+
+    /// Under the preview: every change Apply would make (widgets turned on for the dock's
+    /// tools included), or that the setup is current.
+    static func changeList(_ plan: PresetPlan, title: (String) -> String) -> String {
+        if plan.isCurrent { return "\(plan.preset.title) is your setup now." }
+        return (plan.summary(title: title) + ["Nothing changes until you apply."]).joined(separator: "\n")
+    }
 
     /// Settings never applies a setup straight away: it asks, or there is nothing to change.
     static func action(for plan: PresetPlan) -> SetupAction {

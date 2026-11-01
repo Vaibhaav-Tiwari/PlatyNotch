@@ -12,12 +12,12 @@ final class SetupPresetTests: DefaultsTestCase {
         struct Row { let p: SetupPreset; let on: [String]; let off: [String]
             let mode: AppearanceSettings.Mode; let agents: Bool }
         let rows: [Row] = [
-            Row(p: .everyday, on: everydayOn, off: ["fileActions", "snap"],
+            Row(p: .everyday, on: everydayOn + ["notes", "reminders", "games"], off: ["fileActions", "snap"],
                 mode: .alwaysOn, agents: false),
-            Row(p: .developer, on: everydayOn + ["fileActions", "snap"], off: [],
+            Row(p: .developer, on: everydayOn + ["notes", "reminders", "fileActions", "snap"], off: [],
                 mode: .alwaysOn, agents: true),
             Row(p: .minimal, on: ["music", "weather"], off: allBuiltIns.filter { $0 != "music" && $0 != "weather" },
-                mode: .minimal, agents: true),
+                mode: .minimal, agents: false),
         ]
         XCTAssertEqual(SetupPreset.allCases, rows.map(\.p))
         for r in rows {
@@ -30,11 +30,11 @@ final class SetupPresetTests: DefaultsTestCase {
 
     func testPlanOnlyChanges() {
         let change = PresetChange.plan(.everyday, enabled: ["music", "shelf", "snap", "games"])
-        XCTAssertEqual(change.turnOn, ["meeting", "time", "weather", "clipboard"], "already on: left out")
+        XCTAssertEqual(change.turnOn, ["meeting", "time", "weather", "clipboard", "notes", "reminders"], "already on: left out")
         XCTAssertEqual(change.turnOff, ["snap"], "already off: left out; not listed: kept")
         XCTAssertTrue(change.needsConfirmation)
         let none = PresetChange.plan(.developer, enabled: Set(everydayOn))
-        XCTAssertEqual(none.turnOn, ["fileActions", "snap"])
+        XCTAssertEqual(none.turnOn, ["notes", "reminders", "fileActions", "snap"])
         XCTAssertEqual(none.turnOff, [])
         XCTAssertFalse(none.needsConfirmation, "nothing turned off: no question")
     }
@@ -146,12 +146,12 @@ final class SetupPresetTests: DefaultsTestCase {
 
     func testPresetPlanAsksOutsideTheFirstRun() {
         let plan = PresetPlan.plan(.everyday, enabled: ["music"], mode: .minimal)
-        XCTAssertEqual(plan.turnOn, ["meeting", "time", "weather", "shelf", "clipboard"])
+        XCTAssertEqual(plan.turnOn, ["meeting", "time", "weather", "shelf", "clipboard", "notes", "reminders", "games"])
         XCTAssertEqual(plan.mode, .alwaysOn)
         XCTAssertFalse(plan.asks(firstRun: true), "a new install's first run applies directly")
         XCTAssertTrue(plan.asks(firstRun: false), "Settings always asks, even with nothing turned off")
         XCTAssertEqual(plan.summary(title: { $0.capitalized }), [
-            "Turns on Meeting, Time, Weather, Shelf, Clipboard.",
+            "Turns on Meeting, Time, Weather, Shelf, Clipboard, Notes, Reminders, Games.",
             "The notch stays on.",
         ])
         let current = PresetPlan.plan(.minimal, enabled: ["music", "weather"], mode: .minimal)
@@ -164,6 +164,106 @@ final class SetupPresetTests: DefaultsTestCase {
         for p in SetupPreset.allCases {
             XCTAssertTrue(p.turnsOn.contains("weather"), "\(p)")
             XCTAssertFalse(p.turnsOff.contains("weather"), "\(p)")
+        }
+    }
+
+    // MARK: Island spec 6: presets set Home, the dock, the pill and the Agents tab.
+
+    private let everydayDock: [DockSlot] = [.core(.timer), .core(.note), .core(.remind), .core(.clipboard),
+                                           .core(.shelf), .core(.games), .core(.search)]
+
+    func testEverydayLayout() {
+        let l = SetupPreset.everyday.layout
+        XCTAssertEqual(l.dock.slots, everydayDock)
+        XCTAssertEqual(l.prefs.pillOrder, .musicFirst)
+        XCTAssertEqual(l.prefs.agentsTab, .whenHooksSetUp)
+        XCTAssertFalse(l.prefs.dockFolded)
+    }
+
+    func testDeveloperSwapsGamesForMemory() {
+        let l = SetupPreset.developer.layout
+        XCTAssertEqual(l.dock.slots, [.core(.timer), .core(.note), .core(.remind), .core(.clipboard), .core(.shelf),
+                                      .core(.memory), .core(.search)])
+        XCTAssertEqual(l.prefs.pillOrder, .agentsFirst)
+        XCTAssertEqual(l.prefs.agentsTab, .always)
+        XCTAssertFalse(l.prefs.dockFolded)
+        XCTAssertTrue(SetupPreset.developer.showsAgents)
+    }
+
+    func testMinimalFoldsDock() {
+        let l = SetupPreset.minimal.layout
+        XCTAssertTrue(l.prefs.dockFolded)
+        XCTAssertEqual(SetupPreset.minimal.mode, .minimal)
+        XCTAssertEqual(l.prefs.pillOrder, .musicFirst)
+        XCTAssertEqual(l.prefs.agentsTab, .whenHooksSetUp)
+    }
+
+    func testEveryPresetLooksDifferent() {
+        let layouts = SetupPreset.allCases.map(\.layout)
+        XCTAssertEqual(Set(layouts.map { "\($0)" }).count, 3, "each preset changes what you see")
+    }
+
+    func testPlanSummaryNamesDockAndPill() {
+        let e = SetupPreset.everyday
+        let plan = PresetPlan.plan(.developer, enabled: Set(e.turnsOn), mode: e.mode, dock: e.layout.dock,
+                                   prefs: e.layout.prefs)
+        XCTAssertFalse(plan.isCurrent, "only the dock, pill and Agents differ: still a change")
+        let lines = plan.summary(title: { $0 })
+        XCTAssertTrue(lines.contains("Dock: Timer, Note, Remind, Clipboard, Shelf, Memory."), "\(lines)")
+        XCTAssertTrue(lines.contains("The pill shows agents first."), "\(lines)")
+        XCTAssertTrue(lines.contains("Agents shows in the panel."), "\(lines)")
+        let minimal = PresetPlan.plan(.minimal, enabled: Set(e.turnsOn), mode: e.mode, dock: e.layout.dock,
+                                      prefs: e.layout.prefs)
+        let m = minimal.summary(title: { $0 })
+        XCTAssertTrue(m.contains("The dock folds into Search."), "\(m)")
+        XCTAssertFalse(m.contains { $0.hasPrefix("Dock:") }, "same dock, folded: no dock line")
+        let back = PresetPlan.plan(.everyday, enabled: Set(e.turnsOn), mode: e.mode,
+                                   dock: SetupPreset.developer.layout.dock, prefs: SetupPreset.developer.layout.prefs)
+        let b = back.summary(title: { $0 })
+        XCTAssertTrue(b.contains("Dock: Timer, Note, Remind, Clipboard, Shelf, Games."), "\(b)")
+        XCTAssertTrue(b.contains("The pill shows music first."), "\(b)")
+    }
+
+    func testApplyingCurrentPresetIsCurrent() {
+        let d = defaults()
+        let p = SetupPreset.developer
+        p.layout.dock.save(to: d)
+        p.layout.prefs.save(to: d)
+        let plan = PresetPlan.plan(p, enabled: Set(p.turnsOn), mode: p.mode, dock: DockLayout.load(from: d),
+                                   prefs: IslandPrefs.load(from: d))
+        XCTAssertTrue(plan.isCurrent)
+        XCTAssertNil(plan.dock)
+        XCTAssertNil(plan.prefs)
+    }
+
+    func testIslandPrefsRoundTripAndDefault() {
+        let d = defaults()
+        XCTAssertEqual(IslandPrefs.load(from: d), IslandPrefs())
+        XCTAssertEqual(IslandPrefs.key, "island.prefs")
+        var p = IslandPrefs()
+        p.dockFolded = true
+        p.pillOrder = .agentsFirst
+        p.save(to: d)
+        XCTAssertEqual(IslandPrefs.load(from: d), p)
+        d.set(Data("junk".utf8), forKey: IslandPrefs.key)
+        XCTAssertEqual(IslandPrefs.load(from: d), IslandPrefs())
+    }
+
+    /// Coordinator ruling: a preset turns on every tool its dock shows, so a fresh setup
+    /// never shows a dimmed "Turn on" slot (access, such as Reminders', is asked inside the tool).
+    func testApplyingEachPresetLeavesNoDimmedDockSlot() {
+        let starts: [Set<String>] = [[], Set(allBuiltIns), ["music"], Set(SetupPreset.minimal.turnsOn)]
+        for p in SetupPreset.allCases {
+            for start in starts {
+                let change = PresetChange.plan(p, enabled: start)
+                let enabled = start.union(change.turnOn).subtracting(change.turnOff)
+                let items = DockState.items(layout: p.layout.dock, toolTitles: [:], enabledWidgets: enabled, focus: nil,
+                                            timers: [], stopwatch: nil, remindersDue: 0, shelfCount: 0,
+                                            searchKey: nil, now: Date())
+                let shown = p.layout.prefs.dockFolded ? items.filter { $0.slot == .core(.search) } : items
+                XCTAssertEqual(shown.filter { !$0.available }.map(\.title), [], "\(p) from \(start.sorted())")
+            }
+            XCTAssertTrue(Set(p.turnsOn).isDisjoint(with: p.turnsOff), "\(p)")
         }
     }
 }

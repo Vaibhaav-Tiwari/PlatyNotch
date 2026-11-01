@@ -8,8 +8,8 @@ import SwiftUI
 /// button naming the app it opens (`TerminalFocus.title(for:)`, "Open Claude" / "Show
 /// folder"). A click anywhere on the row does the same.
 struct AgentRow: View {
-    /// The badge column: an 18 pt slot for the 16 pt icon.
-    static let badgeColumn: CGFloat = 18
+    /// The badge column: the 24 pt app icon (Island spec 8).
+    static let badgeColumn: CGFloat = HomeMetrics.agentIcon
     static let gap: CGFloat = 10
     static let verticalPadding: CGFloat = 7
     /// The project never takes more than this, so the status stays readable beside it.

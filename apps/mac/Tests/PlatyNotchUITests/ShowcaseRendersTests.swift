@@ -4,14 +4,14 @@ import XCTest
 
 @MainActor
 final class ShowcaseRendersTests: XCTestCase {
-    /// Five scenes (Quiet Notch wireframes A–C, E), on a dark and a light desktop (the panel
-    /// is black on both), each 16:9 at 2x: 800 x 450 points, 1600 x 900 pixels.
-    func testShowcaseWritesTen() throws {
-        XCTAssertEqual(ShowcaseRenders.scenes, ["home-music", "home-live", "agents", "approval", "command-line"])
+    /// Six scenes (Island wireframes A–F), on a dark and a light desktop (the panel is black on
+    /// both), each 16:9 at 2x (forced, whatever the screen): 800 x 450 points, 1600 x 900 pixels.
+    func testShowcaseWritesTwelve() throws {
+        XCTAssertEqual(ShowcaseRenders.scenes, ["home-sunny", "home-rain-night", "tool-timer", "search", "agents", "pill"])
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("pn-showcase-\(getpid())")
         defer { try? FileManager.default.removeItem(at: dir) }
         switch ShowcaseRenders.write(to: dir) {
-        case .success(let n): XCTAssertEqual(n, 10)
+        case .success(let n): XCTAssertEqual(n, 12)
         case .failure(let e): return XCTFail(e.message)
         }
         let names = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasSuffix(".png") }.sorted()

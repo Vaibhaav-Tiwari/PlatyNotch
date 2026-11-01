@@ -48,10 +48,20 @@ final class SettingsServices {
 
     func cancelTryIt() { cancelTryItHandler() }
 
-    /// Everything `p` would change now: widgets and mode (Settings asks with it).
+    /// Everything `p` would change now: widgets, mode, the dock and the Island choices
+    /// (Settings asks with it).
     func presetPlan(_ p: SetupPreset, defaults: UserDefaults = .standard) -> PresetPlan {
         let on: Set<String> = Set(widgets.orderedWidgets.map(\.id).filter { widgets.isEnabled($0) })
-        return PresetPlan.plan(p, enabled: on, mode: AppearanceStore.load(from: defaults).mode)
+        return PresetPlan.plan(p, enabled: on, mode: AppearanceStore.load(from: defaults).mode,
+                               dock: DockLayout.load(from: defaults), prefs: Self.currentPrefs(defaults: defaults))
+    }
+
+    /// The Island choices in force: the saved ones, with the Agents rule read from the live
+    /// switch (Settings › Agents can change it without a preset).
+    static func currentPrefs(defaults: UserDefaults) -> IslandPrefs {
+        var prefs = IslandPrefs.load(from: defaults)
+        prefs.agentsTab = AgentsVisibility.load(from: defaults).forcedOn ? .always : .whenHooksSetUp
+        return prefs
     }
 
     /// A widget's name for a preset summary.
@@ -70,22 +80,32 @@ final class SettingsServices {
         return PresetChange.plan(p, enabled: on)
     }
 
-    /// Applies a setup (spec 10): its widgets on and off, Minimal or
-    /// Always on, and Agents shown when it says so. Callers ask first when
+    /// Applies a setup (spec 10, Island spec 6): its widgets on and off, Minimal or Always
+    /// on, the dock, the pill order and the Agents tab, together. Callers ask first when
     /// `presetChange(p).needsConfirmation` (Settings; the first run applies directly).
     func applyPreset(_ p: SetupPreset, defaults: UserDefaults = .standard) {
         let change = presetChange(p)
         for id in change.turnOn where widgets.widget(id) != nil { widgets.setEnabled(id, true) }
         for id in change.turnOff where widgets.widget(id) != nil { widgets.setEnabled(id, false) }
+        Self.applyLayout(p, defaults: defaults)
+    }
+
+    /// The preset's notch mode, dock, Island choices and Agents tab (the panel reads them
+    /// when it next draws; the appearance write tells the app).
+    static func applyLayout(_ p: SetupPreset, defaults: UserDefaults) {
+        let layout = p.layout
+        if DockLayout.load(from: defaults) != layout.dock { layout.dock.save(to: defaults) }
+        if IslandPrefs.load(from: defaults) != layout.prefs { layout.prefs.save(to: defaults) }
+        var visibility = AgentsVisibility.load(from: defaults)
+        let always: Bool = layout.prefs.agentsTab == .always
+        if visibility.forcedOn != always {
+            visibility.forcedOn = always
+            visibility.save(to: defaults)
+        }
         var appearance = AppearanceStore.load(from: defaults)
         if appearance.mode != p.mode {
             appearance.mode = p.mode
             AppearanceStore.save(appearance, to: defaults)
-        }
-        if p.showsAgents {
-            var visibility = AgentsVisibility.load(from: defaults)
-            visibility.forcedOn = true
-            visibility.save(to: defaults)
         }
     }
 }
@@ -150,7 +170,7 @@ typealias SettingsPageID = PlatyNotchKit.SettingsPage
 final class SettingsModel {
     /// The sidebar, top to bottom (an explicit list: plug-in sections follow under
     /// "Extensions").
-    static let pages: [SettingsPageID] = [.general, .notch, .home, .notifications, .widgets, .agents, .memory, .privacy,
+    static let pages: [SettingsPageID] = [.general, .notch, .home, .dock, .notifications, .widgets, .agents, .memory, .privacy,
                                           .about]
 
     /// The built-in pages as (id, title, image).
@@ -287,6 +307,7 @@ struct SettingsRootView: View {
         case SettingsPageID.general.rawValue: GeneralSection(services: services)
         case SettingsPageID.notch.rawValue: NotchSection()
         case SettingsPageID.home.rawValue: HomeSection(widgets: services.widgets, hotKey: services.commandHotKey)
+        case SettingsPageID.dock.rawValue: DockSection(widgets: services.widgets)
         case SettingsPageID.notifications.rawValue: NotificationsSection(sound: AnyView(PlipSoundSettings()))
         case SettingsPageID.widgets.rawValue: WidgetsSection(widgets: services.widgets, detail: $model.detail)
         case SettingsPageID.agents.rawValue: AgentsSection(services: services, detail: $model.detail)
@@ -312,7 +333,7 @@ private struct SettingsSidebar: View {
     @FocusState private var focused: Bool
 
     /// General, Notch, Home, Notifications · Widgets, Agents, Memory · Privacy, About.
-    static let groups: [[SettingsPageID]] = [[.general, .notch, .home, .notifications], [.widgets, .agents, .memory],
+    static let groups: [[SettingsPageID]] = [[.general, .notch, .home, .dock, .notifications], [.widgets, .agents, .memory],
                                               [.privacy, .about]]
 
     private var ids: [String] { SettingsModel.builtIn.map(\.id) + pluginSections.map(\.id) }

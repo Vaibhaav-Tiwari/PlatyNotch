@@ -542,8 +542,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// pill width rebuild the panels; everything else is applied to them live.
     private func appearanceMayHaveChanged() {
         today.agentActivity.reloadVisibility()   // Settings › Agents: "Show Agents before an agent connects"
-        let home = HomeSettings.load(from: .standard)
-        for c in controllers { c.homeSettingsChanged(home) }
+        let prefs = IslandPrefs.load(from: .standard)
+        for c in controllers { c.islandPrefsChanged(prefs) }
         if !options.smoke, !options.smokeSettings {
             commandHotKey.apply(CommandHotKey.combo(.standard))
         }
@@ -607,7 +607,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             c.header = headerServices
             c.onOpenSettings = { [weak self] in self?.openSettings(section: nil) }
             c.onOpenAgentSettings = { [weak self] in self?.openSettings(section: "agents") }
-            c.homeSettingsChanged(HomeSettings.load(from: .standard))
+            c.islandPrefsChanged(IslandPrefs.load(from: .standard))
             c.commandHintChanged(CommandHotKey.hint(.standard))
             if !options.smoke, !options.smokeSettings, !options.perfRun { c.hintDefaults = .standard }
             c.attach(to: screen)

@@ -48,8 +48,8 @@ final class PanelViewModel {
     var tourSample: LiveActivity?
     /// The notice the toast shows (the one that opened it, not merely the newest).
     var toastNotice: Notice?
-    /// Settings › Home (the right column), refreshed when the saved settings change.
-    var homeSettings = HomeSettings()
+    /// The preset's Island choices (dock fold, pill order), refreshed when the saved ones change.
+    var islandPrefs = IslandPrefs()
     /// Home's natural body height while plain Home shows (the controller sizes the panel to it);
     /// nil: the panel takes its full height.
     var onBodyHeight: (CGFloat?) -> Void = { _ in }
@@ -169,6 +169,43 @@ struct PanelRootView: View {
         return .spring(response: spring.response, dampingFraction: spring.damping)
     }
 
+    /// The pill's lead now (Island spec 7); urgent live activities keep the pill's own ears.
+    private func pillLead(activities: [LiveActivity], now: Date) -> PillLead {
+        PillLeads.lead(approvals: store.approvals.count, sessions: store.sessions, log: today.agentActivity.log,
+                       timerRemaining: timerRemaining(at: now), musicPlaying: today.nowPlaying.isPlaying,
+                       order: model.islandPrefs.pillOrder, now: now, activities: activities)
+    }
+
+    /// The resting pill with its lead.
+    private func compactPill(_ pill: PillContent, lead: PillLead, layout: PanelLayout) -> CompactPill {
+        let np = today.nowPlaying
+        var icon: NSImage?
+        var name = ""
+        if case .needsYou(let id) = lead, let s = store.sessions.first(where: { $0.sessionID == id }) {
+            let brand = AgentBrand(agent: s.agent, agentName: s.agentName)
+            icon = AgentIconSource.installed.icon(for: brand)
+            name = brand.displayName
+        }
+        return CompactPill(content: pill, connection: store.connection, hasNotch: layout.hasNotch,
+                           notchWidth: layout.hasNotch ? layout.anchor.width : 0,
+                           liveSide: model.appearance.liveSide, earWidth: layout.liveEarWidth,
+                           platy: model.appearance.showPlaty ? platyMood : nil, lead: lead,
+                           leadArt: np.artwork, leadTint: np.artworkRGB, leadAppIcon: icon, leadAgentName: name)
+    }
+
+    /// The time left on Focus or the soonest countdown; nil when none runs (a stopwatch counts
+    /// up, so it is not a lead).
+    private func timerRemaining(at now: Date) -> TimeInterval? {
+        var left: [TimeInterval] = []
+        if widgets.isEnabled(FocusWidget.widgetID), let f = today.focus.timer, f.isRunning(at: now) {
+            left.append(f.remaining(at: now))
+        }
+        if widgets.isEnabled(TimeWidget.widgetID), let time = widgets.widget(TimeWidget.widgetID) as? TimeWidget {
+            left += time.state.timers.filter { $0.isRunning(at: now) }.map { $0.remaining(at: now) }
+        }
+        return left.min()
+    }
+
     @ViewBuilder private func content(_ layout: PanelLayout) -> some View {
         // Open content starts below the camera housing on a notch.
         // (below the header strip for the approval peek and open panel without a notch).
@@ -177,15 +214,23 @@ struct PanelRootView: View {
         case .hidden:
             Color.clear
         case .compact:
-            let pill = PillContent(activities: widgets.liveActivities, sessions: store.sessions,
+            let activities: [LiveActivity] = widgets.liveActivities
+            let pill = PillContent(activities: activities, sessions: store.sessions,
                                    approvals: store.approvals.count, hiddenKinds: model.hiddenKinds,
                                    log: today.agentActivity.log, now: Date())
-            CompactPill(content: pill, connection: store.connection, hasNotch: layout.hasNotch,
-                        notchWidth: layout.hasNotch ? layout.anchor.width : 0,
-                        liveSide: model.appearance.liveSide, earWidth: layout.liveEarWidth,
-                        platy: model.appearance.showPlaty ? platyMood : nil)
-                .contentShape(Rectangle())
-                .onTapGesture { model.onClick() }
+            let lead: PillLead = pillLead(activities: activities, now: Date())
+            // The timer lead's time changes each second: tick only while it shows.
+            Group {
+                if model.visible, case .timer = lead {
+                    TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                        compactPill(pill, lead: pillLead(activities: activities, now: ctx.date), layout: layout)
+                    }
+                } else {
+                    compactPill(pill, lead: lead, layout: layout)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { model.onClick() }
         case .peek(.approval):
             ApprovalPeek(store: store, responder: responder, arming: model.arming, onExpand: model.onClick,
                          onDecide: decide, onOpenTerminal: onOpenTerminal)
@@ -210,9 +255,10 @@ struct PanelRootView: View {
                           widgets: widgets, memory: memory, extraTabs: extraTabs,
                           route: dropping ? .constant(PanelRoute(destination: .home))
                                           : Binding(get: { model.route }, set: { model.route = $0 }),
-                          onCollapse: model.onClick, onOpenSettings: model.onOpenSettings,
+                          onCollapse: model.onClick, islandPrefs: model.islandPrefs,
+                          onOpenSettings: model.onOpenSettings,
                           header: model.header,
-                          homeSettings: model.homeSettings, commandLine: commandLineView,
+                          commandLine: commandLineView,
                           dockLayout: DockLayout.load(from: .standard),
                           searchKey: model.commandHint == "\u{2318}K" ? nil : model.commandHint,   // ⌘K: the global shortcut is off
                           onSearch: { [model] in

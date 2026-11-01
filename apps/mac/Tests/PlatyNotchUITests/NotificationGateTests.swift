@@ -184,12 +184,12 @@ final class NotificationGateTests: DefaultsTestCase {
         XCTAssertEqual(r.controller.panelModel.hiddenKinds, [])
     }
 
-    /// Settings › Home's right column reaches the panel's view model.
-    func testHomeSettingsReachThePanel() {
+    /// A preset's Island choices reach the panel's view model (the pill reads its order from it).
+    func testIslandPrefsReachThePanel() {
         let r = rig()
-        XCTAssertEqual(r.controller.panelModel.homeSettings.rightColumn, .upNext)
-        r.controller.homeSettingsChanged(HomeSettings(rightColumn: .notes))
-        XCTAssertEqual(r.controller.panelModel.homeSettings.rightColumn, .notes)
+        XCTAssertEqual(r.controller.panelModel.islandPrefs, IslandPrefs())
+        r.controller.islandPrefsChanged(SetupPreset.developer.layout.prefs)
+        XCTAssertEqual(r.controller.panelModel.islandPrefs.pillOrder, .agentsFirst)
     }
 
     /// Two notices at once: the toast is the newest one that may open, not merely the newest.

@@ -94,7 +94,9 @@ struct ApprovalCard: View {
     private func header(_ visible: VisibleApproval, _ status: ApprovalCardStatus, lookFirst: Bool) -> some View {
         HStack(spacing: 8) {
             // The agent's installed app icon; without one, the name beside it says who asks.
+            // 24 pt (Island spec 8) in the row's 16 pt line: the card keeps its height.
             AgentBadge(brand: AgentBrand(agent: approval.agent, agentName: approval.agentName), nameFallback: false)
+                .frame(height: IconSize.header)
             Text(verbatim: visible.agentName)
                 .font(DS.font(TypeScale.title))
                 .foregroundStyle(DS.primary)
@@ -114,7 +116,7 @@ struct ApprovalCard: View {
             statusLabel(status, lookFirst: lookFirst)
                 .layoutPriority(2)
         }
-        .frame(minHeight: AgentBadge.size)
+        .frame(minHeight: IconSize.header)
         .contentShape(Rectangle())
         .onTapGesture { onExpand?() }
         .accessibilityAction(named: "Show all approvals") { onExpand?() }

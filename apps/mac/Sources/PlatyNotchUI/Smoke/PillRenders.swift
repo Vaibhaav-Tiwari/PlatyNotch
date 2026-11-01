@@ -132,6 +132,36 @@ enum PillRenders {
         return AnyView(view)
     }
 
+    /// The resting pill beside a notch with a lead (Island spec 7, wireframe F): music with
+    /// the render's album art, a timer, or a session needing you (a stand-in app icon).
+    /// `greyNotch`: the camera housing drawn grey so the ears' edges show (renders); black
+    /// as on a Mac (Settings' preview).
+    static func lead(_ lead: PillLead, width: AppearanceSettings.PillWidth = .standard,
+                     greyNotch: Bool = true) -> AnyView {
+        let layout = notchLayout(width)
+        let rect = layout.contentRect(for: .compact)
+        let now = Date()
+        let waiting: Bool = { if case .needsYou = lead { return true } else { return false } }()
+        let sessions: [Session] = waiting ? Self.sessions(2, waiting: 1) : Self.sessions(3)
+        let content = PillContent(activities: lead == .music ? [music] : [], sessions: sessions, approvals: 0,
+                                  hiddenKinds: [], now: now)
+        let art: NSImage? = lead == .music ? HomeRenders.albumArt().flatMap(NSImage.init(data:)) : nil
+        let icon: NSImage? = { if case .needsYou = lead { return AgentsRenders.fakeAppIcon() } else { return nil } }()
+        let pill = CompactPill(content: content, connection: .connected, hasNotch: true,
+                               notchWidth: layout.anchor.width, liveSide: .right, earWidth: layout.liveEarWidth,
+                               platy: .idle, lead: lead, leadArt: art, leadTint: RGB(hex: 0xFF7A59),
+                               leadAppIcon: icon, leadAgentName: "Claude Code")
+        let view = ZStack {
+            Theme.panelShape(hasNotch: true).fill(Color(PanelPalette.darkSurface))
+            Color(white: greyNotch ? 0.2 : 0).frame(width: layout.anchor.width)
+            pill
+        }
+        .frame(width: rect.width, height: rect.height)
+        .environment(\.colorScheme, .dark)
+        .environment(\.panelTicking, false)
+        return AnyView(view)
+    }
+
     /// Every scene at every width, beside a notch and without one: (name, view).
     static func gallery() -> [(String, AnyView)] {
         var out: [(String, AnyView)] = []

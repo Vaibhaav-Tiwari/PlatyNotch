@@ -100,4 +100,59 @@ final class CompactPillTests: DefaultsTestCase {
         XCTAssertTrue(text.contains("needs you"), text)
         XCTAssertTrue(text.contains("1 agent session"), text)
     }
+
+    // MARK: Island spec 7: the pill's leads (wireframe F).
+
+    func testMusicLeadShowsArtAndBars() {
+        XCTAssertEqual(PillLeadView.parts(.music, hasArt: true, hasAppIcon: false), [.art, .bars])
+        XCTAssertEqual(PillLeadView.parts(.music, hasArt: false, hasAppIcon: false), [.bars], "no art: the bars alone")
+        XCTAssertEqual(PillLeadView.artSize, 20)
+        XCTAssertEqual(PillLeadView.artRadius, Radius.small)
+        XCTAssertEqual(PillLeadView.barsColor(RGB(hex: 0xFF7A59)), RGB(hex: 0xFF7A59), "the bars take the art's colour")
+        XCTAssertEqual(PillLeadView.barsColor(nil), RGB(DominantColor.fallback), "no art colour: the glow's fallback")
+        XCTAssertEqual(PillLeadView.texts(.music, agentName: "Claude Code"), [])
+    }
+
+    func testTimerLeadShowsPlatyAndTime() {
+        XCTAssertEqual(PillLeadView.texts(.timer(remaining: "18:42"), agentName: "Claude Code"), ["18:42"])
+        XCTAssertEqual(PillLeadView.parts(.timer(remaining: "18:42"), hasArt: false, hasAppIcon: false),
+                       [.platy, .text("18:42")])
+        XCTAssertEqual(PillLeadView.timeStyle, TypeScale.pillTime)
+        XCTAssertEqual(PillLeadView.tone(.timer(remaining: "18:42")), .needsYou, "amber")
+    }
+
+    func testNeedsYouShowsIconAndWords() {
+        let lead = PillLead.needsYou(sessionID: "s1")
+        XCTAssertEqual(PillLeadView.texts(lead, agentName: "Claude Code"), ["Needs you"])
+        XCTAssertEqual(PillLeadView.texts(lead, agentName: "Claude Code", hasAppIcon: false), ["Claude Code", "Needs you"],
+                       "no app: the name, never initials")
+        XCTAssertEqual(PillLeadView.parts(lead, hasArt: false, hasAppIcon: true), [.appIcon, .text("Needs you")])
+        XCTAssertEqual(PillLeadView.appIconSize, 18)
+        XCTAssertEqual(PillLeadView.tone(lead), .needsYou)
+    }
+
+    func testOtherLeadsKeepTheOldEar() {
+        XCTAssertFalse(PillLeadView.draws(.none))
+        XCTAssertFalse(PillLeadView.draws(.agents), "working agents: today's dots")
+        XCTAssertFalse(PillLeadView.draws(.approval(count: 2)), "the approval badge path is untouched")
+        XCTAssertTrue(PillLeadView.draws(.music))
+        XCTAssertTrue(PillLeadView.draws(.timer(remaining: "1:00")))
+        XCTAssertTrue(PillLeadView.draws(.needsYou(sessionID: "a")))
+    }
+
+    /// Review I1: music plus a ringing alarm shows the alarm in the live ear, not the music lead.
+    func testMusicLeadYieldsToARingingAlarm() {
+        let now = Date()
+        let alarm = LiveActivity(id: "time:alarm", widgetID: "time", priority: LivePriority.alarmRinging,
+                                 glyph: .symbol("alarm"), title: "Alarm")
+        let content = PillContent(activities: [alarm, PillRenders.music], sessions: [], approvals: 0, hiddenKinds: [],
+                                  now: now)
+        let lead = PillLeads.lead(approvals: 0, sessions: [], log: AgentFinishLog(), timerRemaining: nil,
+                                  musicPlaying: true, order: .musicFirst, now: now, activities: [alarm, PillRenders.music])
+        let pill = CompactPill(content: content, connection: .connected, hasNotch: true, notchWidth: 180, lead: lead)
+        XCTAssertFalse(pill.showsLead)
+        XCTAssertEqual(content.trailing?.id, "time:alarm", "the live ear shows the alarm")
+        let calm = CompactPill(content: content, connection: .connected, hasNotch: true, notchWidth: 180, lead: .music)
+        XCTAssertTrue(calm.showsLead)
+    }
 }

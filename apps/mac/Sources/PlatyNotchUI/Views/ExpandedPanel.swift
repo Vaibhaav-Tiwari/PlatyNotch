@@ -1,18 +1,12 @@
 import PlatyNotchKit
 import SwiftUI
 
-/// Today's internal tab ids (spec 14 "tab links"), kept so `WidgetContext.openPanel(tab:)`
-/// and `NotchController.expand(tab:)` callers keep working: each maps through
-/// `PanelRoute.legacy` (now / today / library → Home, focus / memory / games → that feature
-/// open inside Home).
+/// Internal tab ids still passed to `NotchController.expand(tab:)`; each maps through
+/// `PanelRoute.legacy` (today → Home, games → Games inside Home). Old links such as "now",
+/// "library", "focus" and "memory" are plain strings `PanelRoute.legacy` still maps.
 enum BuiltinTab {
-    /// The default destination.
-    static let now = "now"
     static let agents = "agents"
-    static let library = "library"
     static let today = "today"
-    static let focus = "focus"
-    static let memory = "memory"
     static let games = GamesWidget.tabID
 }
 
@@ -29,12 +23,12 @@ struct ExpandedPanel: View {
     let extraTabs: [PanelTab]
     @Binding var route: PanelRoute
     let onCollapse: () -> Void
+    /// The preset's Island choices (Settings › Dock, a preset): the folded dock.
+    var islandPrefs = IslandPrefs()
     /// Opens the Settings window (the gear; mouse only, no keyboard shortcut).
     var onOpenSettings: () -> Void = {}
     /// Keep awake, Mirror and the battery badge in the header; nil leaves just the gear.
     var header: HeaderServices?
-    /// Settings › Home (Quiet Notch's column choice; Island's Home ignores it).
-    var homeSettings = HomeSettings()
     /// The full-panel search (`SearchView`), shown for `PanelTools.search`.
     var commandLine: AnyView = AnyView(EmptyView())
     /// The dock's slots in the user's order.
@@ -153,7 +147,7 @@ struct ExpandedPanel: View {
             ToolHeader(title: tool.title, onBack: goBack, accessory: tool.accessory?(),
                        trailing: tool.hidesPanelControls ? nil : AnyView(controls))
         } else {
-            PanelHeader(status: headerStatus, mono: headerIsUsage, nav: { nav }, controls: { controls })
+            PanelHeader(rings: headerRings, nav: { nav }, controls: { controls })
         }
     }
 
@@ -194,10 +188,10 @@ struct ExpandedPanel: View {
 
     /// Home: Now Playing beside Today, the chips and the command line.
     var homeView: HomeView {
-        HomeView(today: today, widgets: widgets, settings: homeSettings,
+        HomeView(today: today, widgets: widgets,
                  tourSample: store.approvals.isEmpty ? tourSample : nil, fixedNow: fixedNow,
                  dropping: dropping, dropHover: dropHover, onOpen: { openDock($0) }, dockLayout: dockLayout,
-                 toolTitles: dockToolTitles, searchKey: searchKey)
+                 toolTitles: dockToolTitles, searchKey: searchKey, foldedDock: islandPrefs.dockFolded)
     }
 
     /// A dock slot: its tool in place; Search also focuses its field.
@@ -240,22 +234,17 @@ struct ExpandedPanel: View {
         return normal.destination == .home ? normal.tool.flatMap { panelTool($0) } : nil
     }
 
-    /// The status text at the header's trailing side: Agents' usage as small mono numbers
-    /// (`UsageLine`); none on Home (Island spec 2: the weather is the Today card). An open
-    /// tool has its own header.
-    private var headerStatus: [String] {
-        Self.headerStatus(for: route.normalized(agentsVisible: agentsVisible).destination, usage: store.usage)
+    /// Agents' usage rings (Island spec 8): one per agent, its five-hour window; Home has no
+    /// header status (the weather is the Today card). An open tool has its own header.
+    private var headerRings: [UsageRing] {
+        Self.headerRings(for: route.normalized(agentsVisible: agentsVisible).destination, usage: store.usage)
     }
 
-    static func headerStatus(for destination: PanelDestination, usage: Usage) -> [String] {
+    static func headerRings(for destination: PanelDestination, usage: Usage) -> [UsageRing] {
         switch destination {
         case .home: []
-        case .agents: UsageLine.parts(usage)
+        case .agents: UsageLine.rings(usage)
         }
-    }
-
-    private var headerIsUsage: Bool {
-        route.normalized(agentsVisible: agentsVisible).destination == .agents
     }
 
     // MARK: - Features inside the panel

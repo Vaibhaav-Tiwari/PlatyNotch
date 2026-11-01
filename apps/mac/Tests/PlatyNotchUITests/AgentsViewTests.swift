@@ -236,4 +236,24 @@ final class AgentsViewTests: DefaultsTestCase {
         XCTAssertEqual(asked, 2, "a hit is kept")
     }
 
+
+    // MARK: Island spec 8 (wireframe E)
+
+    func testAppIconIs24() {
+        XCTAssertEqual(AgentBadge.size, 24)
+        XCTAssertEqual(AgentBadge.size, HomeMetrics.agentIcon)
+        XCTAssertEqual(AgentRow.badgeColumn, 24, "rows line up on the 24 pt icon")
+        XCTAssertEqual(AgentBadge.radius, Radius.small)
+    }
+
+    func testUsageRingsInHeader() throws {
+        let json = #"{"claude":{"five_hour":{"used_percent":62},"weekly":{"used_percent":31},"updated_at":"2026-10-25T09:00:00Z"}}"#
+        let usage = try JSONCoding.decoder.decode(Usage.self, from: Data(json.utf8))
+        XCTAssertEqual(ExpandedPanel.headerRings(for: .agents, usage: usage).map(\.text), ["Claude 62%"])
+        XCTAssertEqual(UsageRingsView.texts(ExpandedPanel.headerRings(for: .agents, usage: usage)), ["Claude 62%"])
+        XCTAssertFalse(UsageRingsView.texts(ExpandedPanel.headerRings(for: .agents, usage: usage))
+            .contains { $0.contains("5h") || $0.contains("7d") }, "no mono 5h 62% text")
+        XCTAssertEqual(ExpandedPanel.headerRings(for: .home, usage: usage), [])
+        XCTAssertEqual(UsageRingsView.diameter, 14)
+    }
 }

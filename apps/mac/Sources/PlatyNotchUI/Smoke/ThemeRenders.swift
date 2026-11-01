@@ -126,7 +126,13 @@ enum ThemeRenders {
         out.append(("pill-platy-idle", PillRenders.pill(.idle, width: .standard, notch: true), true))
         out.append(("pill-agents-music", PillRenders.pill(.music, width: .standard, notch: true), true))
         out.append(("pill-indicators", PillRenders.pill(.timer, width: .wide, notch: true), true))
+        out.append(("pill-lead-music", PillRenders.lead(.music), true))
+        out.append(("pill-lead-timer", PillRenders.lead(.timer(remaining: "18:42")), true))
+        out.append(("pill-lead-needs-you", PillRenders.lead(.needsYou(sessionID: "s1")), true))
         out.append(("settings-notch-preview", AnyView(NotchPreview(appearance: AppearanceSettings()).frame(width: 540)), true))
+        for p in SetupPreset.allCases {
+            out.append(("preset-preview-\(p.rawValue)", AnyView(PresetPreview(preset: p).frame(width: 380, alignment: .leading)), true))
+        }
         out.append(("settings-sound", soundSettings(error: false), true))
         out.append(("settings-sound-refused", soundSettings(error: true), true))
         out.append(("settings-notch-preview-open",
@@ -255,6 +261,18 @@ enum HomeRenders {
         return rig
     }
 
+    /// Home at rest for Settings' preset preview: the same sample as `homeRest`, but no
+    /// widget is started (Settings runs in the live app: nothing polls, nothing is fetched).
+    static func previewRig(at now: Date = at(hour: 14)) -> Rig {
+        let rig = Rig()
+        BuiltInWidgets.register(in: rig.registry, store: rig.store, today: rig.today, persist: false,
+                                clock: { now })
+        for w in rig.registry.orderedWidgets { rig.registry.setEnabled(w.id, true) }
+        seedIsland(rig, playing: true, title: "Green Light", sky: reading(0, day: true, 22, at: now), place: "Bengaluru",
+                   now: now, next: [meeting(at: now.addingTimeInterval(45 * 60), title: "Design review")], days: [])
+        return rig
+    }
+
     /// Home at rest (wireframe A): Green Light playing, sunny in Bengaluru, a meeting in 45 min.
     static func homeRest(at now: Date = at(hour: 14)) -> Rig {
         island(playing: true, sky: reading(0, day: true, 22, at: now), now: now,
@@ -312,6 +330,12 @@ enum HomeRenders {
     static func island(playing: Bool, title: String = "Green Light", sky: WeatherNow?, place: String = "Bengaluru",
                        now: Date, next: [CalendarMeeting]?, days: Set<Date> = []) -> Rig {
         let rig = builtIns(meeting: false, at: now)
+        seedIsland(rig, playing: playing, title: title, sky: sky, place: place, now: now, next: next, days: days)
+        return rig
+    }
+
+    private static func seedIsland(_ rig: Rig, playing: Bool, title: String, sky: WeatherNow?, place: String,
+                                   now: Date, next: [CalendarMeeting]?, days: Set<Date>) {
         let np = rig.today.nowPlaying
         if playing {
             np.debugApply(NowPlayingInfo(bundleIdentifier: AppleScriptPlayer.music.rawValue, title: title,
@@ -334,7 +358,6 @@ enum HomeRenders {
         } else {
             rig.today.calendar.setForTesting(access: .unavailable, meetings: [])
         }
-        return rig
     }
 
     /// Render-only stand-in album art: a warm 135° gradient (wireframe A).
@@ -494,9 +517,11 @@ enum HomeRenders {
     /// camera housing, 10 pt at the bottom; clipped, so anything too tall shows.
     static func panel(_ rig: Rig, route: PanelRoute = PanelRoute(destination: .home), extraTabs: [PanelTab] = [],
                       memory: MemoryServices? = nil, memoryMode: MemoryTab.Mode = .search,
-                      homeSettings: HomeSettings = HomeSettings(), dropping: Bool = false, command: String? = nil,
+                      dropping: Bool = false, command: String? = nil,
                       tourSample: LiveActivity? = nil, now: Date? = nil, header: HeaderServices? = nil,
-                      full: Bool = false, commandFocused: Bool = false, commandHint: Bool = false) -> AnyView {
+                      full: Bool = false, commandFocused: Bool = false, commandHint: Bool = false,
+                      dock: DockLayout = .standard, prefs: IslandPrefs = IslandPrefs(),
+                      agentsVisible: Bool = true) -> AnyView {
         let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelSide
         rig.store.apply(.connected)   // a quiet header, as in the running app
         // A command (even empty) opens the full-panel search with it typed.
@@ -522,8 +547,10 @@ enum HomeRenders {
             ExpandedPanel(store: rig.store, responder: ApprovalResponder(client: rig.client), arming: ApprovalArming(),
                           today: rig.today, widgets: rig.registry, memory: memory ?? MemoryServices(client: rig.client),
                           extraTabs: extraTabs, route: Binding(get: { current }, set: { current = $0 }),
-                          onCollapse: {}, header: services, homeSettings: homeSettings, commandLine: commandLine,
-                          dropping: dropping, fixedNow: at, memoryMode: memoryMode, tourSample: tourSample,
+                          onCollapse: {}, islandPrefs: prefs, header: services,
+                          commandLine: commandLine, dockLayout: dock,
+                          dropping: dropping, fixedNow: at, agentsVisible: agentsVisible, memoryMode: memoryMode,
+                          tourSample: tourSample,
                           onBodyHeight: onBody, onDecide: { _, _ in }, onOpenTerminal: { _ in })
                 .frame(width: width, height: height, alignment: .top)
                 .clipped()
@@ -670,6 +697,7 @@ enum AgentsRenders {
             ("agents-twelve", HomeRenders.panel(rig(twelve()), route: PanelRoute(destination: .agents)), true),
             ("agents-empty", HomeRenders.panel(rig([]), route: PanelRoute(destination: .agents)), true),
             ("agents-app-icon", appIcon(), true),
+            ("agents-usage-rings", usageRings(), true),
             ("approval-card-command", HomeRenders.panel(approvals([bashApproval()]), route: PanelRoute(destination: .agents)), true),
             ("approval-card-diff", HomeRenders.panel(approvals([editApproval("e1")]), route: PanelRoute(destination: .agents)), true),
             ("approval-cards-diff-3", HomeRenders.panel(approvals([editApproval("e1"), writeApproval(),
@@ -831,6 +859,22 @@ enum AgentsRenders {
         }
     }
 
+    /// Agents' header with its usage rings (wireframe E): Claude 62 % and Codex 18 % (green),
+    /// and Claude at 86 % (amber) and 97 % (red) below, so every tone shows.
+    static func usageRings() -> AnyView {
+        let width: CGFloat = PanelLayout.expandedSize.width - 2 * Space.panelSide
+        let panel = HomeRenders.panel(rig(one()), route: PanelRoute(destination: .agents))
+        func ring(_ p: Double) -> UsageRing {
+            UsageLine.rings(Usage(claude: try? JSONCoding.decoder.decode(Limits.self, from: Data(
+                #"{"five_hour":{"used_percent":\#(p)},"updated_at":"2026-10-25T09:00:00Z"}"#.utf8)))).first!
+        }
+        let tones = UsageRingsView(rings: [ring(86), ring(97)])
+            .frame(width: width, alignment: .trailing)
+            .padding(.vertical, 8)
+            .background(Color.black)
+        return AnyView(VStack(spacing: 0) { panel; tones })
+    }
+
     static func appIcon() -> AnyView {
         let icon = fakeAppIcon()
         let source = AgentIconSource { $0 == "com.anthropic.claudefordesktop" ? icon : nil }
@@ -922,7 +966,7 @@ enum ToolRenders {
     }
 
     /// Two timers running (wireframe C: "Tea · 3:10 left", "Laundry · 22:05 left").
-    private static func runningTimers() -> HomeRenders.Rig {
+    static func runningTimers() -> HomeRenders.Rig {
         let rig = HomeRenders.builtIns(meeting: false)
         let time = rig.registry.widget(TimeWidget.widgetID) as? TimeWidget
         _ = time?.startTimer(duration: 190, label: "Tea")

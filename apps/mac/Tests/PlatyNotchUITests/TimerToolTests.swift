@@ -84,10 +84,10 @@ final class TimerToolTests: DefaultsTestCase {
         let r = HomeRenders.builtIns(meeting: false)
         let time = r.registry.widget(TimeWidget.widgetID) as! TimeWidget
         XCTAssertTrue(time.startTimer(duration: 60, label: "Tea"))
-        let during = HomeData.make(today: r.today, widgets: r.registry, settings: HomeSettings(), tourSample: nil,
+        let during = HomeData.make(today: r.today, widgets: r.registry, tourSample: nil,
                                    now: Date(), dropping: false)
         XCTAssertTrue(during.dock[0].live)
-        let later = HomeData.make(today: r.today, widgets: r.registry, settings: HomeSettings(), tourSample: nil,
+        let later = HomeData.make(today: r.today, widgets: r.registry, tourSample: nil,
                                   now: Date().addingTimeInterval(120), dropping: false)
         XCTAssertFalse(later.dock[0].live)
         XCTAssertEqual(later.dock[0].label, "Timer")
